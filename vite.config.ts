@@ -56,8 +56,11 @@ export default defineConfig({
         sourcemap: isSrcmap ? 'inline' : false,
 
         lib: {
-            entry: resolve(__dirname, "src/index.ts"),
-            fileName: "index",
+            entry: {
+                index: resolve(__dirname, "src/index.ts"),
+                "mcp-server": resolve(__dirname, "src/mcp/server.ts"),
+            },
+            fileName: "[name]",
             formats: ["cjs"],
         },
         rollupOptions: {
@@ -76,11 +79,48 @@ export default defineConfig({
                                 this.addWatchFile(file);
                             }
                         }
+                    },
+                    {
+                        name: 'remove-livereload-from-node',
+                        enforce: 'post', // Execute after livereload plugin
+                        renderChunk(code, chunk) {
+                            // Remove livereload script injection from mcp-server.cjs (Node.js bundle)
+                            // Check if this is the mcp-server chunk or if code contains livereload + self.document
+                            const isMcpServer = chunk.name === 'mcp-server';
+                            const hasLivereload = code.includes('livereload') && code.includes('self.document');
+                            
+                            if (isMcpServer || hasLivereload) {
+                                // Remove livereload script injection pattern
+                                // Pattern: (function(e,t){...livereload...})(self.document);
+                                const livereloadPattern = /\(function\([^)]*\)\{[^}]*livereload[^}]*\}\)\(self\.document\);/g;
+                                const cleanedCode = code.replace(livereloadPattern, '');
+                                if (cleanedCode !== code) {
+                                    console.log(`[remove-livereload] Removed livereload code from chunk: ${chunk.name || 'unknown'}`);
+                                }
+                                return {
+                                    code: cleanedCode,
+                                    map: null
+                                };
+                            }
+                        },
+                        generateBundle(options, bundle) {
+                            // Also clean up in generateBundle as a fallback (after all chunks are generated)
+                            for (const [fileName, chunkOrAsset] of Object.entries(bundle)) {
+                                if (fileName === 'mcp-server.cjs' && chunkOrAsset.type === 'chunk') {
+                                    const livereloadPattern = /\(function\([^)]*\)\{[^}]*livereload[^}]*\}\)\(self\.document\);/g;
+                                    const originalCode = chunkOrAsset.code;
+                                    chunkOrAsset.code = originalCode.replace(livereloadPattern, '');
+                                    if (chunkOrAsset.code !== originalCode) {
+                                        console.log('[remove-livereload] Removed livereload code from mcp-server.cjs in generateBundle');
+                                    }
+                                }
+                            }
+                        }
                     }
                 ] : [
                     // Clean up unnecessary files under dist dir
                     cleanupDistFiles({
-                        patterns: ['i18n/*.yaml', 'i18n/*.md'],
+                        patterns: ['i18n/*.yaml', 'i18n/*.md', 'mcp-server.js'],
                         distDir: outputDir
                     }),
                     zipPack({
@@ -91,10 +131,10 @@ export default defineConfig({
                 ])
             ],
 
-            external: ["siyuan", "process"],
+            external: ["siyuan", "process", "path", "fs", "node:path", "node:fs"],
 
             output: {
-                entryFileNames: "[name].js",
+                entryFileNames: (chunkInfo) => chunkInfo.name === "mcp-server" ? "mcp-server.cjs" : "[name].js",
                 assetFileNames: (assetInfo) => {
                     if (assetInfo.name === "style.css") {
                         return "index.css"

@@ -110,9 +110,14 @@
             max={slider.max}
             step={slider.step}
             type="range"
-            bind:value={value}
+            bind:value
             on:change={changed}
             style={style}
         />
+    </div>
+{:else if type === "hint"}
+    <!-- Hint display -->
+    <div class="b3-label fn__flex-center">
+        {value}
     </div>
 {/if}

@@ -1,48 +1,22 @@
 {
-  "name": "plugin-sample-vite-svelte",
-  "author": "frostime",
-  "url": "https://github.com/siyuan-note/plugin-sample-vite-svelte",
-  "version": "0.4.1",
-  "minAppVersion": "3.2.1",
-  "disabledInPublish": true,
-  "backends": [
-    "windows",
-    "linux",
-    "darwin",
-    "ios",
-    "android",
-    "harmony",
-    "docker"
-  ],
-  "frontends": [
-    "desktop",
-    "mobile",
-    "browser-desktop",
-    "browser-mobile",
-    "desktop-window"
-  ],
+  "name": "siyuan-mcp-sisyphus",
+  "author": "Taihong Yang",
+  "url": "https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus",
+  "version": "0.1.0",
+  "minAppVersion": "2.9.0",
+  "backends": ["all"],
+  "frontends": ["all"],
   "displayName": {
-    "default": "Plugin sample with vite and svelte",
-    "zh_CN": "插件样例 vite + svelte 版"
+    "default": "SiYuan MCP sisyphus",
+    "zh_CN": "思源 MCP sisyphus"
   },
   "description": {
-    "default": "SiYuan plugin sample with vite and svelte",
-    "zh_CN": "使用 vite 和 svelte 开发的思源插件样例"
-  },
-  "readme": {
-    "default": "README.md",
-    "zh_CN": "README_zh_CN.md"
-  },
-  "funding": {
-    "openCollective": "",
-    "patreon": "",
-    "github": "",
-    "custom": [
-      "https://ld246.com/sponsor"
-    ]
+    "default": "Let AI control your notes, provide MCP server for SiYuan, support 41 tools for AI integration with SiYuan through the Model Context Protocol.",
+    "zh_CN": "让AI控制你的笔记, 为思源笔记提供 MCP 服务, 支持 41 个工具, 支持 AI 与思源笔记的深度集成。"
   },
   "keywords": [
-    "sample",
-    "示例"
+    "AI",
+    "Agent",
+    "MCP"
   ]
 }
