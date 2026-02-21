@@ -68,8 +68,6 @@ export default class SiyuanMCP extends Plugin {
     async onload() {
         this.data[STORAGE_NAME] = { readonlyText: "Readonly" };
 
-        console.log("loading plugin-sample", this.i18n);
-
         const frontEnd = getFrontend();
         this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
         // 图标的制作参见帮助文档
@@ -227,9 +225,7 @@ export default class SiyuanMCP extends Plugin {
             description: "Button description",
             button: {
                 label: "Button",
-                callback: () => {
-                    showMessage("Button clicked");
-                }
+                callback: () => {}
             }
         });
         this.settingUtils.addItem({
@@ -300,8 +296,6 @@ export default class SiyuanMCP extends Plugin {
             ],
         };
 
-        console.log(this.i18n.helloPlugin);
-
         // Setup MCP settings
         this.settingUtils.addItem({
             key: "mcpApiUrl",
@@ -352,17 +346,17 @@ export default class SiyuanMCP extends Plugin {
             element: statusIconTemp.content.firstElementChild as HTMLElement,
         });
         this.settingUtils.load();
-        console.log(`frontend: ${getFrontend()}; backend: ${getBackend()}`);
     }
 
-    async onunload() {
-        console.log(this.i18n.byePlugin);
-        showMessage("Goodbye SiYuan Plugin");
-        console.log("onunload");
-    }
+    onunload() {}
 
     uninstall() {
-        console.log("uninstall");
+        this.removeData(STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData("mcpToolsConfig").catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [mcpToolsConfig] fail: ${e.msg}`);
+        });
     }
 
     async updateCards(options: ICardData) {

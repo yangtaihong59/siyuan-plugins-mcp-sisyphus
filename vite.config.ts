@@ -66,7 +66,8 @@ export default defineConfig({
         rollupOptions: {
             plugins: [
                 ...(isDev ? [
-                    livereload(outputDir),
+                    // livereload disabled: plugin runs inside SiYuan; requesting 127.0.0.1:35729 causes ERR_CONNECTION_REFUSED
+                    // livereload(outputDir),
                     {
                         name: 'watch-external',
                         async buildStart() {
