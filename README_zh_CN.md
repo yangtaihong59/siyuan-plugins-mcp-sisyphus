@@ -66,6 +66,10 @@ pnpm run make-link
 
 **注意**：路径中的文件夹名必须与 plugin.json 的 `name` 一致，为 `siyuan-plugins-mcp-sisyphus`。若报错 `Cannot find module '.../mcp-server.cjs'`，请检查：① 该路径下是否存在 `mcp-server.cjs`；② 文件夹名是否写错（例如误写为 `siyuan-mcp-sisyphus`）。
 
+### 工具开关
+
+- 在思源中通过 **设置 → 插件 → SiYuan MCP sisyphus** 可开关各 MCP 工具，配置保存在插件数据中（`mcpToolsConfig`）。
+
 ## 可用工具
 
 ### 笔记本操作 (8 个工具)

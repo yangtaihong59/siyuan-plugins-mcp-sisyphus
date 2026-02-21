@@ -19,8 +19,8 @@ export class ProcessManager {
     for (const callback of this.statusChangeCallbacks) {
       try {
         callback(this.status);
-      } catch (error) {
-        console.error('Error in status change callback:', error);
+      } catch {
+        // ignore callback error
       }
     }
   }
@@ -63,17 +63,9 @@ export class ProcessManager {
           this.process = null;
         });
 
-        if (this.process.stdout) {
-          this.process.stdout.on('data', (data) => {
-            console.error(`[MCP] ${data.toString().trim()}`);
-          });
-        }
-
-        if (this.process.stderr) {
-          this.process.stderr.on('data', (data) => {
-            console.error(`[MCP Error] ${data.toString().trim()}`);
-          });
-        }
+        // Do not forward subprocess stdout/stderr to console (no debug output)
+        if (this.process.stdout) this.process.stdout.on('data', () => {});
+        if (this.process.stderr) this.process.stderr.on('data', () => {});
 
         setTimeout(() => {
           if (this.status === 'starting') {

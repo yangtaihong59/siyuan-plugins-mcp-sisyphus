@@ -2,13 +2,8 @@
     import { onMount } from "svelte";
     import { showMessage } from "siyuan";
     import SettingPanel from "../libs/components/setting-panel.svelte";
-    import { getFile, putFile } from "../api";
-
     // Props from plugin
     export let plugin: any;
-
-    // Config file path in SiYuan data directory
-    const CONFIG_FILE_PATH = "/plugins/siyuan-mcp-sisyphus/mcp-tools.json";
 
     // Tool key mapping: internal key -> display key
     const toolKeyMap: Record<string, string> = {
@@ -92,53 +87,11 @@
         }
     }
 
-    // Save config to file system
-    async function saveConfigToFile(): Promise<boolean> {
-        try {
-            const dirPath = "/plugins/siyuan-mcp-sisyphus";
-            const configContent = JSON.stringify(config, null, 2);
-            // Create directory by putting an empty file first
-            await putFile(dirPath, true, new Blob([]));
-            // Save config file
-            await putFile(CONFIG_FILE_PATH, false, new Blob([configContent], { type: "application/json" }));
-            console.debug('Saved config to file:', CONFIG_FILE_PATH);
-            return true;
-        } catch (error) {
-            console.error('Failed to save config to file:', error);
-            return false;
-        }
-    }
-
-    // Load config from file system
-    async function loadConfigFromFile(): Promise<Record<string, boolean> | null> {
-        try {
-            const content = await getFile(CONFIG_FILE_PATH);
-            if (content) {
-                const parsed = JSON.parse(content);
-                console.debug('Loaded config from file:', CONFIG_FILE_PATH);
-                return parsed;
-            }
-            return null;
-        } catch (error) {
-            // File may not exist yet, which is fine
-            console.debug('No config file found, using defaults');
-            return null;
-        }
-    }
-
-    // Load saved config on mount - prioritize file system
     onMount(async () => {
         if (plugin) {
-            // Try loading from file system first
-            const fileConfig = await loadConfigFromFile();
-            if (fileConfig) {
-                config = { ...defaultConfig, ...fileConfig };
-            } else {
-                // Fallback to plugin data storage
-                const saved = await plugin.loadData('mcpToolsConfig');
-                if (saved) {
-                    config = { ...defaultConfig, ...saved };
-                }
+            const saved = await plugin.loadData('mcpToolsConfig');
+            if (saved) {
+                config = { ...defaultConfig, ...saved };
             }
             updateCheckboxValues();
         }
@@ -290,44 +243,27 @@
 
     const onChanged = async (event: CustomEvent<ChangeEvent>) => {
         const { group, key, value } = event.detail;
-        console.debug(`Setting changed: ${group} - ${key} = ${value}`);
 
         // Update config
         const displayKey = toolKeyMap[key];
         if (displayKey) {
             config[displayKey] = value;
-            // Save to file system
-            await saveConfigToFile();
-            // Also save to plugin data as backup
             if (plugin) {
                 await plugin.saveData('mcpToolsConfig', config);
-                console.debug('Saved mcpToolsConfig:', config);
             }
         }
     };
 
-    // Public method to save settings (called by parent)
     export async function saveSettings() {
-        // Save to file system
-        const success = await saveConfigToFile();
-        // Also save to plugin data as backup
         if (plugin) {
             await plugin.saveData('mcpToolsConfig', config);
         }
-        if (success) {
-            showMessage(plugin?.i18n?.mcpConfigSaved || '✅ MCP Tools configuration saved to file');
-        } else {
-            showMessage(plugin?.i18n?.mcpConfigSavedBackup || '⚠️ MCP Tools configuration saved (backup only)');
-        }
+        showMessage(plugin?.i18n?.mcpConfigSaved || '✅ MCP Tools configuration saved');
     }
 
-    // Public method to reset defaults
     export async function resetDefaults() {
         config = { ...defaultConfig };
         updateCheckboxValues();
-        // Save to file system
-        await saveConfigToFile();
-        // Also save to plugin data as backup
         if (plugin) {
             await plugin.saveData('mcpToolsConfig', config);
         }

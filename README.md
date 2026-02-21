@@ -66,6 +66,10 @@ Configure the MCP server in your preferred client. Any client supporting the MCP
 
 **Note:** The folder name in the path must match the `name` in plugin.json: `siyuan-plugins-mcp-sisyphus`. If you see `Cannot find module '.../mcp-server.cjs'`, check that (1) `mcp-server.cjs` exists at that path, and (2) the folder name is correct (e.g. not `siyuan-mcp-sisyphus`).
 
+### Tool toggles
+
+- In SiYuan: **Settings → Plugins → SiYuan MCP sisyphus** to enable/disable each MCP tool. Config is stored in plugin data (`mcpToolsConfig`).
+
 ## Available Tools
 
 ### Notebook Operations (8 tools)
