@@ -1,6 +1,6 @@
 # SiYuan MCP Sisyphus
 
-[English](./README.md) | [中文](./README_zh_CN.md)
+[English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
 思源笔记西西弗斯 MCP 服务器。通过 Model Context Protocol 提供 41 个工具，支持 AI 与思源笔记的深度集成。
 
@@ -63,7 +63,6 @@ pnpm run make-link
   }
 }
 ```
-
 
 ## 可用工具
 
