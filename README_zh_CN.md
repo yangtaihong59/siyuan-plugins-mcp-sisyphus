@@ -58,11 +58,13 @@ pnpm run make-link
   "mcpServers": {
     "siyuan": {
       "command": "node",
-      "args": ["/绝对路径/SiYuan/data/plugins/siyuan-mcp-sisyphus/mcp-server.cjs"]
+      "args": ["/绝对路径/SiYuan/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
     }
   }
 }
 ```
+
+**注意**：路径中的文件夹名必须与 plugin.json 的 `name` 一致，为 `siyuan-plugins-mcp-sisyphus`。若报错 `Cannot find module '.../mcp-server.cjs'`，请检查：① 该路径下是否存在 `mcp-server.cjs`；② 文件夹名是否写错（例如误写为 `siyuan-mcp-sisyphus`）。
 
 ## 可用工具
 

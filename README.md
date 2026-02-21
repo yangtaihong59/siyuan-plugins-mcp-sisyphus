@@ -58,11 +58,13 @@ Configure the MCP server in your preferred client. Any client supporting the MCP
   "mcpServers": {
     "siyuan": {
       "command": "node",
-      "args": ["/absolute/path/SiYuan/data/plugins/siyuan-mcp-sisyphus/mcp-server.cjs"]
+      "args": ["/absolute/path/SiYuan/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"]
     }
   }
 }
 ```
+
+**Note:** The folder name in the path must match the `name` in plugin.json: `siyuan-plugins-mcp-sisyphus`. If you see `Cannot find module '.../mcp-server.cjs'`, check that (1) `mcp-server.cjs` exists at that path, and (2) the folder name is correct (e.g. not `siyuan-mcp-sisyphus`).
 
 ## Available Tools
 
