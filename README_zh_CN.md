@@ -66,6 +66,10 @@ pnpm run make-link
 
 **注意**：路径中的文件夹名必须与 plugin.json 的 `name` 一致，为 `siyuan-plugins-mcp-sisyphus`。若报错 `Cannot find module '.../mcp-server.cjs'`，请检查：① 该路径下是否存在 `mcp-server.cjs`；② 文件夹名是否写错（例如误写为 `siyuan-mcp-sisyphus`）。
 
+#### OpenClaw / mcporter 用户
+
+使用 OpenClaw 或 mcporter 时，可阅读 [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md)，按其中步骤通过 `mcporter config add` 添加本 MCP 并验证。
+
 ### 工具开关
 
 - 在思源中通过 **设置 → 插件 → SiYuan MCP sisyphus** 可开关各 MCP 工具，配置保存在插件数据中（`mcpToolsConfig`）。

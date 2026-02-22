@@ -14,6 +14,7 @@
     "appName": "思源",
     "mcpApiUrl": "API 地址",
     "mcpApiUrlDesc": "思源 API 端点地址（默认：http://127.0.0.1:6806）",
+    "mcpToolsSettingTitle": "MCP 工具设置",
     "hello": {
         "makesure": "使用这个模板之前，请阅读<a href=\"https://github.com/siyuan-note/plugin-sample\">官方教程</a>, 确保自己已经理解了插件的基本开发流程。"
     },

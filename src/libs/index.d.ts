@@ -30,14 +30,3 @@ interface ISettingItem extends ISettingItemCore {
     description: string;
     direction?: "row" | "column";
 }
-
-
-//Interface for setting-utils
-interface ISettingUtilsItem extends ISettingItem {
-    action?: {
-        callback: () => void;
-    }
-    createElement?: (currentVal: any) => HTMLElement;
-    getEleVal?: (ele: HTMLElement) => any;
-    setEleVal?: (ele: HTMLElement, val: any) => void;
-}
