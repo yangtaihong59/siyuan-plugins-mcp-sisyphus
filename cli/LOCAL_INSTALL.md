@@ -28,7 +28,7 @@ cli/dist/
 
 ```bash
 node cli/dist/cli.cjs --help
-node cli/dist/cli.cjs --version   # 0.1.0
+node cli/dist/cli.cjs --version   # 0.3.1
 node cli/dist/cli.cjs list        # 列出所有工具及动作数
 node cli/dist/cli.cjs list block  # 列出 block 工具的所有 action
 ```
@@ -64,8 +64,8 @@ cd cli && npm unlink -g siyuan-sisyphus
 
 ```bash
 cd cli
-npm pack                              # 生成 siyuan-sisyphus-0.1.0.tgz
-npm i -g ./siyuan-sisyphus-0.1.0.tgz
+npm pack                              # 生成 siyuan-sisyphus-0.3.1.tgz
+npm i -g ./siyuan-sisyphus-0.3.1.tgz
 ```
 
 这种方式最接近用户 `npm i -g siyuan-sisyphus` 后获得 `siyuan-sisyphus` 和 `siyuan` 两个命令的真实场景，能同时验证 `files`、`bin`、shebang 这些发布相关的细节。更新后需要重新 `pack + install`。

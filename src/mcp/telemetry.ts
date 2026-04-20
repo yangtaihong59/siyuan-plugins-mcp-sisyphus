@@ -1,5 +1,13 @@
 import type { SiYuanClient } from '../api/client';
-import { ANALYTICS_PATH, ANALYTICS_ROTATED_PATH, type AnalyticsEvent, parseJsonl } from './analytics';
+import {
+    ANALYTICS_PATH,
+    ANALYTICS_ROTATED_PATH,
+    createTransportDistribution,
+    normalizeAnalyticsTransport,
+    type AnalyticsEvent,
+    parseJsonl,
+} from './analytics';
+import type { InvocationTransport } from './runtime';
 import {
     TELEMETRY_CONFIG_PATH,
     buildDefaultTelemetryConfig,
@@ -30,7 +38,7 @@ export interface TelemetryPayload {
             avgDurationMs: number;
         }>;
         hourlyDistribution: number[];
-        transportDistribution: { stdio: number; http: number };
+        transportDistribution: Record<InvocationTransport, number>;
     };
     meta: {
         pluginVersion?: string;
@@ -94,7 +102,7 @@ export async function buildTelemetryPayload(
 
     const actionMap = new Map<string, { tool: string; action: string; count: number; errorCount: number; totalDuration: number }>();
     const hourlyDistribution = new Array(24).fill(0);
-    const transportDistribution = { stdio: 0, http: 0 };
+    const transportDistribution = createTransportDistribution();
 
     for (const e of windowed) {
         const key = `${e.tool}/${e.action}`;
@@ -118,11 +126,7 @@ export async function buildTelemetryPayload(
             hourlyDistribution[hour] += 1;
         }
 
-        if (e.transport === 'http') {
-            transportDistribution.http += 1;
-        } else {
-            transportDistribution.stdio += 1;
-        }
+        transportDistribution[normalizeAnalyticsTransport(e.transport)] += 1;
     }
 
     const actionBreakdown = Array.from(actionMap.values())

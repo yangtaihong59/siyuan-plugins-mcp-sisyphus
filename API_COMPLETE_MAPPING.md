@@ -3,9 +3,10 @@
 ## 统计信息
 - **SiYuan API 总数**: 459 个端点
 - **MCP Tools**: 10 个
-- **已覆盖 API**: 113 个端点
-- **未覆盖 API**: 346 个端点
-- **整体覆盖率**: 24.6%
+- **已覆盖 API**: 117 个端点
+- **已覆盖 MCP Actions**: 115 个
+- **未覆盖 API**: 342 个端点
+- **整体覆盖率**: 25.5%
 
 ---
 
@@ -129,14 +130,14 @@
 
 ## av 模块
 
-**统计**: 共 35 个 API，已覆盖 10 个，覆盖率 28.6%
+**统计**: 共 35 个 API，已覆盖 13 个，覆盖率 37.1%
 
 | 序号 | 方法 | API 路径 | 处理函数 | 功能描述 | MCP 映射 | 状态 |
 |------|------|----------|----------|----------|----------|------|
-| 1 | POST | `/api/av/renderAttributeView` | renderAttributeView | 属性视图/数据库渲染 | - | ❌ 未覆盖 |
+| 1 | POST | `/api/av/renderAttributeView` | renderAttributeView | 属性视图/数据库渲染 | av.render_attribute_view | ✅ 已覆盖 |
 | 2 | POST | `/api/av/renderHistoryAttributeView` | renderHistoryAttributeView | 属性视图/数据库渲染历史属性ibuteView | - | ❌ 未覆盖 |
 | 3 | POST | `/api/av/renderSnapshotAttributeView` | renderSnapshotAttributeView | 属性视图/数据库渲染Snapshot属性ibuteView | - | ❌ 未覆盖 |
-| 4 | POST | `/api/av/getAttributeViewKeys` | getAttributeViewKeys | 属性视图/数据库获取Keys | - | ❌ 未覆盖 |
+| 4 | POST | `/api/av/getAttributeViewKeys` | getAttributeViewKeys | 属性视图/数据库获取Keys | av.get_attribute_view_keys | ✅ 已覆盖 |
 | 5 | POST | `/api/av/setAttributeViewBlockAttr` | setAttributeViewBlockAttr | 属性视图/数据库设置Block属性 | av.set_cell | ✅ 已覆盖 |
 | 6 | POST | `/api/av/batchSetAttributeViewBlockAttrs` | batchSetAttributeViewBlockAttrs | 属性视图/数据库批量Set属性ibuteViewBlock属性 | av.batch_set_cells | ✅ 已覆盖 |
 | 7 | POST | `/api/av/searchAttributeView` | searchAttributeView | 属性视图/数据库搜索 | av.search | ✅ 已覆盖 |
@@ -144,7 +145,7 @@
 | 9 | POST | `/api/av/searchAttributeViewRelationKey` | searchAttributeViewRelationKey | 属性视图/数据库搜索RelationKey | - | ❌ 未覆盖 |
 | 10 | POST | `/api/av/searchAttributeViewNonRelationKey` | searchAttributeViewNonRelationKey | 属性视图/数据库搜索NonRelationKey | - | ❌ 未覆盖 |
 | 11 | POST | `/api/av/searchAttributeViewRollupDestKeys` | searchAttributeViewRollupDestKeys | 属性视图/数据库搜索RollupDestKeys | - | ❌ 未覆盖 |
-| 12 | POST | `/api/av/getAttributeViewFilterSort` | getAttributeViewFilterSort | 属性视图/数据库获取FilterSort | - | ❌ 未覆盖 |
+| 12 | POST | `/api/av/getAttributeViewFilterSort` | getAttributeViewFilterSort | 属性视图/数据库获取FilterSort | av.get_attribute_view_filter_sort | ✅ 已覆盖 |
 | 13 | POST | `/api/av/addAttributeViewKey` | addAttributeViewKey | 属性视图/数据库添加Key | av.add_column | ✅ 已覆盖 |
 | 14 | POST | `/api/av/removeAttributeViewKey` | removeAttributeViewKey | 属性视图/数据库删除Key | av.remove_column | ✅ 已覆盖 |
 | 15 | POST | `/api/av/sortAttributeViewViewKey` | sortAttributeViewViewKey | 属性视图/数据库排序ViewKey | - | ❌ 未覆盖 |
@@ -382,7 +383,7 @@
 
 ## asset 模块
 
-**统计**: 共 19 个 API，已覆盖 4 个，覆盖率 21.1%
+**统计**: 共 19 个 API，已覆盖 7 个，覆盖率 36.8%
 
 | 序号 | 方法 | API 路径 | 处理函数 | 功能描述 | MCP 映射 | 状态 |
 |------|------|----------|----------|----------|----------|------|
@@ -402,7 +403,7 @@
 | 14 | POST | `/api/asset/renameAsset` | renameAsset | 资源重命名资源 | file.rename_asset | ✅ 已覆盖 |
 
 > 注：`file.delete_asset` 与 `file.set_image_alpha` 已在插件中实现兼容性 action，但未出现在本次 459 个上游 Kernel API 端点扫描结果中，因此不计入本表覆盖率统计。
-| 15 | POST | `/api/asset/getImageOCRText` | getImageOCRText | 资源获取ImageOCRText | - | ❌ 未覆盖 |
+| 15 | POST | `/api/asset/getImageOCRText` | getImageOCRText | 资源获取ImageOCRText | file.get_image_ocr_text | ✅ 已覆盖 |
 | 16 | POST | `/api/asset/setImageOCRText` | setImageOCRText | 资源设置ImageOCRText | - | ❌ 未覆盖 |
 | 17 | POST | `/api/asset/ocr` | ocr | 资源ocr | - | ❌ 未覆盖 |
 | 18 | POST | `/api/asset/fullReindexAssetContent` | fullReindexAssetContent | 资源fullReindex资源Content | - | ❌ 未覆盖 |

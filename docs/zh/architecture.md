@@ -346,7 +346,7 @@ tools: [notebook, document, block, ...] // 10 tools
 ### 4.2 渐进式披露设计
 
 **问题：**
-- 79 个 actions 全部暴露在 Tool Description 中过于冗长
+- 115 个 actions 全部暴露在 Tool Description 中过于冗长
 - Agent 初次调用认知负荷大
 
 **决策：**

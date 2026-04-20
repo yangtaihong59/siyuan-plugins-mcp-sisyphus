@@ -236,14 +236,18 @@
             {/if}
 
             <div class="analytics-block">
-                <div class="analytics-block__title">{getLabel("analyticsTransport", "Transport Mode")}</div>
+                <div class="analytics-block__title">{getLabel("analyticsTransport", "Invocation Source")}</div>
                 <div class="analytics-list">
                     <div class="analytics-list__item">
-                        <span class="analytics-list__name">stdio</span>
+                        <span class="analytics-list__name">{getLabel("analyticsSourceCli", "cli")}</span>
+                        <span class="analytics-list__count">{analyticsSummary.transportDistribution.cli}</span>
+                    </div>
+                    <div class="analytics-list__item">
+                        <span class="analytics-list__name">{getLabel("analyticsSourceStdio", "stdio")}</span>
                         <span class="analytics-list__count">{analyticsSummary.transportDistribution.stdio}</span>
                     </div>
                     <div class="analytics-list__item">
-                        <span class="analytics-list__name">http</span>
+                        <span class="analytics-list__name">{getLabel("analyticsSourceHttp", "http")}</span>
                         <span class="analytics-list__count">{analyticsSummary.transportDistribution.http}</span>
                     </div>
                 </div>

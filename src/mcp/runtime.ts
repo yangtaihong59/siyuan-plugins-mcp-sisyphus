@@ -15,3 +15,13 @@ export function isPluginMode(): boolean {
     const parentPid = parseInt(process.env.SIYUAN_MCP_PARENT_PID ?? '', 10);
     return Number.isInteger(parentPid) && parentPid > 1;
 }
+
+export type InvocationTransport = 'cli' | 'stdio' | 'http';
+
+export function getInvocationTransport(): InvocationTransport {
+    const transport = (process.env.SIYUAN_MCP_TRANSPORT ?? '').toLowerCase();
+    if (transport === 'cli' || transport === 'http') {
+        return transport;
+    }
+    return 'stdio';
+}

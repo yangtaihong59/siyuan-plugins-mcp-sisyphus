@@ -85,7 +85,7 @@ describe('telemetry', () => {
             const client = createMockClient();
             const since = 0;
             const events = [
-                { seq: 1, ts: 1000, tool: 'notebook', action: 'list', status: 'success', durationMs: 100, paramKeys: [], transport: 'stdio' },
+                { seq: 1, ts: 1000, tool: 'notebook', action: 'list', status: 'success', durationMs: 100, paramKeys: [], transport: 'cli' },
                 { seq: 2, ts: 2000, tool: 'notebook', action: 'list', status: 'success', durationMs: 200, paramKeys: [], transport: 'stdio' },
                 { seq: 3, ts: 3000, tool: 'document', action: 'create', status: 'error', durationMs: 300, paramKeys: ['path'], transport: 'http', errorCode: 'UnknownError' },
             ];
@@ -101,7 +101,7 @@ describe('telemetry', () => {
             expect(payload!.aggregates.avgDurationMs).toBe(200);
             expect(payload!.aggregates.actionBreakdown).toHaveLength(2);
             expect(payload!.aggregates.hourlyDistribution).toHaveLength(24);
-            expect(payload!.aggregates.transportDistribution).toEqual({ stdio: 2, http: 1 });
+            expect(payload!.aggregates.transportDistribution).toEqual({ cli: 1, stdio: 1, http: 1 });
         });
 
         it('reads from rotated file as well', async () => {
@@ -113,6 +113,22 @@ describe('telemetry', () => {
 
             const payload = await buildTelemetryPayload(client, 0);
             expect(payload!.aggregates.totalCalls).toBe(2);
+        });
+
+        it('treats legacy analytics rows without transport as stdio', async () => {
+            const client = createMockClient();
+            writtenFiles[ANALYTICS_PATH] = JSON.stringify({
+                seq: 1,
+                ts: 1000,
+                tool: 'notebook',
+                action: 'list',
+                status: 'success',
+                durationMs: 10,
+                paramKeys: [],
+            });
+
+            const payload = await buildTelemetryPayload(client, 0);
+            expect(payload!.aggregates.transportDistribution).toEqual({ cli: 0, stdio: 1, http: 0 });
         });
     });
 

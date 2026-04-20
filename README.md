@@ -2,74 +2,52 @@
 
 [English](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md) | [中文](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md)
 
-> **Latest:** `v0.3.0` — CLI tool `siyuan-sisyphus` preview release on npm; all 10 aggregated tools and 115+ actions are now callable from the terminal. See full history in [CHANGELOG.md](./CHANGELOG.md).
+> **Latest:** `v0.3.1` — CLI tool `siyuan-sisyphus` is now available on npm. All 10 aggregated tools and 115+ actions are callable directly from the terminal. See [CHANGELOG.md](./CHANGELOG.md) for full history.
 
 > Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenClaw, OpenCode, kimi Code, and other web-based AI agent tools directly in the SiYuan sidebar.
 
-This project provides **two ways to connect SiYuan Note to the outside world**:
+This project provides **two ways to connect SiYuan Note to the outside world**, sharing the same capabilities (reading notes, searching, editing content, working with databases, exporting resources, etc.):
 
-- **MCP Server Plugin** — Runs inside SiYuan so any MCP-capable agent can treat your notes as a callable toolset.
-- **CLI (`siyuan-sisyphus`)** — Drive SiYuan directly from your terminal or shell scripts without an MCP client.
+- **CLI tool `siyuan-sisyphus`**: Drive SiYuan directly from your terminal or scripts without an MCP client.
+- **MCP Server Plugin**: Runs inside SiYuan so any MCP-capable agent can treat your notes as a callable toolset.
 
-Both paths expose the same operations: read notes, search documents, edit blocks, work with databases, export resources, and more.
+If these concepts are new to you, here is the simple version:
+- **SiYuan**: your notes and data
+- **This plugin**: wraps SiYuan capabilities as a CLI / MCP Server for safe external access
+- **MCP**: the universal protocol between agents and external tools
+- **Agent / MCP client**: OpenClaw, Claude Desktop, Codex, Cherry Studio, Cursor, etc.
 
-If MCP is new to you, here is the simple version:
+---
 
-- **SiYuan** stores your notes and data
-- **This plugin** exposes SiYuan as an MCP server
-- **Your agent / MCP client** starts that server and calls its tools
-- **MCP** is the protocol that lets agents talk to external tools in a standard way
+## Permissions & Security
 
-In other words, the plugin does one simple thing: **make SiYuan safely visible and callable from your agent**.
+This plugin provides a **notebook-level permission model** that keeps AI operations within controllable boundaries.
 
-## CLI Tool: `siyuan-sisyphus`
+### Permission Model
 
-This repo also ships a standalone CLI — [`siyuan-sisyphus`](./cli/README.md) — so you can drive SiYuan straight from your terminal or shell scripts without starting an MCP client.
+Each notebook can be configured with one of four permission states:
 
-```bash
-npm i -g siyuan-sisyphus
-siyuan notebook list
-siyuan document create --notebook <id> --path "/Inbox/Note" --markdown "# Hello"
-siyuan search fulltext --query "TODO" --json | jq '.data[].hPath'
-```
+| Permission | Description |
+|------------|-------------|
+| `rwd` | Read, write, and delete |
+| `rw` | Read and write, no delete |
+| `r` | Read-only |
+| `none` | No access |
 
-Every MCP tool (`notebook`, `document`, `block`, `av`, `search`, `tag`, `file`, `system`, `flashcard`, `mascot`) is exposed as a subcommand. The CLI connects to SiYuan over the HTTP API, executes one operation, and exits — no long-running server required.
+---
 
-## Features
+## Install the SiYuan Plugin
 
-- Supports both HTTP and stdio connection modes for desktop and Docker clients
-- Aggregates common SiYuan capabilities into 10 grouped tools, reducing the chance that an agent picks the wrong tool
-- Covers notebooks, documents, blocks, databases, assets, search, tags, flashcards, and system capabilities across 115 actions
-- Provides a four-state permission model: `none` / `r` / `rw` / `rwd`, making notebook-level access control easier
-- Follows a progressive disclosure design to reduce token usage
+Both CLI and MCP require this plugin to be installed in SiYuan first.
 
-It currently exposes 10 aggregated tools:
-
-- `notebook`
-- `document`
-- `block`
-- `av`
-- `file`
-- `search`
-- `tag`
-- `system`
-- `flashcard`
-- `mascot`
-
-Each tool uses a required `action` field instead of exposing dozens of endpoint-shaped tool names.
-
-## Quick Start
-
-### 1. Install the plugin
-
-#### From SiYuan Marketplace
+### From SiYuan Marketplace
 
 1. Open SiYuan Note
 2. Go to `Settings -> Marketplace`
-3. Search for `SiYuan MCP`
+3. Search for `SiYuan Sisyphus`
 4. Install and enable the plugin
 
-#### From source
+### From Source
 
 ```bash
 git clone https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus.git
@@ -79,95 +57,106 @@ pnpm run build
 pnpm run make-link
 ```
 
-### 2. Connect Your Agent
+---
 
-The plugin supports two connection modes: **HTTP** and **stdio**
+## CLI Tool
 
-| Client Type | Recommended Mode |
-|------------|------------------|
+A standalone command-line tool [`siyuan-sisyphus`](./cli/README.md) that connects to SiYuan via HTTP API, executes one operation, and exits — no long-running server required.
+
+### Install CLI
+
+```bash
+npm i -g siyuan-sisyphus
+```
+
+### Usage Examples
+
+```bash
+# List notebooks
+siyuan notebook list
+
+# Create a document
+siyuan document create --notebook <id> --path "/Inbox/Note" --markdown "# Hello"
+
+# Full-text search
+siyuan search fulltext --query "TODO" --json | jq '.data[].hPath'
+```
+
+All 10 aggregated tools (`notebook`, `document`, `block`, `av`, `search`, `tag`, `file`, `system`, `flashcard`, `mascot`) are exposed as subcommands, each dispatching operations via the `action` parameter.
+
+---
+
+## MCP Server Plugin
+
+The plugin runs inside SiYuan and exposes SiYuan capabilities as an MCP Server for external agents.
+
+### Supported Connection Modes
+
+| Scenario | Recommended Mode |
+|----------|-----------------|
 | Desktop (Windows / macOS / Linux) | HTTP or stdio |
-| Docker / Remote deployment | stdio required |
+| Docker / Remote deployment | stdio (required) |
 
-If you prefer the terminal, the CLI tool `siyuan-sisyphus` covers both scenarios too:
+The plugin settings page provides three ready-to-copy configuration snippets at the bottom: HTTP connection, mcp-remote bridge, and stdio connection.
 
-- **HTTP scenario** (desktop): Install `siyuan-sisyphus` and run commands like `siyuan notebook list` or `siyuan document create ...` directly — no MCP client needed.
-- **stdio scenario** (Docker / remote): Use the bundled `mcp-server.cjs` as a stdio MCP server, connecting to the remote SiYuan instance via `SIYUAN_API_URL`.
+Open `Plugin` → `siyuan-plugins-mcp-sisyphus` → `Settings` → `🌐 Connection Config` to find them.
 
-**Quick Config:** Open `Plugin` → `siyuan-plugins-mcp-sisyphus` → `Settings` → `🌐 Connection Config` to find three ready-to-copy JSON snippets: `HTTP Connection`, `mcp-remote Bridge`, and `stdio Connection`.
+### HTTP Mode
 
-> **Docker / LAN Note:** The client runs `mcp-server.cjs`, which connects to the Docker-hosted SiYuan instance through the SiYuan API port `6806`. The stdio mode has been verified to work in Docker deployments.
+The plugin hosts an HTTP MCP Server inside SiYuan. Clients connect to it directly.
 
----
+**Plugin-side configuration:**
 
-#### Option A: HTTP mode
+1. Default Host `127.0.0.1`, Port `36806` (change to `0.0.0.0` for WSL/remote)
+2. Keep `Require Bearer token` enabled
+3. Click `Start`, then check `Auto-start with SiYuan`
 
-In HTTP mode, the plugin hosts an HTTP MCP server inside SiYuan. You only need to expose that server port to your MCP client. If your agent and SiYuan run on the same machine, that is often already reachable as-is.
-
-**Step 1: Start the HTTP server**
-
-1. Open `Plugin` → `siyuan-plugins-mcp-sisyphus` → `Settings` → `🌐 Connection Config`
-2. Default is `Host: 127.0.0.1`, `Port: 36806`
-   - Change Host to `0.0.0.0` if your agent runs in WSL or another remote machine
-3. Keep `Require Bearer token` enabled — a random token is already generated
-4. Click `Start`. Status changes to `Running`.
-5. Check `Auto-start with SiYuan` so you never have to start it manually again
-
-**Step 2: Fill in the client config**
-
-The settings panel includes three ready-to-copy snippets: `HTTP Connection`, `mcp-remote Bridge`, and `stdio Connection`.
-
-It is suitable for Cline, Cherry Studio, Cursor, Windsurf, **Claude Code**, and other clients with native HTTP MCP support:
-
-  ```json
-  {
-    “mcpServers”: {
-      “siyuan”: {
-        “type”: “http”,
-        “url”: “http://127.0.0.1:36806/mcp”,
-        “headers”: { “Authorization”: “Bearer <copy token from settings>” }
-      }
-    }
-  }
-  ```
-
-> **WSL / cross-machine:** set Host to `0.0.0.0` and replace `127.0.0.1` in the client config with your Windows host IP (usually `192.168.x.x`). When binding to a non-loopback address, **always** keep token auth enabled — otherwise anyone on the same network can access your workspace.
-
----
-
-#### Option B: stdio mode (same machine / mounted path / Docker)
-
-Follow the documented `stdio` configuration. `6806` is the SiYuan API port, not an MCP port; do not point your MCP client directly at `http://<siyuan-host>:6806`. Instead, run `mcp-server.cjs` locally and let it connect through `SIYUAN_API_URL`.
+**Client configuration** (Cline, Cherry Studio, Cursor, Claude Code, etc.):
 
 ```json
 {
-  “mcpServers”: {
-    “siyuan”: {
-      “command”: “node”,
-      “args”: [“/your/siyuan/workspace/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs”],
-      “env”: {
-        “SIYUAN_API_URL”: “http://127.0.0.1:6806”,
-        “SIYUAN_TOKEN”: “xxxxxx”
+  "mcpServers": {
+    "siyuan": {
+      "type": "http",
+      "url": "http://127.0.0.1:36806/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+> Claude Code requires `"type": "http"`. Write this to the `mcpServers` field in `~/.claude.json`.  
+> WSL / cross-machine: set Host to `0.0.0.0` and replace `127.0.0.1` in the client URL with the host IP. Always keep token auth enabled when binding to non-loopback addresses.
+
+### stdio Mode
+
+The client runs `mcp-server.cjs` as a subprocess, which connects to the SiYuan API via `SIYUAN_API_URL`.
+
+```json
+{
+  "mcpServers": {
+    "siyuan": {
+      "command": "node",
+      "args": ["{SIYUAN_PATH}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs"],
+      "env": {
+        "SIYUAN_API_URL": "http://127.0.0.1:6806",
+        "SIYUAN_TOKEN": "xxxxxx"
       }
     }
   }
 }
 ```
 
-- The settings example auto-fills the current SiYuan workspace path when available
-- If your AI agent and SiYuan run on the same machine, the path is usually already directly accessible
-- For LAN or container setups, the client must satisfy both conditions:
-  - It can run `mcp-server.cjs` on the client machine, either by copying `dist/mcp-server.cjs` locally or by accessing the plugin file through a shared mount/path
-  - It can reach the SiYuan API exposed by the Docker host, for example by setting `SIYUAN_API_URL` to `http://192.168.x.x:6806`
-- If SiYuan API auth is disabled, omit `SIYUAN_TOKEN`
-- `stdio` supports only one client at a time
+- The settings page auto-fills the current workspace path and token
+- Docker / LAN: change `SIYUAN_API_URL` to the Docker host IP; the client must be able to access `mcp-server.cjs`
+- If SiYuan API auth is disabled, `SIYUAN_TOKEN` can be omitted
+- `stdio` supports only one client connection at a time
 
-> **Docker note:** SiYuan running in Docker cannot start the plugin's local HTTP MCP server from the Studio / browser frontend. Docker deployments should use the `stdio` setup above: run `mcp-server.cjs` on the client machine and connect it to the SiYuan API with `SIYUAN_API_URL=http://<Docker-host-IP>:6806`. When exposing `6806`, keep the SiYuan API token enabled and preferably restrict access to trusted devices with a firewall.
+> Docker deployments cannot start the plugin's built-in HTTP server from the frontend. Use stdio instead: expose the container's 6806 port, keep the SiYuan API token enabled, and restrict access with a firewall.
 
----
+### mcp-remote Bridge
 
-#### Option C: `mcp-remote` bridge
-
-If your client only supports `stdio` but you still want to reach the HTTP server above, use `mcp-remote`:
+If your client only supports stdio but you want to bridge to the HTTP server:
 
 ```json
 {
@@ -185,298 +174,238 @@ If your client only supports `stdio` but you still want to reach the HTTP server
 }
 ```
 
----
+### Verify Connection
 
-### 3. What to try first
+After configuration, try a few read-only actions to confirm the link:
 
-Start with low-risk, read-only requests to confirm the connection:
-
-- “Show me the current SiYuan version.”
-- “List my notebooks.”
-- “Find documents with `Weekly` in the title.”
-
-Corresponding tool calls: `system(action=”get_version”)`, `notebook(action=”list”)`, `document(action=”search_docs”, ...)`
-
-### 4. Natural-language examples
-
-- “List all my notebooks.”
-- “Find documents with `Weekly` in the title.”
-- “Append a todo to the end of this document: send weekly report tomorrow.”
-- “Show backlinks for this block.”
-
-If you are manually debugging MCP, the action tables and JSON-oriented sections below are still there.
+- "Show me the current SiYuan version" → `system(action="get_version")`
+- "List my notebooks" → `notebook(action="list")`
+- "Find documents with 'project' in the title" → `document(action="search_docs", ...)`
 
 ---
 
-### 5. Data Snapshots
+## Tool Reference
 
-The plugin no longer provides a separate data-repo snapshot manager because SiYuan already includes this capability.
+All capabilities are converged into **10 aggregated tools**, dispatching operations via the `action` field.
 
-Use SiYuan's built-in snapshot tool instead:
+### Tool Overview
 
-1. Open SiYuan's main menu
-2. Go to `Data History -> Data Snapshots`
-3. Create, compare, and restore snapshots from the official SiYuan interface
+| Tool | Capabilities |
+|------|-------------|
+| `notebook` | CRUD, open/close, icons, permission management |
+| `document` | Create, move, delete, query, tree structure, daily notes, icons/covers |
+| `block` | Block-level read/write, attributes, fold/unfold, move, batch ops, word count |
+| `av` | Attribute view (database) read/write, row/column ops, cell updates, search |
+| `file` | Asset upload, export, template rendering, unused asset cleanup, OCR |
+| `search` | Full-text search, SQL queries, backlinks, tag search, find & replace |
+| `tag` | List, rename, remove tags |
+| `system` | Version, time, notifications, config summary, system fonts |
+| `flashcard` | List, review, create, and remove flashcards |
+| `mascot` | Balance, shop, and purchases |
 
-## Troubleshooting
+### Detailed Action List
 
-### My agent cannot see the tools
-
-- **HTTP mode**: confirm the settings panel shows `Running`; double-check the URL and token
-- **stdio mode**: verify the path points to `mcp-server.cjs`; restart the client after config changes
-
-### The server connects, but calls fail
-
-- **HTTP mode**: the SiYuan API token is forwarded automatically by the plugin — no manual config needed. Check that SiYuan itself is running normally.
-- **stdio mode**: check `SIYUAN_API_URL` (default `http://127.0.0.1:6806`) and `SIYUAN_TOKEN`
-- Check whether the target notebook permission is set to `r` or `none`
-
-### Why does the agent ask for confirmation?
-
-That is expected. High-risk actions such as delete, move, local file upload, or permission changes are intentionally confirmation-gated.
-
-## Tool Overview
-
-- `notebook`: notebook-level operations
-- `document`: create, move, query, and traverse documents
-- `block`: block editing, attributes, folding, moving
-- `av`: attribute view / database operations
-- `file`: uploads, exports, template rendering
-- `search`: full-text, SQL, backlinks, tag search
-- `tag`: tag management
-- `system`: version, time, notifications, config summary
-- `flashcard`: review and deck operations
-- `mascot`: balance, shop, and purchases
-
-## Permission Model
-
-- `rwd`: full read/write/delete access
-- `rw`: read/write access, but delete actions are rejected
-- `r`: read access only; all write and delete actions are rejected
-- `none`: no read, write, or delete access
-- `notebook(action="set_permission")` takes effect immediately for later `notebook`, `document`, and `block` calls
-- For AI regression runs, preheat all 10 tools early so permission prompts do not interrupt the middle of a test
-
-## High-Risk Actions
-
-The server instructions require explicit user confirmation before these actions are called:
-
-- `notebook(action="remove")`
-- `notebook(action="set_permission")`
-- `document(action="remove")`
-- `document(action="move")`
-- `block(action="delete")`
-- `block(action="move")`
-- `file(action="upload_asset")`
-- `tag(action="remove")`
-- `flashcard(action="remove_card")`
-
-If your client shows MCP instructions, the model should ask for confirmation before executing them. This is an instruction-layer safety rule, not a server-side modal dialog guarantee.
-
-In the default fallback config, `document(action="move")` and `block(action="move")` are still exposed. They are not safe to call without confirmation just because they are enabled.
-
-Also note:
-
-- `file(action="upload_asset")` on files larger than the configured threshold (`10 MB` by default) must stop the current operation and ask the user before retrying with `confirmLargeFile=true`.
-- `document(action="move", fromPaths + toNotebook + toPath)` expects `toPath` to be the storage path of an existing destination document.
-- `block(action="move")` returns a structured success object from MCP, even though the underlying SiYuan API may return `null`.
-
-## MCP Client Configuration
-
-OpenClaw / mcporter users can follow [SKILL.md](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/skills/siyuan-mcp-sisyphus/SKILL.md).
-
-Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
-
-## Design: Progressive Disclosure
-
-The MCP tool layer is built around **progressive disclosure** — revealing complexity only when needed, rather than flooding the AI with everything upfront.
-
-### Three layers
-
-**① Tool description (what LLMs see first)**
-
-Each tool's description leads with high-frequency **common actions** and their required fields. Low-frequency or high-risk **advanced actions** are listed by name only, with a pointer to on-demand documentation:
-
-```
-Common actions: list, create, rename, get_doc ...  (required fields shown)
-Additional actions: remove, move, list_tree ...     → read siyuan://help/action/{tool}/{action}
-```
-
-This way `listTools()` returns concise, actionable information instead of a wall of 87 actions.
-
-**② Help layer (on demand)**
-
-- Per-action detail — parameters, semantics, caveats — lives in the `siyuan://help/action/{tool}/{action}` resource, fetched only when needed
-- Call any tool with `action: "help"` to get a structured breakdown of all its actions, tiers, and hints inline (fallback for clients without resource support)
-
-**③ Response layer (large results auto-summarise)**
-
-Big result sets are capped and annotated with drill-down hints rather than returned in full:
-
-| Scenario | Behaviour |
-|----------|-----------|
-| `search.fulltext` > 20 blocks | Truncated + `page`/`pageSize` pagination hint |
-| `search.query_sql` > 50 rows | Truncated + `LIMIT`/`OFFSET` hint |
-| `block.get_children` > 50 children | Truncated + `query_sql` filter hint |
-| `document.list_tree` deep nodes | Collapsed to `childCount` beyond `maxDepth` (default 3) |
-| `document.get_doc` > 8 000 chars | Truncated + `get_child_blocks` block-by-block hint |
-
-**Design goals:** reduce first-call cognitive load; preserve full capability (all advanced actions remain usable); maintain backward compatibility with existing configs and tool names.
-
-## Tool Model
-
-### `notebook`
+#### `notebook`
 
 | Action | Description |
 |--------|-------------|
 | `list` | List all notebooks |
-| `create` | Create a new notebook (supports `icon`, prefer Unicode hex strings like `1f4d4`) |
-| `set_open_state` | Open or close a notebook (`opened: boolean`) |
+| `create` | Create a notebook (supports `icon`, prefer Unicode hex like `1f4d4`) |
+| `set_open_state` | Open or close a notebook |
+| `remove` | Remove a notebook (requires confirmation) |
 | `rename` | Rename a notebook |
 | `get_conf` / `set_conf` | Get or set notebook configuration |
-| `set_icon` | Set notebook icon; prefer Unicode hex strings like `1f4d4` over raw emoji characters |
-| `get_permissions` | List all notebook permission levels |
-| `set_permission` | Change notebook MCP permission (`none` / `r` / `rw` / `rwd`) |
-| `get_child_docs` | Get direct child documents at notebook root with retry-aware notebook-state handling |
+| `set_icon` | Set notebook icon |
+| `get_permissions` | View all notebook MCP permissions |
+| `set_permission` | Change notebook permission (`none` / `r` / `rw` / `rwd`) |
+| `get_child_docs` | Get direct child documents at notebook root |
 
-### `document`
+#### `document`
 
 | Action | Description |
 |--------|-------------|
-| `create` | Create a document with markdown (supports `icon`, prefer Unicode hex strings like `1f4d4`) |
-| `rename` | Rename a document by ID or storage path |
-| `remove` | Remove a document by ID or storage path |
-| `move` | Move documents by ID or storage path |
-| `set_icon` | Set document or folder icon; prefer Unicode hex strings like `1f4d4` over raw emoji characters |
-| `set_cover` | Set or clear the document cover image; pass `source` to set, omit to clear |
+| `create` | Create a document with Markdown content |
+| `rename` | Rename a document |
+| `remove` | Remove a document |
+| `move` | Move a document |
+| `set_icon` | Set document/folder icon |
+| `set_cover` | Set or clear document cover image |
 | `get_path` | Get storage path by document ID |
 | `get_hpath` | Get human-readable path by ID or storage path |
 | `get_ids` | Get document IDs by human-readable path |
 | `get_child_blocks` | Get direct child blocks of a document |
-| `get_child_docs` | Get direct child documents of a document |
-| `list_tree` | List the nested document tree under a notebook path |
-| `search_docs` | Search documents by title keyword, then optionally narrow by storage path |
-| `get_doc` | Get document content and metadata by ID (`markdown` returns clean Markdown; `html` returns the focus-view HTML payload) |
-| `create_daily_note` | Create or return today’s daily note for a notebook |
+| `get_child_docs` | Get direct child documents |
+| `list_tree` | List nested document tree under a notebook path |
+| `search_docs` | Search documents by title keyword |
+| `get_doc` | Get document content and metadata by ID |
+| `create_daily_note` | Create or return today's daily note for a notebook |
+| `duplicate` | Duplicate an existing document |
+| `remove_batch` | Batch remove documents by storage paths (requires confirmation) |
+| `create_empty` | Create an empty document |
+| `heading_to_doc` | Convert a heading block into a document |
+| `doc_to_heading` | Convert a document into a heading under a target document |
 
-### `block`
+#### `block`
 
 | Action | Description |
 |--------|-------------|
-| `insert` / `prepend` / `append` | Insert a block at position, start, or end and return a slim success payload |
-| `update` | Update block content and return a slim success payload |
+| `insert` / `prepend` / `append` | Insert a block at position / start / end |
+| `update` | Update block content |
 | `delete` | Delete a block |
 | `move` | Move a block to a new position |
-| `set_fold_state` | Fold or unfold a foldable block (`folded: boolean`) |
+| `set_fold_state` | Fold or unfold a foldable block |
 | `get_kramdown` | Get block content in kramdown format |
 | `get_children` | Get direct child blocks |
 | `transfer_ref` | Transfer block references |
-| `set_attrs` / `get_attrs` | Set or get block attributes, including custom metadata such as `custom-riff-decks` for flashcards; attribute writes alone do not fully create a review card |
-| `exists` | Check whether a block exists |
+| `set_attrs` / `get_attrs` | Set or get block attributes (including flashcard custom attrs) |
+| `exists` | Check if a block exists |
 | `info` | Get root document metadata for a block |
 | `breadcrumb` | Get breadcrumb path for a block |
 | `dom` | Get rendered DOM for a block |
-| `recent_updated` | List recent updates with document-first summaries, filtered by notebook permission and optional `count` |
-| `word_count` | Get word-count statistics for blocks |
+| `recent_updated` | List recently updated content |
+| `word_count` | Get word count for blocks |
+| `batch_insert` | Insert multiple blocks at once |
+| `batch_update` | Update multiple blocks at once |
+| `append_daily_note` | Append a block to today's daily note |
+| `prepend_daily_note` | Prepend a block to today's daily note |
+| `doc_info` | Get document info for a block or document |
+| `docs_info` | Batch get document info |
 
-### `av`
+#### `av`
 
 | Action | Description |
 |--------|-------------|
-| `get` | Get one attribute view (database) by `id` after permission checks |
-| `render_attribute_view` | Render database rows, or create and materialize a database when `createIfNotExist=true` |
-| `get_attribute_view_keys` | Return database keys or columns for an attribute view |
-| `get_attribute_view_filter_sort` | Return filters and sorts for a database block view |
-| `search` | Search attribute views by keyword and post-filter unreadable or unresolved results |
-| `add_rows` | Bind existing blocks into a database as rows and return writable `rowID` mappings when resolved |
+| `get` | Read an attribute view (database) by `id` |
+| `render_attribute_view` | Render database view, supports `createIfNotExist` |
+| `get_attribute_view_keys` | Return attribute view column info |
+| `get_attribute_view_filter_sort` | Return filter and sort config for a view |
+| `search` | Search attribute views by keyword |
+| `add_rows` | Bind existing blocks as database rows |
 | `remove_rows` | Remove bound rows from an attribute view |
-| `add_column` | Add a supported database column such as `text`, `number`, `mSelect`, `mAsset`, or `lineNumber` |
-| `remove_column` | Remove one column from an attribute view |
-| `set_cell` | Update one database cell with a strongly typed payload; use the AV row item ID stored in `value.blockID` |
-| `batch_set_cells` | Update multiple cells in one call and reject source block IDs or value IDs when they are not writable row IDs |
-| `duplicate_block` | Duplicate the underlying database block and insert the duplicate into the document tree near the source block |
-| `get_primary_key_values` | List primary-key rows for an attribute view, with optional keyword and pagination filters |
+| `add_column` | Add a database column |
+| `remove_column` | Remove a column from an attribute view |
+| `set_cell` | Update a single cell |
+| `batch_set_cells` | Update multiple cells in one call |
+| `duplicate_block` | Duplicate the underlying database block |
+| `get_primary_key_values` | Get primary-key row data |
 
-### `file`
+#### `file`
 
 | Action | Description |
 |--------|-------------|
-| `upload_asset` | Read a local file path and upload that file asset (requires confirmation; files larger than the configured threshold, `10 MB` by default, must stop and ask the user before retrying with `confirmLargeFile=true`) |
+| `upload_asset` | Upload a local asset file (requires confirmation; >10MB requires extra confirmation) |
 | `render_template` | Render a template with document context |
 | `render_sprig` | Render a Sprig template |
 | `export_md` | Export document as Markdown |
-| `export_resources` | Export resources as ZIP, accepting `assets/...`, normalizing to `data/assets/...`, and optionally copying to local `outputPath` (requires confirmation when writing locally) |
+| `export_resources` | Export resources as ZIP (writing locally requires confirmation) |
 | `list_unused_assets` | List unreferenced asset files |
-| `get_doc_assets` | List assets referenced by a document after permission checks; use `assetType` to filter (`"all"` or `"image"`) |
+| `get_doc_assets` | List assets referenced by a document |
 | `get_image_ocr_text` | Read stored OCR text for an image asset |
 | `remove_unused_assets` | Remove all unreferenced asset files |
 | `rename_asset` | Rename an asset file |
 | `delete_asset` | Delete an asset file |
 | `set_image_alpha` | Update alpha for an image asset |
 
-### `system`
+#### `search`
 
 | Action | Description |
 |--------|-------------|
-| `push_msg` / `push_err_msg` | Push notification or error message |
-| `get_version` / `get_current_time` | Get SiYuan version or current time (`get_current_time` also returns ISO text) |
-| `workspace_info` | Get SiYuan workspace metadata. High risk: exposes the absolute workspace path; disabled by default |
-| `network` | Get masked network proxy information |
-| `changelog` | Get the current version changelog when available |
-| `conf` | Get masked system configuration with summary-first progressive reading |
-| `sys_fonts` | List available system fonts with summary-first paginated reading |
-| `boot_progress` | Get current boot progress details |
-
-### `flashcard`
-
-| Action | Description |
-|--------|-------------|
-| `list_cards` | List due flashcards across all decks, one deck, one notebook, or one tree, and optionally filter returned cards to `due` / `new` / `old` |
-| `get_decks` | List available flashcard decks for discovering `deckID` values |
-| `get_cards` | List all cards in a deck with pagination |
-| `review_card` | Submit one flashcard review result with `deckID`, `cardID`, and `rating` |
-| `skip_review_card` | Skip the current flashcard in the review flow |
-| `create_card` | Turn existing blocks into real flashcards by writing `custom-riff-decks` and registering the riff card |
-| `add_card` | Run the lower-level riff registration step for existing blocks that are already deck-bound |
-| `remove_card` | Remove existing blocks from a flashcard deck (requires confirmation) |
-
-### `mascot`
-
-| Action | Description |
-|--------|-------------|
-| `get_balance` | Get the mascot's current spendable balance |
-| `shop` | List the mascot shop inventory with stable item IDs, labels, cost, type, and emoji |
-| `buy` | Buy one mascot shop item by `item_id` and spend from the current balance |
-
-Every successful MCP tool call earns the mascot 1 coin, so the fastest way to earn balance is simply to keep using SiYuan MCP tools. `mascot(action="get_balance")` also returns the lifetime earned count.
-
-### `search`
-
-| Action | Description |
-|--------|-------------|
-| `fulltext` | Full-text search across blocks, with optional `stripHtml=true` to add plain-text fields |
-| `query_sql` | Execute read-only SQL (SELECT / WITH only) and return permission-filtered `rows` plus metadata |
+| `fulltext` | Full-text search |
+| `query_sql` | Execute read-only SQL (SELECT / WITH only) |
 | `search_tag` | Search tags by keyword |
-| `get_backlinks` | Find documents/blocks that reference a block, with partial-result metadata when filtered |
-| `get_backmentions` | Find documents/blocks that mention a block name, with partial-result metadata when filtered |
+| `get_backlinks` | Find documents/blocks that reference a given block |
+| `get_backmentions` | Find documents/blocks that mention a block name |
+| `search_refs` | Search blocks referencing a given block or document |
+| `find_replace` | Find and replace text (requires confirmation) |
+| `search_assets` | Search asset files by filename |
+| `get_asset_content` | Get a specific asset-content record |
+| `fulltext_asset_content` | Full-text search indexed asset contents |
+| `list_invalid_refs` | List invalid block references |
 
-### `tag`
+#### `tag`
 
 | Action | Description |
 |--------|-------------|
 | `list` | List workspace tags |
-| `rename` | Rename a tag label |
-| `remove` | Remove a tag label |
+| `rename` | Rename a tag |
+| `remove` | Remove a tag |
 
+#### `system`
 
-## Tool Toggles
+| Action | Description |
+|--------|-------------|
+| `push_msg` / `push_err_msg` | Push notification or error message |
+| `get_version` / `get_current_time` | Get version or current time |
+| `workspace_info` | Get workspace metadata (disabled by default) |
+| `network` | Get masked network proxy info |
+| `changelog` | Get current version changelog |
+| `conf` | Get masked system configuration |
+| `sys_fonts` | List available system fonts |
+| `boot_progress` | Get current boot progress details |
 
-In SiYuan, open `Settings -> Plugins -> SiYuan MCP sisyphus`.
+#### `flashcard`
 
-- Each aggregated tool has a top-level enable switch
-- Each action can still be enabled or disabled individually
-- The default fallback config exposes move actions but not delete-style actions
-- Existing old-style configs are migrated automatically into the new format
+| Action | Description |
+|--------|-------------|
+| `list_cards` | List due flashcards, filterable by scope and status |
+| `get_decks` | List available flashcard decks |
+| `get_cards` | Paginated list of all cards in a deck |
+| `review_card` | Submit a review result |
+| `skip_review_card` | Skip current flashcard in review flow |
+| `create_card` | Turn existing blocks into flashcards |
+| `add_card` | Run riff registration for deck-bound blocks |
+| `remove_card` | Remove blocks from a flashcard deck (requires confirmation) |
+
+#### `mascot`
+
+| Action | Description |
+|--------|-------------|
+| `get_balance` | Get mascot's current spendable balance |
+| `shop` | List mascot shop inventory |
+| `buy` | Buy a mascot shop item |
+
+Every successful MCP tool call earns the mascot 1 coin. `get_balance` also returns the lifetime earned count.
+
+---
+
+## Design: Progressive Disclosure
+
+Complexity is revealed only when needed, rather than flooding the AI with everything upfront.
+
+**① Tool Description Layer**: Detailed descriptions for high-frequency common actions and their required fields. Low-frequency or high-risk advanced actions are listed by name only, with pointers to on-demand documentation.
+
+**② Help Layer**: Each action's detailed docs live in the `siyuan://help/action/{tool}/{action}` resource; call `action: "help"` for inline help (fallback for clients without resource support).
+
+**③ Response Layer**: Large result sets are automatically summarized:
+
+| Scenario | Behaviour |
+|----------|-----------|
+| `search.fulltext` > 20 results | Truncated + `page`/`pageSize` hint |
+| `search.query_sql` > 50 rows | Truncated + `LIMIT`/`OFFSET` hint |
+| `block.get_children` > 50 children | Truncated + `query_sql` filter hint |
+| `document.list_tree` deep nodes | Collapsed to depth=3, expandable via `maxDepth` |
+| `document.get_doc` > 8,000 chars | Truncated + `get_child_blocks` hint |
+
+---
+
+## Troubleshooting
+
+### Agent cannot see the tools
+
+- **HTTP mode**: confirm the settings panel shows `Running`; check URL and token
+- **stdio mode**: verify the path points to `mcp-server.cjs`; restart the client after config changes
+
+### Connected, but calls fail
+
+- **HTTP mode**: SiYuan API token is forwarded automatically by the plugin; check that SiYuan is running normally
+- **stdio mode**: check `SIYUAN_API_URL` and `SIYUAN_TOKEN`
+- Check whether the target notebook permission is set to `r` or `none`
+
+### Why does the agent ask for confirmation?
+
+This is by design. High-risk actions such as delete, move, local file upload, or permission changes require user confirmation.
+
+---
 
 ## Development
 
@@ -487,19 +416,27 @@ pnpm run build
 node scripts/live_mcp_smoke.cjs
 ```
 
+Project structure:
+
 ```text
 siyuan-plugins-mcp-sisyphus/
 ├── src/
 │   ├── api/           # SiYuan API wrappers
+│   ├── cli/           # CLI source
 │   ├── mcp/           # MCP server implementation
 │   │   ├── tools/     # Aggregated tool handlers
-│   │   ├── config.ts  # Tool config and migration helpers
+│   │   ├── config.ts  # Config and migration helpers
 │   │   ├── server.ts  # Main server
 │   │   └── types.ts   # Action-level validation
 │   └── index.ts       # Plugin entry point
+├── cli/               # Standalone CLI npm sub-package
 ├── public/i18n/       # Internationalization
 └── package.json
 ```
+
+OpenClaw / mcporter users can follow [SKILL.md](./skills/siyuan-mcp-sisyphus/SKILL.md).
+
+Detailed API ↔ MCP mapping: [API_MCP_MAPPING.md](./API_MCP_MAPPING.md)
 
 ## License
 

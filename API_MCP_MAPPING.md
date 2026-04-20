@@ -185,6 +185,7 @@
 | `export_resources` | `POST /api/export/exportResources` | `src/api/file.ts` | 将 `assets/...` 规范化为 `data/assets/...` 后导出；若传 `outputPath`，再把 ZIP 复制到本地文件系统（高危，需先确认） |
 | `list_unused_assets` | `POST /api/asset/getUnusedAssets` | `src/api/file.ts` | 列出未使用资源 |
 | `get_doc_assets` | `POST /api/asset/getDocAssets` / `POST /api/asset/getDocImageAssets` | `src/api/file.ts` | 列出文档引用的资源；`assetType: "all"`（默认）或 `"image"` |
+| `get_image_ocr_text` | `POST /api/asset/getImageOCRText` | `src/api/file.ts` | 获取图片资源的 OCR 文本 |
 | `remove_unused_assets` | `POST /api/asset/removeUnusedAssets` | `src/api/file.ts` | 删除所有未使用资源，需要确认 |
 | `rename_asset` | `POST /api/asset/renameAsset` | `src/api/file.ts` | 重命名资源 |
 | `delete_asset` | `POST /api/asset/deleteAsset` | `src/api/file.ts` | 删除指定资源，需要确认；兼容性 action，是否可用取决于目标 SiYuan 内核版本 |
@@ -192,7 +193,7 @@
 
 说明：
 
-- `file(action="delete_asset")` 与 `file(action="set_image_alpha")` 已在插件实现中预留，但未计入本文后续基于 2026-04-12 上游 Kernel 459 个端点扫描得到的覆盖率统计
+- `file(action="delete_asset")` 与 `file(action="set_image_alpha")` 已在插件实现中预留，但未计入本文后续基于 2026-04-18 上游 Kernel 459 个端点扫描得到的覆盖率统计
 
 ## `search`
 
@@ -251,6 +252,9 @@
 | MCP action | 思源 HTTP API | Wrapper | 说明 |
 |---|---|---|---|
 | `get` | `POST /api/av/getAttributeView` | `src/api/av.ts` | 获取属性视图详情 |
+| `render_attribute_view` | `POST /api/av/renderAttributeView` | `src/api/av.ts` | 渲染属性视图 |
+| `get_attribute_view_keys` | `POST /api/av/getAttributeViewKeys` | `src/api/av.ts` | 获取属性视图键列表 |
+| `get_attribute_view_filter_sort` | `POST /api/av/getAttributeViewFilterSort` | `src/api/av.ts` | 获取属性视图过滤排序条件 |
 | `search` | `POST /api/av/searchAttributeView` | `src/api/av.ts` | 搜索属性视图 |
 | `add_rows` | `POST /api/av/addAttributeViewBlocks` | `src/api/av.ts` | 添加行(绑定已有块) |
 | `remove_rows` | `POST /api/av/removeAttributeViewBlocks` | `src/api/av.ts` | 移除行 |
@@ -331,9 +335,9 @@
 
 ## 未覆盖 API 清单
 
-> **更新时间**: 2026-04-12  
-> **扫描范围**: SiYuan Kernel API (459个端点) 与 MCP Tools (109个actions) 对比
-> **整体覆盖率**: 24.6% (113/459)
+> **更新时间**: 2026-04-18  
+> **扫描范围**: SiYuan Kernel API (459个端点) 与 MCP Tools (115个actions) 对比
+> **整体覆盖率**: 25.5% (117/459)
 
 ### 覆盖率统计概览
 
@@ -342,10 +346,10 @@
 | notebook | 11 | 9 | 2 | ████████░░ 81.8% |
 | filetree | 34 | 21 | 13 | ██████░░░░ 61.8% |
 | block | 54 | 23 | 31 | ████░░░░░░ 42.6% |
-| av | 35 | 10 | 25 | ██░░░░░░░░ 28.6% |
+| av | 35 | 13 | 22 | █████░░░░░ 37.1% |
 | system | 46 | 10 | 36 | ██░░░░░░░░ 21.7% |
 | search | 14 | 8 | 6 | ██████░░░░ 57.1% |
-| asset | 19 | 6 | 13 | █████░░░░░ 31.6% |
+| asset | 19 | 7 | 12 | ██████░░░░ 36.8% |
 | export | 31 | 2 | 29 | ░░░░░░░░░░ 6.5% |
 | riff | 17 | 9 | 8 | █████░░░░░ 52.9% |
 | history | 10 | 0 | 10 | ░░░░░░░░░░ 0.0% |
@@ -359,7 +363,7 @@
 | ref | 5 | 2 | 3 | ████░░░░░░ 40.0% |
 | tag | 3 | 3 | 0 | ██████████ 100.0% |
 | notification | 2 | 2 | 0 | ██████████ 100.0% |
-| **总计** | **459** | **113** | **346** | █████░░░░░ 24.6% |
+| **总计** | **459** | **117** | **342** | █████░░░░░ 25.5% |
 
 ### 已补齐的高优先级 API (核心功能)
 
@@ -395,13 +399,14 @@
 | `POST /api/filetree/heading2Doc` | `heading_to_doc` | 标题转为文档 | 已接入 |
 | `POST /api/filetree/doc2Heading` | `doc_to_heading` | 文档转为标题 | 已接入 |
 
-#### 4. Asset 资源管理 (当前21.1%覆盖，映射到 `file` tool)
+#### 4. Asset 资源管理 (当前36.8%覆盖，映射到 `file` tool)
 
 | API 路径 | MCP action | 说明 | 状态 |
 |----------|------------|------|------|
 | `POST /api/asset/getUnusedAssets` | `list_unused_assets` | 获取未使用资源 | 已接入 |
 | `POST /api/asset/removeUnusedAssets` | `remove_unused_assets` | 删除未使用资源，需要确认 | 已接入 |
 | `POST /api/asset/renameAsset` | `rename_asset` | 重命名资源 | 已接入 |
+| `POST /api/asset/getImageOCRText` | `get_image_ocr_text` | 获取图片 OCR 文本 | 已接入 |
 
 补充：
 
@@ -439,7 +444,7 @@
 | `POST /api/export/exportNotebook` | 导出笔记本 |
 | `POST /api/export/preview` | 导出预览 |
 
-#### AV 数据库高级功能 (当前28.6%覆盖)
+#### AV 数据库高级功能 (当前37.1%覆盖)
 
 当前已覆盖基础CRUD，以下功能待扩展：
 
@@ -496,8 +501,8 @@
 ---
 
 **注**: 本文档基于 SiYuan Kernel 源码自动扫描生成，统计信息：
-- 扫描时间: 2026-04-12
+- 扫描时间: 2026-04-18
 - SiYuan API总数: 459个端点
-- 已覆盖API: 113个端点
+- 已覆盖API: 117个端点
 - MCP Tools: 10个
-- MCP Actions: 109个
+- MCP Actions: 115个

@@ -4,7 +4,12 @@ import type { ParsedArgs } from '@/cli/args';
 import { runDispatch } from '@/cli/dispatch';
 import * as pluginCheck from '@/cli/plugin-check';
 import { PermissionManager } from '@/mcp/permissions';
+import { runToolCall } from '@/mcp/tool-lifecycle';
 import { TOOL_REGISTRY } from '@/mcp/tool-registry';
+
+vi.mock('@/mcp/tool-lifecycle', () => ({
+    runToolCall: vi.fn(async (_ctx: unknown, handler: () => Promise<unknown>) => handler()),
+}));
 
 function captureStdIO() {
     let stdout = '';
@@ -43,6 +48,7 @@ describe('cli/dispatch', () => {
         Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: false });
         vi.spyOn(pluginCheck, 'ensureRequiredPluginInstalled').mockResolvedValue(undefined);
         vi.spyOn(PermissionManager.prototype, 'load').mockResolvedValue(undefined);
+        delete process.env.SIYUAN_MCP_TRANSPORT;
     });
 
     afterEach(() => {
@@ -67,6 +73,7 @@ describe('cli/dispatch', () => {
 
         expect(code).toBe(0);
         expect(callToolSpy).toHaveBeenCalledTimes(1);
+        expect(runToolCall).toHaveBeenCalledTimes(1);
         expect(callToolSpy.mock.calls[0]?.[1]).toEqual({
             action: 'buy',
             item_id: 'milk',
@@ -143,6 +150,35 @@ describe('cli/dispatch', () => {
         expect(code).toBe(1);
         expect(callToolSpy).not.toHaveBeenCalled();
         expect(io.stderr).toContain('requires the SiYuan plugin');
+        io.restore();
+    });
+
+    it('marks CLI dispatches with cli transport while running lifecycle hooks', async () => {
+        const io = captureStdIO();
+        const callToolSpy = vi.spyOn(TOOL_REGISTRY.notebook, 'callTool').mockResolvedValue(okResult());
+        vi.mocked(runToolCall).mockImplementationOnce(async (ctx, handler) => {
+            expect(process.env.SIYUAN_MCP_TRANSPORT).toBe('cli');
+            expect(ctx).toMatchObject({
+                name: 'notebook',
+                action: 'list',
+                args: { action: 'list' },
+            });
+            return handler() as Promise<Awaited<ReturnType<typeof handler>>>;
+        });
+
+        const code = await runDispatch({
+            command: 'dispatch',
+            tool: 'notebook',
+            action: 'list',
+            rest: [],
+            url: 'http://127.0.0.1:6806',
+            json: true,
+            debug: false,
+        } as ParsedArgs);
+
+        expect(code).toBe(0);
+        expect(callToolSpy).toHaveBeenCalledTimes(1);
+        expect(process.env.SIYUAN_MCP_TRANSPORT).toBeUndefined();
         io.restore();
     });
 });

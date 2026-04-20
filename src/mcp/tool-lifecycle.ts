@@ -2,6 +2,7 @@ import type { SiYuanClient } from '../api/client';
 import { appendAnalyticsEvent, estimateResultSizeHint, extractErrorCode } from './analytics';
 import type { ToolCategory } from './config';
 import { earnPuppyBalance, readPuppyStats, writePuppyEvent } from './puppy-state';
+import { getInvocationTransport } from './runtime';
 import { maybeSendTelemetry } from './telemetry';
 import type { ToolResult } from './tools/shared';
 
@@ -38,7 +39,7 @@ function buildAnalyticsEvent(
         errorCode: status === 'error' ? extractErrorCode(resultText) : undefined,
         paramKeys,
         resultSizeHint: estimateResultSizeHint(content),
-        transport: (process.env.SIYUAN_MCP_TRANSPORT === 'http' ? 'http' : 'stdio') as 'stdio' | 'http',
+        transport: getInvocationTransport(),
     };
 }
 
@@ -56,6 +57,16 @@ function extractMascotEventMeta(result: ToolResult): {
         };
     } catch {
         return {};
+    }
+}
+
+async function persistAnalyticsEvent(
+    client: SiYuanClient,
+    event: Parameters<typeof appendAnalyticsEvent>[1],
+): Promise<void> {
+    const task = appendAnalyticsEvent(client, event).catch(() => { /* never block on analytics */ });
+    if (getInvocationTransport() === 'cli') {
+        await task;
     }
 }
 
@@ -100,8 +111,7 @@ export async function runToolCall(
     } catch (error) {
         const durationMs = Date.now() - startTime;
         const errorText = error instanceof Error ? error.message : String(error);
-        appendAnalyticsEvent(client, buildAnalyticsEvent(name, action, args, 'error', durationMs, errorText))
-            .catch(() => { /* never block on analytics */ });
+        await persistAnalyticsEvent(client, buildAnalyticsEvent(name, action, args, 'error', durationMs, errorText));
         maybeSendTelemetry(client).catch(() => { /* never block on telemetry */ });
         throw error;
     }
@@ -118,7 +128,7 @@ export async function runToolCall(
     });
 
     const durationMs = Date.now() - startTime;
-    appendAnalyticsEvent(
+    await persistAnalyticsEvent(
         client,
         buildAnalyticsEvent(
             name,
@@ -129,7 +139,7 @@ export async function runToolCall(
             result.content[0]?.text,
             result.content,
         ),
-    ).catch(() => { /* never block */ });
+    );
     maybeSendTelemetry(client).catch(() => { /* never block */ });
 
     return result;

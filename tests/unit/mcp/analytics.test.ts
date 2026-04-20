@@ -52,6 +52,16 @@ describe('analytics', () => {
             expect(events[0].tool).toBe('ok');
         });
 
+        it('defaults unknown or missing transport to stdio', () => {
+            const content = JSON.stringify({ tool: 'legacy', action: 'list', ts: 1, seq: 1, status: 'success', durationMs: 10, paramKeys: [] })
+                + '\n'
+                + JSON.stringify({ tool: 'weird', action: 'list', ts: 2, seq: 2, status: 'success', durationMs: 20, paramKeys: [], transport: 'socket' });
+            const events = parseJsonl(content);
+            expect(events).toHaveLength(2);
+            expect(events[0].transport).toBe('stdio');
+            expect(events[1].transport).toBe('stdio');
+        });
+
         it('returns empty array for empty content', () => {
             expect(parseJsonl('')).toEqual([]);
             expect(parseJsonl('   \n  ')).toEqual([]);
@@ -118,13 +128,13 @@ describe('analytics', () => {
             expect(summary.avgDurationMs).toBe(0);
             expect(summary.topActions).toEqual([]);
             expect(summary.dailyTrend).toEqual([]);
-            expect(summary.transportDistribution).toEqual({ stdio: 0, http: 0 });
+            expect(summary.transportDistribution).toEqual({ cli: 0, stdio: 0, http: 0 });
         });
 
         it('computes correct aggregates', () => {
             const baseDate = new Date('2024-01-15T10:00:00Z').getTime();
             const events: AnalyticsEvent[] = [
-                { seq: 1, ts: baseDate, tool: 'notebook', action: 'list', status: 'success', durationMs: 100, paramKeys: [], transport: 'stdio' },
+                { seq: 1, ts: baseDate, tool: 'notebook', action: 'list', status: 'success', durationMs: 100, paramKeys: [], transport: 'cli' },
                 { seq: 2, ts: baseDate + 1, tool: 'notebook', action: 'list', status: 'success', durationMs: 200, paramKeys: [], transport: 'stdio' },
                 { seq: 3, ts: baseDate + 2, tool: 'document', action: 'create', status: 'error', durationMs: 300, paramKeys: ['path'], transport: 'http', errorCode: 'UnknownError' },
             ];
@@ -138,7 +148,7 @@ describe('analytics', () => {
             expect(summary.topActions[1]).toMatchObject({ tool: 'document', action: 'create', count: 1, errorCount: 1, avgDurationMs: 300 });
             expect(summary.dailyTrend).toHaveLength(1);
             expect(summary.dailyTrend[0]).toMatchObject({ date: '2024-01-15', count: 3, errorCount: 1 });
-            expect(summary.transportDistribution).toEqual({ stdio: 2, http: 1 });
+            expect(summary.transportDistribution).toEqual({ cli: 1, stdio: 1, http: 1 });
         });
     });
 

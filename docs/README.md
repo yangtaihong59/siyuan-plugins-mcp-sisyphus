@@ -27,8 +27,8 @@ SiYuan MCP Sisyphus 是一个将思源笔记连接到 AI Agent 的 MCP 服务器
 
 ### 核心特性
 
-- 10 个聚合工具，90+ 个 Action，覆盖思源笔记绝大部分功能
-- 支持 HTTP 和 stdio 两种连接方式
+- 10 个聚合工具，115+ 个 Action，覆盖思源笔记绝大部分功能
+- 支持 HTTP 和 stdio 两种连接方式，同时提供 CLI (`siyuan-sisyphus`)
 - 四态权限模型 (none/r/rw/rwd)，支持笔记本级权限控制
 - 渐进式披露设计，减少 Token 占用
 
@@ -57,8 +57,8 @@ SiYuan MCP Sisyphus is an MCP server plugin that connects SiYuan Note to AI Agen
 
 ### Core Features
 
-- 10 aggregated tools with 90+ actions covering most SiYuan Note features
-- Support for HTTP and stdio connection modes
+- 10 aggregated tools with 115+ actions covering most SiYuan Note features
+- Support for HTTP and stdio connection modes, plus CLI (`siyuan-sisyphus`)
 - Four-state permission model (none/r/rw/rwd) with notebook-level access control
 - Progressive disclosure design to reduce token consumption
 
@@ -84,6 +84,6 @@ SiYuan MCP Sisyphus is an MCP server plugin that connects SiYuan Note to AI Agen
 
 ## 版本信息
 
-当前文档版本: **v0.2.8**
+当前文档版本: **v0.3.1**
 
-最后更新: 2026-04-14
+最后更新: 2026-04-19

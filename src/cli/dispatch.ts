@@ -8,6 +8,7 @@ import {
 } from '../mcp/config';
 import { PermissionManager } from '../mcp/permissions';
 import { TOOL_REGISTRY, resolveCategory } from '../mcp/tool-registry';
+import { runToolCall } from '../mcp/tool-lifecycle';
 import { ensureRequiredPluginInstalled } from './plugin-check';
 
 import type { ParsedArgs } from './args';
@@ -40,6 +41,9 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
     const client = new SiYuanClient({ baseUrl: resolved.apiUrl });
     if (resolved.token) client.setToken(resolved.token);
 
+    const previousTransport = process.env.SIYUAN_MCP_TRANSPORT;
+    process.env.SIYUAN_MCP_TRANSPORT = 'cli';
+
     try {
         await ensureRequiredPluginInstalled(client);
 
@@ -56,11 +60,20 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
         }
 
         const payload = { action: normalizedAction, ...mappedArgs } as Record<string, unknown>;
-        const result = await module.callTool(client, payload, toolConfig[category], permMgr);
+        const result = await runToolCall(
+            { client, category, name: tool, action: normalizedAction, args: payload },
+            () => module.callTool(client, payload, toolConfig[category], permMgr),
+        );
         return renderToolResult(result, { json: cli.json, debug: cli.debug });
     } catch (error) {
         renderCliError(error, { debug: cli.debug });
         return 1;
+    } finally {
+        if (previousTransport === undefined) {
+            delete process.env.SIYUAN_MCP_TRANSPORT;
+        } else {
+            process.env.SIYUAN_MCP_TRANSPORT = previousTransport;
+        }
     }
 }
 

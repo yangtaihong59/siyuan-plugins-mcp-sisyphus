@@ -1,4 +1,5 @@
 import type { SiYuanClient } from '../api/client';
+import type { InvocationTransport } from './runtime';
 
 export const ANALYTICS_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/analytics.jsonl';
 export const ANALYTICS_ROTATED_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/analytics.jsonl.1';
@@ -14,7 +15,7 @@ export interface AnalyticsEvent {
     errorCode?: string;
     paramKeys: string[];
     resultSizeHint?: string;
-    transport: 'stdio' | 'http';
+    transport: InvocationTransport;
     sessionIdHash?: string;
 }
 
@@ -25,7 +26,22 @@ export interface AnalyticsSummary {
     avgDurationMs: number;
     topActions: Array<{ tool: string; action: string; count: number; errorCount: number; avgDurationMs: number }>;
     dailyTrend: Array<{ date: string; count: number; errorCount: number }>;
-    transportDistribution: { stdio: number; http: number };
+    transportDistribution: Record<InvocationTransport, number>;
+}
+
+export function normalizeAnalyticsTransport(value: unknown): InvocationTransport {
+    if (value === 'cli' || value === 'http') {
+        return value;
+    }
+    return 'stdio';
+}
+
+export function createTransportDistribution(): Record<InvocationTransport, number> {
+    return {
+        cli: 0,
+        stdio: 0,
+        http: 0,
+    };
 }
 
 function getByteLength(text: string): number {
@@ -48,7 +64,10 @@ export function parseJsonl(content: string): AnalyticsEvent[] {
                 typeof parsed.action === 'string' &&
                 typeof parsed.ts === 'number'
             ) {
-                events.push(parsed as AnalyticsEvent);
+                events.push({
+                    ...parsed,
+                    transport: normalizeAnalyticsTransport(parsed.transport),
+                } as AnalyticsEvent);
             }
         } catch {
             // ignore malformed lines
@@ -129,7 +148,7 @@ export function computeAnalyticsSummary(events: AnalyticsEvent[]): AnalyticsSumm
 
     const actionMap = new Map<string, { tool: string; action: string; count: number; errorCount: number; totalDuration: number }>();
     const dayMap = new Map<string, { count: number; errorCount: number }>();
-    const transportDistribution = { stdio: 0, http: 0 };
+    const transportDistribution = createTransportDistribution();
 
     for (const e of events) {
         const key = `${e.tool}/${e.action}`;
@@ -157,11 +176,7 @@ export function computeAnalyticsSummary(events: AnalyticsEvent[]): AnalyticsSumm
             dayMap.set(date, { count: 1, errorCount: e.status === 'error' ? 1 : 0 });
         }
 
-        if (e.transport === 'http') {
-            transportDistribution.http += 1;
-        } else {
-            transportDistribution.stdio += 1;
-        }
+        transportDistribution[normalizeAnalyticsTransport(e.transport)] += 1;
     }
 
     const topActions = Array.from(actionMap.values())

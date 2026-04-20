@@ -32,7 +32,11 @@
 | `$TAGGED_BLOCK_ID` | 有标签的块 ID | 步骤 4.4 |
 | `$AV_BLOCK_ID` | 数据库块 ID | 步骤 9.1 |
 | `$AV_ID` | 属性视图 ID | 步骤 9.1 |
+| `$AV_PRIMARY_KEY_ID` | 主键列 ID | 步骤 9.3 |
+| `$AV_DUPLICATE_BLOCK_ID` | 复制的数据库块 ID | 步骤 9.13 |
 | `$CARD_BLOCK_ID` | 闪卡块 ID | 步骤 8.1 |
+| `$REVIEW_CARD_ID` | 用于复习的闪卡 ID | 步骤 8.8 |
+| `$DOC_ID_EMPTY` | 空测试文档 ID | 步骤 3.18 |
 
 ---
 
@@ -140,6 +144,64 @@
 ```
 
 **通过条件：** 响应返回 `0`（浅色）或 `1`（深色）等数字值，无报错。
+
+---
+
+### 步骤 1.8 — 获取系统字体列表
+
+**调用：**
+```json
+{
+  "tool": "system",
+  "action": "sys_fonts"
+}
+```
+
+**通过条件：** 响应包含字体列表（数组或对象），无报错。
+
+---
+
+### 步骤 1.9 — 获取网络信息
+
+**调用：**
+```json
+{
+  "tool": "system",
+  "action": "network"
+}
+```
+
+**通过条件：** 响应包含网络配置摘要（可以为空对象），无报错。
+
+---
+
+### 步骤 1.10 — 获取更新日志
+
+**调用：**
+```json
+{
+  "tool": "system",
+  "action": "changelog"
+}
+```
+
+**通过条件：** 响应包含 `html` 或 `show` 字段。
+
+---
+
+### 步骤 1.11 — 推送错误通知
+
+**调用：**
+```json
+{
+  "tool": "system",
+  "action": "push_err_msg",
+  "msg": "MCP 测试错误通知",
+  "timeout": 3000
+}
+```
+
+**通过条件：** 调用成功（无错误），SiYuan 界面应短暂显示错误通知。
 
 ---
 
@@ -305,6 +367,22 @@
 ```
 
 **通过条件：** 调用成功，无错误。
+
+---
+
+### 步骤 2.11 — 设置笔记本权限
+
+**调用：**
+```json
+{
+  "tool": "notebook",
+  "action": "set_permission",
+  "notebook": "$TEST_NB_ID",
+  "permission": "rwd"
+}
+```
+
+**通过条件：** 调用成功，无错误。再次调用 `get_permissions` 时 `$TEST_NB_ID` 的权限为 `rwd`。
 
 ---
 
@@ -565,6 +643,55 @@
 ```
 
 **通过条件：** 调用成功，响应包含 `cleared: true`。
+
+---
+
+### 步骤 3.17 — 通过路径获取文档 ID
+
+**调用：**
+```json
+{
+  "tool": "document",
+  "action": "get_ids",
+  "notebook": "$TEST_NB_ID",
+  "path": "/mcp-test-doc-main"
+}
+```
+
+**通过条件：** 响应包含 `$DOC_ID_1`。
+
+---
+
+### 步骤 3.18 — 创建空文档
+
+**调用：**
+```json
+{
+  "tool": "document",
+  "action": "create_empty",
+  "notebook": "$TEST_NB_ID",
+  "path": "/mcp-test-empty-doc"
+}
+```
+
+**通过条件：** 响应包含 `id` 字段。
+**记录：** `$DOC_ID_EMPTY = response.id`
+
+---
+
+### 步骤 3.19 — 移动文档
+
+**调用：**
+```json
+{
+  "tool": "document",
+  "action": "move",
+  "fromIDs": ["$DOC_ID_EMPTY"],
+  "toID": "$DOC_ID_1"
+}
+```
+
+**通过条件：** 调用成功，无错误。
 
 ---
 
@@ -870,6 +997,145 @@
 
 ---
 
+### 步骤 4.19 — 获取块所在文档信息
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "doc_info",
+  "id": "$BLOCK_ID_1"
+}
+```
+
+**通过条件：** 响应包含文档信息，其中 `id` 或 `rootID` 对应 `$DOC_ID_1`。
+
+---
+
+### 步骤 4.20 — 批量获取文档信息
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "docs_info",
+  "ids": ["$DOC_ID_1", "$DOC_ID_2"],
+  "refCount": true
+}
+```
+
+**通过条件：** 响应包含两个文档的信息，每个都有 `id` 字段。
+
+---
+
+### 步骤 4.21 — 获取块渲染 DOM
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "dom",
+  "id": "$BLOCK_ID_1"
+}
+```
+
+**通过条件：** 响应包含 `dom` 字段（HTML 字符串），内容非空。
+
+---
+
+### 步骤 4.22 — 批量更新块
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "batch_update",
+  "blocks": [
+    {
+      "id": "$BATCH_BLOCK_IDS[0]",
+      "dataType": "markdown",
+      "data": "批量块 1：已更新内容"
+    },
+    {
+      "id": "$BATCH_BLOCK_IDS[1]",
+      "dataType": "markdown",
+      "data": "批量块 2：已更新内容"
+    }
+  ]
+}
+```
+
+**通过条件：** 调用成功，无错误。再次获取子块时内容已更新。
+
+---
+
+### 步骤 4.23 — 追加块到日记
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "append_daily_note",
+  "notebook": "$TEST_NB_ID",
+  "dataType": "markdown",
+  "data": "追加到日记的测试段落。"
+}
+```
+
+**通过条件：** 响应包含新块 ID，无错误。
+
+---
+
+### 步骤 4.24 — 前置块到日记
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "prepend_daily_note",
+  "notebook": "$TEST_NB_ID",
+  "dataType": "markdown",
+  "data": "前置到日记的测试段落。"
+}
+```
+
+**通过条件：** 响应包含新块 ID，无错误。
+
+---
+
+### 步骤 4.25 — 移动块
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "move",
+  "id": "$BATCH_BLOCK_IDS[0]",
+  "previousID": "$BATCH_BLOCK_IDS[1]"
+}
+```
+
+**通过条件：** 调用成功，无错误。块的位置已改变。
+
+---
+
+### 步骤 4.26 — 删除块
+
+> **注意：** 此步骤删除测试过程中创建的批量块之一，属于清理操作。
+
+**调用：**
+```json
+{
+  "tool": "block",
+  "action": "delete",
+  "id": "$BATCH_BLOCK_IDS[2]"
+}
+```
+
+**通过条件：** 调用成功，再次检查 `exists` 时返回 false 或不存在。
+
+---
+
 ## 第 5 节：Search（搜索）
 
 目标：测试全文搜索、SQL 查询、标签搜索、反向链接等。
@@ -1025,6 +1291,56 @@
 
 ---
 
+### 步骤 5.10 — 获取文档反向提及
+
+**调用：**
+```json
+{
+  "tool": "search",
+  "action": "get_backmentions",
+  "id": "$DOC_ID_1"
+}
+```
+
+**通过条件：** 调用成功，返回反向提及列表（可以为空，因为测试文档是新建的）。
+
+---
+
+### 步骤 5.11 — 查找替换
+
+> **注意：** 此步骤修改文档内容，需确认后执行。
+
+**调用：**
+```json
+{
+  "tool": "search",
+  "action": "find_replace",
+  "k": "MCP 测试",
+  "r": "MCP 自动化测试",
+  "ids": ["$DOC_ID_1"],
+  "method": 0
+}
+```
+
+**通过条件：** 调用成功，返回替换结果，替换数量 > 0。
+
+---
+
+### 步骤 5.12 — 搜索资源文件
+
+**调用：**
+```json
+{
+  "tool": "search",
+  "action": "search_assets",
+  "k": "mcp-test"
+}
+```
+
+**通过条件：** 调用成功，返回资源文件列表（可能包含步骤 3.14 上传的资源）。
+
+---
+
 ## 第 6 节：File（文件操作）
 
 目标：测试文档导出、资源文件管理等功能。
@@ -1086,6 +1402,135 @@
 ```
 
 **通过条件：** 响应包含 `content` 或下载路径，内容不为空。
+
+---
+
+### 步骤 6.5 — 渲染 Sprig 模板
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "render_sprig",
+  "template": "{{ now | date \"2006-01-02\" }}"
+}
+```
+
+**通过条件：** 响应包含渲染后的字符串，日期格式合法。
+
+---
+
+### 步骤 6.6 — 渲染文档模板（如存在）
+
+> **前置判断：** 如果工作空间内无可用模板文件，跳过此步骤并标记为"跳过（无可用模板）"。
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "render_template",
+  "id": "$DOC_ID_1",
+  "path": "/data/templates/example.md"
+}
+```
+
+**通过条件：** 调用成功返回渲染内容；若模板路径不存在，响应应提示 `path_not_in_workspace` 或类似信息，不视为 MCP 回归。
+
+---
+
+### 步骤 6.7 — 导出资源文件为 ZIP
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "export_resources",
+  "paths": ["$COVER_ASSET_PATH"]
+}
+```
+
+**通过条件：** 响应包含 ZIP 下载路径或导出结果，`paths` 非空。
+
+---
+
+### 步骤 6.8 — 重命名资源文件
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "rename_asset",
+  "oldPath": "$COVER_ASSET_PATH",
+  "newName": "mcp-test-renamed.png"
+}
+```
+
+**通过条件：** 调用成功，无错误。
+**记录：** `$RENAMED_ASSET_PATH = "/assets/mcp-test-renamed.png"`（或响应中返回的新路径）
+
+---
+
+### 步骤 6.9 — 获取图片 OCR 文本
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "get_image_ocr_text",
+  "path": "$RENAMED_ASSET_PATH"
+}
+```
+
+**通过条件：** 调用成功，返回 `ocrText` 字段（可以为空字符串，说明无 OCR 数据）。
+
+---
+
+### 步骤 6.10 — 设置图片透明度
+
+> **前置判断：** 仅当 `$RENAMED_ASSET_PATH` 指向的图片格式支持透明度时执行；否则跳过。
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "set_image_alpha",
+  "path": "$RENAMED_ASSET_PATH",
+  "alpha": 0.5
+}
+```
+
+**通过条件：** 调用成功，无错误；若内核版本不支持，响应应提示兼容性原因，不视为 MCP 回归。
+
+---
+
+### 步骤 6.11 — 删除资源文件
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "delete_asset",
+  "path": "$RENAMED_ASSET_PATH"
+}
+```
+
+**通过条件：** 调用成功，无错误。
+
+---
+
+### 步骤 6.12 — 清理未使用资源（可选高危）
+
+> **注意：** 此为高危操作，需要用户确认。自动执行时可先调用确认，或在测试环境中允许直接执行。
+
+**调用：**
+```json
+{
+  "tool": "file",
+  "action": "remove_unused_assets"
+}
+```
+
+**通过条件：** 调用成功，返回清理结果。若因确认规则被拒绝，记录为"确认拦截（预期行为）"。
 
 ---
 
@@ -1262,6 +1707,60 @@
 
 ---
 
+### 步骤 8.7 — 创建闪卡（完整制卡）
+
+> `create_card` 与 `add_card` 的区别：前者会同时写入块属性并注册 riff 卡片，后者仅做底层注册。
+
+**调用：**
+```json
+{
+  "tool": "flashcard",
+  "action": "create_card",
+  "blockIDs": ["$BLOCK_ID_1"],
+  "deckID": ""
+}
+```
+
+**通过条件：** 调用成功，`$BLOCK_ID_1` 的 `custom-riff-decks` 属性包含有效 deck ID，且 riff 卡片记录已生成。
+**记录：** `$REVIEW_CARD_BLOCK_ID = "$BLOCK_ID_1"`
+
+---
+
+### 步骤 8.8 — 获取闪卡列表以提取卡片 ID
+
+**调用：**
+```json
+{
+  "tool": "flashcard",
+  "action": "get_cards",
+  "deckID": "",
+  "page": 1,
+  "pageSize": 10
+}
+```
+
+**通过条件：** 响应包含 `$REVIEW_CARD_BLOCK_ID` 对应的卡片。
+**记录：** `$REVIEW_CARD_ID = 对应卡片的 cardID`
+
+---
+
+### 步骤 8.9 — 复习闪卡
+
+**调用：**
+```json
+{
+  "tool": "flashcard",
+  "action": "review_card",
+  "deckID": "",
+  "cardID": "$REVIEW_CARD_ID",
+  "rating": 3
+}
+```
+
+**通过条件：** 调用成功，无错误。
+
+---
+
 ## 第 9 节：AV（属性视图 / 数据库）
 
 目标：基于现有真实数据库块测试行列操作、单元格设置等。
@@ -1425,6 +1924,78 @@
 
 ---
 
+### 步骤 9.10 — 批量设置单元格
+
+**调用：**
+```json
+{
+  "tool": "av",
+  "action": "batch_set_cells",
+  "avID": "$AV_ID",
+  "items": [
+    {
+      "rowID": "$AV_ROW_ID_1",
+      "columnID": "$AV_TEXT_COL_ID",
+      "valueType": "text",
+      "text": "MCP 批量设置测试"
+    }
+  ]
+}
+```
+
+**通过条件：** 调用成功，再次渲染时第一行"备注"列显示更新后的文本。
+
+---
+
+### 步骤 9.11 — 获取主键值列表
+
+**调用：**
+```json
+{
+  "tool": "av",
+  "action": "get_primary_key_values",
+  "avID": "$AV_ID",
+  "page": 1,
+  "pageSize": 10
+}
+```
+
+**通过条件：** 响应包含 `values` 或 `primaryKeys` 列表，至少有 1 项（包含 `$AV_ROW_ID_1` 对应的主键值）。
+
+---
+
+### 步骤 9.12 — 删除数据库列
+
+**调用：**
+```json
+{
+  "tool": "av",
+  "action": "remove_column",
+  "avID": "$AV_ID",
+  "keyID": "$AV_TEXT_COL_ID"
+}
+```
+
+**通过条件：** 调用成功，再次 `get_attribute_view_keys` 时"备注"列已消失。
+
+---
+
+### 步骤 9.13 — 复制数据库块
+
+**调用：**
+```json
+{
+  "tool": "av",
+  "action": "duplicate_block",
+  "avID": "$AV_ID"
+}
+```
+
+**通过条件：** 调用成功，响应包含新块 ID（不同于 `$AV_BLOCK_ID`）。
+**记录：** `$AV_DUPLICATE_BLOCK_ID = response.id`
+
+---
+
 ## 第 10 节：Mascot（吉祥物）
 
 目标：测试吉祥物余额查询、商店浏览、购买物品等功能。
@@ -1578,19 +2149,19 @@ SiYuan 版本：[版本号]
 
 | 节 | 名称 | 步骤数 | 通过 | 失败 | 跳过 |
 |----|------|--------|------|------|------|
-| 1  | System | 7 | | | |
-| 2  | Notebook | 10 | | | |
-| 3  | Document | 15 | | | |
-| 4  | Block | 18 | | | |
-| 5  | Search | 9 | | | |
-| 6  | File | 4 | | | |
+| 1  | System | 11 | | | |
+| 2  | Notebook | 11 | | | |
+| 3  | Document | 19 | | | |
+| 4  | Block | 24 | | | |
+| 5  | Search | 12 | | | |
+| 6  | File | 12 | | | |
 | 7  | Tag | 4 | | | |
-| 8  | Flashcard | 6 | | | |
-| 9  | AV | 9 | | | |
+| 8  | Flashcard | 9 | | | |
+| 9  | AV | 13 | | | |
 | 10 | Mascot | 3 | | | |
 | 11 | Help | 1 | | | |
 | 12 | Cleanup | 4 | | | |
-| **总计** | | **90** | | | |
+| **总计** | | **123** | | | |
 
 ### 失败步骤详情
 
