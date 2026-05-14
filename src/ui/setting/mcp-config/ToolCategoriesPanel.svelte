@@ -1,33 +1,39 @@
 <script lang="ts">
     import SettingPanel from "../../shared/setting-panel.svelte";
-    import { ACTIONS_BY_CATEGORY, TOOL_CATEGORIES, isDangerousAction, type AvAction, type BlockAction, type DocumentAction, type FileAction, type FlashcardAction, type FsAction, type MascotAction, type NotebookAction, type SearchAction, type SystemAction, type TagAction, type ToolCategory, type ToolConfig } from "../tool-config";
-    import { CATEGORY_TAB_DEFS } from "../mcp-config-tabs";
+    import {
+        ACTIONS_BY_CATEGORY,
+        TOOL_CATEGORIES,
+        isDangerousAction,
+        type AvAction,
+        type BlockAction,
+        type DocumentAction,
+        type FileAction,
+        type FlashcardAction,
+        type FsAction,
+        type MascotAction,
+        type NotebookAction,
+        type SearchAction,
+        type SystemAction,
+        type TagAction,
+        type ToolCategory,
+        type ToolConfig,
+    } from "../tool-config";
+    import { CATEGORY_TAB_DEFS, ICON_SVGS } from "../mcp-config-tabs";
 
+    export let group: string;
+    export let display = false;
     export let config: ToolConfig;
-    export let groups: string[];
-    export let focusGroup: string;
-    export let permGroupLabel: string;
-    export let notebooks: NotebookInfo[] = [];
-    export let permissions: Record<string, NotebookPermission> = {};
-    export let permLoading = true;
     export let getLabel: (key: string, fallback: string) => string;
     export let onChanged: (event: CustomEvent<ChangeEvent>) => void | Promise<void>;
 
-    interface NotebookInfo { id: string; name: string; }
     interface ChangeEvent { key: string; value: any; }
     type GroupAction = FsAction | NotebookAction | DocumentAction | BlockAction | AvAction | FileAction | SearchAction | TagAction | SystemAction | FlashcardAction | MascotAction;
-    type NotebookPermission = 'none' | 'r' | 'rw' | 'rwd';
-    const VALID_PERMISSIONS: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
-    const LEGACY_PERMISSION_MAP = {
-        none: 'none',
-        readonly: 'r',
-        write: 'rw',
-    } as const;
 
     interface GroupDefinition {
         category: ToolCategory;
         icon: string;
         groupKey: string;
+        iconSvg: string;
         actions: Array<{
             key: GroupAction;
             title: string;
@@ -40,6 +46,7 @@
             category: "fs",
             icon: "📂",
             groupKey: "Filesystem",
+            iconSvg: ICON_SVGS.folder,
             actions: [
                 { key: "ls", title: "List Path", description: "List direct child documents with compact human-readable paths." },
                 { key: "tree", title: "Document Tree", description: "List a recursive document tree using human-readable paths." },
@@ -55,6 +62,7 @@
             category: "notebook",
             icon: "📚",
             groupKey: "Notebooks",
+            iconSvg: ICON_SVGS.book,
             actions: [
                 { key: "list", title: "List Notebooks", description: "List all notebooks in the workspace." },
                 { key: "create", title: "Create Notebook", description: "Create a new notebook." },
@@ -73,6 +81,7 @@
             category: "document",
             icon: "📝",
             groupKey: "Documents",
+            iconSvg: ICON_SVGS.fileText,
             actions: [
                 { key: "create", title: "Create Document", description: "Create a new document with markdown content at a human-readable target path." },
                 { key: "rename", title: "Rename Document", description: "Rename a document by ID or storage path." },
@@ -95,6 +104,7 @@
             category: "block",
             icon: "🧱",
             groupKey: "Blocks",
+            iconSvg: ICON_SVGS.layout,
             actions: [
                 { key: "insert", title: "Insert Block", description: "Insert a new block at a specified position." },
                 { key: "prepend", title: "Prepend Block", description: "Insert a block at the beginning of a parent." },
@@ -122,6 +132,7 @@
             category: "av",
             icon: "🗃️",
             groupKey: "Databases",
+            iconSvg: ICON_SVGS.database,
             actions: [
                 { key: "get", title: "Get Database", description: "Get the full attribute view payload by AV ID." },
                 { key: "render", title: "Render Database View", description: "Render database rows with optional view, pagination, and query context." },
@@ -141,13 +152,14 @@
             category: "file",
             icon: "📁",
             groupKey: "Files",
+            iconSvg: ICON_SVGS.folder,
             actions: [
                 { key: "upload_asset", title: "Upload Asset", description: "Read a local file path and upload that file to the assets directory. Files larger than the configured threshold must stop and ask the user before retrying with confirmLargeFile=true." },
                 { key: "render", title: "Render Template", description: "Render a workspace template or Sprig template." },
                 { key: "export_md", title: "Export Markdown Content", description: "Export document content as Markdown." },
                 { key: "export_resources", title: "Export Resources", description: "Export resources as a ZIP archive." },
                 { key: "list_unused_assets", title: "List Unused Assets", description: "List asset files not currently referenced." },
-                { key: "get_doc_assets", title: "Get Document Assets", description: "List assets referenced by a document (supports filtering by asset type)." },
+                { key: "get_doc_assets", title: "Get Direct Document Assets", description: "List assets directly referenced by the current document tree. Use Extract Document for complete content and asset inspection." },
                 { key: "get_image_ocr_text", title: "Get Image OCR Text", description: "Get stored OCR text for an image asset." },
                 { key: "remove_unused_assets", title: "Remove Unused Assets", description: "Remove all unused asset files." },
                 { key: "rename_asset", title: "Rename Asset", description: "Rename an asset file." },
@@ -158,6 +170,7 @@
             category: "search",
             icon: "🔍",
             groupKey: "Search",
+            iconSvg: ICON_SVGS.search,
             actions: [
                 { key: "fulltext", title: "Full-text Search", description: "Search blocks across the workspace." },
                 { key: "query_sql", title: "Query SQL", description: "Run read-only SQL queries against SiYuan data." },
@@ -173,6 +186,7 @@
             category: "tag",
             icon: "🏷️",
             groupKey: "Tags",
+            iconSvg: ICON_SVGS.tagIcon,
             actions: [
                 { key: "list", title: "List Tags", description: "List tags in the workspace." },
                 { key: "rename", title: "Rename Tag", description: "Rename a tag label." },
@@ -183,6 +197,7 @@
             category: "system",
             icon: "🖥️",
             groupKey: "System",
+            iconSvg: ICON_SVGS.monitor,
             actions: [
                 { key: "workspace_info", title: "Workspace Info", description: "Get SiYuan workspace metadata. High risk: exposes the absolute workspace path." },
                 { key: "network", title: "Network Info", description: "Get masked network proxy information." },
@@ -196,6 +211,7 @@
             category: "flashcard",
             icon: "🃏",
             groupKey: "Flashcards",
+            iconSvg: ICON_SVGS.layers,
             actions: [
                 { key: "list_cards", title: "List Cards", description: "List due flashcards by scope and optionally filter to due/new/old cards." },
                 { key: "get_decks", title: "Get Decks", description: "List available flashcard decks for discovering deck IDs." },
@@ -209,6 +225,7 @@
             category: "mascot",
             icon: "🐾",
             groupKey: "Mascot Tool",
+            iconSvg: ICON_SVGS.paw,
             actions: [
                 { key: "get_balance", title: "Get Balance", description: "Get the mascot's current balance. Every successful MCP tool call earns 1 coin." },
                 { key: "shop", title: "Shop", description: "List the mascot shop inventory." },
@@ -225,11 +242,13 @@
             .join(" ");
     }
 
-    function getCategoryFallback(category: ToolCategory): { icon: string; groupKey: string } {
+    function getCategoryFallback(category: ToolCategory): { icon: string; groupKey: string; iconSvg: string } {
         const tab = CATEGORY_TAB_DEFS.find((item) => item.category === category);
+        const iconSvg = tab ? ICON_SVGS[tab.iconKey] : ICON_SVGS.folder;
         return {
             icon: "",
             groupKey: tab?.groupKey ?? category,
+            iconSvg,
         };
     }
 
@@ -242,6 +261,7 @@
                 category,
                 icon: metadata?.icon ?? fallback.icon,
                 groupKey: metadata?.groupKey ?? fallback.groupKey,
+                iconSvg: metadata?.iconSvg ?? fallback.iconSvg,
                 actions: ACTIONS_BY_CATEGORY[category].map((action) => knownActions.get(action) ?? {
                     key: action as GroupAction,
                     title: toTitleCase(action),
@@ -252,125 +272,343 @@
     }
 
     const GROUP_DEFINITIONS: GroupDefinition[] = buildCompleteGroupDefinitions();
+    const DEFAULT_OPEN_CATEGORIES: ToolCategory[] = [];
+
+    let openCategories = new Set<ToolCategory>(DEFAULT_OPEN_CATEGORIES);
 
     const getDangerTitle = (title: string) => `${title} ${getLabel("mcpHighRiskBadge", "[High risk]")}`;
     const getDangerDescription = (description: string) => `${description} ${getLabel("mcpRequiresConfirmation", "Requires explicit user confirmation before execution.")} ${getLabel("mcpDefaultVisible", "This action stays visible in the default configuration.")}`;
 
-    const buildToolToggleItem = (definition: GroupDefinition): ISettingItem => ({
-        type: "checkbox",
-        key: `${definition.category}__enabled`,
-        value: config[definition.category].enabled,
-        title: getLabel(`${definition.category}_tool_title`, `${definition.groupKey} Tool`),
-        description: getLabel(`${definition.category}_tool_desc`, `Expose the grouped ${definition.category} tool to MCP clients.`),
-    });
-
-    const buildUploadAssetThresholdItem = (): ISettingItemCore => ({
-        type: "number",
-        key: "file__setting__uploadLargeFileThresholdMB",
-        value: config.file.uploadLargeFileThresholdMB,
-        title: getLabel("file_setting_uploadLargeFileThresholdMB", "Large Upload Threshold"),
-        description: getLabel("desc_file_setting_uploadLargeFileThresholdMB", "Files larger than this threshold must stop and ask the user before retrying with confirmLargeFile=true."),
-        inputCompact: true,
-        unit: "MB",
-    });
-
-    const buildActionItems = (definition: GroupDefinition): ISettingItem[] => definition.actions.flatMap((action) => {
-        const baseTitle = getLabel(`${definition.category}_action_${action.key}`, action.title);
-        const baseDescription = getLabel(`desc_${definition.category}_action_${action.key}`, action.description);
-        const dangerous = isDangerousAction(definition.category, action.key);
-        const uploadAssetEnabled = definition.category === "file" && action.key === "upload_asset" && config.file.actions.upload_asset;
-        const items: ISettingItem[] = [{
+    function buildToolToggleItem(definition: GroupDefinition): ISettingItem {
+        return {
             type: "checkbox",
-            key: `${definition.category}__action__${action.key}`,
-            value: config[definition.category].actions[action.key as keyof typeof config[typeof definition.category]["actions"]],
-            title: dangerous ? getDangerTitle(baseTitle) : baseTitle,
-            description: dangerous ? getDangerDescription(baseDescription) : baseDescription,
-            ...(definition.category === "file" && action.key === "upload_asset"
-                ? { layout: "inline" as const }
-                : {}),
-            ...(definition.category === "file" && action.key === "upload_asset"
-                ? { children: uploadAssetEnabled ? [buildUploadAssetThresholdItem()] : [] }
-                : {}),
-        }];
+            key: `${definition.category}__enabled`,
+            value: config[definition.category].enabled,
+            title: getLabel(`${definition.category}_tool_title`, `${definition.groupKey} Tool`),
+            description: getLabel(`${definition.category}_tool_desc`, `Expose the grouped ${definition.category} tool to MCP clients.`),
+        };
+    }
 
-        return items;
-    });
+    function buildUploadAssetThresholdItem(): ISettingItemCore {
+        return {
+            type: "number",
+            key: "file__setting__uploadLargeFileThresholdMB",
+            value: config.file.uploadLargeFileThresholdMB,
+            title: getLabel("file_setting_uploadLargeFileThresholdMB", "Large Upload Threshold"),
+            description: getLabel("desc_file_setting_uploadLargeFileThresholdMB", "Files larger than this threshold must stop and ask the user before retrying with confirmLargeFile=true."),
+            inputCompact: true,
+            unit: "MB",
+        };
+    }
 
-    function getGroupDefinition(category: ToolCategory): GroupDefinition {
+    function buildActionItems(definition: GroupDefinition): ISettingItem[] {
+        return definition.actions.flatMap((action) => {
+            const baseTitle = getLabel(`${definition.category}_action_${action.key}`, action.title);
+            const baseDescription = getLabel(`desc_${definition.category}_action_${action.key}`, action.description);
+            const dangerous = isDangerousAction(definition.category, action.key);
+            const uploadAssetEnabled = definition.category === "file" && action.key === "upload_asset" && config.file.actions.upload_asset;
+            return [{
+                type: "checkbox",
+                key: `${definition.category}__action__${action.key}`,
+                value: config[definition.category].actions[action.key as keyof typeof config[typeof definition.category]["actions"]],
+                title: dangerous ? getDangerTitle(baseTitle) : baseTitle,
+                description: dangerous ? getDangerDescription(baseDescription) : baseDescription,
+                ...(definition.category === "file" && action.key === "upload_asset"
+                    ? { layout: "inline" as const }
+                    : {}),
+                ...(definition.category === "file" && action.key === "upload_asset"
+                    ? { children: uploadAssetEnabled ? [buildUploadAssetThresholdItem()] : [] }
+                    : {}),
+            }] satisfies ISettingItem[];
+        });
+    }
+
+    function buildCategoryItems(category: ToolCategory): ISettingItem[] {
         const definition = GROUP_DEFINITIONS.find((item) => item.category === category);
         if (!definition) {
             throw new Error(`Unknown tool category: ${category}`);
         }
-        return definition;
+        return [buildToolToggleItem(definition), ...buildActionItems(definition)];
     }
 
-    function buildPermItems(): ISettingItem[] {
-        if (notebooks.length === 0) {
-            return [{
-                type: "hint",
-                key: "perm__hint",
-                value: permLoading ? getLabel("mcpPermLoading", "Loading notebooks...") : getLabel("mcpPermEmpty", "No notebooks found."),
-                title: "",
-                description: "",
-            }];
+    function toggleCategory(category: ToolCategory) {
+        const next = new Set(openCategories);
+        if (next.has(category)) {
+            next.delete(category);
+        } else {
+            next.add(category);
         }
-        return notebooks.map((nb) => ({
-            type: "select",
-            key: `perm__${nb.id}`,
-            value: permissions[nb.id] ?? "r",
-            title: nb.name,
-            description: getLabel("mcpPermDesc", "MCP 访问权限：无权限 / 只读 / 读写不可删除 / 读写可删除"),
-            options: {
-                none: getLabel("mcpPermNone", "禁止访问"),
-                r: getLabel("mcpPermRead", "只读"),
-                rw: getLabel("mcpPermReadWrite", "读写不可删除"),
-                rwd: getLabel("mcpPermReadWriteDelete", "读写可删除"),
+        openCategories = next;
+    }
+
+    function isCategoryOpen(category: ToolCategory) {
+        return openCategories.has(category);
+    }
+
+    function countEnabledActions(category: ToolCategory) {
+        return ACTIONS_BY_CATEGORY[category].filter((action) => config[category].actions[action]).length;
+    }
+
+    function countDangerousActions(category: ToolCategory) {
+        return ACTIONS_BY_CATEGORY[category].filter((action) => isDangerousAction(category, action)).length;
+    }
+
+    function dispatchToolToggle(category: ToolCategory, checked: boolean) {
+        void onChanged(new CustomEvent("changed", {
+            detail: {
+                key: `${category}__enabled`,
+                value: checked,
             },
         }));
     }
 
+    let groupDefinitions: Array<GroupDefinition & {
+        title: string;
+        enabledActions: number;
+        totalActions: number;
+        dangerousActions: number;
+        items: ISettingItem[];
+        open: boolean;
+    }> = [];
 
-    let permItems: ISettingItem[] = [];
-    let fsItems: ISettingItem[] = [];
-    let notebookItems: ISettingItem[] = [];
-    let documentItems: ISettingItem[] = [];
-    let blockItems: ISettingItem[] = [];
-    let avItems: ISettingItem[] = [];
-    let fileItems: ISettingItem[] = [];
-    let searchItems: ISettingItem[] = [];
-    let tagItems: ISettingItem[] = [];
-    let systemItems: ISettingItem[] = [];
-    let flashcardItems: ISettingItem[] = [];
-    let mascotItems: ISettingItem[] = [];
-
-    function buildCategoryItems(category: ToolCategory): ISettingItem[] {
-        const definition = getGroupDefinition(category);
-        return [buildToolToggleItem(definition), ...buildActionItems(definition)];
+    $: {
+        config;
+        getLabel;
+        openCategories;
+        groupDefinitions = GROUP_DEFINITIONS.map((definition) => ({
+            ...definition,
+            title: getLabel(definition.groupKey, definition.groupKey),
+            enabledActions: countEnabledActions(definition.category),
+            totalActions: ACTIONS_BY_CATEGORY[definition.category].length,
+            dangerousActions: countDangerousActions(definition.category),
+            items: buildCategoryItems(definition.category),
+            open: isCategoryOpen(definition.category),
+        }));
     }
-
-    $: config, notebooks, permissions, permLoading, getLabel, permItems = buildPermItems();
-    $: config, getLabel, fsItems = buildCategoryItems("fs");
-    $: config, getLabel, notebookItems = buildCategoryItems("notebook");
-    $: config, getLabel, documentItems = buildCategoryItems("document");
-    $: config, getLabel, blockItems = buildCategoryItems("block");
-    $: config, getLabel, avItems = buildCategoryItems("av");
-    $: config, getLabel, fileItems = buildCategoryItems("file");
-    $: config, getLabel, searchItems = buildCategoryItems("search");
-    $: config, getLabel, tagItems = buildCategoryItems("tag");
-    $: config, getLabel, systemItems = buildCategoryItems("system");
-    $: config, getLabel, flashcardItems = buildCategoryItems("flashcard");
-    $: config, getLabel, mascotItems = buildCategoryItems("mascot");
 </script>
 
-<SettingPanel group={permGroupLabel} settingItems={permItems} display={focusGroup === permGroupLabel} on:changed={onChanged} />
-<SettingPanel group={groups[2]} settingItems={fsItems} display={focusGroup === groups[2]} on:changed={onChanged} />
-<SettingPanel group={groups[3]} settingItems={notebookItems} display={focusGroup === groups[3]} on:changed={onChanged} />
-<SettingPanel group={groups[4]} settingItems={documentItems} display={focusGroup === groups[4]} on:changed={onChanged} />
-<SettingPanel group={groups[5]} settingItems={blockItems} display={focusGroup === groups[5]} on:changed={onChanged} />
-<SettingPanel group={groups[6]} settingItems={avItems} display={focusGroup === groups[6]} on:changed={onChanged} />
-<SettingPanel group={groups[7]} settingItems={fileItems} display={focusGroup === groups[7]} on:changed={onChanged} />
-<SettingPanel group={groups[8]} settingItems={searchItems} display={focusGroup === groups[8]} on:changed={onChanged} />
-<SettingPanel group={groups[9]} settingItems={tagItems} display={focusGroup === groups[9]} on:changed={onChanged} />
-<SettingPanel group={groups[10]} settingItems={systemItems} display={focusGroup === groups[10]} on:changed={onChanged} />
-<SettingPanel group={groups[11]} settingItems={flashcardItems} display={focusGroup === groups[11]} on:changed={onChanged} />
-<SettingPanel group={groups[12]} settingItems={mascotItems} display={focusGroup === groups[12]} on:changed={onChanged} />
+<SettingPanel {group} settingItems={[]} {display}>
+    <div class="tool-settings-accordion">
+        {#each groupDefinitions as definition (definition.category)}
+            <section class="tool-settings-group" data-category={definition.category}>
+                <div class="tool-settings-group__header">
+                    <button
+                        type="button"
+                        class="tool-settings-group__summary"
+                        aria-expanded={definition.open}
+                        on:click={() => toggleCategory(definition.category)}
+                    >
+                        <span class="tool-settings-group__icon" aria-hidden="true">{@html definition.iconSvg}</span>
+                        <span class="tool-settings-group__meta">
+                            <span class="tool-settings-group__title-row">
+                                <span class="tool-settings-group__title">{definition.title}</span>
+                                <span class:tool-settings-group__badge-danger={definition.dangerousActions > 0} class="tool-settings-group__badge">
+                                    {definition.enabledActions}/{definition.totalActions}
+                                </span>
+                            </span>
+                            <span class="tool-settings-group__subtitle">
+                                {getLabel(`${definition.category}_tool_desc`, `Expose the grouped ${definition.category} tool to MCP clients.`)}
+                                {#if definition.dangerousActions > 0}
+                                    · {definition.dangerousActions} {getLabel("mcpHighRiskBadge", "[High risk]")}
+                                {/if}
+                            </span>
+                        </span>
+                    </button>
+                    <span class="tool-settings-group__controls">
+                        <label class="tool-settings-group__switch">
+                            <input
+                                type="checkbox"
+                                class="b3-switch fn__flex-center"
+                                checked={config[definition.category].enabled}
+                                on:change={(event) => dispatchToolToggle(definition.category, event.currentTarget.checked)}
+                            />
+                        </label>
+                        <button
+                            type="button"
+                            class="tool-settings-group__chevron-button"
+                            aria-expanded={definition.open}
+                            on:click={() => toggleCategory(definition.category)}
+                        >
+                            <span class:tool-settings-group__chevron-open={definition.open} class="tool-settings-group__chevron" aria-hidden="true">▾</span>
+                        </button>
+                    </span>
+                </div>
+
+                {#if definition.open}
+                    <div class="tool-settings-group__content">
+                        <SettingPanel
+                            group={definition.title}
+                            settingItems={definition.items}
+                            display={true}
+                            on:changed={onChanged}
+                        />
+                    </div>
+                {/if}
+            </section>
+        {/each}
+    </div>
+</SettingPanel>
+
+<style>
+    .tool-settings-accordion {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .tool-settings-group {
+        border: 1px solid var(--b3-border-color);
+        border-radius: 12px;
+        background: var(--b3-theme-surface);
+        overflow: hidden;
+    }
+
+    .tool-settings-group__header {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px;
+        border: 0;
+        background: var(--b3-theme-background);
+        color: inherit;
+        text-align: left;
+    }
+
+    .tool-settings-group__summary {
+        min-width: 0;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .tool-settings-group__icon {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--b3-theme-on-background);
+    }
+
+    .tool-settings-group__icon :global(svg) {
+        width: 18px;
+        height: 18px;
+    }
+
+    .tool-settings-group__meta {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .tool-settings-group__title-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .tool-settings-group__title {
+        font-size: 15px;
+        font-weight: 600;
+    }
+
+    .tool-settings-group__subtitle {
+        color: var(--b3-theme-on-surface-light);
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    .tool-settings-group__badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 40px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--b3-theme-surface-lighter);
+        color: var(--b3-theme-on-surface);
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .tool-settings-group__badge-danger {
+        background: color-mix(in srgb, var(--b3-card-warning-color) 16%, var(--b3-theme-surface));
+        color: var(--b3-card-warning-color);
+    }
+
+    .tool-settings-group__controls {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .tool-settings-group__switch {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .tool-settings-group__chevron-button {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+    }
+
+    .tool-settings-group__chevron-button:hover {
+        background: var(--b3-list-hover);
+    }
+
+    .tool-settings-group__chevron {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--b3-theme-on-surface-light);
+        transition: transform 0.16s ease;
+    }
+
+    .tool-settings-group__chevron-open {
+        transform: rotate(180deg);
+    }
+
+    .tool-settings-group__content {
+        border-top: 1px solid var(--b3-border-color);
+    }
+
+    .tool-settings-group__content :global(.config__tab-container) {
+        padding: 0 16px 10px;
+    }
+
+    @media (max-width: 768px) {
+        .tool-settings-group__header {
+            align-items: flex-start;
+            padding: 12px;
+        }
+
+        .tool-settings-group__controls {
+            gap: 8px;
+        }
+
+        .tool-settings-group__content :global(.config__tab-container) {
+            padding: 0 12px 10px;
+        }
+    }
+</style>

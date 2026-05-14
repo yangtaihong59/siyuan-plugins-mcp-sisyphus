@@ -151,30 +151,130 @@ Before proposing release commands, verify:
 
 ## Commit Message Guidance
 
-Prefer the repo's existing Chinese `feat：...并发布 vX.Y.Z` pattern for normal releases.
+本仓库采用**中文描述 + 简洁语义化**的提交信息风格，正常发布以 `feat：` 开头，后缀 `并发布 vX.Y.Z`（或 `并发布 CLI vX.Y.Z`）。
 
-Template:
+### 1. 基础格式
+
+```
+<type>：<简短描述>并发布 v<version>
+
+[可选 body：多行，说明改动背景、关键决策或破坏性变更]
+
+[可选 footer：关联 issue、 breaking change 说明等]
+```
+
+**规则**：
+- 总字符数建议不超过 72（标题行），超出时在 body 补充。
+- 使用中文全角冒号 `：`（与近期历史保持一致）。
+- 描述用**动宾结构**，说明"做了什么"而不是"怎么做的"。
+
+### 2. Type 前缀体系
+
+| 前缀 | 含义 | 使用场景 |
+|------|------|----------|
+| `feat` | 新功能 / 发布 | **默认发布前缀**。新增能力、重大改进、版本发布 |
+| `fix` | 修复 | 紧急补丁、线上 bug 修复后的小版本发布 |
+| `docs` | 文档 | 仅文档、注释、README 更新，无代码变更 |
+| `refactor` | 重构 | 代码结构调整，无用户可见功能变化 |
+| `test` | 测试 | 补充测试用例、测试框架升级 |
+| `chore` | 杂项 | 构建脚本、依赖升级、CI 配置等非业务代码 |
+| `style` | 代码格式 | 仅格式化、分号、空行调整，无逻辑变化 |
+
+**发布场景优先级**：
+- 正常功能发布 → `feat`
+- 线上热修复后发布 → `fix`
+- 文档站点大修后若需要打标签 → `feat` 或 `docs`（优先匹配近期历史）
+
+### 3. 发布专用模板
+
+#### Plugin 发布
 
 ```bash
 git add plugin.json package.json CHANGELOG.md README.md README_zh_CN.md
-git commit -m "feat：<本次发布的核心价值>并发布 vX.Y.Z"
+git commit -m "feat：<核心价值>并发布 vX.Y.Z"
 ```
 
-Examples:
-
+示例：
 ```bash
-git commit -m "feat：补强资源导出与确认流程并发布 vX.Y.Z"
-git commit -m "feat：完善 tool 帮助与路径语义并发布 vX.Y.Z"
+git commit -m "feat：补强资源导出与确认流程并发布 v0.3.5"
+git commit -m "feat：优化 MCP tool 行为一致性并发布 v0.3.4"
+git commit -m "feat：完善 tool 帮助与路径语义并发布 v0.3.3"
 ```
 
-If the release is almost entirely documentation, the prefix may still remain `feat：` if that matches recent repo history.
-
-For CLI-only releases, mention the CLI version explicitly:
+#### CLI 独立发布
 
 ```bash
 git add cli/package.json cli/README.md cli/README_zh_CN.md docs/development/release-cli.md docs/zh/development/release-cli.md
 git commit -m "feat：完善 CLI 发布流程并发布 CLI vX.Y.Z"
 ```
+
+示例：
+```bash
+git commit -m "feat：优化 CLI 参数映射与输出渲染并发布 CLI v0.1.8"
+git commit -m "feat：修复 CLI 配置读取优先级问题并发布 CLI v0.1.7"
+```
+
+#### 组合发布（Plugin + CLI 同时更新）
+
+```bash
+git add plugin.json package.json cli/package.json CHANGELOG.md README.md README_zh_CN.md cli/README.md cli/README_zh_CN.md
+git commit -m "feat：<核心价值>并发布 vX.Y.Z / CLI vA.B.C"
+```
+
+示例：
+```bash
+git commit -m "feat：统一权限校验逻辑并发布 v0.3.6 / CLI v0.1.9"
+```
+
+### 4. Body 与 Footer（何时需要）
+
+当变更涉及以下情况时，在标题后留空一行写 body：
+
+- **Breaking Change**：不兼容的 API 调整、配置格式变更、移除旧 action。
+- **多模块大范围改动**：超过 3 个工具目录被修改，需要在 body 列出关键变更点。
+- **需要解释"为什么"**：重构动机、技术决策背景。
+
+Footer 约定：
+
+```
+BREAKING CHANGE: <描述不兼容变更及迁移方式>
+Closes #123
+Related to #456
+```
+
+完整示例：
+
+```bash
+git commit -m "feat：重构权限模型并引入 notebook 级隔离并发布 v0.4.0
+
+- 将原来的全局 dangerous 标记改为 notebook 四级权限（rwd/rw/r/none）
+- 所有工具入口统一调用 PermissionManager#check
+- 旧版权限配置文件自动迁移，无需用户手动干预
+
+BREAKING CHANGE: config.json 中的 dangerousActions 字段已废弃，
+请在设置面板重新配置各笔记本权限。"
+```
+
+### 5. 非发布提交（日常开发）
+
+日常 push 不需要带版本后缀，保持简洁：
+
+```bash
+git commit -m "feat(search): 为 fulltext action 增加 groupBy 支持"
+git commit -m "fix(api): 修复 transaction 批量提交时超时未捕获的问题"
+git commit -m "docs: 补充 CLI config profile 使用说明"
+git commit -m "test(av): 增加 add_rows 边界条件单元测试"
+git commit -m "chore: 升级 vitest 到 2.x"
+```
+
+**注意**：日常提交可保留英文 scope（如 `(search)`），但标题主体描述仍建议用中文，以与仓库主要提交历史保持一致。
+
+### 6. 避坑清单
+
+- ❌ 不要写 `"update"`、`"fix bug"`、`"一些修改"` 等无意义描述。
+- ❌ 不要把提交信息写成变更列表（那是 CHANGELOG.md 的职责）。
+- ❌ 不要把 issue 编号放在标题最前面（可放 footer）。
+- ❌ CLI 与 plugin 版本不要混用同一个版本号提交信息。
 
 ## Release Commands
 

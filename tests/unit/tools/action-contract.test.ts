@@ -97,6 +97,7 @@ function createContractClient() {
             if (endpoint === '/api/search/listInvalidBlockRefs') return { blocks: [{ id: 'bad-ref', box: 'nb-1', path: '/doc-1.sy' }] };
 
             if (endpoint === '/api/export/exportMdContent') return { hPath: '/Doc 1', content: 'markdown' };
+            if (endpoint === '/api/export/exportMd') return { name: 'Doc 1', zip: '/export/doc-1.zip' };
             if (endpoint === '/api/export/exportResources') return { path: '/temp/export.zip' };
             if (endpoint === '/api/asset/getUnusedAssets') return ['assets/unused.png'];
             if (endpoint === '/api/asset/getDocAssets') return ['assets/doc.png'];
@@ -250,6 +251,7 @@ describe('tool action contract coverage', () => {
             { action: 'remove_unused_assets', args: { action: 'remove_unused_assets' }, expectedEndpoint: '/api/asset/removeUnusedAssets' },
             { action: 'rename_asset', args: { action: 'rename_asset', oldPath: 'assets/old.png', newName: 'new.png' }, expectedEndpoint: '/api/asset/renameAsset' },
             { action: 'delete_asset', args: { action: 'delete_asset', path: 'assets/old.png' }, expectedEndpoint: '/api/asset/deleteAsset' },
+            { action: 'extract_doc', args: { action: 'extract_doc', id: 'doc-1' }, expectedEndpoint: '/api/export/exportMdContent' },
         ]);
     });
 

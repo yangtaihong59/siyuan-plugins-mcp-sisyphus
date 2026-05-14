@@ -1,6 +1,6 @@
 {
   "name": "siyuan-plugins-mcp-sisyphus",
-  "version": "0.3.8",
+  "version": "0.4.0",
   "type": "module",
   "description": "Let AI control your notes with a SiYuan MCP server that exposes 11 aggregated tools with action-level routing, including simplified fs document operations and mascot feedback.",
   "repository": "https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus",

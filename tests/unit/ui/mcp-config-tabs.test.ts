@@ -70,4 +70,10 @@ describe('mcp-config-tabs icon system', () => {
         expect(CATEGORY_TAB_DEFS.find((d) => d.category === 'mascot')?.groupKey).toBe('Mascot Tool');
         expect(PUPPY_GROUP_KEY).toBe('Mascot Display');
     });
+
+    it('does not use category tabs as top-level settings tabs anymore', () => {
+        const toolTabKeys = new Set(CATEGORY_TAB_DEFS.map((def) => def.groupKey));
+        expect(toolTabKeys.has(TOOL_GROUP_KEY)).toBe(false);
+        expect(toolTabKeys.has(PUPPY_GROUP_KEY)).toBe(false);
+    });
 });

@@ -21,7 +21,12 @@
   <a href="https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/">📖 Documentation</a>
 </p>
 
-> **最新版本：**`v0.3.8` — 精简 MCP 输出、块级精确替换、CLI 体验优化。
+> **最新版本：**`v0.4.0` — 文档时间线版本控制、文档资源导出、工具设置面板重构。
+
+<p align="center">
+  <img src="docs/archive/timeline.png" alt="文档时间线" width="720">
+</p>
+<p align="center"><em>v0.4.0 新功能：文档时间线 — 点击右下角 <code>&gt;</code> 按钮即可打开版本控制。</em></p>
 
 > 如果你想把 OpenClaw、OpenCode、kimi Code 等有 Web 端的工具直接嵌进思源侧边栏使用，推荐搭配：[AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge)。
 

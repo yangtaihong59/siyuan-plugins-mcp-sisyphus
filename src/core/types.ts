@@ -890,6 +890,12 @@ export const FileDeleteAssetSchema = z.object({
     path: z.string().describe("Asset path to delete"),
 });
 
+export const FileExtractDocSchema = z.object({
+    action: z.literal("extract_doc"),
+    id: z.string().describe("Document ID to extract"),
+    outputDir: z.string().optional().describe("Output root directory. Defaults to ~/siyuan-extracted/ (resolved to absolute path)."),
+});
+
 export const SearchActionSchema = z.enum(SEARCH_ACTIONS);
 
 const SearchMethodNameSchema = z.enum(["keyword", "query", "query_syntax", "sql", "regex"]);

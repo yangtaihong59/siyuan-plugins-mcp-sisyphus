@@ -177,6 +177,7 @@
 | `remove_unused_assets` | `POST /api/asset/removeUnusedAssets` | `src/api/file.ts` | 删除所有未使用资源，需要确认 |
 | `rename_asset` | `POST /api/asset/renameAsset` | `src/api/file.ts` | 重命名资源 |
 | `delete_asset` | `POST /api/asset/deleteAsset` | `src/api/file.ts` | 删除指定资源，需要确认；兼容性 action，是否可用取决于目标 SiYuan 内核版本 |
+| `extract_doc` | `POST /api/export/exportMdContent` + `POST /api/file/getFile` | `src/api/file.ts` + `src/api/client.ts` | 导出文档 markdown 和所有引用资源到自包含的未压缩文件夹，保留原始文件名，AI 可直接读取 |
 
 ## `search`
 

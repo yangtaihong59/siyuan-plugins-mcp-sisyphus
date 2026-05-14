@@ -13,10 +13,12 @@ Related pages:
 
 | Group | Actions |
 |------|---------|
-| Upload / export | `upload_asset`, `export_md`, `export_resources` |
+| Upload / export | `upload_asset`, `export_md`, `export_resources`, `extract_doc` |
 | Rendering | `render` |
 | Asset inspection | `get_doc_assets`, `get_image_ocr_text`, `list_unused_assets` |
 | Asset mutations | `remove_unused_assets`, `rename_asset`, `delete_asset` |
+
+`get_doc_assets` is a direct-reference inspection action. It reports assets referenced by the current document tree and does not expand query embed blocks. When you need to inspect the full document content and assets, use `extract_doc`.
 
 ## Safety Rules
 
@@ -24,6 +26,7 @@ Related pages:
 - Large uploads need explicit large-file confirmation.
 - `delete_asset` and `remove_unused_assets` require confirmation.
 - `export_resources` with a local output path should be treated carefully.
+- `extract_doc` writes to the local filesystem (default `~/siyuan-extracted/`) and clears the entire output directory before each export to prevent accumulation of old extracts.
 
 ## Examples
 
@@ -44,6 +47,20 @@ MCP:
   "assetType": "image"
 }
 ```
+
+This returns direct document-tree assets only. It is not a substitute for extracting the document when you need to inspect attachment content.
+
+Extract a document and its assets into a local folder:
+
+```json
+{
+  "action": "extract_doc",
+  "id": "<doc-id>",
+  "outputDir": "/Users/me/siyuan-extracted"
+}
+```
+
+`extract_doc` writes Markdown and referenced assets into an uncompressed folder so AI tools can inspect attachment content directly.
 
 Template rendering:
 
@@ -72,6 +89,7 @@ CLI:
 
 ```bash
 siyuan file get-doc-assets --id <doc-id> --asset-type image
+siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 ```
 
 ## Action List
@@ -86,3 +104,4 @@ siyuan file get-doc-assets --id <doc-id> --asset-type image
 - `remove_unused_assets`
 - `rename_asset`
 - `delete_asset`
+- `extract_doc`

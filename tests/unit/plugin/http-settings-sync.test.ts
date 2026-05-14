@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const puppyInstances: Array<{
+    args: unknown;
+    $set: ReturnType<typeof vi.fn>;
+    $destroy: ReturnType<typeof vi.fn>;
+}> = [];
+
 vi.mock('siyuan', () => ({
     Plugin: class {},
     showMessage: vi.fn(),
@@ -14,8 +20,29 @@ vi.mock('@/ui/setting/mcp-config.svelte', () => ({
 
 vi.mock('@/ui/components/ToolPuppy.svelte', () => ({
     default: class {
-        constructor(_: unknown) {}
-        $set(_: unknown) {}
+        private readonly instance: typeof puppyInstances[number];
+
+        constructor(args: unknown) {
+            this.instance = {
+                args,
+                $set: vi.fn(),
+                $destroy: vi.fn(),
+            };
+            puppyInstances.push(this.instance);
+        }
+
+        $set(args: unknown) {
+            this.instance.$set(args);
+        }
+
+        $destroy() {
+            this.instance.$destroy();
+        }
+    },
+}));
+
+vi.mock('@/ui/version-control/VersionControlPanel.svelte', () => ({
+    default: class {
         $destroy() {}
     },
 }));
@@ -27,6 +54,78 @@ import type { HttpServerSettings } from '@/ui/setting/tool-config-storage';
 import { HttpServerLauncher } from '@/server-launcher';
 import { showMessage } from 'siyuan';
 
+class FakeElement {
+    id = '';
+    parentNode: FakeElement | null = null;
+    children: FakeElement[] = [];
+
+    appendChild(child: FakeElement) {
+        child.remove();
+        child.parentNode = this;
+        this.children.push(child);
+        return child;
+    }
+
+    remove() {
+        if (!this.parentNode) return;
+        this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+        this.parentNode = null;
+    }
+
+    get isConnected() {
+        if (!this.parentNode) return false;
+        return this.parentNode.isConnected;
+    }
+
+    set innerHTML(value: string) {
+        if (value === '') {
+            for (const child of this.children) {
+                child.parentNode = null;
+            }
+            this.children = [];
+        }
+    }
+
+    get innerHTML() {
+        return '';
+    }
+}
+
+class FakeBodyElement extends FakeElement {
+    get isConnected() {
+        return true;
+    }
+}
+
+class FakeDocument {
+    body = new FakeBodyElement();
+
+    createElement(_tagName: string) {
+        return new FakeElement();
+    }
+
+    querySelector(selector: string) {
+        return this.querySelectorAll(selector)[0] ?? null;
+    }
+
+    querySelectorAll(selector: string) {
+        if (!selector.startsWith('#')) return [];
+        const id = selector.slice(1);
+        return this.body.children.filter((child) => child.id === id);
+    }
+
+    getElementById(id: string) {
+        return this.querySelector(`#${id}`);
+    }
+}
+
+function installFakeDom() {
+    const document = new FakeDocument();
+    (globalThis as any).document = document;
+    (globalThis as any).HTMLElement = FakeElement;
+    return document;
+}
+
 describe('HTTP settings sync', () => {
     let plugin: SiyuanMCP;
     let saveData: ReturnType<typeof vi.fn>;
@@ -37,6 +136,9 @@ describe('HTTP settings sync', () => {
     beforeEach(() => {
         resetToolConfigWarningStateForTests();
         vi.mocked(showMessage).mockClear();
+        puppyInstances.length = 0;
+        installFakeDom();
+        document.body.innerHTML = '';
         plugin = new SiyuanMCP();
         loadData = vi.fn().mockResolvedValue(undefined);
         saveData = vi.fn().mockResolvedValue(undefined);
@@ -225,6 +327,27 @@ describe('HTTP settings sync', () => {
         expect(errorSpy).not.toHaveBeenCalled();
     });
 
+    it('registers the top bar button as the plugin settings entry', async () => {
+        delete (globalThis as any).window.siyuan.config.system.workspaceDir;
+        const addTopBar = vi.fn();
+        const openSetting = vi.spyOn(plugin, 'openSetting').mockImplementation(() => undefined);
+        Object.assign(plugin, {
+            addTopBar,
+            i18n: { mcpToolsSettingTitle: 'SiYuan Sisyphus 设置' },
+        });
+
+        await plugin.onload();
+
+        expect(addTopBar).toHaveBeenCalledWith(expect.objectContaining({
+            title: 'SiYuan Sisyphus 设置',
+            callback: expect.any(Function),
+            position: 'right',
+        }));
+        const config = addTopBar.mock.calls[0][0];
+        config.callback();
+        expect(openSetting).toHaveBeenCalledTimes(1);
+    });
+
     it('initializes launcher and auto-starts HTTP server when supported', async () => {
         const startSpy = vi.spyOn(HttpServerLauncher.prototype, 'start').mockResolvedValue(undefined);
         plugin.httpLauncher = null;
@@ -256,5 +379,57 @@ describe('HTTP settings sync', () => {
 
         expect(showMessage).toHaveBeenCalledTimes(1);
         expect(showMessage).toHaveBeenCalledWith(expect.stringContaining('Detected legacy tool config format'));
+    });
+
+    it('mounts the puppy only once when layout becomes ready repeatedly', () => {
+        plugin.onLayoutReady();
+        plugin.onLayoutReady();
+
+        expect(document.querySelectorAll('#sy-puppy-root')).toHaveLength(1);
+        expect(puppyInstances).toHaveLength(1);
+    });
+
+    it('self-heals orphan puppy roots before remounting', () => {
+        const orphanRoot = document.createElement('div');
+        orphanRoot.id = 'sy-puppy-root';
+        document.body.appendChild(orphanRoot);
+
+        plugin.onLayoutReady();
+
+        const roots = document.querySelectorAll('#sy-puppy-root');
+        expect(roots).toHaveLength(1);
+        expect(roots[0]).not.toBe(orphanRoot);
+        expect(puppyInstances).toHaveLength(1);
+    });
+
+    it('destroys the puppy component and removes its root on unload', async () => {
+        plugin.onLayoutReady();
+        const mountedPuppy = puppyInstances[0];
+
+        await plugin.onunload();
+
+        expect(mountedPuppy.$destroy).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('#sy-puppy-root')).toBeNull();
+    });
+
+    it('pushes updated settings into the mounted puppy component', () => {
+        plugin.onLayoutReady();
+        const mountedPuppy = puppyInstances[0];
+
+        plugin.updatePuppyTestSettings({
+            visible: false,
+            testModeEnabled: true,
+            testModeIntervalMs: 1500,
+            showBubble: true,
+            showClickHint: false,
+        });
+
+        expect(mountedPuppy.$set).toHaveBeenCalledWith({
+            visible: false,
+            testModeEnabled: true,
+            testModeIntervalMs: 1500,
+            showBubble: true,
+            showClickHint: false,
+        });
     });
 });

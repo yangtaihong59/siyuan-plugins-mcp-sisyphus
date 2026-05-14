@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import * as blockApi from '@/api/block';
 import * as documentApi from '@/api/document';
 import * as flashcardApi from '@/api/flashcard';
+import * as historyApi from '@/api/history';
 import * as notebookApi from '@/api/notebook';
+import * as repoApi from '@/api/repo';
 import * as tagApi from '@/api/tag';
 import { performTransactions } from '@/api/transaction';
 
@@ -37,6 +39,39 @@ describe('api wrapper payloads', () => {
             ['/api/notebook/getNotebookConf', { notebook: 'nb-1' }],
             ['/api/notebook/setNotebookConf', { notebook: 'nb-1', conf: { closed: false } }],
             ['/api/notebook/setNotebookIcon', { notebook: 'nb-1', icon: '1f4d4' }],
+        ]);
+    });
+
+    it('routes repo and history wrappers with exact payload shapes', async () => {
+        const client = createClient();
+
+        await repoApi.createSnapshot(client, 'commit memo');
+        await repoApi.tagSnapshot(client, 'snap-1', 'release');
+        await repoApi.getRepoSnapshots(client, 2);
+        await repoApi.getRepoTagSnapshots(client);
+        await repoApi.removeRepoTagSnapshot(client, 'release');
+        await repoApi.diffRepoSnapshots(client, 'left', 'right');
+        await repoApi.openRepoSnapshotFile(client, 'file-1');
+        await repoApi.rollbackRepoSnapshotFile(client, 'file-1');
+
+        await historyApi.searchHistory(client, { notebook: 'nb-1', query: 'hello', page: 3 });
+        await historyApi.getHistoryItems(client, { created: '20260514', notebook: 'nb-1' });
+        await historyApi.getDocHistoryContent(client, '/history/doc.sy', 'hello', true);
+        await historyApi.rollbackDocHistory(client, 'nb-1', '/history/doc.sy');
+
+        expect(client.request.mock.calls).toEqual([
+            ['/api/repo/createSnapshot', { memo: 'commit memo' }],
+            ['/api/repo/tagSnapshot', { id: 'snap-1', name: 'release' }],
+            ['/api/repo/getRepoSnapshots', { page: 2 }],
+            ['/api/repo/getRepoTagSnapshots', {}],
+            ['/api/repo/removeRepoTagSnapshot', { tag: 'release' }],
+            ['/api/repo/diffRepoSnapshots', { left: 'left', right: 'right' }],
+            ['/api/repo/openRepoSnapshotFile', { id: 'file-1' }],
+            ['/api/repo/rollbackRepoSnapshotFile', { id: 'file-1' }],
+            ['/api/history/searchHistory', { notebook: 'nb-1', query: 'hello', page: 3 }],
+            ['/api/history/getHistoryItems', { created: '20260514', notebook: 'nb-1' }],
+            ['/api/history/getDocHistoryContent', { historyPath: '/history/doc.sy', keyword: 'hello', highlight: true }],
+            ['/api/history/rollbackDocHistory', { notebook: 'nb-1', historyPath: '/history/doc.sy' }],
         ]);
     });
 

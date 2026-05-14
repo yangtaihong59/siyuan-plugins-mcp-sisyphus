@@ -7,29 +7,34 @@
         buildDefaultHttpServerSettings,
         buildDefaultPuppySettings,
         buildDefaultTelemetryConfig,
+        buildDefaultVersionControlSettings,
         loadPersistedHttpServerSettings,
         loadPersistedPuppySettings,
         loadPersistedTelemetryConfig,
         loadPersistedToolConfig,
+        loadPersistedVersionControlSettings,
         normalizePuppySettings,
         savePersistedPuppySettings,
         savePersistedTelemetryConfig,
         savePersistedToolConfig,
+        savePersistedVersionControlSettings,
         type HttpServerSettings,
         type PuppySettings,
         type TelemetryConfig,
+        type VersionControlSettings,
     } from "./tool-config-storage";
     import HttpServerPanel from "./mcp-config/HttpServerPanel.svelte";
     import DebugPanel from "./mcp-config/DebugPanel.svelte";
+    import PermissionsPanel from "./mcp-config/PermissionsPanel.svelte";
     import PuppyPanel from "./mcp-config/PuppyPanel.svelte";
     import TelemetryPanel from "./mcp-config/TelemetryPanel.svelte";
     import ToolCategoriesPanel from "./mcp-config/ToolCategoriesPanel.svelte";
     import UserRulesPanel from "./mcp-config/UserRulesPanel.svelte";
     import {
-        CATEGORY_TAB_DEFS,
         HTTP_GROUP_KEY,
         ICON_SVGS,
         PERM_GROUP_KEY,
+        TOOL_GROUP_KEY,
         PUPPY_GROUP_KEY,
         ANALYTICS_GROUP_KEY,
         DEBUG_GROUP_KEY,
@@ -60,6 +65,7 @@
     let httpSettings: HttpServerSettings = buildDefaultHttpServerSettings();
     let puppySettings: PuppySettings = buildDefaultPuppySettings();
     let telemetryConfig: TelemetryConfig = buildDefaultTelemetryConfig();
+    let versionControlSettings: VersionControlSettings = buildDefaultVersionControlSettings();
     let focusGroup = "";
     let notebooks: NotebookInfo[] = [];
     let permissions: Record<string, NotebookPermission> = {};
@@ -84,23 +90,20 @@
     $: debugGroupLabel = getLabel(DEBUG_GROUP_KEY, DEBUG_GROUP_LABEL);
     $: userRulesGroupLabel = getLabel(USER_RULES_GROUP_KEY, USER_RULES_GROUP_LABEL);
 
+    $: toolGroupLabel = getLabel(TOOL_GROUP_KEY, TOOL_GROUP_KEY);
     $: tabItems = [
         { id: HTTP_GROUP_KEY, label: httpGroupLabel, iconSvg: ICON_SVGS.globe },
         { id: PERM_GROUP_KEY, label: permGroupLabel, iconSvg: ICON_SVGS.lock },
-        ...CATEGORY_TAB_DEFS.map((def) => ({
-            id: def.groupKey,
-            label: getLabel(def.groupKey, def.groupKey),
-            iconSvg: ICON_SVGS[def.iconKey],
-        })),
+        { id: TOOL_GROUP_KEY, label: toolGroupLabel, iconSvg: ICON_SVGS.folder },
         { id: PUPPY_GROUP_KEY, label: puppyGroupLabel, iconSvg: ICON_SVGS.paw },
         { id: ANALYTICS_GROUP_KEY, label: analyticsGroupLabel, iconSvg: ICON_SVGS.barChart },
         { id: DEBUG_GROUP_KEY, label: debugGroupLabel, iconSvg: ICON_SVGS.bug },
         { id: USER_RULES_GROUP_KEY, label: userRulesGroupLabel, iconSvg: ICON_SVGS.compass },
-    ];
+    ] satisfies TabItem[];
 
-    $: groups = tabItems.map((t) => t.label);
-    $: if (!groups.includes(focusGroup)) {
-        focusGroup = groups[0];
+    $: tabIds = tabItems.map((t) => t.id);
+    $: if (!tabIds.includes(focusGroup)) {
+        focusGroup = tabItems[0]?.id ?? "";
     }
 
     async function loadNotebooks() {
@@ -129,6 +132,7 @@
         puppySettings = await loadPersistedPuppySettings(plugin);
         httpSettings = await loadPersistedHttpServerSettings(plugin);
         telemetryConfig = await loadPersistedTelemetryConfig(plugin);
+        versionControlSettings = await loadPersistedVersionControlSettings(plugin);
 
         const savedPerms = await plugin?.loadData("notebookPermissions");
         if (savedPerms && typeof savedPerms === "object") {
@@ -192,6 +196,13 @@
     async function persistTelemetryConfig() {
         if (plugin) {
             telemetryConfig = await savePersistedTelemetryConfig(telemetryConfig, plugin);
+        }
+    }
+
+    async function persistVersionControlSettings() {
+        if (plugin) {
+            versionControlSettings = await savePersistedVersionControlSettings(versionControlSettings, plugin);
+            plugin.updateVersionControlSettings?.(versionControlSettings);
         }
     }
 
@@ -289,6 +300,15 @@
             return;
         }
 
+        if (key === "versionControl__showDebugMeta") {
+            versionControlSettings = {
+                ...versionControlSettings,
+                showDebugMeta: Boolean(value),
+            };
+            await persistVersionControlSettings();
+            return;
+        }
+
         if (key === "telemetry__enabled") {
             telemetryConfig = { ...telemetryConfig, enabled: Boolean(value) };
             await persistTelemetryConfig();
@@ -330,9 +350,11 @@
         config = normalizeToolConfig(buildDefaultToolConfig());
         puppySettings = normalizePuppySettings(buildDefaultPuppySettings());
         telemetryConfig = buildDefaultTelemetryConfig();
+        versionControlSettings = buildDefaultVersionControlSettings();
         await persistConfig();
         await persistPuppySettings();
         await persistTelemetryConfig();
+        await persistVersionControlSettings();
         showMessage(plugin?.i18n?.mcpConfigReset || "🔄 MCP Tools configuration reset to defaults");
     }
 
@@ -345,10 +367,10 @@
             <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
             <li
                 data-name="mcp-config"
-                class:b3-list-item--focus={tab.label === focusGroup}
+                class:b3-list-item--focus={tab.id === focusGroup}
                 class="b3-list-item"
                 on:click={() => {
-                    focusGroup = tab.label;
+                    focusGroup = tab.id;
                 }}
                 on:keydown={() => {}}
             >
@@ -358,12 +380,13 @@
         {/each}
     </ul>
     <div class="config__tab-wrap">
-        <HttpServerPanel {plugin} group={httpGroupLabel} display={focusGroup === httpGroupLabel} bind:httpSettings {getLabel} />
-        <ToolCategoriesPanel {config} {groups} {focusGroup} {permGroupLabel} {notebooks} {permissions} {permLoading} {getLabel} {onChanged} />
-        <PuppyPanel group={puppyGroupLabel} display={focusGroup === puppyGroupLabel} {puppySettings} {getLabel} {onChanged} />
+        <HttpServerPanel {plugin} group={httpGroupLabel} display={focusGroup === HTTP_GROUP_KEY} bind:httpSettings {getLabel} />
+        <PermissionsPanel group={permGroupLabel} display={focusGroup === PERM_GROUP_KEY} {notebooks} {permissions} {permLoading} {getLabel} {onChanged} />
+        <ToolCategoriesPanel group={toolGroupLabel} display={focusGroup === TOOL_GROUP_KEY} {config} {getLabel} {onChanged} />
+        <PuppyPanel group={puppyGroupLabel} display={focusGroup === PUPPY_GROUP_KEY} {puppySettings} {getLabel} {onChanged} />
         <TelemetryPanel analyticsGroup={analyticsGroupLabel} telemetryGroup="" showTelemetry={false} currentToolConfig={config} {focusGroup} {telemetryConfig} {getLabel} {onChanged} />
-        <DebugPanel group={debugGroupLabel} display={focusGroup === debugGroupLabel} {config} {puppySettings} {getLabel} {onChanged} />
-        <UserRulesPanel group={userRulesGroupLabel} display={focusGroup === userRulesGroupLabel} {config} {getLabel} {onChanged} />
+        <DebugPanel group={debugGroupLabel} display={focusGroup === DEBUG_GROUP_KEY} {config} {puppySettings} {versionControlSettings} {getLabel} {onChanged} />
+        <UserRulesPanel group={userRulesGroupLabel} display={focusGroup === USER_RULES_GROUP_KEY} {config} {getLabel} {onChanged} />
     </div>
 </div>
 

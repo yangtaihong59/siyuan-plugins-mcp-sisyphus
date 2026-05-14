@@ -79,17 +79,32 @@ describe('setting and mcp config stay behaviorally aligned', () => {
         expect(source).toContain('category: "mascot"');
     });
 
-    it('keeps tool categories as separate settings tabs instead of one accordion page', () => {
+    it('keeps tool categories grouped under one settings page', () => {
         const panelSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/ToolCategoriesPanel.svelte'), 'utf8');
         const rootSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config.svelte'), 'utf8');
 
-        expect(rootSource).toContain('...CATEGORY_TAB_DEFS.map');
-        expect(rootSource).not.toContain('TOOL_GROUP_KEY');
-        expect(panelSource).toContain('export let groups: string[]');
-        expect(panelSource).toContain('group={groups[2]} settingItems={fsItems}');
-        expect(panelSource).toContain('group={groups[12]} settingItems={mascotItems}');
-        expect(panelSource).not.toContain('tool-settings-accordion');
-        expect(panelSource).not.toContain('<details class="tool-settings-group">');
+        expect(rootSource).toContain('{ id: TOOL_GROUP_KEY, label: toolGroupLabel, iconSvg: ICON_SVGS.folder }');
+        expect(rootSource).not.toContain('...CATEGORY_TAB_DEFS.map');
+        expect(panelSource).toContain('tool-settings-accordion');
+        expect(panelSource).toContain('tool-settings-group__header');
+        expect(panelSource).toContain('dispatchToolToggle');
+        expect(panelSource).toContain('SettingPanel');
+    });
+
+    it('keeps accordion state reactive when categories are toggled', () => {
+        const panelSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/ToolCategoriesPanel.svelte'), 'utf8');
+
+        expect(panelSource).toContain('openCategories;');
+        expect(panelSource).toContain('groupDefinitions = GROUP_DEFINITIONS.map');
+    });
+
+    it('keeps notebook permission rows reactive after notebooks load', () => {
+        const panelSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/PermissionsPanel.svelte'), 'utf8');
+
+        expect(panelSource).toContain('notebooks;');
+        expect(panelSource).toContain('permissions;');
+        expect(panelSource).toContain('permLoading;');
+        expect(panelSource).toContain('permItems = buildPermItems();');
     });
 
     it('keeps mascot tool settings out of the mascot display panel', () => {
@@ -99,6 +114,6 @@ describe('setting and mcp config stay behaviorally aligned', () => {
         expect(puppySource).not.toContain('mascot__enabled');
         expect(puppySource).not.toContain('mascot__action__');
         expect(panelSource).toContain('category: "mascot"');
-        expect(panelSource).toContain('group={groups[12]} settingItems={mascotItems}');
+        expect(panelSource).toContain('groupKey: "Mascot Tool"');
     });
 });

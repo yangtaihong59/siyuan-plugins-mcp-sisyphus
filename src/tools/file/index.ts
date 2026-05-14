@@ -7,6 +7,7 @@ import {
     FileDeleteAssetSchema,
     FileExportMdSchema,
     FileExportResourcesSchema,
+    FileExtractDocSchema,
     FileGetDocAssetsSchema,
     FileGetImageOCRTextSchema,
     FileListUnusedAssetsSchema,
@@ -27,11 +28,12 @@ export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
     createZodActionVariant('export_md', FileExportMdSchema, 'Export document content as Markdown.'),
     createZodActionVariant('export_resources', FileExportResourcesSchema, 'Export resources as a ZIP archive.'),
     createZodActionVariant('list_unused_assets', FileListUnusedAssetsSchema, 'List unused asset files.'),
-    createZodActionVariant('get_doc_assets', FileGetDocAssetsSchema, 'List assets referenced by a document. Use assetType to filter.'),
+    createZodActionVariant('get_doc_assets', FileGetDocAssetsSchema, 'List assets directly referenced by the current document tree. Use extract_doc for complete document asset inspection.'),
     createZodActionVariant('get_image_ocr_text', FileGetImageOCRTextSchema, 'Get stored OCR text for an image asset.'),
     createZodActionVariant('remove_unused_assets', FileRemoveUnusedAssetsSchema, 'Remove all unused asset files.'),
     createZodActionVariant('rename_asset', FileRenameAssetSchema, 'Rename an asset file.'),
     createZodActionVariant('delete_asset', FileDeleteAssetSchema, 'Delete an asset file.'),
+    createZodActionVariant('extract_doc', FileExtractDocSchema, 'Export a document and all referenced assets into a self-contained uncompressed folder. Prefer this over export_resources when you need to inspect attachment content.'),
 ];
 
 function createFileTool(thresholdMB: number, largeUploadThresholdBytes: number) {

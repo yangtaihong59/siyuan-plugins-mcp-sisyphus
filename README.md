@@ -21,7 +21,12 @@
   <a href="https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/">📖 Documentation</a>
 </p>
 
-> **Latest:** `v0.3.8` — Slimmer MCP responses, precise block-level replace, and improved CLI ergonomics.
+> **Latest:** `v0.4.0` — Document Timeline version control, extract document with assets, and redesigned tool settings panel.
+
+<p align="center">
+  <img src="docs/archive/timeline.png" alt="Document Timeline" width="720">
+</p>
+<p align="center"><em>New in v0.4.0: Document Timeline — click the <code>&gt;</code> button in the bottom-right to open version control.</em></p>
 
 > Recommended pairing: use this plugin together with [AI CLI Bridge for SiYuan](https://github.com/yangtaihong59/siyuan-plugins-ai-cli-bridge) to embed OpenClaw, OpenCode, kimi Code, and other web-based AI agent tools directly in the SiYuan sidebar.
 

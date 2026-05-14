@@ -136,7 +136,7 @@
 |------|------|----------|----------|----------|----------|------|
 | 1 | POST | `/api/av/renderAttributeView` | renderAttributeView | 属性视图/数据库渲染 | av.render_attribute_view | ✅ 已覆盖 |
 | 2 | POST | `/api/av/renderHistoryAttributeView` | renderHistoryAttributeView | 属性视图/数据库渲染历史属性ibuteView | - | ❌ 未覆盖 |
-| 3 | POST | `/api/av/renderSnapshotAttributeView` | renderSnapshotAttributeView | 属性视图/数据库渲染Snapshot属性ibuteView | - | ❌ 未覆盖 |
+| 3 | POST | `/api/av/renderSnapshotAttributeView` | renderSnapshotAttributeView | 在数据快照中渲染属性视图/数据库 | - | ❌ 未覆盖 |
 | 4 | POST | `/api/av/getAttributeViewKeys` | getAttributeViewKeys | 属性视图/数据库获取Keys | av.get_attribute_view_keys | ✅ 已覆盖 |
 | 5 | POST | `/api/av/setAttributeViewBlockAttr` | setAttributeViewBlockAttr | 属性视图/数据库设置Block属性 | av.set_cells | ✅ 已覆盖 |
 | 6 | POST | `/api/av/batchSetAttributeViewBlockAttrs` | batchSetAttributeViewBlockAttrs | 属性视图/数据库批量Set属性ibuteViewBlock属性 | av.set_cells | ✅ 已覆盖 |
@@ -331,20 +331,20 @@
 | 4 | POST | `/api/repo/purgeRepo` | purgeRepo | 仓库清除Repo | - | ❌ 未覆盖 |
 | 5 | POST | `/api/repo/purgeCloudRepo` | purgeCloudRepo | 仓库清除CloudRepo | - | ❌ 未覆盖 |
 | 6 | POST | `/api/repo/importRepoKey` | importRepoKey | 仓库导入RepoKey | - | ❌ 未覆盖 |
-| 7 | POST | `/api/repo/createSnapshot` | createSnapshot | 仓库创建Snapshot | - | ❌ 未覆盖 |
-| 8 | POST | `/api/repo/tagSnapshot` | tagSnapshot | 仓库标签Snapshot | - | ❌ 未覆盖 |
+| 7 | POST | `/api/repo/createSnapshot` | createSnapshot | 创建本地数据快照 | - | ❌ 未覆盖 |
+| 8 | POST | `/api/repo/tagSnapshot` | tagSnapshot | 为本地数据快照创建标签引用 | - | ❌ 未覆盖 |
 | 9 | POST | `/api/repo/checkoutRepo` | checkoutRepo | 仓库检查outRepo | - | ❌ 未覆盖 |
-| 10 | POST | `/api/repo/getRepoSnapshots` | getRepoSnapshots | 仓库获取RepoSnapshots | - | ❌ 未覆盖 |
-| 11 | POST | `/api/repo/getRepoTagSnapshots` | getRepoTagSnapshots | 仓库获取RepoTagSnapshots | - | ❌ 未覆盖 |
-| 12 | POST | `/api/repo/removeRepoTagSnapshot` | removeRepoTagSnapshot | 仓库删除RepoTagSnapshot | - | ❌ 未覆盖 |
-| 13 | POST | `/api/repo/getCloudRepoTagSnapshots` | getCloudRepoTagSnapshots | 仓库获取CloudRepoTagSnapshots | - | ❌ 未覆盖 |
-| 14 | POST | `/api/repo/getCloudRepoSnapshots` | getCloudRepoSnapshots | 仓库获取CloudRepoSnapshots | - | ❌ 未覆盖 |
-| 15 | POST | `/api/repo/removeCloudRepoTagSnapshot` | removeCloudRepoTagSnapshot | 仓库删除CloudRepoTagSnapshot | - | ❌ 未覆盖 |
-| 16 | POST | `/api/repo/uploadCloudSnapshot` | uploadCloudSnapshot | 仓库上传CloudSnapshot | - | ❌ 未覆盖 |
-| 17 | POST | `/api/repo/downloadCloudSnapshot` | downloadCloudSnapshot | 仓库下载CloudSnapshot | - | ❌ 未覆盖 |
-| 18 | POST | `/api/repo/diffRepoSnapshots` | diffRepoSnapshots | 仓库对比RepoSnapshots | - | ❌ 未覆盖 |
-| 19 | POST | `/api/repo/openRepoSnapshotFile` | openRepoSnapshotFile | 仓库打开RepoSnapshotFile | - | ❌ 未覆盖 |
-| 20 | POST | `/api/repo/rollbackRepoSnapshotFile` | rollbackRepoSnapshotFile | 仓库回滚RepoSnapshotFile | - | ❌ 未覆盖 |
+| 10 | POST | `/api/repo/getRepoSnapshots` | getRepoSnapshots | 分页获取本地数据快照列表 | - | ❌ 未覆盖 |
+| 11 | POST | `/api/repo/getRepoTagSnapshots` | getRepoTagSnapshots | 获取本地已标记数据快照列表 | - | ❌ 未覆盖 |
+| 12 | POST | `/api/repo/removeRepoTagSnapshot` | removeRepoTagSnapshot | 删除本地数据快照标签引用 | - | ❌ 未覆盖 |
+| 13 | POST | `/api/repo/getCloudRepoTagSnapshots` | getCloudRepoTagSnapshots | 获取云端已标记数据快照列表 | - | ❌ 未覆盖 |
+| 14 | POST | `/api/repo/getCloudRepoSnapshots` | getCloudRepoSnapshots | 分页获取云端数据快照列表 | - | ❌ 未覆盖 |
+| 15 | POST | `/api/repo/removeCloudRepoTagSnapshot` | removeCloudRepoTagSnapshot | 删除云端数据快照标签引用 | - | ❌ 未覆盖 |
+| 16 | POST | `/api/repo/uploadCloudSnapshot` | uploadCloudSnapshot | 上传本地已标记数据快照到云端 | - | ❌ 未覆盖 |
+| 17 | POST | `/api/repo/downloadCloudSnapshot` | downloadCloudSnapshot | 下载云端数据快照到本地 | - | ❌ 未覆盖 |
+| 18 | POST | `/api/repo/diffRepoSnapshots` | diffRepoSnapshots | 对比两个数据快照的文件差异 | - | ❌ 未覆盖 |
+| 19 | POST | `/api/repo/openRepoSnapshotFile` | openRepoSnapshotFile | 打开数据快照中的单个文件 | - | ❌ 未覆盖 |
+| 20 | POST | `/api/repo/rollbackRepoSnapshotFile` | rollbackRepoSnapshotFile | 回滚数据快照中的单个文件 | - | ❌ 未覆盖 |
 | 21 | POST | `/api/repo/getRepoFile` | getRepoFile | 仓库获取RepoFile | - | ❌ 未覆盖 |
 | 22 | POST | `/api/repo/setRepoIndexRetentionDays` | setRepoIndexRetentionDays | 仓库设置Repo索引RetentionDays | - | ❌ 未覆盖 |
 | 23 | POST | `/api/repo/setRetentionIndexesDaily` | setRetentionIndexesDaily | 仓库设置Retention索引esDaily | - | ❌ 未覆盖 |
@@ -866,3 +866,59 @@
 | 1 | POST | `/api/network/forwardProxy` | forwardProxy | networkforwardProxy | - | ❌ 未覆盖 |
 
 ---
+
+## Snapshot 接口明细
+
+来源：本节按本仓库内 `siyuan/kernel/api/router.go`、`siyuan/kernel/api/repo.go`、`siyuan/kernel/api/av.go` 与前端 `siyuan/app/src/history/*.ts` 调用点整理。这里的 Snapshot 指思源数据仓库快照，不同于 `/api/history/*` 的文档/资源历史。
+
+### Snapshot API 总览
+
+| 模块 | API 路径 | 请求参数 | 返回数据 | 权限/只读限制 | MCP 覆盖建议 |
+|------|----------|----------|----------|---------------|--------------|
+| av | `POST /api/av/renderSnapshotAttributeView` | `id` 必填；`snapshot` 必填 | `name`、`id`、`viewType`、`viewID`、`views`、`view`、`isMirror` | 需认证 + 管理员角色；只读可调用 | 可扩展 `av.render`，增加 `snapshot` 参数 |
+| repo | `POST /api/repo/createSnapshot` | `memo` 可选 | 标准 Ret；失败时可能带 `data.closeTimeout` | 需认证 + 管理员角色；只读禁止 | 建议新增 `repo.create_snapshot`，危险写操作 |
+| repo | `POST /api/repo/tagSnapshot` | `id` 必填；`name` 可选但服务端会拒绝空标签 | 标准 Ret；失败时可能带 `data.closeTimeout` | 需认证 + 管理员角色；只读禁止 | 建议新增 `repo.tag_snapshot`，写操作 |
+| repo | `POST /api/repo/checkoutRepo` | `id` 必填 | 标准 Ret；实际恢复异步触发 | 需认证 + 管理员角色；只读禁止 | 建议新增 `repo.checkout_snapshot`，高危整库回滚 |
+| repo | `POST /api/repo/getRepoSnapshots` | `page` 可选，前端从 1 开始 | `snapshots`、`pageCount`、`totalCount` | 需认证 + 管理员角色；只读可调用 | 建议新增 `repo.list_snapshots` |
+| repo | `POST /api/repo/getRepoTagSnapshots` | 无 | `snapshots` | 需认证 + 管理员角色；只读可调用 | 建议新增 `repo.list_tag_snapshots` |
+| repo | `POST /api/repo/removeRepoTagSnapshot` | `tag` 必填 | 标准 Ret | 需认证 + 管理员角色；只读禁止 | 建议新增 `repo.remove_tag_snapshot`，写操作 |
+| repo | `POST /api/repo/getCloudRepoSnapshots` | `page` 可选，前端从 1 开始 | `snapshots`、`pageCount`、`totalCount` | 需认证 + 管理员角色；只读可调用；依赖同步提供商与订阅/付费状态 | 建议新增 `repo.list_cloud_snapshots` |
+| repo | `POST /api/repo/getCloudRepoTagSnapshots` | 无 | `snapshots` | 需认证 + 管理员角色；只读可调用；依赖同步提供商与订阅/付费状态 | 建议新增 `repo.list_cloud_tag_snapshots` |
+| repo | `POST /api/repo/removeCloudRepoTagSnapshot` | `tag` 必填 | 标准 Ret | 需认证 + 管理员角色；只读禁止；依赖同步提供商与订阅/付费状态 | 建议新增 `repo.remove_cloud_tag_snapshot`，写操作 |
+| repo | `POST /api/repo/uploadCloudSnapshot` | `id` 必填；`tag` 可选 | 标准 Ret；通过状态栏/进度推送上传进度 | 需认证 + 管理员角色；只读禁止；依赖同步提供商与订阅/付费状态 | 建议新增 `repo.upload_cloud_snapshot`，写操作 |
+| repo | `POST /api/repo/downloadCloudSnapshot` | `id` 必填；`tag` 可选 | 标准 Ret；通过状态栏/进度推送下载进度 | 需认证 + 管理员角色；只读禁止；依赖同步提供商与订阅/付费状态 | 建议新增 `repo.download_cloud_snapshot`，写操作 |
+| repo | `POST /api/repo/diffRepoSnapshots` | `left` 必填；`right` 必填 | `addsLeft`、`updatesLeft`、`updatesRight`、`removesRight`、`left`、`right` | 需认证 + 管理员角色；只读可调用 | 建议新增 `repo.diff_snapshots` |
+| repo | `POST /api/repo/openRepoSnapshotFile` | `id` 必填，值为 diff 返回的 `fileID` | `title`、`content`、`displayInText`、`updated` | 需认证 + 管理员角色；只读可调用 | 建议新增 `repo.open_snapshot_file` |
+| repo | `POST /api/repo/rollbackRepoSnapshotFile` | `id` 必填，值为 diff 返回的 `fileID` | 标准 Ret | 需认证 + 管理员角色；路由未加 `CheckReadonly`，但会实际写回文件 | 建议新增 `repo.rollback_snapshot_file`，高危单文件回滚 |
+
+### 数据结构备注
+
+| 名称 | 字段 | 说明 |
+|------|------|------|
+| 本地快照条目 | `id`、`memo`、`hCreated`、`count`、`hSize`、`systemID`、`systemName`、`systemOS`、`tag`、`typesCount` 等 | `getRepoSnapshots` 与 `getRepoTagSnapshots` 返回 `model.Snapshot`，内嵌 dejavu log；服务端会清空大体积 `files` 字段，并额外统计 `typesCount` |
+| 云端快照条目 | dejavu log 字段，如 `id`、`created`、`memo`、`tag` 等 | `getCloudRepoSnapshots` 与 `getCloudRepoTagSnapshots` 直接返回云端 log；字段形态由 dejavu/cloud 实现决定 |
+| 快照 diff 文件 | `fileID`、`title`、`path`、`hSize`、`updated` | `fileID` 用于继续调用 `openRepoSnapshotFile` 或 `rollbackRepoSnapshotFile` |
+| 快照 diff 索引 | `id`、`created` | `diffRepoSnapshots` 返回的 `left` / `right` 为对比两侧快照索引摘要 |
+| 快照文件内容 | `title`、`content`、`displayInText`、`updated` | `.sy` 文档会渲染为块 DOM 或格式化文本；普通文本直接返回内容；可显示资源可能返回临时 `repo/diff/...` 路径 |
+| Snapshot AV 渲染结果 | `name`、`id`、`viewType`、`viewID`、`views`、`view`、`isMirror` | 只读取快照里的数据库视图；服务端当前只显式读取 `id` 和 `snapshot`，前端仍会传 `pageSize`、`groupPaging`、`viewID`、`query` 等普通渲染参数 |
+
+### 前端工作流对应关系
+
+| 场景 | 调用顺序 |
+|------|----------|
+| 创建本地快照 | `createSnapshot({ memo })` 后刷新 `getRepoSnapshots({ page: 1 })` |
+| 标记本地快照 | `tagSnapshot({ id, name })`，可选继续 `uploadCloudSnapshot({ id, tag: name })` |
+| 上传已标记快照 | `uploadCloudSnapshot({ id, tag })` |
+| 下载云端快照 | `downloadCloudSnapshot({ id, tag })`；云端普通快照 `tag` 为空 |
+| 下载并整库回滚 | `downloadCloudSnapshot({ id, tag })` 成功后调用 `checkoutRepo({ id })` |
+| 对比本地快照 | `diffRepoSnapshots({ left, right })`，再用 diff 文件的 `fileID` 调 `openRepoSnapshotFile({ id: fileID })` |
+| 回滚快照单文件 | 从 `diffRepoSnapshots` 取得 `fileID` 后调用 `rollbackRepoSnapshotFile({ id: fileID })` |
+| 渲染快照中的数据库 | 文档历史/快照浏览时，数据库块调用 `renderSnapshotAttributeView({ id: avID, snapshot })` |
+
+### 实现注意事项
+
+- 数据快照功能依赖仓库密钥 `Conf.Repo.Key`，未初始化时多数接口返回错误。
+- 云端快照接口依赖当前同步提供商；官方云需要订阅，WebDAV/S3/本地提供商需要付费用户状态。
+- `checkoutRepo` 是整库恢复，`rollbackRepoSnapshotFile` 是单文件恢复，二者都应在 MCP 层标记为危险动作并要求显式确认。
+- `rollbackRepoSnapshotFile` 的路由当前没有 `CheckReadonly`，但其模型层会写回工作区文件；MCP 封装时应按写操作处理。
+- `renderSnapshotAttributeView` 目前在服务端只消费 `id` 与 `snapshot`，不像普通 `renderAttributeView` 那样处理分页、筛选和视图参数；如果要暴露给 MCP，应在帮助文档中说明该限制。

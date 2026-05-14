@@ -6,6 +6,12 @@ export interface TabItem {
     iconSvg: string;
 }
 
+export interface CategoryTabDefinition {
+    category: ToolCategory;
+    groupKey: string;
+    iconKey: string;
+}
+
 export const ICON_SVGS: Record<string, string> = {
     globe: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>`,
     lock: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`,
@@ -24,7 +30,7 @@ export const ICON_SVGS: Record<string, string> = {
     bug: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20 8h-2.81c-.45-.78-1.08-1.45-1.83-1.95L17 4.41 15.59 3 13.5 5.09C13.02 5.03 12.52 5 12 5s-1.02.03-1.5.09L8.41 3 7 4.41l1.64 1.64C7.89 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81C7.85 19.79 9.79 21 12 21s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 9h-4v-2h4v2zm0-4h-4v-2h4v2z"/></svg>`,
 };
 
-export const CATEGORY_TAB_DEFS: Array<{ category: ToolCategory; groupKey: string; iconKey: string }> = [
+export const CATEGORY_TAB_DEFS: CategoryTabDefinition[] = [
     { category: "fs", groupKey: "Filesystem", iconKey: "folder" },
     { category: "notebook", groupKey: "Notebooks", iconKey: "book" },
     { category: "document", groupKey: "Documents", iconKey: "fileText" },

@@ -10,6 +10,7 @@ import {
     FileDeleteAssetSchema,
     FileExportMdSchema,
     FileExportResourcesSchema,
+    FileExtractDocSchema,
     FileGetDocAssetsSchema,
     FileGetImageOCRTextSchema,
     FileListUnusedAssetsSchema,
@@ -226,6 +227,61 @@ const handleDeleteAsset: ToolActionHandler = async ({ client, rawArgs }) => {
     });
 };
 
+const handleExtractDoc: ToolActionHandler = async ({ client, rawArgs }) => {
+    const parsed = FileExtractDocSchema.parse(rawArgs);
+
+    const mdResult = await fileApi.exportMdContent(client, parsed.id);
+    const markdown = typeof mdResult.content === 'string' ? mdResult.content : '';
+    const hPath = typeof mdResult.hPath === 'string' ? mdResult.hPath : '';
+
+    const docName = hPath.split('/').filter(Boolean).pop()?.replace(/\.sy$/, '') || parsed.id;
+    const idSuffix = parsed.id.slice(-7);
+    const folderName = `${docName}-${idSuffix}`;
+
+    const homeDir = process.env.USERPROFILE || process.env.HOME || '';
+    const outputRoot = parsed.outputDir
+        ? path.resolve(parsed.outputDir)
+        : path.join(homeDir, 'siyuan-extracted');
+    const targetDir = path.join(outputRoot, folderName);
+    const assetsDir = path.join(targetDir, 'assets');
+
+    if (fs.existsSync(outputRoot)) {
+        fs.rmSync(outputRoot, { recursive: true, force: true });
+    }
+    fs.mkdirSync(assetsDir, { recursive: true });
+
+    const docMdPath = path.join(targetDir, `${docName}.md`);
+    fs.writeFileSync(docMdPath, markdown, 'utf-8');
+
+    const assetRefs = [...markdown.matchAll(/\]\(assets\/([^)]+)\)/g)];
+    const structure = [`${docName}.md`];
+    let extractedCount = 0;
+    let skippedCount = 0;
+
+    for (const match of assetRefs) {
+        const assetRelPath = match[1];
+        const assetFullPath = path.join(assetsDir, assetRelPath);
+
+        try {
+            fs.mkdirSync(path.dirname(assetFullPath), { recursive: true });
+            const data = await client.readFileBinary(`data/assets/${assetRelPath}`);
+            fs.writeFileSync(assetFullPath, data);
+            structure.push(`assets/${assetRelPath}`);
+            extractedCount++;
+        } catch {
+            skippedCount++;
+        }
+    }
+
+    return createJsonResult({
+        extractedDir: targetDir,
+        docMdFile: `${docName}.md`,
+        extractedAssetCount: extractedCount,
+        skippedAssetCount: skippedCount,
+        structure,
+    });
+};
+
 export function createFileActionHandlers(thresholdMB: number, largeUploadThresholdBytes: number): Record<FileAction, ToolActionHandler> {
     return {
         upload_asset: handleUploadAsset(thresholdMB, largeUploadThresholdBytes),
@@ -238,5 +294,6 @@ export function createFileActionHandlers(thresholdMB: number, largeUploadThresho
         remove_unused_assets: handleRemoveUnusedAssets,
         rename_asset: handleRenameAsset,
         delete_asset: handleDeleteAsset,
+        extract_doc: handleExtractDoc,
     };
 }

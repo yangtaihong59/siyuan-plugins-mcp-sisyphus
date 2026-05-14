@@ -15,6 +15,7 @@ export {
 const CONFIG_STORAGE_KEY = "mcpToolsConfig";
 const PUPPY_SETTINGS_STORAGE_KEY = "puppySettings";
 const HTTP_SETTINGS_STORAGE_KEY = "mcpHttpSettings";
+const VERSION_CONTROL_SETTINGS_STORAGE_KEY = "versionControlSettings";
 
 const DEFAULT_PUPPY_TEST_INTERVAL_MS = 2200;
 const DEFAULT_HTTP_PORT = 36806;
@@ -36,6 +37,27 @@ export interface PuppySettings {
     testModeIntervalMs: number;
     showBubble: boolean;
     showClickHint: boolean;
+}
+
+export interface VersionControlSettings {
+    showDebugMeta: boolean;
+}
+
+export function buildDefaultVersionControlSettings(): VersionControlSettings {
+    return {
+        showDebugMeta: false,
+    };
+}
+
+export function normalizeVersionControlSettings(raw: unknown): VersionControlSettings {
+    const defaults = buildDefaultVersionControlSettings();
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return defaults;
+    }
+    const record = raw as Record<string, unknown>;
+    return {
+        showDebugMeta: typeof record.showDebugMeta === "boolean" ? record.showDebugMeta : defaults.showDebugMeta,
+    };
 }
 
 export function buildDefaultPuppySettings(): PuppySettings {
@@ -97,6 +119,19 @@ export async function savePersistedPuppySettings(settings: PuppySettings, plugin
     const normalized = normalizePuppySettings(settings);
     if (plugin?.saveData) {
         await plugin.saveData(PUPPY_SETTINGS_STORAGE_KEY, normalized);
+    }
+    return normalized;
+}
+
+export async function loadPersistedVersionControlSettings(plugin?: PluginStorage): Promise<VersionControlSettings> {
+    const raw = await plugin?.loadData?.(VERSION_CONTROL_SETTINGS_STORAGE_KEY);
+    return normalizeVersionControlSettings(raw);
+}
+
+export async function savePersistedVersionControlSettings(settings: VersionControlSettings, plugin?: PluginStorage): Promise<VersionControlSettings> {
+    const normalized = normalizeVersionControlSettings(settings);
+    if (plugin?.saveData) {
+        await plugin.saveData(VERSION_CONTROL_SETTINGS_STORAGE_KEY, normalized);
     }
     return normalized;
 }
