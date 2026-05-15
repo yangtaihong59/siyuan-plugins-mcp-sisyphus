@@ -87,7 +87,7 @@ describe('cli/dispatch', () => {
 
         vi.mocked(pluginCheck.ensureRequiredPluginInstalled).mockImplementationOnce(async (client) => {
             expect(client.getBaseUrl()).toBe('http://work');
-            expect(client.getAuthHeaders()).toEqual({ Authorization: 'Token work-token' });
+            expect(client.getAuthHeaders()).toEqual({ Connection: 'close', Authorization: 'Token work-token' });
         });
         const callToolSpy = vi.spyOn(TOOL_REGISTRY.notebook, 'callTool').mockResolvedValue(okResult());
 
@@ -122,7 +122,7 @@ describe('cli/dispatch', () => {
 
         vi.mocked(pluginCheck.ensureRequiredPluginInstalled).mockImplementationOnce(async (client) => {
             expect(client.getBaseUrl()).toBe('http://work-current');
-            expect(client.getAuthHeaders()).toEqual({ Authorization: 'Token current-token' });
+            expect(client.getAuthHeaders()).toEqual({ Connection: 'close', Authorization: 'Token current-token' });
         });
         const callToolSpy = vi.spyOn(TOOL_REGISTRY.notebook, 'callTool').mockResolvedValue(okResult());
 

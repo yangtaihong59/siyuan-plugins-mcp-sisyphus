@@ -40,12 +40,27 @@ async function initSiYuanClient(): Promise<SiYuanClient> {
     return client;
 }
 
+function createFastClient(): SiYuanClient {
+    const client = new SiYuanClient({ timeout: 3000 });
+    const envToken = process.env.SIYUAN_TOKEN;
+    if (envToken) {
+        client.setToken(envToken);
+    }
+    return client;
+}
+
 export async function createSiYuanServer(): Promise<Server> {
     const client = await initSiYuanClient();
+    const fastClient = createFastClient();
 
     async function getToolConfig(): Promise<ToolConfig> {
-        const config = await tryReadConfigFromAPI(client);
-        return config ?? buildDefaultToolConfig();
+        try {
+            const config = await tryReadConfigFromAPI(fastClient);
+            if (config) return config;
+        } catch {
+            // SiYuan unreachable — fall back to defaults below.
+        }
+        return buildDefaultToolConfig();
     }
 
     const initialConfig = await getToolConfig();
@@ -57,8 +72,12 @@ export async function createSiYuanServer(): Promise<Server> {
             jsonSchemaValidator: noopSchemaValidator,
         },
     );
-    const permMgr = new PermissionManager(client);
-    await permMgr.load();
+    const permMgr = new PermissionManager(fastClient);
+    try {
+        await permMgr.load();
+    } catch {
+        // SiYuan offline — permissions default to rwd (no restrictions).
+    }
 
     server.setRequestHandler(ListToolsRequestSchema, async () => {
         const config = await getToolConfig();

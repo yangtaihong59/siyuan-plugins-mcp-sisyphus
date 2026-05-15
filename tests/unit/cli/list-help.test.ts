@@ -170,7 +170,7 @@ describe('cli/list-help', () => {
 
         const callToolSpy = vi.spyOn(TOOL_REGISTRY.notebook, 'callTool').mockImplementationOnce(async (client) => {
             expect(client.getBaseUrl()).toBe('http://work-help');
-            expect(client.getAuthHeaders()).toEqual({ Authorization: 'Token help-token' });
+            expect(client.getAuthHeaders()).toEqual({ Connection: 'close', Authorization: 'Token help-token' });
             return { content: [{ type: 'text', text: '{"ok":true}' }] };
         });
 

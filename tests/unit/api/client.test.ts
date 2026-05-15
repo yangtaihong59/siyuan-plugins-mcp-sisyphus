@@ -87,6 +87,7 @@ describe('SiYuanClient', () => {
                 ok: false,
                 status: 500,
                 statusText: 'Internal Server Error',
+                arrayBuffer: async () => new ArrayBuffer(0),
             } as Response);
 
             await expect(client.request('/api/test')).rejects.toThrow('HTTP error: 500');
@@ -266,7 +267,7 @@ describe('SiYuanClient', () => {
 
             expect(result).toEqual(mockData);
             const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-            expect(init.headers).toEqual({ Authorization: 'Token upload-token' });
+            expect(init.headers).toEqual({ Connection: 'close', Authorization: 'Token upload-token' });
             expect(init.body).toBe(formData);
         });
 
