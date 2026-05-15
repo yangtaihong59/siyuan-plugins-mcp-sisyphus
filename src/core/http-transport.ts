@@ -111,6 +111,7 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpM
                 // New session
                 const transport = new StreamableHTTPServerTransport({
                     sessionIdGenerator: () => randomUUID(),
+                    retryInterval: 5000,
                 });
                 const server = await createServer();
                 await server.connect(transport);
@@ -146,6 +147,11 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpM
     const httpServer = isTls
         ? (require('https') as typeof import('https')).createServer(loadTlsCredentials(opts.tls!), requestHandler)
         : createHttpServer(requestHandler);
+
+    // Prevent Node.js default keepAliveTimeout (5s) from dropping idle SSE connections.
+    httpServer.keepAliveTimeout = 0;
+    httpServer.timeout = 0;
+    httpServer.headersTimeout = 60000;
 
     httpServer.on('connection', (socket) => {
         sockets.add(socket);

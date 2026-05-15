@@ -29,7 +29,9 @@ export class SiYuanClient {
     }
 
     getAuthHeaders(): Record<string, string> {
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = {
+            'Connection': 'close',
+        };
         if (this.token) {
             headers['Authorization'] = `Token ${this.token}`;
         }
@@ -37,23 +39,46 @@ export class SiYuanClient {
     }
 
     private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+        const DEFAULT_MAX_RETRIES = 3;
+        const DEFAULT_RETRY_BASE_DELAY_MS = 300;
+        let lastError: Error | null = null;
 
-        try {
-            const response = await fetch(url, { ...init, signal: controller.signal });
-            if (!response.ok) {
-                throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+        for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+            try {
+                const response = await fetch(url, { ...init, signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    // Do not retry 4xx (except 429).
+                    if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+                        throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+                    }
+                    // 5xx / 429 — drain body so the connection can be reused, then retry.
+                    await response.arrayBuffer().catch(() => {});
+                    lastError = new Error(`HTTP error: ${response.status} ${response.statusText}`);
+                    if (attempt < DEFAULT_MAX_RETRIES) continue;
+                    throw lastError;
+                }
+                return response;
+            } catch (error) {
+                clearTimeout(timeoutId);
+                if (error instanceof Error && error.name === 'AbortError') {
+                    lastError = new Error(`Request timeout after ${this.timeout}ms`);
+                } else {
+                    lastError = error instanceof Error ? error : new Error(String(error));
+                }
+                if (attempt >= DEFAULT_MAX_RETRIES) throw lastError;
             }
-            return response;
-        } catch (error) {
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw new Error(`Request timeout after ${this.timeout}ms`);
-            }
-            throw error;
-        } finally {
-            clearTimeout(timeoutId);
+
+            // Exponential backoff: 0.3s, 0.6s, 0.9s (matches siyuan-agent-bridge).
+            const delay = DEFAULT_RETRY_BASE_DELAY_MS * (attempt + 1);
+            await new Promise((resolve) => setTimeout(resolve, delay));
         }
+
+        throw lastError ?? new Error('Unknown fetch error');
     }
 
     private async readRemoteFile(path: string): Promise<Response> {
