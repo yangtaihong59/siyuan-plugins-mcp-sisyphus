@@ -86,7 +86,7 @@ const ERROR_RULES: ErrorRule[] = [
             /ECONNREFUSED/i,
             /fetch failed/i,
         ],
-        hint: 'The SiYuan kernel is unreachable. Make sure SiYuan is running and the MCP plugin is connected.',
+        hint: 'MCP server is running but the SiYuan kernel is unreachable. Prompt the user to start SiYuan. Do not explore source files to debug this.',
     },
 ];
 
