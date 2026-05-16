@@ -68,14 +68,14 @@
     type McpClientPresetId = (typeof MCP_CLIENT_PRESETS)[number]["id"];
     const MCP_TRANSPORT_PRESETS = [
         {
-            id: "http",
-            titleKey: "mcpTransportHttpTitle",
-            titleFallback: "HTTP/HTTPS",
-        },
-        {
             id: "stdio",
             titleKey: "mcpTransportStdioTitle",
             titleFallback: "stdio",
+        },
+        {
+            id: "http",
+            titleKey: "mcpTransportHttpTitle",
+            titleFallback: "HTTP/HTTPS",
         },
     ] as const;
     type McpTransportId = (typeof MCP_TRANSPORT_PRESETS)[number]["id"];
@@ -117,7 +117,7 @@
     let httpUnsubStatus: (() => void) | null = null;
     let httpUnsubLogs: (() => void) | null = null;
     let selectedMcpClientPreset: McpClientPresetId = "claude-code";
-    let selectedMcpTransport: McpTransportId = "http";
+    let selectedMcpTransport: McpTransportId = "stdio";
     $: changelogTitle = getLabel("toolSettingsChangelogTitle", "更新日志");
     $: changelogText = getLabel("toolSettingsChangelogText", "连接设置现按 MCP / CLI 分组，MCP 下再区分 HTTP/HTTPS 与 stdio。");
 
@@ -426,7 +426,7 @@
                     <tbody>
                         <tr>
                             <td>{getLabel("connectionTableDesktop", "桌面端（Windows / macOS / Linux）")}</td>
-                            <td>{getLabel("connectionTableDesktopModes", "HTTP 或 stdio 或 CLI")}</td>
+                            <td>{getLabel("connectionTableDesktopModes", "stdio 或 HTTP 或 CLI")}</td>
                         </tr>
                         <tr>
                             <td>{getLabel("connectionTableRemote", "Docker")}</td>
@@ -476,7 +476,7 @@
                             {/if}
                         {/each}
                     </div>
-                    <div class="http-note">{getLabel("mcpClientPresetsNote", "先选择客户端和连接方式，再复制对应格式。HTTP/HTTPS 会使用当前服务地址；stdio 会使用当前思源插件目录下的 mcp-server.cjs。")}</div>
+                    <div class="http-note">{getLabel("mcpClientPresetsNote", "先选择客户端和连接方式，再复制对应格式。stdio 会使用当前思源插件目录下的 mcp-server.cjs；HTTP/HTTPS 会使用当前服务地址。")}</div>
                 </div>
 
                 <details class="http-subproject">
