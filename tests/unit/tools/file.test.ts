@@ -217,4 +217,30 @@ describe('file tool asset actions', () => {
         expect(parsed.extractedAssetCount).toBe(0);
         expect(parsed.skippedAssetCount).toBe(1);
     });
+
+    it('extracts images with titles correctly', async () => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.exportMdContent).mockResolvedValue({
+            content: '![alt](assets/cover.png "image title")\n\nSome text\n',
+            hPath: '/My Document',
+        });
+
+        const readFileBinary = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
+        const localClient = createMockClient({ readFileBinary });
+        const fs = (await import('node:fs')).default;
+        vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+        vi.spyOn(fs, 'rmSync').mockImplementation((() => undefined) as typeof fs.rmSync);
+        vi.spyOn(fs, 'mkdirSync').mockImplementation((() => undefined) as typeof fs.mkdirSync);
+        vi.spyOn(fs, 'writeFileSync').mockImplementation((() => undefined) as typeof fs.writeFileSync);
+
+        const result = await callFileTool(localClient, {
+            action: 'extract_doc',
+            id: '20260128210016-dw9cpey',
+        }, config.file, {} as never);
+
+        const parsed = parseResult(result);
+        expect(parsed.extractedAssetCount).toBe(1);
+        expect(parsed.skippedAssetCount).toBe(0);
+        expect(readFileBinary).toHaveBeenCalledWith('data/assets/cover.png');
+    });
 });

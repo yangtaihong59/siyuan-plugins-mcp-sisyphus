@@ -253,7 +253,7 @@ const handleExtractDoc: ToolActionHandler = async ({ client, rawArgs }) => {
     const docMdPath = path.join(targetDir, `${docName}.md`);
     fs.writeFileSync(docMdPath, markdown, 'utf-8');
 
-    const assetRefs = [...markdown.matchAll(/\]\(assets\/([^)]+)\)/g)];
+    const assetRefs = [...markdown.matchAll(/\]\(assets\/([^\s)"']+)(?:\s+"[^"]*")?\)/g)];
     const structure = [`${docName}.md`];
     let extractedCount = 0;
     let skippedCount = 0;
