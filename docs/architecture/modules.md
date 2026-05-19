@@ -435,7 +435,7 @@ Before dispatch, reads `plugin.json` and permission files via SiYuan API to ensu
 
 | Feature | Description |
 |---------|-------------|
-| **Instantiation** | `new SiYuanClient(config)`, `baseUrl` defaults to `http://127.0.0.1:6806`, `timeout` defaults to 30s |
+| **Instantiation** | `new SiYuanClient(config)`, `baseUrl` defaults to `http://127.0.0.1:6806`, `timeout` defaults to 5s |
 | **Token management** | `setToken()` / `getAuthHeaders()` inject `Authorization: Token <token>` |
 | **Unified request** | `request<T>(endpoint, data?)` auto-parses `SiYuanResponse<T>` (returns `data` when `code === 0`, throws `SiYuanError` otherwise) |
 | **File operations** | `readFile()` / `readFileBinary()` / `writeFile()` (FormData + File upload) |

@@ -17,7 +17,7 @@ export class SiYuanClient {
             || process.env.SIYUAN_API_URL
             || 'http://127.0.0.1:6806';
         this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
-        this.timeout = config.timeout || 30000;
+        this.timeout = config.timeout || 5000;
     }
 
     setToken(token: string): void {
