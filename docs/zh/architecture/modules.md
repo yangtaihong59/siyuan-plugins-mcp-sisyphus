@@ -435,7 +435,7 @@ CLI flag (--url / --token)
 
 | 特性 | 说明 |
 |------|------|
-| **实例化** | `new SiYuanClient(config)`，`baseUrl` 默认 `http://127.0.0.1:6806`，`timeout` 默认 5s |
+| **实例化** | `new SiYuanClient(config)`，`baseUrl` 默认 `http://127.0.0.1:6806`，`timeout` 默认 2s |
 | **Token 管理** | `setToken()` / `getAuthHeaders()` 注入 `Authorization: Token <token>` |
 | **统一请求** | `request<T>(endpoint, data?)` 自动解析 `SiYuanResponse<T>`（`code === 0` 返回 `data`，否则抛 `SiYuanError`） |
 | **文件操作** | `readFile()` / `readFileBinary()` / `writeFile()`（FormData + File 上传） |
