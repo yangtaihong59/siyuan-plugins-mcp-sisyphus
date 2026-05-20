@@ -30,8 +30,10 @@ import { HttpServerLauncher } from "@/server-launcher";
 
 const PUPPY_ROOT_ID = "sy-puppy-root";
 const VERSION_CONTROL_DOCK_TYPE = "sisyphusTimelineDock";
+const VERSION_CONTROL_DOCK_POSITION = "RightBottom";
 const VERSION_CONTROL_DOCK_ROOT_ID = "SisyphusTimelineDockPanel";
-const VERSION_CONTROL_ICON = `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 3a3 3 0 0 1 2 5.24v1.27l6 3V8.24A3 3 0 1 1 17 9v5a1 1 0 0 1-1.45.89L9 11.62v4.14A3 3 0 1 1 7 15.76V8.24A3 3 0 0 1 7 3Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM7 17a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>`;
+const VERSION_CONTROL_ICON_ID = "iconSisyphusTimelineDock";
+const VERSION_CONTROL_ICON_SYMBOL = `<symbol id="${VERSION_CONTROL_ICON_ID}" viewBox="0 0 24 24"><path fill="currentColor" d="M7 3a3 3 0 0 1 2 5.24v1.27l6 3V8.24A3 3 0 1 1 17 9v5a1 1 0 0 1-1.45.89L9 11.62v4.14A3 3 0 1 1 7 15.76V8.24A3 3 0 0 1 7 3Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM7 17a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></symbol>`;
 
 type CurrentDocumentContext = {
     id: string;
@@ -52,6 +54,17 @@ export default class SiyuanMCP extends Plugin {
     public httpLauncher: HttpServerLauncher | null = null;
 
     async onload() {
+        this.addIcons(VERSION_CONTROL_ICON_SYMBOL);
+        this.registerVersionControlDock();
+        (this as any).addCommand?.({
+            langKey: "openSnapshotVersionControl",
+            langText: this.i18n?.timeline_open_command || "打开文档时间线",
+            hotkey: "",
+            callback: () => this.openVersionControl(),
+            editorCallback: (protyle: any) => this.openVersionControl(protyle),
+        });
+        this.registerVersionControlEvents();
+
         const { config: normalized, warning } = await loadPersistedToolConfigState(this);
         if (warning) {
             emitToolConfigWarningOnce(warning, (message) => {
@@ -64,15 +77,9 @@ export default class SiyuanMCP extends Plugin {
         this.puppyVisible = this.puppySettings.visible;
         this.httpSettings = await loadPersistedHttpServerSettings(this);
         this.versionControlSettings = await loadPersistedVersionControlSettings(this);
-
-        (this as any).addCommand?.({
-            langKey: "openSnapshotVersionControl",
-            langText: this.i18n?.timeline_open_command || "打开文档时间线",
-            hotkey: "",
-            callback: () => this.openVersionControl(),
-            editorCallback: (protyle: any) => this.openVersionControl(protyle),
+        this.versionControlPanel?.$set({
+            showDebugMeta: this.versionControlSettings.showDebugMeta,
         });
-        this.registerVersionControlEvents();
 
         const support = HttpServerLauncher.getSupportInfo();
         if (!support.supported) {
@@ -211,7 +218,6 @@ export default class SiyuanMCP extends Plugin {
 
     onLayoutReady() {
         this.mountPuppy();
-        this.registerVersionControlDock();
     }
 
 
@@ -342,14 +348,13 @@ export default class SiyuanMCP extends Plugin {
     }
 
     private registerVersionControlDock() {
-        const addDock = (this as any).addDock;
-        if (this.versionControlDockRegistered || typeof addDock !== "function") return;
+        if (this.versionControlDockRegistered) return;
         this.versionControlDockRegistered = true;
-        addDock.call(this, {
+        this.addDock({
             config: {
-                position: "RightBottom",
-                size: { width: 420, height: null },
-                icon: VERSION_CONTROL_ICON,
+                position: VERSION_CONTROL_DOCK_POSITION,
+                size: { width: 420, height: 0 },
+                icon: VERSION_CONTROL_ICON_ID,
                 title: this.i18n?.timeline_dock_title || "文档时间线",
                 show: true,
             },
@@ -445,8 +450,12 @@ export default class SiyuanMCP extends Plugin {
 
     private showVersionControlDock() {
         const layout = (window as any)?.siyuan?.layout;
-        layout?.rightDock?.showDock?.();
-        layout?.leftDock?.showDock?.();
+        const targetDock = getDockByPosition(layout, VERSION_CONTROL_DOCK_POSITION);
+        if (typeof targetDock?.toggleModel === "function") {
+            targetDock.toggleModel(VERSION_CONTROL_DOCK_TYPE, true, false, false, true);
+            return;
+        }
+        targetDock?.showDock?.();
     }
 
     private unmountVersionControlDock() {
@@ -471,4 +480,10 @@ function getDocumentTitleFromPath(path: unknown): string {
     if (typeof path !== "string" || !path.trim()) return "";
     const segment = path.split("/").filter(Boolean).at(-1) ?? "";
     return segment.replace(/\.sy$/i, "") || "";
+}
+
+function getDockByPosition(layout: any, position: string): any {
+    if (position.startsWith("Left")) return layout?.leftDock;
+    if (position.startsWith("Bottom")) return layout?.bottomDock;
+    return layout?.rightDock;
 }

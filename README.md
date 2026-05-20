@@ -21,7 +21,7 @@
   <a href="https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/">Documentation</a>
 </p>
 
-> **Latest:** `v0.4.6` — Fixed Document Timeline dock registration on cold startup, corrected per-document snapshot counts, and kept the diff header above rollback controls.
+> **Latest:** `v0.4.7` — Improved Document Timeline scroll synchronization, made dock registration more reliable after startup, and added support links.
 
 <p align="center">
   <img src="docs/archive/timeline.png" alt="Document Timeline" width="720">
@@ -99,6 +99,13 @@ For full setup steps, use the documentation links below.
 - [Permissions](./docs/reference/permissions.md)
 - [Development Guide](./docs/development/index.md)
 - [中文 README](./README_zh_CN.md)
+
+## Support
+
+If you find this project helpful, please consider supporting it! Your support is what keeps me motivated to maintain and improve it.
+<p align="left">
+  <img src="docs/archive/thank.jpeg" alt="Support QR code" width="280">
+</p>
 
 ## License
 

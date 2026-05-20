@@ -53,7 +53,14 @@ export interface TimelineEntryContent {
     newContent: string;
 }
 
+export interface DiffViewportState {
+    top: number;
+    height: number;
+    capacity: number;
+}
+
 export const TIMELINE_TAG_PREFIX = 'sisyphustimeline';
+export const DIFF_VIEWPORT_EPSILON = 0.01;
 
 export function isTimelineSnapshot(snapshot: TimelineSnapshot): boolean {
     return typeof snapshot.tag === 'string' && snapshot.tag.startsWith(TIMELINE_TAG_PREFIX);
@@ -187,6 +194,31 @@ export function selectInitialTimelineEntry(
         : undefined;
     if (currentSelection) return currentSelection;
     return ordered.find((entry) => entry.documentKey === documentKey);
+}
+
+export function shouldUpdateDiffViewportState(
+    current: DiffViewportState,
+    next: DiffViewportState,
+    epsilon = DIFF_VIEWPORT_EPSILON,
+): boolean {
+    return Math.abs(current.top - next.top) >= epsilon
+        || Math.abs(current.height - next.height) >= epsilon
+        || current.capacity !== next.capacity;
+}
+
+export function canReuseLiveDocumentBlock(params: {
+    blockId: string;
+    cachedBlockId: string;
+    cachedBlock: { isConnected?: boolean } | null;
+    isVisible: boolean;
+    isOutsideTimeline: boolean;
+    isInCurrentDocument: boolean;
+}): boolean {
+    return params.blockId === params.cachedBlockId
+        && Boolean(params.cachedBlock?.isConnected)
+        && params.isVisible
+        && params.isOutsideTimeline
+        && params.isInCurrentDocument;
 }
 
 function sanitizeTimelineTagLabel(label: string): string {
