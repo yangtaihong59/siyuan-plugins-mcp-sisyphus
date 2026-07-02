@@ -20,6 +20,8 @@ const VERSION_CONTROL_SETTINGS_STORAGE_KEY = "versionControlSettings";
 const DEFAULT_PUPPY_TEST_INTERVAL_MS = 2200;
 const DEFAULT_HTTP_PORT = 36806;
 const DEFAULT_HTTP_HOST = "127.0.0.1";
+export const HTTP_BIND_HOST_OPTIONS = ["127.0.0.1", "0.0.0.0"] as const;
+export type HttpServerHost = typeof HTTP_BIND_HOST_OPTIONS[number];
 export const DEFAULT_PUPPY_APPEARANCE: PuppyAppearanceSettings = {
     bodyColor: "#4a7fff",
     pawColor: "#3060d0",
@@ -220,7 +222,7 @@ export async function savePersistedVersionControlSettings(settings: VersionContr
 
 export interface HttpServerSettings {
     enabled: boolean;
-    host: string;
+    host: HttpServerHost;
     port: number;
     token: string;
     authEnabled: boolean;
@@ -263,6 +265,14 @@ export function buildDefaultHttpServerSettings(): HttpServerSettings {
     };
 }
 
+export function normalizeHttpServerHost(raw: unknown): HttpServerHost {
+    if (typeof raw !== "string") {
+        return DEFAULT_HTTP_HOST;
+    }
+    const host = raw.trim();
+    return HTTP_BIND_HOST_OPTIONS.includes(host as HttpServerHost) ? host as HttpServerHost : DEFAULT_HTTP_HOST;
+}
+
 export function normalizeHttpServerSettings(raw: unknown): HttpServerSettings {
     const defaults = buildDefaultHttpServerSettings();
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -273,9 +283,7 @@ export function normalizeHttpServerSettings(raw: unknown): HttpServerSettings {
         ? Math.floor(record.port)
         : defaults.port;
     const port = Math.max(1, Math.min(65535, rawPort));
-    const host = typeof record.host === "string" && record.host.trim().length > 0
-        ? record.host.trim()
-        : defaults.host;
+    const host = normalizeHttpServerHost(record.host);
     const token = typeof record.token === "string" && record.token.length >= 8
         ? record.token
         : defaults.token;

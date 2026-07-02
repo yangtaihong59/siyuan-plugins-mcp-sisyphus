@@ -4,7 +4,7 @@
 
     import SettingPanel from "../../shared/setting-panel.svelte";
     import { getHttpLifecycleLogs, onHttpLifecycleLogsChange, type HttpServerStatus } from "@/server-launcher";
-    import { hasValidHttpTlsFiles, regenerateHttpServerToken, savePersistedHttpServerSettings, type HttpServerSettings } from "../tool-config-storage";
+    import { HTTP_BIND_HOST_OPTIONS, hasValidHttpTlsFiles, regenerateHttpServerToken, savePersistedHttpServerSettings, type HttpServerHost, type HttpServerSettings } from "../tool-config-storage";
 
     export let plugin: any;
     export let group: string;
@@ -403,6 +403,13 @@
         httpDirty = true;
     }
 
+    function getHttpHostOptionLabel(host: HttpServerHost): string {
+        if (host === "0.0.0.0") {
+            return getLabel("httpHostAllInterfaces", "0.0.0.0 (all IPv4 interfaces)");
+        }
+        return getLabel("httpHostLoopback", "127.0.0.1 (local machine only)");
+    }
+
     async function toggleHttpAutoStart(value: boolean) {
         const next = { ...httpSettings, enabled: value };
         await persistHttpSettings(next, false);
@@ -545,7 +552,11 @@
 
                             <label class="http-field">
                                 <span class="http-label">{getLabel("httpHost", "Host")}</span>
-                                <input type="text" class="b3-text-field" bind:value={httpSettings.host} on:input={markHttpDirty} placeholder="127.0.0.1" />
+                                <select class="b3-select" bind:value={httpSettings.host} on:change={markHttpDirty}>
+                                    {#each HTTP_BIND_HOST_OPTIONS as host}
+                                        <option value={host}>{getHttpHostOptionLabel(host)}</option>
+                                    {/each}
+                                </select>
                             </label>
 
                             <label class="http-field">
