@@ -10,8 +10,8 @@ export interface TimelineSnapshot {
     id: string;
     memo?: string;
     tag?: string;
-    created?: string;
-    updated?: string;
+    created?: string | number; // 思源实际返回 epoch 毫秒 number（dejavu Created int64），也存在字符串格式
+    updated?: string | number;
     hCreated?: string;
     [key: string]: unknown;
 }
@@ -44,6 +44,7 @@ export interface TimelineEntry {
     oldFileId: string;
     newFileId: string;
     hasDiff?: boolean;
+    noChanges?: boolean;
     updated?: string | number;
 }
 
@@ -62,16 +63,77 @@ export interface DiffViewportState {
 export const TIMELINE_TAG_PREFIX = 'sisyphustimeline';
 export const DIFF_VIEWPORT_EPSILON = 0.01;
 
+export interface TimelineNodeRecord {
+    name: string;
+    created: number;
+    snapshotId: string;
+    tag?: string;
+}
+
 export function isTimelineSnapshot(snapshot: TimelineSnapshot): boolean {
     return typeof snapshot.tag === 'string' && snapshot.tag.startsWith(TIMELINE_TAG_PREFIX);
 }
 
-export function createTimelineTagName(label: string, existingSnapshots: TimelineSnapshot[] = []): string {
-    const base = `${TIMELINE_TAG_PREFIX}${sanitizeTimelineTagLabel(label)}`;
-    const existing = new Set(existingSnapshots.map((snapshot) => snapshot.tag).filter(Boolean));
+export function createTimelineTagName(label: string, documentId: string, existingTags: string[] = []): string {
+    const base = `${TIMELINE_TAG_PREFIX}_${documentId}_${sanitizeTimelineTagLabel(label)}`;
+    const existing = new Set(existingTags.filter(Boolean));
     if (!existing.has(base)) return base;
     const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
     return `${base}${stamp}`;
+}
+
+/**
+ * 思源 tag 名必须通过 gulu.File.IsValidFilename 校验（Windows 文件名非法字符 `<>:"/\|?*` 会被拒绝），
+ * 因此分隔符不能用冒号；使用 `_`（合法文件名字符），docId 为思源固定 22 位 ID（\d{14}-[0-9a-z]{7}）。
+ */
+const TIMELINE_TAG_DOCUMENT_PATTERN = /^_(\d{14}-[0-9a-z]{7})_(.*)$/;
+
+/**
+ * 从时间线 tag 中提取文档 ID。
+ * 新格式：sisyphustimeline_<docId>_<label>；旧格式（sisyphustimeline<label>）返回 undefined。
+ */
+export function extractTimelineDocumentId(tag: string): string | undefined {
+    if (!tag.startsWith(TIMELINE_TAG_PREFIX)) return undefined;
+    const rest = tag.slice(TIMELINE_TAG_PREFIX.length);
+    if (!rest.startsWith('_')) return undefined;
+    return rest.match(TIMELINE_TAG_DOCUMENT_PATTERN)?.[1];
+}
+
+/**
+ * 从时间线 tag 中提取展示用名称（label 部分）。
+ * 新格式返回 _<label> 段；旧格式返回前缀后的整段；非时间线 tag 原样返回。
+ */
+export function extractTimelineTagLabel(tag: string): string {
+    if (!tag.startsWith(TIMELINE_TAG_PREFIX)) return tag;
+    const rest = tag.slice(TIMELINE_TAG_PREFIX.length);
+    if (!rest.startsWith('_')) return rest;
+    const match = rest.match(TIMELINE_TAG_DOCUMENT_PATTERN);
+    return match ? match[2] : rest;
+}
+
+export function parseTimelineNodeRecords(raw: unknown): TimelineNodeRecord[] {
+    if (typeof raw !== 'string' || !raw.trim()) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter((item): item is TimelineNodeRecord => Boolean(item)
+                && typeof item === 'object'
+                && typeof (item as TimelineNodeRecord).name === 'string'
+                && typeof (item as TimelineNodeRecord).snapshotId === 'string')
+            .map((item) => ({
+                name: item.name,
+                created: typeof item.created === 'number' ? item.created : Date.now(),
+                snapshotId: item.snapshotId,
+                ...(typeof item.tag === 'string' ? { tag: item.tag } : {}),
+            }));
+    } catch {
+        return [];
+    }
+}
+
+export function serializeTimelineNodeRecords(nodes: TimelineNodeRecord[]): string {
+    return JSON.stringify(nodes);
 }
 
 export function sortSnapshotsNewestFirst(snapshots: TimelineSnapshot[]): TimelineSnapshot[] {
@@ -152,15 +214,18 @@ export function buildDocumentTimeline(pairDiffs: TimelinePairDiff[]): {
 
 export function snapshotLabel(snapshot: TimelineSnapshot): string {
     if (typeof snapshot.tag === 'string' && snapshot.tag.startsWith(TIMELINE_TAG_PREFIX)) {
-        return snapshot.tag.slice(TIMELINE_TAG_PREFIX.length) || snapshot.memo || snapshot.id;
+        const label = extractTimelineTagLabel(snapshot.tag);
+        if (label) return label;
+        return snapshot.memo || snapshot.id;
     }
-    return snapshot.tag || snapshot.memo || snapshot.hCreated || snapshot.created || snapshot.id;
+    const fallback = snapshot.tag || snapshot.memo || snapshot.hCreated;
+    if (fallback) return fallback;
+    return snapshot.created !== undefined ? String(snapshot.created) : snapshot.id;
 }
 
 export function formatSnapshotTime(snapshot: TimelineSnapshot): string {
     const raw = getSnapshotTimeSource(snapshot);
     if (raw === undefined || raw === null || raw === '') return '';
-    if (typeof raw === 'number') return formatDate(new Date(raw));
     const parsed = parseSnapshotTimeValue(raw);
     if (parsed > 0) return formatDate(new Date(parsed));
     return String(raw);
@@ -169,8 +234,8 @@ export function formatSnapshotTime(snapshot: TimelineSnapshot): string {
 export function filterChangedUniqueTimelineEntries(items: TimelineEntryContent[]): TimelineEntry[] {
     const latestByContent = new Map<string, TimelineEntry>();
     for (const item of items) {
-        if (item.oldContent === item.newContent) continue;
-        const contentKey = item.oldContent;
+        if (!item.entry.noChanges && item.oldContent === item.newContent) continue;
+        const contentKey = item.entry.noChanges ? `__sisyphus_nochange__:${item.entry.snapshot.id}` : item.oldContent;
         const existing = latestByContent.get(contentKey);
         if (!existing || getSnapshotTime(item.entry.snapshot) > getSnapshotTime(existing.snapshot)) {
             latestByContent.set(contentKey, item.entry);
@@ -249,12 +314,15 @@ function getSnapshotTimeSource(snapshot: TimelineSnapshot): string | number | un
 }
 
 function parseSnapshotTimeValue(value: unknown): number {
-    if (typeof value === 'number') return value;
+    if (typeof value === 'number') return value < 1e12 ? value * 1000 : value; // 10 位 epoch 秒 → 毫秒；毫秒原样
     if (typeof value !== 'string') return 0;
     const parsed = Date.parse(value);
     if (!Number.isNaN(parsed)) return parsed;
     const digits = value.match(/\d+/g)?.join('');
     if (digits) {
+        // 纯数字 epoch 字符串：10 位秒 → 毫秒；13 位毫秒原样（与 number 分支一致）
+        if (/^\d{10}$/.test(digits)) return Number(digits) * 1000;
+        if (/^\d{13}$/.test(digits)) return Number(digits);
         const compact = digits.padEnd(14, '0').slice(0, 14);
         const match = compact.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
         if (match) {

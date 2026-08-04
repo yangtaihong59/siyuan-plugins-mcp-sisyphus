@@ -19,13 +19,15 @@
         formatSnapshotTime,
         getDocumentKey,
         canReuseLiveDocumentBlock,
-        isTimelineSnapshot,
+        parseTimelineNodeRecords,
         selectInitialTimelineEntry,
+        serializeTimelineNodeRecords,
         shouldUpdateDiffViewportState,
         snapshotLabel,
         sortSnapshotsNewestFirst,
         type TimelineEntry,
         type TimelineEntryContent,
+        type TimelineNodeRecord,
         type TimelineSnapshot,
     } from "./timeline";
 
@@ -60,7 +62,7 @@
         updated?: string | number;
     };
     const CURRENT_SNAPSHOT_MEMO_PREFIX = "[Sisyphus Timeline Current]";
-    const ROOT_TIMELINE_SNAPSHOT_LABEL = "root";
+    const TIMELINE_NODE_ATTR_KEY = "custom-sisyphus-timeline";
     const TIMELINE_AUTO_COLLAPSE_WIDTH = 920;
     const UNCHANGED_CONTEXT_BLOCKS = 1;
     const MINIMAP_UNIT_HEIGHT = 34;
@@ -71,7 +73,7 @@
     export let showDebugMeta = false;
     export let i18n: Record<string, string> = {};
 
-    let taggedSnapshots: Snapshot[] = [];
+    let timelineNodes: TimelineNodeRecord[] = [];
     let currentSnapshot: Snapshot | null = null;
     let timelineEntries: TimelineEntry[] = [];
     let selectedEntryKey = "";
@@ -676,7 +678,7 @@
     }
 
     function timelineSnapshotCountText(count: number): string {
-        return t("timeline_snapshot_count", "${count} 个时间线快照", { count });
+        return t("timeline_snapshot_count", "${count} 个时间线节点", { count });
     }
 
     function localizeAcceptReason(reason: string | undefined): string {
@@ -695,42 +697,43 @@
         loadedDocumentId = currentDocumentId;
         try {
             await refreshDocumentTitle();
-            const data = await post<{ snapshots?: Snapshot[] }>("/api/repo/getRepoTagSnapshots", {});
+            const nodes = await readTimelineNodes();
             if (!shouldAutoLoadTimeline()) return;
-            taggedSnapshots = await ensureRootTimelineSnapshot(sortSnapshotsNewestFirst((data.snapshots ?? []).filter(isTimelineSnapshot)));
-            if (!shouldAutoLoadTimeline()) return;
-            currentSnapshot = currentDocumentId ? await createCurrentSnapshot() : null;
+            timelineNodes = nodes;
+            if (!currentDocumentId || nodes.length === 0) {
+                currentSnapshot = null;
+                timelineEntries = [];
+                selectedEntryKey = "";
+                return;
+            }
+            currentSnapshot = await createCurrentSnapshot();
             const entryContents: TimelineEntryContent[] = [];
             const contentCache = new Map<string, string>();
-            if (currentSnapshot) {
-                for (const snapshot of taggedSnapshots) {
-                    if (snapshot.id === currentSnapshot.id) continue;
-                    const diff = await post<Record<string, RepoSnapshotFileChange[] | unknown>>("/api/repo/diffRepoSnapshots", {
-                        left: snapshot.id,
-                        right: currentSnapshot.id,
-                    });
-                    const changedFile = findChangedFileForCurrentDocument(buildChangedFiles(diff));
-                    if (!changedFile) {
-                        if (isRootTimelineSnapshot(snapshot)) {
-                            entryContents.push({
-                                entry: createRootTimelineEntry(snapshot, currentSnapshot),
-                                oldContent: ROOT_TIMELINE_SNAPSHOT_LABEL,
-                                newContent: `${ROOT_TIMELINE_SNAPSHOT_LABEL}:${currentSnapshot.id}`,
-                            });
-                        }
-                        continue;
-                    }
-                    const entry = createCurrentComparisonEntry(snapshot, currentSnapshot, changedFile);
-                    const [oldSnapshotContent, newSnapshotContent] = await Promise.all([
-                        readSnapshotFileContent(entry.oldFileId, contentCache),
-                        readSnapshotFileContent(entry.newFileId, contentCache),
-                    ]);
+            for (const node of nodes) {
+                if (!node.snapshotId || node.snapshotId === currentSnapshot.id) continue;
+                const diff = await post<Record<string, RepoSnapshotFileChange[] | unknown>>("/api/repo/diffRepoSnapshots", {
+                    left: node.snapshotId,
+                    right: currentSnapshot.id,
+                });
+                const changedFile = findChangedFileForCurrentDocument(buildChangedFiles(diff));
+                if (!changedFile) {
                     entryContents.push({
-                        entry,
-                        oldContent: oldSnapshotContent,
-                        newContent: newSnapshotContent,
+                        entry: createNoChangeTimelineEntry(node, currentSnapshot),
+                        oldContent: "",
+                        newContent: "",
                     });
+                    continue;
                 }
+                const entry = createCurrentComparisonEntry(snapshotFromNode(node), currentSnapshot, changedFile);
+                const [oldSnapshotContent, newSnapshotContent] = await Promise.all([
+                    readSnapshotFileContent(entry.oldFileId, contentCache),
+                    readSnapshotFileContent(entry.newFileId, contentCache),
+                ]);
+                entryContents.push({
+                    entry,
+                    oldContent: oldSnapshotContent,
+                    newContent: newSnapshotContent,
+                });
             }
 
             timelineEntries = filterChangedUniqueTimelineEntries(entryContents);
@@ -745,34 +748,52 @@
         }
     }
 
-    async function ensureRootTimelineSnapshot(snapshots: Snapshot[]): Promise<Snapshot[]> {
-        if (!currentDocumentId || hasRootTimelineSnapshot(snapshots)) return snapshots;
-        await createRootTimelineSnapshot();
-        const snapshot = await findNewestSnapshotForMemo(ROOT_TIMELINE_SNAPSHOT_LABEL);
-        if (!snapshot?.id) throw new Error(t("timeline_error_root_snapshot_not_found", "根快照已创建，但未能定位"));
-        await post("/api/repo/tagSnapshot", {
-            id: snapshot.id,
-            name: createTimelineTagName(ROOT_TIMELINE_SNAPSHOT_LABEL, snapshots),
-        });
-        const data = await post<{ snapshots?: Snapshot[] }>("/api/repo/getRepoTagSnapshots", {});
-        return sortSnapshotsNewestFirst((data.snapshots ?? []).filter(isTimelineSnapshot));
-    }
-
-    async function createRootTimelineSnapshot() {
+    async function readTimelineNodes(): Promise<TimelineNodeRecord[]> {
+        if (!currentDocumentId) return [];
         try {
-            await post("/api/repo/createSnapshot", { memo: ROOT_TIMELINE_SNAPSHOT_LABEL });
+            const attrs = await post<Record<string, string>>("/api/attr/getBlockAttrs", { id: currentDocumentId });
+            return parseTimelineNodeRecords(attrs?.[TIMELINE_NODE_ATTR_KEY]);
         } catch {
-            // SiYuan rejects duplicate snapshots when an equivalent automatic snapshot already exists.
-            // Root creation can still tag that newest snapshot via findNewestSnapshotForMemo's fallback.
+            return [];
         }
     }
 
-    function hasRootTimelineSnapshot(snapshots: Snapshot[]): boolean {
-        return snapshots.some((snapshot) => snapshotLabel(snapshot) === ROOT_TIMELINE_SNAPSHOT_LABEL);
+    async function writeTimelineNodes(nodes: TimelineNodeRecord[]) {
+        if (!currentDocumentId) return;
+        await post("/api/attr/setBlockAttrs", {
+            id: currentDocumentId,
+            attrs: { [TIMELINE_NODE_ATTR_KEY]: serializeTimelineNodeRecords(nodes) },
+        });
     }
 
-    function isRootTimelineSnapshot(snapshot: Snapshot): boolean {
-        return snapshotLabel(snapshot) === ROOT_TIMELINE_SNAPSHOT_LABEL;
+    function snapshotFromNode(node: TimelineNodeRecord): Snapshot {
+        return {
+            id: node.snapshotId,
+            ...(typeof node.tag === 'string' ? { tag: node.tag } : {}),
+            created: node.created,
+        };
+    }
+
+    function createNoChangeTimelineEntry(node: TimelineNodeRecord, current: Snapshot): TimelineEntry {
+        return {
+            key: `${node.snapshotId}:${current.id}:${currentDocumentId}:nochange`,
+            documentKey: currentDocumentId,
+            title: node.name || currentDocumentTitle || currentDocumentId,
+            kind: "modified",
+            snapshot: snapshotFromNode(node),
+            previousSnapshot: current,
+            file: {
+                key: `${currentDocumentId}:nochange:${node.snapshotId}`,
+                kind: "modified",
+                title: node.name || currentDocumentTitle || currentDocumentId,
+                documentId: currentDocumentId,
+            },
+            oldFileId: "",
+            newFileId: "",
+            hasDiff: false,
+            noChanges: true,
+            updated: node.created,
+        };
     }
 
     async function refreshDocumentTitle() {
@@ -827,31 +848,14 @@
         };
     }
 
-    function createRootTimelineEntry(snapshot: Snapshot, current: Snapshot): TimelineEntry {
-        return {
-            key: `${snapshot.id}:${current.id}:${currentDocumentId}:root`,
-            documentKey: currentDocumentId,
-            title: currentDocumentTitle || currentDocumentId,
-            kind: "modified",
-            snapshot,
-            previousSnapshot: current,
-            file: {
-                key: `${currentDocumentId}:root`,
-                kind: "modified",
-                title: currentDocumentTitle || currentDocumentId,
-                documentId: currentDocumentId,
-            },
-            oldFileId: "",
-            newFileId: "",
-            hasDiff: false,
-            updated: snapshot.updated ?? snapshot.created,
-        };
-    }
-
     async function createTimelineNode() {
         const text = memo.trim();
         if (!text) {
             showMessage(t("timeline_msg_name_required", "请先填写时间线节点名称"));
+            return;
+        }
+        if (!currentDocumentId) {
+            showMessage(t("timeline_no_document", "未检测到可用文档"));
             return;
         }
         loadingSnapshots = true;
@@ -860,7 +864,14 @@
             await post("/api/repo/createSnapshot", { memo: text });
             const snapshot = await findNewestSnapshotForMemo(text);
             if (!snapshot?.id) throw new Error(t("timeline_error_new_snapshot_not_found", "快照已创建，但未能定位新快照"));
-            await post("/api/repo/tagSnapshot", { id: snapshot.id, name: createTimelineTagName(text, taggedSnapshots) });
+            const existingTags = timelineNodes
+                .map((node) => node.tag)
+                .filter((tag): tag is string => Boolean(tag));
+            const tagName = createTimelineTagName(text, currentDocumentId, existingTags);
+            await post("/api/repo/tagSnapshot", { id: snapshot.id, name: tagName });
+            const nodes = await readTimelineNodes();
+            nodes.push({ name: text, created: Date.now(), snapshotId: snapshot.id, tag: tagName });
+            await writeTimelineNodes(nodes);
             memo = "";
             showMessage(t("timeline_msg_node_created", "时间线节点已创建"));
             await loadTimeline();
@@ -910,6 +921,13 @@
             });
             const changedFile = findChangedFileForCurrentDocument(buildChangedFiles(diff));
             if (!changedFile) {
+                if (baseEntry.noChanges) {
+                    const refreshedEntry = { ...baseEntry, previousSnapshot: currentSnapshot };
+                    timelineEntries = timelineEntries.map((entry) => entry.key === entryKey ? refreshedEntry : entry);
+                    selectedEntryKey = refreshedEntry.key;
+                    await loadTimelineEntry(refreshedEntry);
+                    return;
+                }
                 selectedEntryKey = "";
                 clearDiff();
                 return;
@@ -1095,7 +1113,7 @@
                         <span class="removed">-{diffLineStats.removed}</span>
                     </span>
                 {/if}
-                <span class="vc-snapshot-count">{timelineSnapshotCountText(taggedSnapshots.length)}</span>
+                <span class="vc-snapshot-count">{timelineSnapshotCountText(timelineNodes.length)}</span>
                 {#if showDebugMeta && currentDocumentId}
                     <span class="vc-debug-id">{currentDocumentId}</span>
                 {/if}
@@ -1406,7 +1424,7 @@
                     {#if showDebugMeta && currentDocumentId}
                         <code>{currentDocumentId}</code>
                     {/if}
-                    <small>{timelineSnapshotCountText(taggedSnapshots.length)}</small>
+                    <small>{timelineSnapshotCountText(timelineNodes.length)}</small>
                 </section>
             {/if}
 
