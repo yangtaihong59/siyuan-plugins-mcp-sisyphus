@@ -1,5 +1,7 @@
 # SiYuan Sisyphus MCP & CLI
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fyangtaihong59%2Fsiyuan-plugins-mcp-sisyphus.svg)](https://mcptoplist.com/server/glama%2Fyangtaihong59%2Fsiyuan-plugins-mcp-sisyphus)
+
 <p align="left">
   <a href="https://www.npmjs.com/package/siyuan-sisyphus">
     <img src="https://img.shields.io/npm/v/siyuan-sisyphus?style=flat-square&color=%23cb3837" alt="npm version">
