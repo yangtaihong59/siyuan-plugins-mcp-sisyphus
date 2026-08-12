@@ -883,11 +883,15 @@ async function isExplicitAvDatabaseBlock(
     avData: unknown,
     blockID: string,
 ): Promise<boolean> {
-    const candidateBlockIDs = await collectAvDatabaseBlockCandidates(client, avID, avData);
-
-    if (candidateBlockIDs.includes(blockID)) {
-        return true;
-    }
+    // A bound row's content block is useful for ordinary AV permission
+    // discovery, but it is not a carrier. Relation/template cross-AV writes
+    // require the NodeAttributeView evidence below or a registered mirror/SQL
+    // carrier; otherwise a source document could authorize another AV.
+    const registeredDatabaseBlockIDs = [
+        ...await getAvMirrorDatabaseBlockIds(client, avID),
+        ...await findAvDatabaseBlockIdsBySql(client, avID),
+    ];
+    if (registeredDatabaseBlockIDs.includes(blockID)) return true;
 
     try {
         const response = await blockApi.getBlockDOM(client, blockID);
@@ -1204,19 +1208,15 @@ async function resolveVerifiedAvCarrier(
     avData: unknown,
     explicitBlockID?: string,
 ): Promise<string | undefined> {
-    if (explicitBlockID) {
-        try {
-            const response = await blockApi.getBlockDOM(client, explicitBlockID);
-            const dom = typeof response?.dom === 'string' ? response.dom : '';
-            return dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)
-                ? explicitBlockID
-                : undefined;
-        } catch (error) {
-            if (isMissingBlockError(error)) return undefined;
-            throw error;
-        }
+    if (explicitBlockID) return (await isExplicitAvDatabaseBlock(client, avID, avData, explicitBlockID)) ? explicitBlockID : undefined;
+    const candidates = [
+        ...await getAvMirrorDatabaseBlockIds(client, avID),
+        ...await findAvDatabaseBlockIdsBySql(client, avID),
+    ];
+    for (const candidate of candidates) {
+        if (await isExplicitAvDatabaseBlock(client, avID, avData, candidate)) return candidate;
     }
-    return resolveVerifiedAvCarrierBlockId(client, avID, avData);
+    return undefined;
 }
 
 async function resolveDuplicateRowsRelationDestinations(
@@ -2250,6 +2250,18 @@ async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerContext):
         assets: parsed.assets,
     }];
 
+    if (items.some((item) => item.valueType === 'relation')) {
+        // updateAttrViewCell alone authorizes only the source AV, while a
+        // relation may mutate a reverse cell in another AV. Keep relation
+        // writes on the dedicated action so it can preflight both carriers and
+        // read back the complete relation graph instead of a scalar cell.
+        return createAvValidationErrorResult('set_cells', {
+            reason: 'relation_requires_set_relation',
+            message: 'Relation cells must use av(action="set_relation").',
+            hint: 'Pass source itemID, relation keyID, complete relatedItemIDs, and the verified source database block to set_relation. An empty relatedItemIDs array clears the relation.',
+        });
+    }
+
     const values: TransactionOperation[] = [];
     for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
@@ -2630,27 +2642,20 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
     });
     if (denied) return denied;
     const source = asAttributeViewDefinition(avData, parsed.avID);
-    let relation: RelationMetadata;
-    let destination: AttributeViewDefinition;
-    let destinationCarrier: string;
-    let previousItemIDs: string[];
+    const sourceLookup = extractAvRowLookup(source);
+    if (!sourceLookup.rowIDs.has(parsed.itemID)) {
+        return createAvValidationErrorResult('set_relation', {
+            reason: 'source_item_not_found',
+            message: `itemID "${parsed.itemID}" is not an AV row item ID in source AV "${parsed.avID}".`,
+            hint: 'Use the row item ID stored in value.blockID, not the bound document block.id and not a cell value id.',
+        });
+    }
+
+    let target: { destinationAvID: string; backKeyID?: string; destination: AttributeViewDefinition };
+    let priorItemIDs: string[];
     try {
-        const key = getAvKey(source, parsed.keyID, 'set_relation preflight');
-        relation = getRelationMetadata(key, 'set_relation preflight');
-        if (typeof relation.avID !== 'string' || !ATTRIBUTE_VIEW_ID_PATTERN.test(relation.avID)) {
-            throw new Error('set_relation preflight: relation key has no valid destination AV ID.');
-        }
-        destination = asAttributeViewDefinition((await avApi.getAttributeView(client, relation.avID)).av, relation.avID);
-        destinationCarrier = await resolveVerifiedAvCarrier(client, relation.avID, destination) ?? '';
-        if (!destinationCarrier) throw new Error(`set_relation preflight: destination AV "${relation.avID}" has no verified database carrier.`);
-        const permission = await ensurePermissionForDocumentId(client, permMgr, destinationCarrier, 'write');
-        if (permission.denied) return permission.denied;
-        for (const itemID of parsed.relatedItemIDs) {
-            if (!extractAvRowLookup(destination).rowIDs.has(itemID)) {
-                throw new Error(`set_relation preflight: relatedItemID "${itemID}" is not a canonical destination AV item ID.`);
-            }
-        }
-        previousItemIDs = extractRelationCellItemIDs(source, parsed.keyID, parsed.itemID, 'set_relation preflight');
+        priorItemIDs = extractRelationCellItemIDs(source, parsed.keyID, parsed.itemID, 'set_relation preflight');
+        target = await requireWritableRelationDestinations(client, permMgr, source, parsed.keyID, parsed.relatedItemIDs, 'set_relation preflight');
     } catch (error) {
         return createAvValidationErrorResult('set_relation', {
             reason: 'relation_preflight_failed',
@@ -2658,35 +2663,38 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
         });
     }
 
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation([{
-        action: 'updateAttrViewCell',
-        avID: parsed.avID,
-        keyID: parsed.keyID,
-        rowID: parsed.itemID,
-        data: relationCellValue(parsed.relatedItemIDs),
-    }], transactionBlockID);
     const verifyExactPostimage = () => readRelationPostimage(
         client, parsed.avID, parsed.keyID, parsed.itemID, parsed.relatedItemIDs,
-        relation.avID, relation.isTwoWay === true ? relation.backKeyID : undefined,
-        previousItemIDs, 'set_relation readback',
+        target.destinationAvID, target.backKeyID, priorItemIDs, 'set_relation readback',
     );
     let responseUnknown = false;
+    let after: { source: AttributeViewDefinition; destination: AttributeViewDefinition } | undefined;
     try {
-        await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
+        await avApi.setAttributeViewBlockAttr(client, {
+            avID: parsed.avID,
+            keyID: parsed.keyID,
+            itemID: parsed.itemID,
+            value: relationCellValue(parsed.relatedItemIDs),
+        });
     } catch (error) {
         try {
-            await verifyExactPostimage();
+            after = await verifyExactPostimage();
             responseUnknown = true;
         } catch {
             throw error;
         }
     }
-    await verifyExactPostimage();
+    after ??= await verifyExactPostimage();
     const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'set_relation', avID: parsed.avID, keyID: parsed.keyID, itemID: parsed.itemID,
-        relatedItemIDs: parsed.relatedItemIDs, destinationAvID: relation.avID, destinationCarrier,
+        destinationAvID: target.destinationAvID, relatedItemIDs: parsed.relatedItemIDs,
+        cleared: parsed.relatedItemIDs.length === 0,
+        sourcePreimageHash: await hashCanonicalState(source),
+        sourcePostimageHash: await hashCanonicalState(after.source),
+        destinationPreimageHash: await hashCanonicalState(target.destination),
+        destinationPostimageHash: await hashCanonicalState(after.destination),
+        ...(target.backKeyID ? { backRelationKeyID: target.backKeyID, reverseReadback: 'verified' } : {}),
         ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
     }), refreshOperations);
 }
@@ -2721,13 +2729,13 @@ async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolH
     }
 
     const expected = {
-        avID: parsed.avID, keyID: parsed.keyID, destinationAvID: parsed.destinationAvID,
+        sourceAvID: parsed.avID, sourceKeyID: parsed.keyID, destinationAvID: parsed.destinationAvID,
         backRelationKeyID: parsed.backRelationKeyID, sourceName: parsed.sourceName, destinationName: parsed.destinationName,
     };
     const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const updatedOps = withUpdatedOperation([{
-        action: 'updateAttrViewColRelation', avID: parsed.avID, id: parsed.keyID, keyID: parsed.keyID,
-        data: parsed.destinationAvID, backRelationKeyID: parsed.backRelationKeyID, isTwoWay: true,
+        action: 'updateAttrViewColRelation', avID: parsed.avID, keyID: parsed.keyID, id: parsed.destinationAvID,
+        backRelationKeyID: parsed.backRelationKeyID, isTwoWay: true,
         name: parsed.destinationName, format: parsed.sourceName,
     }], transactionBlockID);
     const verifyExactPostimage = async (): Promise<{ source: AttributeViewDefinition; destination: AttributeViewDefinition }> => {
@@ -2753,8 +2761,8 @@ async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolH
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'configure_two_way_relation', ...expected,
         sourcePreimageHash: await hashCanonicalState(source), sourcePostimageHash: await hashCanonicalState(after.source),
-        destinationPreimageHash: await hashCanonicalState(destination!), destinationPostimageHash: await hashCanonicalState(after.destination),
-        ...(sourceRelation ? { priorDestinationAvID: sourceRelation.avID } : {}),
+        destinationPreimageHash: await hashCanonicalState(destination), destinationPostimageHash: await hashCanonicalState(after.destination),
+        ...(sourceRelation?.avID ? { priorDestinationAvID: sourceRelation.avID } : {}),
         ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
     }), refreshOperations);
 }
@@ -2775,17 +2783,17 @@ function maybeRelationMetadata(key: AvKeyDefinition): Record<string, unknown> | 
 function verifyTwoWayRelationMetadata(
     source: AttributeViewDefinition,
     destination: AttributeViewDefinition,
-    expected: { avID: string; keyID: string; destinationAvID: string; backRelationKeyID: string; sourceName: string; destinationName: string },
+    expected: { sourceAvID: string; sourceKeyID: string; destinationAvID: string; backRelationKeyID: string; sourceName: string; destinationName: string },
     context: string,
 ): void {
-    const sourceKey = getAvKey(source, expected.keyID, context);
+    const sourceKey = getAvKey(source, expected.sourceKeyID, context);
     const sourceRelation = getRelationMetadata(sourceKey, context);
-    if (sourceRelation.avID !== expected.destinationAvID || sourceRelation.backKeyID !== expected.backRelationKeyID || sourceRelation.isTwoWay !== true) {
+    if (sourceKey.name !== expected.sourceName || sourceRelation.avID !== expected.destinationAvID || sourceRelation.backKeyID !== expected.backRelationKeyID || sourceRelation.isTwoWay !== true) {
         throw new Error(`${context}: source relation metadata does not match the requested two-way postimage.`);
     }
     const backKey = getAvKey(destination, expected.backRelationKeyID, context);
     const backRelation = getRelationMetadata(backKey, context);
-    if (backRelation.avID !== expected.avID || backRelation.backKeyID !== expected.keyID || backRelation.isTwoWay !== true) {
+    if (backKey.name !== expected.destinationName || backRelation.avID !== expected.sourceAvID || backRelation.backKeyID !== expected.sourceKeyID || backRelation.isTwoWay !== true) {
         throw new Error(`${context}: destination reverse relation metadata does not match the requested two-way postimage.`);
     }
 }
