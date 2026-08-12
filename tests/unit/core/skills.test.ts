@@ -78,6 +78,17 @@ describe('core/skills', () => {
         expect(skill?.text).not.toMatch(/[A-Z]:\\/);
     });
 
+    it('keeps visual asset guidance semantic and explicit about UI acceptance', () => {
+        const skill = MCP_SKILLS.find((candidate) => candidate.name === 'siyuan-mcp-visual-assets');
+        expect(skill?.text).toContain('data-chart-key');
+        expect(skill?.text).toContain('NodeHTMLBlock');
+        expect(skill?.text).toContain('real SiYuan UI review');
+        expect(skill?.text).toContain('does not add a picture-generation tool');
+        expect(skill?.text).not.toContain('/Users/');
+        expect(skill?.text).not.toContain('qlmanage');
+        expect(skill?.text).not.toContain('sips');
+    });
+
     it('keeps every structured example aligned with the live action schemas', () => {
         for (const scenario of scenarios) {
             for (const [callName, call] of Object.entries(scenario.calls) as Array<[string, { tool: string; action: string; args: Record<string, unknown> }]>) {

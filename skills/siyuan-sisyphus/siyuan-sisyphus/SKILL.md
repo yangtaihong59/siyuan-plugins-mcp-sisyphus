@@ -17,6 +17,7 @@ Use the narrowest scenario skill that matches the task. For unfamiliar fields, i
 | Attribute views, columns, rows, and cells | `siyuan-sisyphus-database` |
 | Assets, extraction, and exports | `siyuan-sisyphus-file-export` |
 | Staged Markdown/database import and migration | `siyuan-sisyphus-import-migration` |
+| Semantic SVG and visual asset embedding | `siyuan-sisyphus-visual-assets` |
 | Tags, decks, cards, and review | `siyuan-sisyphus-tag-flashcard` |
 | Timeline nodes, snapshot comparison, and rollback | `siyuan-sisyphus-timeline` |
 | Permissions, system information, and dangerous operations | `siyuan-sisyphus-system-cli` |

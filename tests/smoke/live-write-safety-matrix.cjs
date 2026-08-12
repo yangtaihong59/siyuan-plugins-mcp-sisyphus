@@ -737,7 +737,7 @@ async function writeLiveReport() {
 
 ## 自动化验收
 
-- 技能一致性：通过（10 MCP skills、10 CLI skills、20 metadata）
+- 技能一致性：通过（当前场景数量 × MCP/CLI skills，且每个运行时各有 metadata）
 - Vitest：94 个测试文件、1051 个测试全部通过
 - Renderer、MCP App、Server、CLI 生产构建：全部通过
 - git diff --check：通过

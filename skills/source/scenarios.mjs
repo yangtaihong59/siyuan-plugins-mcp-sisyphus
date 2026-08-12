@@ -23,6 +23,7 @@ export const scenarios = [
 | Attribute views, columns, rows, and cells | {{skill database}} |
 | Assets, extraction, and exports | {{skill file-export}} |
 | Staged Markdown/database import and migration | {{skill import-migration}} |
+| Semantic SVG and visual asset embedding | {{skill visual-assets}} |
 | Tags, decks, cards, and review | {{skill tag-flashcard}} |
 | Timeline nodes, snapshot comparison, and rollback | {{skill timeline}} |
 | Permissions, system information, and dangerous operations | {{skill system-safety}} |
@@ -396,6 +397,67 @@ Schema/data PASS never implies functional or presentation completion. Without li
             assetsRead: call('file', 'get_doc_assets', { id: '<returned-document-id>', assetType: 'all' }),
             avRead: call('av', 'get', { id: '<av-id>' }),
             avRender: call('av', 'render', { id: '<av-id>', viewID: '<view-id>', page: 1, pageSize: 50 }),
+        },
+    },
+    {
+        // Existing actions can upload/embed assets and read structure back,
+        // but they cannot generate SVGs or certify browser/UI rendering. Keep
+        // those boundaries visible in the generated workflow.
+        id: 'visual-assets',
+        cliName: 'siyuan-sisyphus-visual-assets',
+        mcpName: 'siyuan-mcp-visual-assets',
+        cliDescription: 'CLI-only playbook for semantic SVG charts and figures, approved asset upload, and verified SiYuan block embedding.',
+        mcpDescription: 'MCP playbook for semantic SVG charts and figures, approved asset upload, and verified SiYuan block embedding.',
+        title: 'SiYuan Visual Assets',
+        displayName: 'SiYuan Visual Assets',
+        shortDescription: 'Create, upload, and embed visual assets safely',
+        defaultPrompt: 'Use $NAME to create or place this visual asset with semantic checks and strong readback.',
+        body: `Choose the narrowest route: data/config-driven SVG for statistical charts, semantic geometry for explanatory figures, and an existing uploaded asset when vector reconstruction is not appropriate. This scenario does not add a picture-generation tool, renderer, async runner, or platform-specific image utility.
+
+## Generate and review
+
+1. Read the source image or data and record chart type, series, categories, values, axes, units, grid lines, markers, title, legend, geometry, and unresolved readings. Do not invent unclear values.
+2. Reuse a matching deterministic config/builder shape for charts; for figures, decode structure first and choose semantic geometry. If a supported mathematical relation exists, declare and run a validation such as growth or sum; failed validation returns to data review.
+3. Check escaped text, viewBox containment, text bounds and collisions, line/text clearance, stable stroke width, angle/projection/occlusion constraints, and one unique \`data-chart-key\` matched to the config registry.
+4. Semantic correctness comes before pixel similarity. Pixel overlay is optional. A real SiYuan UI review is required for display claims: width, responsive behavior, readability, theme contrast, and embed rendering.
+
+Do not make bitmap tracing the default route. Use it only as constrained coordinate assistance; do not force-vectorize photos, maps, comics, or figures whose meaning is the typeface itself. If text, a list, table, or formula states the meaning clearly, prefer native content.
+
+## Upload and embed
+
+Resolve the exact notebook/document/block ID, parent-child relation, and insertion position before writing. A title, search hit, or UI position is not write authorization.
+
+{{call upload}}
+
+Asset upload reads a user-selected local file and requires explicit approval of both the source file and assets directory. Use the returned asset path as the only subsequent reference; never guess a timestamped filename or preserve a machine-specific path in the Skill.
+
+For an ordinary uploaded image, append one bounded Markdown image block. For inline SVG/HTML, keep all lines in one standalone block; use a complete \`NodeHTMLBlock\` DOM update only when an existing block is the exact target. A canonical visual block may be reused elsewhere with a query embed pointing to its stable block ID; do not duplicate the SVG body.
+
+{{call append}}
+{{call update}}
+
+## Structural readback
+
+After each write, read the exact affected ID before any search or UI conclusion:
+
+{{call kramdown}}
+{{call children}}
+{{call dom}}
+{{call assets}}
+{{call assetSearch}}
+
+Confirm block type, parent/sibling order, kramdown, DOM attributes, viewBox, escaped text, returned asset path, \`data-chart-key\`, canonical embed target, and image/HTML containment. \`get_doc_assets\` and \`search_assets\` find references or candidates; neither proves rendering. API success, file existence, SQL/index results, or a renderer invocation cannot replace structural readback or real SiYuan UI review.
+
+If a response is lost or the returned asset path is missing/non-unique, stop and inspect the exact target; do not retry an upload or append blindly. Classify geometry WARNs as repaired, justified exemption, or TODO; after repeated unsuccessful adjustments, stop and report instead of relaxing tolerances.`,
+        calls: {
+            upload: call('file', 'upload_asset', { assetsDirPath: '<approved-assets-dir>', localFilePath: '<selected-local-file>' }),
+            append: call('block', 'append', { parentID: '<resolved-parent-id>', dataType: 'markdown', data: '<one-block-markdown-or-inline-html-svg>' }),
+            update: call('block', 'update', { items: [{ id: '<existing-leaf-block-id>', dataType: 'dom', data: '<complete-node-html-block-dom>' }] }),
+            kramdown: call('block', 'get_kramdown', { id: '<written-block-id>' }),
+            children: call('block', 'get_children', { id: '<resolved-parent-id>', page: 1, pageSize: 200 }),
+            dom: call('block', 'dom', { id: '<written-block-id>' }),
+            assets: call('file', 'get_doc_assets', { id: '<resolved-document-id>', assetType: 'all' }),
+            assetSearch: call('search', 'search_assets', { query: '<asset-filename>', exts: ['svg', 'png'] }),
         },
     },
     {
