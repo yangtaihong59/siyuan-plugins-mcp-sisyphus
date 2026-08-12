@@ -933,7 +933,11 @@ function inspectDuplicateRowsRelationDestinations(
                 if (!destination.destinationRowIDs.includes(destinationRowID)) destination.destinationRowIDs.push(destinationRowID);
             }
         }
-        destinations.set(`${avID}:${backKeyID}`, destination);
+        // Only linked rows can receive a reverse-relation mutation. A bare
+        // two-way key must not expand the strict preflight's permission scope.
+        if (destination.destinationRowIDs.length > 0) {
+            destinations.set(`${avID}:${backKeyID}`, destination);
+        }
     }
     return [...destinations.values()];
 }

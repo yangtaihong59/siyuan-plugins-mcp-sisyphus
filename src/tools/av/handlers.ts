@@ -294,7 +294,12 @@ function collectDuplicateRowsRelationDestinations(
                 }
             }
         }
-        destinations.set(`${avID}:${backKeyID}`, destination);
+        // A two-way key without a selected source-to-destination link does
+        // not mutate its reverse AV. Do not turn metadata alone into an
+        // unnecessary cross-notebook permission dependency.
+        if (destination.destinationRowIDs.length > 0) {
+            destinations.set(`${avID}:${backKeyID}`, destination);
+        }
     }
     return [...destinations.values()];
 }
