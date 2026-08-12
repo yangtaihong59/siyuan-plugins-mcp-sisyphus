@@ -976,10 +976,13 @@ function verifyAvViewConfigurationReadback(
     const afterCarrier = requireAvCarrier(afterState.avCarrier, blockID);
     assertExactAvCarrierReadback(afterCarrier, avID, viewID);
 
-    // A carrier-visible list is user configuration, not navigation state. The
-    // current kernel does not alter it for these writes; fail closed if a
-    // future implementation starts changing it behind this narrow action.
-    if (carrierVisibleViews(beforeCarrier) !== carrierVisibleViews(afterCarrier)) {
+    if (action === 'add_view') {
+        assertNativeAddViewCarrierTransition(beforeCarrier, afterCarrier, beforeDefinition, viewID);
+    } else if (carrierVisibleViews(beforeCarrier) !== carrierVisibleViews(afterCarrier)) {
+        // A carrier-visible list is user configuration, not navigation state.
+        // The current kernel does not alter it for these other writes; fail
+        // closed if a future implementation starts changing it behind their
+        // narrow actions.
         throw safetyError('readback_mismatch', 'The AV carrier visible-view configuration changed outside the requested action.');
     }
     if (carrierBox(beforeCarrier) !== carrierBox(afterCarrier)) {
@@ -1038,6 +1041,55 @@ function requireAvCarrier(value: unknown, blockID: string): Record<string, unkno
 
 function carrierVisibleViews(carrier: Record<string, unknown>): unknown {
     return isRecord(carrier.attrs) ? carrier.attrs['custom-sy-av-visible-views'] : undefined;
+}
+
+function assertNativeAddViewCarrierTransition(
+    beforeCarrier: Record<string, unknown>,
+    afterCarrier: Record<string, unknown>,
+    beforeDefinition: Record<string, unknown>,
+    viewID: string,
+): void {
+    // SiYuan v3.8.0 `addAttrViewView` derives the old carrier list with
+    // `GetVisibleViewIDs`, appends the requested ID, then writes both
+    // `custom-sy-av-view` and `custom-sy-av-visible-views`. This is an
+    // intentional, carrier-scoped side effect of creating a view, not a
+    // license to accept a changed list. Reproducing that normalization here
+    // catches a wrong/missing new ID, reordered legacy entries, and extra IDs.
+    const expected = [...normalizeCarrierVisibleViewIDs(
+        carrierVisibleViews(beforeCarrier),
+        beforeDefinition,
+    ), viewID].join(',');
+    if (carrierVisibleViews(afterCarrier) !== expected) {
+        throw safetyError('readback_mismatch', 'The new AV view was not the exact native addition to this carrier visible-view list.');
+    }
+}
+
+function normalizeCarrierVisibleViewIDs(value: unknown, definition: Record<string, unknown>): string[] {
+    const views = definition.views;
+    if (!Array.isArray(views)) {
+        throw safetyError('readback_mismatch', 'Raw AV readback has no view order for carrier visible-view normalization.');
+    }
+    const orderedViewIDs: string[] = [];
+    for (const view of views) {
+        if (!isRecord(view) || typeof view.id !== 'string' || !view.id) continue;
+        if (orderedViewIDs.includes(view.id)) {
+            throw safetyError('readback_mismatch', `Raw AV readback contains duplicate view ID ${view.id}.`);
+        }
+        orderedViewIDs.push(view.id);
+    }
+    if (orderedViewIDs.length === 0) {
+        throw safetyError('readback_mismatch', 'Raw AV readback has no persisted views for carrier visible-view normalization.');
+    }
+    // An absent/empty attr means all existing views. A non-empty attr is a
+    // set, which the kernel reorders by raw AV view order and falls back to the
+    // first view when no configured ID still exists.
+    if (value === undefined || value === '') return orderedViewIDs;
+    if (typeof value !== 'string') {
+        throw safetyError('readback_mismatch', 'The AV carrier visible-view configuration is not a string.');
+    }
+    const configured = new Set(value.split(',').map((id) => id.trim()).filter(Boolean));
+    const normalized = orderedViewIDs.filter((id) => configured.has(id));
+    return normalized.length > 0 ? normalized : [orderedViewIDs[0]];
 }
 
 function carrierBox(carrier: Record<string, unknown>): string {

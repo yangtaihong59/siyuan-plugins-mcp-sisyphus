@@ -1260,4 +1260,125 @@ describe('write safety coordinator', () => {
         expect(client.requestRead).not.toHaveBeenCalledWith('/api/av/renderAttributeView', expect.anything());
         expect(permMgr.reload).toHaveBeenCalled();
     });
+
+    it('accepts the Retest6 native add-view carrier transition from SiYuan v3.8.0', async () => {
+        const avID = '20260813045601-avview1';
+        const blockID = '20260813045603-cmg284p';
+        const tableViewID = '20260813045603-kizaqbf';
+        const newViewID = '20260813045610-vwnew01';
+        const definition: Record<string, any> = {
+            id: avID,
+            viewID: tableViewID,
+            views: [{ id: tableViewID, name: '表格', type: 'table', table: { columns: [] } }],
+        };
+        let carrierAttrs: Record<string, string> = {
+            'custom-sy-av-view': tableViewID,
+        };
+        const requestRead = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
+            if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
+            if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+            if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
+            return null;
+        });
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead,
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'add_view', avID, blockID, viewID: newViewID, layout: 'table', name: 'Retest6 View' };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            definition.viewID = newViewID;
+            definition.views.push({ id: newViewID, name: 'Retest6 View', type: 'table', table: { columns: [] } });
+            // v3.8.0 addAttrViewView appends this ID after normalizing the
+            // carrier list to raw AV view order, and selects it on the carrier.
+            carrierAttrs = {
+                'custom-sy-av-view': newViewID,
+                'custom-sy-av-visible-views': `${tableViewID},${newViewID}`,
+            };
+            return success({ success: true, action: 'add_view' });
+        });
+
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000032'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(requestRead).not.toHaveBeenCalledWith('/api/av/renderAttributeView', expect.anything());
+    });
+
+    it('treats an add-view carrier list that is not the native new-ID append as unknown', async () => {
+        const avID = '20260813045701-avview1';
+        const blockID = '20260813045703-cmg284p';
+        const currentViewID = '20260813045703-kizaqbf';
+        const newViewID = '20260813045705-newview';
+        const definition: Record<string, any> = {
+            id: avID,
+            viewID: currentViewID,
+            views: [{ id: currentViewID, name: '主视图', type: 'table', table: { columns: [] } }],
+        };
+        let carrierAttrs: Record<string, string> = {
+            'custom-sy-av-view': currentViewID,
+            'custom-sy-av-visible-views': currentViewID,
+        };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
+                if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
+                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'add_view', avID, blockID, viewID: newViewID, layout: 'gallery', name: '新增画廊' };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000033'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute: vi.fn(async () => {
+                definition.viewID = newViewID;
+                definition.views.push({ id: newViewID, name: '新增画廊', type: 'gallery', gallery: { fields: [] } });
+                carrierAttrs = {
+                    'custom-sy-av-view': newViewID,
+                    'custom-sy-av-visible-views': `${currentViewID},unexpected-view,${newViewID}`,
+                };
+                return success({ success: true, action: 'add_view' });
+            }),
+        }));
+
+        expect(result).toMatchObject({
+            writeAttempted: true,
+            writeExecuted: false,
+            transactionState: 'unknown',
+            error: { code: 'readback_mismatch' },
+        });
+    });
 });

@@ -85,7 +85,7 @@ export const AV_GUIDANCE: string[] = [
     'For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.',
     'These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.',
     'set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.',
-    'add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. To curate a carrier visible-view list, use the existing block(action="set_attrs") deliberately; this AV tool does not alter it.',
+    'add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.',
 ];
 
 export const FILE_GUIDANCE: string[] = [
