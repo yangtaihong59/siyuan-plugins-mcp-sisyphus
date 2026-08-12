@@ -9,6 +9,12 @@ Related pages:
 - [Reference Home](./index.md)
 - [Tools Index](./tools/index.md)
 
+## Choose the write path before editing
+
+For Sisyphus-owned mutations, keep Strict Safe Writes enabled and use the same action with `validateOnly=true` first when its schema exposes a precondition. Submit the returned short credential with a fresh UUIDv7 `requestId`; a successful response is verified by bounded readback and a metadata-only idempotency ledger. This is a process-level coordination protocol, not a SiYuan kernel transaction or automatic rollback. The UI, another plugin, direct kernel calls, exports, sync, notifications, feedback, and official `extension` calls remain outside that guarantee.
+
+MCP/Agent calls over the plugin HTTP server use the coordinator directly. Strict mutation calls received over stdio or from the standalone CLI are forwarded to that same plugin-hosted coordinator; they do not get a second local queue or lease pool. If the plugin HTTP coordinator is unavailable, stop and repair that path rather than retrying the mutation through an uncoordinated route. Read-only actions and external-effect actions follow their own paths.
+
 ## List notebooks
 
 ```json

@@ -70,6 +70,10 @@ siyuan extension document \
 - If `/mcp` is unavailable or an explicit refresh fails, only dynamic extension actions are hidden. Other Sisyphus tools and the outer MCP Server remain available.
 - The settings page provides a master switch, a native-tool source switch, and per-tool blocking.
 
+`extension` is an official-MCP bridge, not a Sisyphus-owned mutation path. Its forwarded calls do not pass through Sisyphus notebook permissions, disabled-action checks, strict preflight leases, or post-write readback. A downstream tool may be read-only, mutate a note, or trigger another side effect; the registry's `readOnlyHint` is the only advertised tool-level hint, and native aggregate tools do not expose inner action-level risk. Treat every non-read-only forwarded call as an external effect and do not describe it as covered by Strict Safe Writes.
+
+The bridge sends a dispatched official call once. A transport failure after dispatch leaves execution state unknown; inspect the downstream target or plugin before deciding what to do next. Discovery is different: it is read-only and may reconnect/retry once. This distinction is why `extension` cannot be made safe by adding another queue or replay layer around it.
+
 Official discovery requires SiYuan 3.7.0 or newer, an administrator session, and a valid API token. This requirement applies only to `extension`; the Sisyphus plugin itself keeps `minAppVersion` at 2.9.0.
 
 > [!WARNING]
