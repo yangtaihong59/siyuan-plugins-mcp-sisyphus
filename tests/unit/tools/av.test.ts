@@ -406,6 +406,70 @@ describe('av tool', () => {
         expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
     });
 
+    it('accepts the complete retest10 raw envelope when target options have a different JSON field position', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const avID = 'fixture-av-retest10';
+        const carrierID = 'fixture-db-block-retest10';
+        const primaryKeyID = 'fixture-primary-key-retest10';
+        const targetKeyID = 'fixture-select-key-retest10';
+        const desiredOptions = [
+            { name: '待办', color: '1', desc: 'raw evidence' },
+            { name: '进行中', color: '2', desc: '' },
+        ];
+        // This is the full retained retest10 getAttributeView shape with only
+        // IDs kept synthetic. Go's save emits key.options before numberFormat,
+        // whereas the preimage projection appends its sentinel after template.
+        const before = {
+            spec: 7, id: avID, name: '', keyIDs: null, viewID: 'fixture-table-view-retest10',
+            keyValues: [
+                { key: { id: primaryKeyID, name: '主键', type: 'block', icon: '', desc: '', numberFormat: '', template: '' } },
+                { key: { id: targetKeyID, name: '单选', type: 'select', icon: '', desc: '', numberFormat: '', template: '' } },
+            ],
+            views: [{
+                id: 'fixture-table-view-retest10', icon: '', name: '表格', hideAttrViewName: false, desc: '',
+                filters: [{ column: '', operator: '', value: null, combination: 'and' }], pageSize: 50, type: 'table',
+                table: { spec: 0, id: 'fixture-table-layout-retest10', showIcon: true, wrapField: false, columns: [{ id: primaryKeyID, wrap: false, hidden: false, pin: false, width: '' }, { id: targetKeyID, wrap: false, hidden: false, pin: false, width: '' }], rowIds: null },
+                groupCreated: 0, groupItemIds: null, groupFolded: false, groupHidden: 0, groupSort: 0,
+            }],
+        };
+        // Do not use structuredClone for this object: retest10's failure came
+        // from the kernel inserting options before numberFormat in raw JSON.
+        const after = {
+            spec: 7, id: avID, name: '', keyIDs: null, viewID: 'fixture-table-view-retest10',
+            keyValues: [
+                { key: { id: primaryKeyID, name: '主键', type: 'block', icon: '', desc: '', numberFormat: '', template: '' } },
+                { key: { id: targetKeyID, name: '单选', type: 'select', icon: '', desc: '', options: desiredOptions, numberFormat: '', template: '' } },
+            ],
+            views: [{
+                id: 'fixture-table-view-retest10', icon: '', name: '表格', hideAttrViewName: false, desc: '',
+                filters: [{ column: '', operator: '', value: null, combination: 'and' }], pageSize: 50, type: 'table',
+                table: { spec: 0, id: 'fixture-table-layout-retest10', showIcon: true, wrapField: false, columns: [{ id: primaryKeyID, wrap: false, hidden: false, pin: false, width: '' }, { id: targetKeyID, wrap: false, hidden: false, pin: false, width: '' }], rowIds: null },
+                groupCreated: 0, groupItemIds: null, groupFolded: false, groupHidden: 0, groupSort: 0,
+            }],
+        };
+        const protectedBefore = projectAvStateWithoutColumnOptions(before, targetKeyID, []);
+        const protectedAfter = projectAvStateWithoutColumnOptions(after, targetKeyID, []);
+        // This was retest10's exact false-positive predicate: no semantic
+        // difference remains, yet insertion order makes JSON.stringify differ.
+        expect(firstJsonDifferencePath(protectedBefore, protectedAfter)).toBeUndefined();
+        expect(JSON.stringify(protectedBefore)).not.toBe(JSON.stringify(protectedAfter));
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+        vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
+            id: carrierID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+        });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID, blockID: carrierID, keyID: targetKeyID, options: desiredOptions,
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true, action: 'set_column_options', status: 'applied', observedOptions: desiredOptions,
+        });
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+    });
+
     it('still rejects a non-empty view icon drift while replacing target options', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');

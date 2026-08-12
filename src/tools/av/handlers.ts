@@ -7,7 +7,7 @@ import * as transactionApi from '../../api/transaction';
 import type { TransactionOperation } from '../../api/transaction';
 import type { AvAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
-import { hashCanonicalState } from '../../shared/canonical-state';
+import { canonicalizeState, hashCanonicalState } from '../../shared/canonical-state';
 import {
     AvAddColumnSchema,
     AvAddViewSchema,
@@ -2594,7 +2594,15 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
     if (!expectedOptions || !actualOptions) {
         throw new Error(`Select option readback for key "${parsed.keyID}" was incomplete.`);
     }
-    if (JSON.stringify(projectAvStateWithoutColumnOptions(avData, parsed.keyID, optionsToRemove)) !== JSON.stringify(projectAvStateWithoutColumnOptions(readback.av, parsed.keyID, optionsToRemove))) {
+    // Raw AV JSON preserves Go's struct-field order. The native option save
+    // may materialize target key.options between existing fields, whereas the
+    // preimage projection adds its sentinel at the end. Those two objects have
+    // the same protected state; comparing JSON.stringify would turn property
+    // insertion order alone into outcome_unknown. Canonicalization sorts only
+    // object keys, so arrays and every non-target field remain exact collateral
+    // evidence and still reject a real unrelated mutation.
+    if (canonicalizeState(projectAvStateWithoutColumnOptions(avData, parsed.keyID, optionsToRemove))
+        !== canonicalizeState(projectAvStateWithoutColumnOptions(readback.av, parsed.keyID, optionsToRemove))) {
         throw new Error(`Unrelated AV state changed while replacing options for key "${parsed.keyID}".`);
     }
     const exactOrder = sameComparableOptions(expectedOptions, actualOptions);
