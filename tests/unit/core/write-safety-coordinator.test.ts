@@ -265,6 +265,48 @@ describe('write safety coordinator', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
+    it('does not reject a set_relation lease when SiYuan only reorders carrier HTML attributes', async () => {
+        const fixture = createCrossObjectAvFixture();
+        const originalRequestRead = fixture.client.requestRead.getMockImplementation()!;
+        let alternateCarrierAttributeOrder = false;
+        fixture.client.requestRead.mockImplementation(async (endpoint: string, body?: Record<string, unknown>) => {
+            if (endpoint === '/api/block/getBlockDOM') {
+                const carrier = fixture.carriers[String(body?.id)];
+                if (!carrier) return { dom: '' };
+                const attributes = alternateCarrierAttributeOrder
+                    ? `class="av" data-av-id="${carrier.avID}" data-type="NodeAttributeView" updated="stable" custom-sy-av-view="view-1"`
+                    : `class="av" custom-sy-av-view="view-1" updated="stable" data-type="NodeAttributeView" data-av-id="${carrier.avID}"`;
+                return { dom: `<div ${attributes}></div>` };
+            }
+            return originalRequestRead(endpoint, body);
+        });
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const args = {
+            action: 'set_relation', avID: fixture.ids.sourceAvID, blockID: fixture.ids.sourceBlockID,
+            itemID: fixture.ids.sourceItemID, keyID: fixture.ids.sourceKeyID,
+            relatedItemIDs: [fixture.ids.destinationItemID],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        alternateCarrierAttributeOrder = true;
+        const execute = vi.fn(async () => success({ success: true, action: 'set_relation', changed: false, status: 'already_applied' }));
+        const result = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000151'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(result.safety).toMatchObject({ writeAttempted: false, writeExecuted: false, transactionState: 'no_change' });
+    });
+
     it('leases duplicate_rows against its linked destination AV and carrier', async () => {
         const ids = createCrossObjectAvFixture().ids;
         await assertStableCrossObjectActionThenRejectDrift(
