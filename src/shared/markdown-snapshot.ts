@@ -139,8 +139,8 @@ export function planSnapshotPaths(
         byOriginalPath.set(record.relativePath, group);
     }
 
-    for (const [originalPath, group] of [...byOriginalPath.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-        group.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    for (const [originalPath, group] of [...byOriginalPath.entries()].sort(([a], [b]) => compareSnapshotText(a, b))) {
+        group.sort((a, b) => compareSnapshotText(String(a.id), String(b.id)));
         if (group.length <= 1) continue;
         const disambiguatedPaths = group.map((record) => {
             const slash = originalPath.lastIndexOf('/');
@@ -169,7 +169,7 @@ export function planSnapshotPaths(
     }
     for (const [relativePath, group] of byCaseFoldedPath) {
         if (group.length <= 1) continue;
-        const documentIDs = group.map((record) => record.id).sort();
+        const documentIDs = group.map((record) => record.id).sort(compareSnapshotText);
         const conflict: SnapshotConflictRecord = {
             code: 'case_insensitive_path_collision',
             relativePath,
