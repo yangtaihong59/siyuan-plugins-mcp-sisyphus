@@ -20,7 +20,7 @@
 
 `get_doc_assets` 是直接引用资源查看动作，只返回当前文档树直接引用的资源，不会展开查询嵌入块。需要查看完整文档内容和资源时，应使用 `extract_doc`。
 
-`audit_image_refs` 是只读的导入验收动作。调用方传入文档 ID 和源 Markdown 或预处理 Markdown 中的 expected 图片引用；Sisyphus 通过思源 HTTP API 读取文档直接引用的图片，并返回 expected、actual、missing、extra 引用。比较按文件名 basename 进行，并忽略思源追加的时间戳/ID 后缀。它不读取本地 `.sy` 文件，也不会修复缺失或多余引用。
+`audit_image_refs` 是只读的导入验收动作。调用方传入文档 ID 和源 Markdown 或预处理 Markdown 中的 expected 图片引用；Sisyphus 通过思源 HTTP API 读取文档直接引用的图片，并返回 expected、actual、missing、extra 引用。比较按规范化 basename 的多重集合进行：每个 occurrence 都保留，并且只能匹配另一侧的一个 occurrence。重复引用、或不同路径但 basename 相同的引用不会被静默合并；发生同 basename 碰撞时，输入顺序决定哪个 occurrence 会被报告为 missing 或 extra。思源追加的时间戳/ID 后缀、查询串和 fragment 只在匹配时忽略。它不读取本地 `.sy` 文件，也不会修复缺失或多余引用。
 
 ## 安全规则
 

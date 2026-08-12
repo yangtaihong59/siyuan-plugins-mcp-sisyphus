@@ -543,7 +543,7 @@ describe('file tool asset actions', () => {
             expectedCount: 2,
             actualCount: 2,
             ok: false,
-            comparison: 'basename; SiYuan timestamp/id suffixes are ignored for matching',
+            comparison: 'multiset basename; each occurrence is matched once, and SiYuan timestamp/id suffixes are ignored for matching',
         });
     });
 

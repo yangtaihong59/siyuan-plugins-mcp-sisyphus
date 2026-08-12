@@ -20,7 +20,7 @@ Related pages:
 
 `get_doc_assets` is a direct-reference inspection action. It reports assets referenced by the current document tree and does not expand query embed blocks. When you need to inspect the full document content and assets, use `extract_doc`.
 
-`audit_image_refs` is a read-only import acceptance check. Pass the document ID and expected image references from source or preprocessed Markdown. It reads direct image references through SiYuan's HTTP API and returns expected, actual, missing, and extra references. Matching compares basenames and ignores SiYuan timestamp/id suffixes. It never reads local `.sy` files or repairs content.
+`audit_image_refs` is a read-only import acceptance check. Pass the document ID and expected image references from source or preprocessed Markdown. It reads direct image references through SiYuan's HTTP API and returns expected, actual, missing, and extra references. Matching is a multiset by normalized basename: each occurrence is preserved and can satisfy only one occurrence on the other side. Duplicate references and different paths sharing one basename are therefore not silently merged; within a basename collision, input order determines which occurrence is reported missing or extra. SiYuan timestamp/id suffixes, query strings, and fragments are ignored only for matching. It never reads local `.sy` files or repairs content.
 
 ## Safety Rules
 

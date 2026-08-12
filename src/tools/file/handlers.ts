@@ -622,7 +622,7 @@ const handleAuditImageRefs: ToolActionHandler = async ({ client, permMgr, rawArg
     return createJsonResult({
         id: parsed.id,
         ...auditImageReferences(parsed.expectedRefs, Array.isArray(actualRefs) ? actualRefs : []),
-        comparison: 'basename; SiYuan timestamp/id suffixes are ignored for matching',
+        comparison: 'multiset basename; each occurrence is matched once, and SiYuan timestamp/id suffixes are ignored for matching',
     });
 };
 
