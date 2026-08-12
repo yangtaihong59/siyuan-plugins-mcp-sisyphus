@@ -6,14 +6,14 @@
 
 ## 覆盖结论
 
-截至当前代码，源码中声明的静态 action 总数为 119 个；`extension` 还会按官方注册表生成动态 action。
+截至当前代码，源码中声明的静态 action 总数为 121 个；`extension` 还会按官方注册表生成动态 action。
 
 | 工具 | action 数 | 覆盖方式 |
 | --- | ---: | --- |
 | `fs` | 8 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
 | `notebook` | 11 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `document` | 15 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `block` | 20 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `document` | 16 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `block` | 21 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
 | `av` | 12 | `tests/unit/tools/av.test.ts` 对每个 action 有直接调用覆盖 |
 | `search` | 8 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
 | `file` | 17 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
