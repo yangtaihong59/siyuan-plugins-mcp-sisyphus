@@ -15,10 +15,12 @@
 |------|---------|
 | 上传 / 导出 | `upload_asset`, `export_md`, `export_resources`, `extract_doc` |
 | 模板 | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
-| 资源查看 | `get_doc_assets`, `get_image_ocr_text`, `list_unused_assets` |
+| 资源查看 | `get_doc_assets`, `audit_image_refs`, `get_image_ocr_text`, `list_unused_assets` |
 | 资源变更 | `remove_unused_assets`, `rename_asset`, `delete_asset` |
 
 `get_doc_assets` 是直接引用资源查看动作，只返回当前文档树直接引用的资源，不会展开查询嵌入块。需要查看完整文档内容和资源时，应使用 `extract_doc`。
+
+`audit_image_refs` 是只读的导入验收动作。调用方传入文档 ID 和源 Markdown 或预处理 Markdown 中的 expected 图片引用；Sisyphus 通过思源 HTTP API 读取文档直接引用的图片，并返回 expected、actual、missing、extra 引用。比较按文件名 basename 进行，并忽略思源追加的时间戳/ID 后缀。它不读取本地 `.sy` 文件，也不会修复缺失或多余引用。
 
 ## 安全规则
 
@@ -49,6 +51,16 @@ MCP：
 ```
 
 这个结果只表示文档树直接资源；如果需要查看附件内容，请提取整个文档。
+
+只读审计导入后的图片引用：
+
+```json
+{
+  "action": "audit_image_refs",
+  "id": "<doc-id>",
+  "expectedRefs": ["assets/cover.png", "assets/figure.png"]
+}
+```
 
 将文档和资源提取到本地目录：
 
@@ -168,6 +180,7 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `export_resources`
 - `list_unused_assets`
 - `get_doc_assets`
+- `audit_image_refs`
 - `get_image_ocr_text`
 - `remove_unused_assets`
 - `rename_asset`

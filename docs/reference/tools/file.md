@@ -15,10 +15,12 @@ Related pages:
 |------|---------|
 | Upload / export | `upload_asset`, `export_md`, `export_resources`, `extract_doc` |
 | Templates | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
-| Asset inspection | `get_doc_assets`, `get_image_ocr_text`, `list_unused_assets` |
+| Asset inspection | `get_doc_assets`, `audit_image_refs`, `get_image_ocr_text`, `list_unused_assets` |
 | Asset mutations | `remove_unused_assets`, `rename_asset`, `delete_asset` |
 
 `get_doc_assets` is a direct-reference inspection action. It reports assets referenced by the current document tree and does not expand query embed blocks. When you need to inspect the full document content and assets, use `extract_doc`.
+
+`audit_image_refs` is a read-only import acceptance check. Pass the document ID and expected image references from source or preprocessed Markdown. It reads direct image references through SiYuan's HTTP API and returns expected, actual, missing, and extra references. Matching compares basenames and ignores SiYuan timestamp/id suffixes. It never reads local `.sy` files or repairs content.
 
 ## Safety Rules
 
@@ -49,6 +51,16 @@ MCP:
 ```
 
 This returns direct document-tree assets only. It is not a substitute for extracting the document when you need to inspect attachment content.
+
+Audit imported image references without touching local workspace files:
+
+```json
+{
+  "action": "audit_image_refs",
+  "id": "<doc-id>",
+  "expectedRefs": ["assets/cover.png", "assets/figure.png"]
+}
+```
 
 Extract a document and its assets into a local folder:
 
@@ -168,6 +180,7 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `export_resources`
 - `list_unused_assets`
 - `get_doc_assets`
+- `audit_image_refs`
 - `get_image_ocr_text`
 - `remove_unused_assets`
 - `rename_asset`

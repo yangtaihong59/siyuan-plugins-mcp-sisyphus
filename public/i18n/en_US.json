@@ -484,6 +484,8 @@
     "desc_file_action_list_unused_assets": "List asset files not currently referenced.",
     "file_action_get_doc_assets": "Get Document Assets",
     "desc_file_action_get_doc_assets": "List assets referenced by a document, with optional asset-type filtering.",
+    "file_action_audit_image_refs": "Audit Image References",
+    "desc_file_action_audit_image_refs": "Compare expected imported image references with direct document image assets.",
     "file_action_get_image_ocr_text": "Get Image OCR Text",
     "desc_file_action_get_image_ocr_text": "Get stored OCR text for an image asset.",
     "file_action_remove_unused_assets": "Remove Unused Assets",

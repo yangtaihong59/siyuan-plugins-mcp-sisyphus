@@ -122,6 +122,7 @@ describe('file tool asset actions', () => {
         expect(actionDescription).toContain('save_doc_as_template');
         expect(actionDescription).toContain('list_unused_assets');
         expect(actionDescription).toContain('get_doc_assets');
+        expect(actionDescription).toContain('audit_image_refs');
         expect(actionDescription).toContain('get_image_ocr_text');
         expect(actionDescription).toContain('remove_unused_assets');
         expect(actionDescription).toContain('rename_asset');
@@ -446,6 +447,33 @@ describe('file tool asset actions', () => {
             assetType: 'image',
             assets: ['assets/cover.png'],
             count: 1,
+        });
+    });
+
+    it('audits expected image references without reading or repairing local files', async () => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getDocImageAssets).mockResolvedValueOnce([
+            'assets/cover-20260813120000-abcdefg.png',
+            'assets/extra.png',
+        ]);
+
+        const result = await callFileTool(client, {
+            action: 'audit_image_refs',
+            id: 'doc-1',
+            expectedRefs: ['assets/cover.png', 'assets/missing.png'],
+        }, config.file, {} as never);
+
+        expect(fileApi.getDocImageAssets).toHaveBeenCalledWith(client, 'doc-1');
+        expect(parseResult(result)).toEqual({
+            id: 'doc-1',
+            expectedRefs: ['assets/cover.png', 'assets/missing.png'],
+            actualRefs: ['assets/cover-20260813120000-abcdefg.png', 'assets/extra.png'],
+            missingRefs: ['assets/missing.png'],
+            extraRefs: ['assets/extra.png'],
+            expectedCount: 2,
+            actualCount: 2,
+            ok: false,
+            comparison: 'basename; SiYuan timestamp/id suffixes are ignored for matching',
         });
     });
 

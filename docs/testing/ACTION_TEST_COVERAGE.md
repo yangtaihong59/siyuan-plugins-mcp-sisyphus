@@ -16,7 +16,7 @@
 | `block` | 20 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
 | `av` | 12 | `tests/unit/tools/av.test.ts` 对每个 action 有直接调用覆盖 |
 | `search` | 8 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `file` | 17 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `file` | 18 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
 | `system` | 8 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
 | `flashcard` | 6 | `tests/unit/tools/flashcard.test.ts` 对每个 action 有直接调用覆盖 |
 | `extension` | 1 + 动态 | `tests/unit/core/official-mcp-bridge.test.ts` 与 `tests/unit/tools/extension.test.ts` 覆盖发现、schema、屏蔽和转发 |

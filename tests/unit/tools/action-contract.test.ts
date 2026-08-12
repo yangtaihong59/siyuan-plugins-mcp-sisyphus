@@ -124,6 +124,7 @@ function createContractClient() {
             if (endpoint === '/api/export/exportResources') return { path: '/temp/export.zip' };
             if (endpoint === '/api/asset/getUnusedAssets') return ['assets/unused.png'];
             if (endpoint === '/api/asset/getDocAssets') return ['assets/doc.png'];
+            if (endpoint === '/api/asset/getDocImageAssets') return ['assets/doc.png'];
             if (endpoint === '/api/asset/getImageOCRText') return { text: 'ocr text' };
             if (endpoint === '/api/asset/removeUnusedAssets') return { removed: 1 };
             if (endpoint === '/api/asset/renameAsset') return { newPath: 'assets/new.png' };
@@ -288,6 +289,7 @@ describe('tool action contract coverage', () => {
             { action: 'export_resources', args: { action: 'export_resources', paths: ['assets/demo.png'] }, expectedEndpoint: '/api/export/exportResources' },
             { action: 'list_unused_assets', args: { action: 'list_unused_assets' }, expectedEndpoint: '/api/asset/getUnusedAssets' },
             { action: 'get_doc_assets', args: { action: 'get_doc_assets', id: 'doc-1' }, expectedEndpoint: '/api/asset/getDocAssets' },
+            { action: 'audit_image_refs', args: { action: 'audit_image_refs', id: 'doc-1', expectedRefs: ['assets/doc.png'] }, expectedEndpoint: '/api/asset/getDocImageAssets' },
             { action: 'get_image_ocr_text', args: { action: 'get_image_ocr_text', path: 'assets/demo.png' }, expectedEndpoint: '/api/asset/getImageOCRText' },
             { action: 'remove_unused_assets', args: { action: 'remove_unused_assets' }, expectedEndpoint: '/api/asset/removeUnusedAssets' },
             { action: 'rename_asset', args: { action: 'rename_asset', oldPath: 'assets/old.png', newName: 'new.png' }, expectedEndpoint: '/api/asset/renameAsset' },

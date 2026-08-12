@@ -470,6 +470,8 @@
     "desc_file_action_list_unused_assets": "列出当前未被引用的资源文件。",
     "file_action_get_doc_assets": "获取文档资源",
     "desc_file_action_get_doc_assets": "列出文档引用的资源，支持按资源类型过滤。",
+    "file_action_audit_image_refs": "审计图片引用",
+    "desc_file_action_audit_image_refs": "比较导入图片的预期引用与文档直接引用的图片资源。",
     "file_action_get_image_ocr_text": "获取图片 OCR 文本",
     "desc_file_action_get_image_ocr_text": "获取图片资源已存储的 OCR 文本。",
     "file_action_remove_unused_assets": "移除未使用资源",

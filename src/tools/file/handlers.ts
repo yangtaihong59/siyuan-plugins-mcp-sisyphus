@@ -14,6 +14,7 @@ import {
     FileExportResourcesSchema,
     FileExtractDocSchema,
     FileGetDocAssetsSchema,
+    FileAuditImageRefsSchema,
     FileGetImageOCRTextSchema,
     FileListTemplatesSchema,
     FileListUnusedAssetsSchema,
@@ -28,6 +29,7 @@ import {
 import { ensurePermissionForDocumentId } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult, createPaginatedResult, paginate, type ToolResult } from '../internal/shared';
+import { auditImageReferences } from '../internal/image-reference-audit';
 
 export const FILE_TOOL_NAME = 'file';
 export const DEFAULT_LARGE_UPLOAD_THRESHOLD_MB = 10;
@@ -445,6 +447,18 @@ const handleGetDocAssets: ToolActionHandler = async ({ client, permMgr, rawArgs 
     });
 };
 
+const handleAuditImageRefs: ToolActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = FileAuditImageRefsSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const actualRefs = await fileApi.getDocImageAssets(client, parsed.id);
+    return createJsonResult({
+        id: parsed.id,
+        ...auditImageReferences(parsed.expectedRefs, Array.isArray(actualRefs) ? actualRefs : []),
+        comparison: 'basename; SiYuan timestamp/id suffixes are ignored for matching',
+    });
+};
+
 const handleGetImageOCRText: ToolActionHandler = async ({ client, rawArgs }) => {
     const parsed = FileGetImageOCRTextSchema.parse(rawArgs);
     const result = await fileApi.getImageOCRText(client, parsed.path);
@@ -559,6 +573,7 @@ export function createFileActionHandlers(thresholdMB: number, largeUploadThresho
         export_resources: handleExportResources,
         list_unused_assets: handleListUnusedAssets,
         get_doc_assets: handleGetDocAssets,
+        audit_image_refs: handleAuditImageRefs,
         get_image_ocr_text: handleGetImageOCRText,
         remove_unused_assets: handleRemoveUnusedAssets,
         rename_asset: handleRenameAsset,

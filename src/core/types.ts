@@ -975,6 +975,12 @@ export const FileGetDocAssetsSchema = z.object({
     assetType: z.enum(['all', 'image']).optional().describe("Filter asset type: 'all' (default) returns all assets, 'image' returns only image assets."),
 });
 
+export const FileAuditImageRefsSchema = z.object({
+    action: z.literal("audit_image_refs"),
+    id: z.string().describe("Document ID whose direct image references should be inspected."),
+    expectedRefs: z.array(z.string().min(1)).max(4096).describe("Expected image references from source Markdown; no local file is read."),
+});
+
 export const FileGetImageOCRTextSchema = z.object({
     action: z.literal("get_image_ocr_text"),
     path: z.string().optional().describe("Asset path; omit to receive an empty OCR text payload"),

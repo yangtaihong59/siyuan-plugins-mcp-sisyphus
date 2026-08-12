@@ -81,6 +81,7 @@ const ALL_ENABLED_CONFIG = {
             export_resources: true,
             list_unused_assets: true,
             get_doc_assets: true,
+            audit_image_refs: true,
             get_image_ocr_text: true,
             remove_unused_assets: true,
             rename_asset: true,
@@ -292,7 +293,7 @@ async function assertDefaultToolList() {
         assert.match(descriptions.av, /Common actions: get, render, get_attribute_view_keys, get_attribute_view_filter_sort, search, get_primary_key_values/);
         assert.match(descriptions.av, /Additional actions: add_rows, remove_rows, add_column, remove_column, set_cells, duplicate/);
         assert.match(descriptions.av, /database/i);
-        assert.match(descriptions.file, /Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, get_doc_assets, extract_doc/);
+        assert.match(descriptions.file, /Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, get_doc_assets, audit_image_refs, extract_doc/);
         assert.match(descriptions.file, /Additional actions: render, export_resources, list_unused_assets, get_image_ocr_text, remove_unused_assets, rename_asset, delete_asset/);
         assert.match(descriptions.file, /confirmLargeFile/);
         assert.match(descriptions.file, /Read siyuan:\/\/help\/action\/file\/\{action\} for details/);

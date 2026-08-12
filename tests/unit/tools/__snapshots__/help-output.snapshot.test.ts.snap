@@ -2151,6 +2151,43 @@ feedback submits plain-text product feedback to the developer through the config
   },
   "file": {
     "actions": {
+      "audit_image_refs": {
+        "action": "audit_image_refs",
+        "example": {
+          "action": "audit_image_refs",
+          "expectedRefs": [
+            "<expectedRefsItem>",
+          ],
+          "id": "20240318112233-abc123",
+        },
+        "fullDocResource": "siyuan://help/action/file/audit_image_refs",
+        "guidance": [
+          "file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution.",
+          "If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.",
+          "file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.",
+          "file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.",
+          "Use file(action="list_templates") before rendering when you need to discover valid workspace template paths under data/templates.",
+          "file(action="read_template") reads Markdown template source through SiYuan’s authenticated /templates/ route; it does not expose arbitrary workspace files.",
+          "file(action="create_template"|"update_template") writes Markdown templates through SiYuan’s /api/file/putFile workspace API; it does not write data/templates through the local filesystem.",
+          "file(action="delete_template") removes an existing Markdown template resolved from SiYuan’s template picker and requires explicit user confirmation before execution.",
+          "file(action="save_doc_as_template") saves an existing document as a root-level template after read-permission checks; use create_template when you need a nested template path.",
+          "file(action="render", engine="template") requires a template path inside the SiYuan workspace; arbitrary local paths like /tmp/... are rejected by the kernel.",
+          "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
+          "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
+          "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
+        ],
+        "hint": "Use id + expectedRefs from source or preprocessed Markdown. The action reads only SiYuan's direct image asset references over HTTP and returns expectedRefs, actualRefs, missingRefs, extraRefs, counts, and ok. Matching compares basenames and ignores SiYuan timestamp/id suffixes; it does not read local files or repair imports.",
+        "requiredFields": [
+          "id",
+          "expectedRefs",
+        ],
+        "requiresConfirmation": false,
+        "shapes": [
+          "id + expectedRefs",
+        ],
+        "tool": "file",
+      },
       "create_template": {
         "action": "create_template",
         "example": {
@@ -2186,6 +2223,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use path + markdown to create a Markdown template under data/templates. overwrite=false by default returns template_exists when the path already exists; pass overwrite=true to replace it.",
         "requiredFields": [
@@ -2219,6 +2257,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "requiredFields": [
           "path",
@@ -2250,6 +2289,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.",
         "requiredFields": [
@@ -2282,6 +2322,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "requiredFields": [
           "id",
@@ -2315,6 +2356,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
         "requiredFields": [
@@ -2358,6 +2400,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.",
         "requiredFields": [
@@ -2390,6 +2433,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use a document ID to list assets directly referenced by the current document tree after read-permission checks. This does not expand query embed blocks; when the user needs to inspect the full document content and assets, guide them to file(action="extract_doc") instead. Use assetType="image" to return only direct image assets.",
         "requiredFields": [
@@ -2421,6 +2465,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use an asset path to read stored OCR text. If path is omitted, SiYuan returns an empty text payload.",
         "requiredFields": [],
@@ -2450,6 +2495,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Searches SiYuan data/templates via the kernel template picker endpoint. Empty query lists all visible Markdown templates. Results include readArgs and renderArgsTemplate for reuse.",
         "requiredFields": [],
@@ -2479,6 +2525,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "requiredFields": [],
         "requiresConfirmation": false,
@@ -2508,6 +2555,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use a path from list_templates, /data/templates/..., /templates/..., or a path relative to data/templates. Reads only Markdown template source and supports offset/limit pagination.",
         "requiredFields": [
@@ -2539,6 +2587,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "requiredFields": [],
         "requiresConfirmation": true,
@@ -2569,6 +2618,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "requiredFields": [
           "oldPath",
@@ -2601,6 +2651,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use engine="template" with id + path for a workspace template; that engine uses .action{...} delimiters and exposes limited document fields such as id/title/name/alias. Set preview=true for SiYuan preview DOM. Use engine="sprig" with inline template for {{...}} syntax; Sprig has functions but no document context.",
         "requiredFields": [
@@ -2644,6 +2695,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use id + name to save a document as a root-level template through SiYuan’s docSaveAsTemplate API. Slashes are rejected; pass overwrite=true to replace an existing root template.",
         "requiredFields": [
@@ -2691,6 +2743,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use path + markdown to replace an existing Markdown template. The template must resolve through list_templates first; otherwise MCP returns template_not_found.",
         "requiredFields": [
@@ -2743,6 +2796,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
         "requiredFields": [
@@ -2758,7 +2812,7 @@ feedback submits plain-text product feedback to the developer through the config
     },
     "description": "📁 Grouped file and asset operations. Use the "action" field to select the operation.
 
-Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, get_doc_assets, extract_doc. Required fields: upload_asset: assetsDirPath, localFilePath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; get_doc_assets: id; extract_doc: id.
+Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, get_doc_assets, audit_image_refs, extract_doc. Required fields: upload_asset: assetsDirPath, localFilePath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; get_doc_assets: id; audit_image_refs: id, expectedRefs; extract_doc: id.
 
 Additional actions: delete_template, render, export_resources, list_unused_assets, get_image_ocr_text, remove_unused_assets, rename_asset, delete_asset. Read siyuan://help/action/file/{action} for details, or call action="help" if resources are unavailable.
 
@@ -2775,6 +2829,7 @@ file.export_md: required [id] | optional []
 file.export_resources: required [paths] | optional [name, outputPath]
 file.list_unused_assets: required [] | optional []
 file.get_doc_assets: required [id] | optional [assetType]
+file.audit_image_refs: required [id, expectedRefs] | optional []
 file.get_image_ocr_text: required [] | optional [path]
 file.remove_unused_assets: required [] | optional []
 file.rename_asset: required [oldPath, newName] | optional []
@@ -2784,6 +2839,7 @@ file.extract_doc: required [id] | optional [outputDir]
 file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution. If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true. Requires user confirmation before: upload_asset, delete_template, remove_unused_assets, delete_asset.",
     "overview": {
       "actionSummaries": {
+        "audit_image_refs": "Use id + expectedRefs from source or preprocessed Markdown. The action reads only SiYuan's direct image asset references over HTTP and returns expectedRefs, actualRefs, missingRefs, extraRefs, counts, and ok. Matching compares basenames and ignores SiYuan timestamp/id suffixes; it does not read local files or repair imports.",
         "create_template": "Use path + markdown to create a Markdown template under data/templates. overwrite=false by default returns template_exists when the path already exists; pass overwrite=true to replace it.",
         "delete_asset": "requires: path",
         "delete_template": "Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.",
@@ -2803,6 +2859,10 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "upload_asset": "Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
       },
       "actions": {
+        "audit_image_refs": {
+          "hint": "Use id + expectedRefs from source or preprocessed Markdown. The action reads only SiYuan's direct image asset references over HTTP and returns expectedRefs, actualRefs, missingRefs, extraRefs, counts, and ok. Matching compares basenames and ignores SiYuan timestamp/id suffixes; it does not read local files or repair imports.",
+          "requiresConfirmation": false,
+        },
         "create_template": {
           "hint": "Use path + markdown to create a Markdown template under data/templates. overwrite=false by default returns template_exists when the path already exists; pass overwrite=true to replace it.",
           "requiresConfirmation": false,
@@ -2886,6 +2946,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "save_doc_as_template",
         "export_md",
         "get_doc_assets",
+        "audit_image_refs",
         "extract_doc",
       ],
       "detailsHint": "Call file(action="help", topic="<actionName>") for required fields, shapes, and a minimal example.",
@@ -2903,6 +2964,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
         "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
         "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+        "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
       ],
       "helpResources": [
         "siyuan://help/action/file/{action}",
