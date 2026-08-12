@@ -2301,6 +2301,38 @@ feedback submits plain-text product feedback to the developer through the config
         ],
         "tool": "file",
       },
+      "export_markdown_snapshot": {
+        "action": "export_markdown_snapshot",
+        "example": {
+          "action": "export_markdown_snapshot",
+          "notebookID": "<notebookID>",
+        },
+        "fullDocResource": "siyuan://help/action/file/export_markdown_snapshot",
+        "guidance": [
+          "file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution.",
+          "If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.",
+          "file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.",
+          "file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.",
+          "Use file(action="list_templates") before rendering when you need to discover valid workspace template paths under data/templates.",
+          "file(action="read_template") reads Markdown template source through SiYuan’s authenticated /templates/ route; it does not expose arbitrary workspace files.",
+          "file(action="create_template"|"update_template") writes Markdown templates through SiYuan’s /api/file/putFile workspace API; it does not write data/templates through the local filesystem.",
+          "file(action="delete_template") removes an existing Markdown template resolved from SiYuan’s template picker and requires explicit user confirmation before execution.",
+          "file(action="save_doc_as_template") saves an existing document as a root-level template after read-permission checks; use create_template when you need a nested template path.",
+          "file(action="render", engine="template") requires a template path inside the SiYuan workspace; arbitrary local paths like /tmp/... are rejected by the kernel.",
+          "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
+          "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
+          "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+        ],
+        "hint": "Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.",
+        "requiredFields": [
+          "notebookID",
+        ],
+        "requiresConfirmation": false,
+        "shapes": [
+          "notebookID",
+        ],
+        "tool": "file",
+      },
       "export_md": {
         "action": "export_md",
         "example": {
@@ -2812,7 +2844,7 @@ feedback submits plain-text product feedback to the developer through the config
     },
     "description": "📁 Grouped file and asset operations. Use the "action" field to select the operation.
 
-Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, get_doc_assets, audit_image_refs, extract_doc. Required fields: upload_asset: assetsDirPath, localFilePath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; get_doc_assets: id; audit_image_refs: id, expectedRefs; extract_doc: id.
+Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, export_markdown_snapshot, get_doc_assets, audit_image_refs, extract_doc. Required fields: upload_asset: assetsDirPath, localFilePath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; export_markdown_snapshot: notebookID; get_doc_assets: id; audit_image_refs: id, expectedRefs; extract_doc: id.
 
 Additional actions: delete_template, render, export_resources, list_unused_assets, get_image_ocr_text, remove_unused_assets, rename_asset, delete_asset. Read siyuan://help/action/file/{action} for details, or call action="help" if resources are unavailable.
 
@@ -2826,6 +2858,7 @@ file.delete_template: required [path] | optional []
 file.save_doc_as_template: required [id, name] | optional [overwrite]
 file.render: required [engine] | optional [id, path, template, preview]
 file.export_md: required [id] | optional []
+file.export_markdown_snapshot: required [notebookID] | optional [roots, documentIDs, limit, cursor]
 file.export_resources: required [paths] | optional [name, outputPath]
 file.list_unused_assets: required [] | optional []
 file.get_doc_assets: required [id] | optional [assetType]
@@ -2843,6 +2876,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "create_template": "Use path + markdown to create a Markdown template under data/templates. overwrite=false by default returns template_exists when the path already exists; pass overwrite=true to replace it.",
         "delete_asset": "requires: path",
         "delete_template": "Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.",
+        "export_markdown_snapshot": "Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.",
         "export_md": "requires: id",
         "export_resources": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
         "extract_doc": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.",
@@ -2873,6 +2907,10 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "delete_template": {
           "hint": "Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.",
           "requiresConfirmation": true,
+        },
+        "export_markdown_snapshot": {
+          "hint": "Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.",
+          "requiresConfirmation": false,
         },
         "export_md": {
           "requiresConfirmation": false,
@@ -2945,6 +2983,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "update_template",
         "save_doc_as_template",
         "export_md",
+        "export_markdown_snapshot",
         "get_doc_assets",
         "audit_image_refs",
         "extract_doc",

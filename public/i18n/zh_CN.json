@@ -464,6 +464,8 @@
     "desc_file_action_render_sprig": "渲染 Sprig 模板。",
     "file_action_export_md": "导出 Markdown 内容",
     "desc_file_action_export_md": "将文档导出为 Markdown。",
+    "file_action_export_markdown_snapshot": "导出 Markdown 快照",
+    "desc_file_action_export_markdown_snapshot": "返回带元数据和正文哈希的确定性分页 Markdown 快照。",
     "file_action_export_resources": "导出资源",
     "desc_file_action_export_resources": "将资源导出为 ZIP。",
     "file_action_list_unused_assets": "列出未使用资源",

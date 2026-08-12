@@ -177,6 +177,7 @@
                 { key: "save_doc_as_template", title: "Save Doc As Template", description: "Save an existing document as a root-level template." },
                 { key: "render", title: "Render Template", description: "Render a workspace template or Sprig template." },
                 { key: "export_md", title: "Export Markdown Content", description: "Export document content as Markdown." },
+                { key: "export_markdown_snapshot", title: "Export Markdown Snapshot", description: "Return a deterministic, paginated Markdown snapshot with metadata and content hashes without writing the host filesystem." },
                 { key: "export_resources", title: "Export Resources", description: "Export resources as a ZIP archive." },
                 { key: "list_unused_assets", title: "List Unused Assets", description: "List asset files not currently referenced." },
                 { key: "get_doc_assets", title: "Get Direct Document Assets", description: "List assets directly referenced by the current document tree. Use Extract Document for complete content and asset inspection." },

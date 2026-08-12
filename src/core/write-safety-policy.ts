@@ -60,7 +60,7 @@ export const ACTION_SAFETY_POLICIES: {
         remove_column: mutation('state'), set_cells: mutation('manifest'), duplicate: mutation('state'),
     },
     file: {
-        list_templates: read(), read_template: read(), render: read(), export_md: read(), list_unused_assets: read(),
+        list_templates: read(), read_template: read(), render: read(), export_md: read(), export_markdown_snapshot: read(), list_unused_assets: read(),
         get_doc_assets: read(), audit_image_refs: read(), get_image_ocr_text: read(),
         upload_asset: mutation('source'), create_template: mutation('state'), update_template: mutation('state'),
         delete_template: mutation('state'), save_doc_as_template: mutation('state'), export_resources: external(),

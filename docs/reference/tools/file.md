@@ -13,7 +13,7 @@ Related pages:
 
 | Group | Actions |
 |------|---------|
-| Upload / export | `upload_asset`, `export_md`, `export_resources`, `extract_doc` |
+| Upload / export | `upload_asset`, `export_md`, `export_markdown_snapshot`, `export_resources`, `extract_doc` |
 | Templates | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
 | Asset inspection | `get_doc_assets`, `audit_image_refs`, `get_image_ocr_text`, `list_unused_assets` |
 | Asset mutations | `remove_unused_assets`, `rename_asset`, `delete_asset` |
@@ -177,6 +177,7 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `save_doc_as_template`
 - `render`
 - `export_md`
+- `export_markdown_snapshot`
 - `export_resources`
 - `list_unused_assets`
 - `get_doc_assets`
@@ -186,3 +187,8 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `rename_asset`
 - `delete_asset`
 - `extract_doc`
+### `export_markdown_snapshot`
+
+`file(action="export_markdown_snapshot")` returns one deterministic page of a Markdown snapshot without writing the host filesystem or starting a background job. The request must include an explicit `notebookID` and exactly one of `roots` (notebook-local storage paths, such as `/`) or `documentIDs`. Use `limit` and the opaque `cursor` for resumable batches.
+
+Each returned document includes the API-resolved ID, title, hPath, storage path, a safe relative `.md` path, canonical metadata plus `sha256:v1:` metadata/content hashes. Documents are ordered by hPath and ID. Duplicate hPaths are retained and disambiguated with the document ID; case-insensitive collisions and API/export mismatches are reported in `conflicts`/`errors` rather than guessed away. The response is a page, not a completed workspace backup; callers decide whether and where to persist it.

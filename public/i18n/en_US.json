@@ -478,6 +478,8 @@
     "desc_file_action_render_sprig": "Render a Sprig template.",
     "file_action_export_md": "Export Markdown Content",
     "desc_file_action_export_md": "Export document content as Markdown.",
+    "file_action_export_markdown_snapshot": "Export Markdown Snapshot",
+    "desc_file_action_export_markdown_snapshot": "Return a deterministic, paginated Markdown snapshot with metadata and content hashes.",
     "file_action_export_resources": "Export Resources",
     "desc_file_action_export_resources": "Export resources as a ZIP archive.",
     "file_action_list_unused_assets": "List Unused Assets",
