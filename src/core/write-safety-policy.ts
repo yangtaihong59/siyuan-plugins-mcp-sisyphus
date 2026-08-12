@@ -122,6 +122,27 @@ export function getActionSafetyPolicy(
     return policy;
 }
 
+/**
+ * Return every safety policy reachable by an action's schema branch.
+ *
+ * A few actions switch between read and mutation based on arguments. The
+ * registry uses this helper to advertise the union of fields required by all
+ * runtime paths, keeping schema decoration and dispatch on one policy source.
+ */
+export function getPossibleActionSafetyPolicies(category: ToolCategory, action: string): ActionSafetyPolicy[] {
+    const policies = [getActionSafetyPolicy(category, action)];
+    if (category === 'fs' && action === 'write') {
+        policies.push(getActionSafetyPolicy(category, action, { overwrite: true }));
+    }
+    if (category === 'file' && action === 'create_template') {
+        policies.push(getActionSafetyPolicy(category, action, { overwrite: true }));
+    }
+    if (category === 'av' && action === 'render') {
+        policies.push(getActionSafetyPolicy(category, action, { createIfNotExist: true }));
+    }
+    return policies;
+}
+
 export function assertActionSafetyPoliciesComplete(): void {
     for (const [category, actions] of Object.entries(ACTIONS_BY_CATEGORY) as Array<[
         ToolCategory,

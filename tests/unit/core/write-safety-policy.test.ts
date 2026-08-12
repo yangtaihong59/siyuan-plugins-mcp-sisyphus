@@ -44,7 +44,7 @@ describe('write safety action policy', () => {
         const strictBlock = listAllTools(strict).find((tool) => tool.name === 'block')!;
         expect(strictBlock.inputSchema.properties).toHaveProperty('requestId');
         expect(strictBlock.inputSchema.properties).toHaveProperty('expectedStateHash');
-        const credentialPattern = new RegExp(strictBlock.inputSchema.properties.expectedStateHash.pattern);
+        const credentialPattern = new RegExp((strictBlock.inputSchema.properties as any).expectedStateHash.pattern);
         expect(credentialPattern.test('sha256:v1:8ac2')).toBe(true);
         expect(credentialPattern.test('8AC2')).toBe(true);
         expect(credentialPattern.test('f'.repeat(64))).toBe(true);
@@ -55,5 +55,27 @@ describe('write safety action policy', () => {
         strict.writeSafety.strictMode = false;
         const legacyBlock = listAllTools(strict).find((tool) => tool.name === 'block')!;
         expect(legacyBlock.inputSchema.properties).not.toHaveProperty('requestId');
+    });
+
+    it('advertises strict fields on conditional mutation branches', () => {
+        const config = buildDefaultToolConfig();
+        const branchKey = 'x-sisyphus-actionSchemas';
+
+        for (const [category, action] of [
+            ['fs', 'write'],
+            ['file', 'create_template'],
+            ['av', 'render'],
+        ] as const) {
+            const descriptor = listAllTools(config).find((tool) => tool.name === category)!;
+            const branches = (descriptor.inputSchema as Record<string, unknown>)[branchKey] as Array<Record<string, any>>;
+            const branch = branches.find((entry) => entry.properties?.action?.const === action);
+
+            expect(branch, `${category}.${action} branch`).toBeDefined();
+            expect(branch?.properties).toHaveProperty('requestId');
+            expect(branch?.properties).toHaveProperty('validateOnly');
+            if (category === 'fs' || category === 'file') {
+                expect(branch?.properties).toHaveProperty('expectedStateHash');
+            }
+        }
     });
 });

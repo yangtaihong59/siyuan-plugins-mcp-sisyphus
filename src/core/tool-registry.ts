@@ -4,7 +4,7 @@ import type { PermissionManager } from './permissions';
 import type { ToolResult } from '@/tools/internal/shared';
 import type { OfficialMcpRuntime, OfficialMcpDiscoverySnapshot } from './official-mcp-bridge';
 import { ACTION_SCHEMA_BRANCHES_KEY } from '@/tools/internal/shared';
-import { PRECONDITION_FIELD, getActionSafetyPolicy } from './write-safety-policy';
+import { PRECONDITION_FIELD, getPossibleActionSafetyPolicies } from './write-safety-policy';
 
 import {
     callAvTool,
@@ -225,17 +225,29 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
         const branches = originalBranches.map((branch) => {
             const action = branch?.properties?.action?.const;
             if (typeof action !== 'string' || action === 'help') return branch;
-            const policy = getActionSafetyPolicy(category, action);
-            if (policy.mode !== 'mutation') return branch;
+            // 某些 action 是否写入取决于参数（例如 createIfNotExist 或
+            // overwrite=true）。普通分支无法表达这个条件，因此必须把所有
+            // 可能写入路径需要的严格字段都放进分支；否则客户端拿到的合法
+            // 分支无法携带协调器运行时要求的 requestId/哈希凭据。
+            const policies = getPossibleActionSafetyPolicies(category, action);
+            const mutationPolicies = policies.filter((policy) => policy.mode === 'mutation');
+            if (mutationPolicies.length === 0) return branch;
             const branchProperties = {
                 ...(branch.properties ?? {}),
                 requestId: properties.requestId,
                 validateOnly: properties.validateOnly,
             };
-            if (policy.precondition !== 'none') {
-                const field = PRECONDITION_FIELD[policy.precondition];
-                branchProperties[field] = properties[field];
-                if (field === 'expectedStateHash') branchProperties.expectedHash = properties.expectedHash;
+            const preconditions = mutationPolicies
+                .map((policy) => policy.mode === 'mutation' ? policy.precondition : 'none')
+                .filter((precondition): precondition is keyof typeof PRECONDITION_FIELD => precondition !== 'none');
+            if (preconditions.length > 0) {
+                // 一个分支只有一张扁平 properties 表，所以保留条件写入
+                // 可能需要的每一种前置条件字段。
+                for (const precondition of new Set(preconditions)) {
+                    const field = PRECONDITION_FIELD[precondition];
+                    branchProperties[field] = properties[field];
+                    if (field === 'expectedStateHash') branchProperties.expectedHash = properties.expectedHash;
+                }
             }
             return { ...branch, properties: branchProperties };
         });
