@@ -2524,7 +2524,6 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
             `keyID "${parsed.keyID}" has type "${keyType ?? 'unknown'}". set_column_options only supports select and mSelect columns.`);
     }
 
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const options = normalizeSelectOptions(parsed.options as Array<Record<string, unknown>>);
     const beforeOptions = comparableSelectOptions(key.options) ?? [];
     const desiredNames = new Set(options.map((option) => String(option.name)));
@@ -2543,6 +2542,7 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
             observedOptions: beforeOptions,
         });
     }
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const operations: TransactionOperation[] = [
         ...(options.length > 0 ? [{
             action: 'updateAttrViewColOptions',
@@ -2723,6 +2723,26 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
         });
     }
     const expected = { templates: expectedTemplates, defaultTemplateID: parsed.defaultTemplateID };
+    const observed = templateConfigProjection(
+        definition,
+        definition.newItemTemplates,
+        definition.defaultTemplateID,
+        'set_new_item_templates preflight',
+    );
+    const expectedConfigHash = await templateConfigHash(expected);
+    const observedConfigHash = await templateConfigHash(observed);
+    if (observedConfigHash === expectedConfigHash) {
+        return createWriteSuccessResult({
+            action: 'set_new_item_templates',
+            avID: parsed.avID,
+            templateCount: expected.templates.length,
+            defaultTemplateID: expected.defaultTemplateID,
+            changed: false,
+            status: 'already_applied',
+            templatePreimageHash: await rawTemplateConfigHash(definition),
+            templatePostimageHash: await rawTemplateConfigHash(definition),
+        });
+    }
     const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const updatedOps = withUpdatedOperation([{
         action: 'setAttrViewNewItemTemplates',
@@ -2739,8 +2759,6 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
         return after;
     };
 
-    let responseUnknown = false;
-    let after: { definition: AttributeViewDefinition; config: { templates: Record<string, unknown>[]; defaultTemplateID: string } } | undefined;
     try {
         await transactionApi.performTransactions(client, [{
             doOperations: updatedOps.doOperations,
@@ -2750,15 +2768,12 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
             undoOperations: updatedOps.undoOperations,
         }]);
     } catch (error) {
-        // Probe the exact postimage once; do not resend a whole-template write.
-        try {
-            after = await verifyExactPostimage();
-            responseUnknown = true;
-        } catch {
-            throw error;
-        }
+        // A matching readback cannot prove this request wrote it: another
+        // actor may have installed the postimage before dispatch. No native
+        // request marker survives here, so strict mode must record unknown.
+        throw error;
     }
-    after ??= await verifyExactPostimage();
+    const after = await verifyExactPostimage();
     const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'set_new_item_templates',
@@ -2767,7 +2782,6 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
         defaultTemplateID: expected.defaultTemplateID,
         templatePreimageHash: await rawTemplateConfigHash(definition),
         templatePostimageHash: await rawTemplateConfigHash(after.definition),
-        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
     }), refreshOperations);
 }
 
@@ -2928,6 +2942,27 @@ async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolH
         sourceAvID: parsed.avID, sourceKeyID: parsed.keyID, destinationAvID: parsed.destinationAvID,
         backRelationKeyID: parsed.backRelationKeyID, sourceName: parsed.sourceName, destinationName: parsed.destinationName,
     };
+    const alreadyApplied = (() => {
+        try {
+            verifyTwoWayRelationMetadata(source, destination!, expected, 'configure_two_way_relation preflight');
+            return true;
+        } catch {
+            return false;
+        }
+    })();
+    if (alreadyApplied) {
+        return createWriteSuccessResult({
+            action: 'configure_two_way_relation',
+            ...expected,
+            changed: false,
+            status: 'already_applied',
+            sourcePreimageHash: await hashCanonicalState(source),
+            sourcePostimageHash: await hashCanonicalState(source),
+            destinationPreimageHash: await hashCanonicalState(destination!),
+            destinationPostimageHash: await hashCanonicalState(destination!),
+            ...(sourceRelation?.avID ? { priorDestinationAvID: sourceRelation.avID } : {}),
+        });
+    }
     const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const updatedOps = withUpdatedOperation([{
         action: 'updateAttrViewColRelation', avID: parsed.avID, keyID: parsed.keyID, id: parsed.destinationAvID,
@@ -2940,26 +2975,20 @@ async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolH
         verifyTwoWayRelationMetadata(actualSource, actualDestination, expected, 'configure_two_way_relation readback');
         return { source: actualSource, destination: actualDestination };
     };
-    let responseUnknown = false;
-    let after: { source: AttributeViewDefinition; destination: AttributeViewDefinition } | undefined;
     try {
         await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
     } catch (error) {
-        try {
-            after = await verifyExactPostimage();
-            responseUnknown = true;
-        } catch {
-            throw error;
-        }
+        // Exact source/destination state is not a request-specific marker.
+        // Preserve a lost response so the strict coordinator fails closed.
+        throw error;
     }
-    after ??= await verifyExactPostimage();
+    const after = await verifyExactPostimage();
     const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'configure_two_way_relation', ...expected,
         sourcePreimageHash: await hashCanonicalState(source), sourcePostimageHash: await hashCanonicalState(after.source),
         destinationPreimageHash: await hashCanonicalState(destination), destinationPostimageHash: await hashCanonicalState(after.destination),
         ...(sourceRelation?.avID ? { priorDestinationAvID: sourceRelation.avID } : {}),
-        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
     }), refreshOperations);
 }
 
@@ -3022,6 +3051,31 @@ async function handleConfigureRollup({ client, permMgr, rawArgs }: ToolHandlerCo
         });
     }
 
+    const alreadyApplied = await (async () => {
+        try {
+            await verifyRollupMetadata(source, parsed.keyID, parsed.relationKeyID, parsed.destinationKeyID, parsed.calc, 'configure_rollup preflight');
+            return true;
+        } catch {
+            return false;
+        }
+    })();
+    if (alreadyApplied) {
+        return createWriteSuccessResult({
+            action: 'configure_rollup',
+            avID: parsed.avID,
+            keyID: parsed.keyID,
+            relationKeyID: parsed.relationKeyID,
+            destinationAvID: relationDestinationAvID!,
+            destinationKeyID: parsed.destinationKeyID,
+            calc: parsed.calc,
+            changed: false,
+            status: 'already_applied',
+            sourcePreimageHash: await hashCanonicalState(source),
+            sourcePostimageHash: await hashCanonicalState(source),
+            nativeFilterSideEffect: 'filters referencing this rollup key may be removed by SiYuan',
+        });
+    }
+
     const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const updatedOps = withUpdatedOperation([{
         action: 'updateAttrViewColRollup', id: parsed.keyID, avID: parsed.avID,
@@ -3032,26 +3086,20 @@ async function handleConfigureRollup({ client, permMgr, rawArgs }: ToolHandlerCo
         await verifyRollupMetadata(actual, parsed.keyID, parsed.relationKeyID, parsed.destinationKeyID, parsed.calc, 'configure_rollup readback');
         return actual;
     };
-    let responseUnknown = false;
-    let after: AttributeViewDefinition | undefined;
     try {
         await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
     } catch (error) {
-        try {
-            after = await verifyExactPostimage();
-            responseUnknown = true;
-        } catch {
-            throw error;
-        }
+        // The native rollup definition has no request identity. It may equal
+        // the postimage before this call, so a transport error stays unknown.
+        throw error;
     }
-    after ??= await verifyExactPostimage();
+    const after = await verifyExactPostimage();
     const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'configure_rollup', avID: parsed.avID, keyID: parsed.keyID, relationKeyID: parsed.relationKeyID,
         destinationAvID: relationDestinationAvID!, destinationKeyID: parsed.destinationKeyID, calc: parsed.calc,
         sourcePreimageHash: await hashCanonicalState(source), sourcePostimageHash: await hashCanonicalState(after),
         nativeFilterSideEffect: 'filters referencing this rollup key may be removed by SiYuan',
-        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
     }), refreshOperations);
 }
 

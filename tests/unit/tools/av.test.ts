@@ -197,6 +197,48 @@ describe('av tool', () => {
         expect(isDangerousAction('av', 'duplicate_rows')).toBe(true);
     });
 
+    it('returns a zero-dispatch no-op for an already exact retest4-shaped option postimage', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const avID = 'fixture-av-retest4';
+        const primaryKeyID = 'fixture-primary-key';
+        const targetKeyID = 'fixture-select-key';
+        const desiredOptions = [
+            { name: '待办', color: '1', desc: '目标模板触发' },
+            { name: '进行中', color: '2', desc: '' },
+        ];
+        // This is the relevant v3.8 raw-definition shape from retest4, but
+        // uses synthetic IDs so the regression does not preserve live data.
+        const alreadyApplied = {
+            spec: 7, id: avID, name: '', keyIDs: null, viewID: 'fixture-table-view',
+            keyValues: [
+                { key: { id: primaryKeyID, name: '主键', type: 'block', icon: '', desc: '', numberFormat: '', template: '' } },
+                { key: { id: targetKeyID, name: '单选', type: 'select', icon: '', desc: '', numberFormat: '', template: '', options: desiredOptions } },
+            ],
+            views: [{
+                id: 'fixture-table-view', icon: '', name: '表格', hideAttrViewName: false, desc: '',
+                filters: [{ column: '', operator: '', value: null, combination: 'and' }], pageSize: 50, type: 'table',
+                table: { spec: 0, id: 'fixture-table-layout', showIcon: true, wrapField: false, columns: [{ id: primaryKeyID, wrap: false, hidden: false, pin: false, width: '' }, { id: targetKeyID, wrap: false, hidden: false, pin: false, width: '' }], rowIds: null },
+                groupCreated: 0, groupItemIds: null, groupFolded: false, groupHidden: 0, groupSort: 0,
+            }],
+        };
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: alreadyApplied });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'fixture-db-block' }] });
+        vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
+            id: 'fixture-db-block', dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+        });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID, blockID: 'fixture-db-block', keyID: targetKeyID, options: desiredOptions,
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true, action: 'set_column_options', changed: false, status: 'already_applied', observedOptions: desiredOptions,
+        });
+    });
+
     it('replaces select options with native update plus intentional removals and exact readback', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
@@ -231,6 +273,39 @@ describe('av tool', () => {
             status: 'applied',
             observedOptions: [{ name: 'Keep', color: '3', desc: 'new description' }, { name: 'New', color: '4', desc: '' }],
         });
+    });
+
+    it('does not certify a matching postimage after an option transaction response is lost', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [] },
+                { key: { id: 'status', type: 'select', options: [{ name: 'Old', color: '1', desc: '' }] }, values: [] },
+            ],
+        };
+        const observedPostimage = structuredClone(before);
+        ((observedPostimage.keyValues[1] as any).key.options) = [{ name: 'New', color: '2', desc: '' }];
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: observedPostimage });
+        vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
+            id: 'db-block-options', dom: '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>',
+        });
+        vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('transport response lost'));
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID: 'av-1', blockID: 'db-block-options', keyID: 'status', options: [{ name: 'New', color: '2' }],
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+        // The handler must leave this exception for the strict coordinator,
+        // which records outcome_unknown; a readback could predate the request.
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'internal_error', message: 'transport response lost' },
+        });
+        expect(vi.mocked(avApi.getAttributeView)).toHaveBeenCalledTimes(1);
     });
 
     it('reports append-order option readback as intermediate without a second write', async () => {
@@ -524,6 +599,73 @@ describe('av tool', () => {
         expect(payload.templatePostimageHash).toMatch(/^sha256:v1:/);
     });
 
+    it('returns a zero-dispatch no-op when the complete native template configuration already matches', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const avID = '20260813000009-iiiiiii';
+        const databaseBlockID = '20260813000010-jjjjjjj';
+        const templateID = '20260813000000-aaaaaaa';
+        const persistedTemplate = { id: templateID, name: 'Inbox', targetType: 'detached' };
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: avID,
+                keyValues: [{ key: { type: 'block' }, values: [] }],
+                newItemTemplates: [persistedTemplate],
+                defaultTemplateID: templateID,
+            },
+        });
+        vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
+            id: databaseBlockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+        });
+
+        const result = await callAvTool(client, {
+            action: 'set_new_item_templates',
+            avID,
+            blockID: databaseBlockID,
+            templates: [{ ...persistedTemplate, icon: '' }],
+            defaultTemplateID: templateID,
+        }, enabledActions('set_new_item_templates'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true, action: 'set_new_item_templates', changed: false, status: 'already_applied',
+        });
+    });
+
+    it('does not certify an already-observed template postimage after a transaction response is lost', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const avID = '20260813000009-iiiiiii';
+        const databaseBlockID = '20260813000010-jjjjjjj';
+        const templateID = '20260813000000-aaaaaaa';
+        const preimage = {
+            id: avID,
+            keyValues: [{ key: { type: 'block' }, values: [] }],
+            newItemTemplates: [],
+            defaultTemplateID: '',
+        };
+        const observedPostimage = { ...preimage, newItemTemplates: [{ id: templateID, name: 'Inbox', targetType: 'detached' }], defaultTemplateID: templateID };
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: preimage }).mockResolvedValueOnce({ av: observedPostimage });
+        vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
+            id: databaseBlockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+        });
+        vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('template response lost'));
+
+        const result = await callAvTool(client, {
+            action: 'set_new_item_templates', avID, blockID: databaseBlockID,
+            templates: [{ id: templateID, name: 'Inbox', targetType: 'detached' }], defaultTemplateID: templateID,
+        }, enabledActions('set_new_item_templates'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(avApi.getAttributeView)).toHaveBeenCalledTimes(1);
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'internal_error', message: 'template response lost' },
+        });
+    });
+
     it('rejects a template that names an option the current AV does not contain', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
@@ -765,6 +907,96 @@ describe('av tool', () => {
         });
     });
 
+    it('returns a zero-dispatch no-op when both two-way relation definitions already match', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const sourceAvID = '20260813000009-iiiiiii';
+        const destinationAvID = '20260813000005-fffffff';
+        const sourceBlockID = '20260813000010-jjjjjjj';
+        const destinationBlockID = '20260813000011-kkkkkkk';
+        const keyID = '20260813000003-ddddddd';
+        const backKeyID = '20260813000004-eeeeeee';
+        const source = {
+            id: sourceAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [] },
+                { key: { id: keyID, type: 'relation', name: 'Projects', relation: { avID: destinationAvID, isTwoWay: true, backKeyID } }, values: [] },
+            ],
+        };
+        const destination = {
+            id: destinationAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [] },
+                { key: { id: backKeyID, type: 'relation', name: 'Tasks', relation: { avID: sourceAvID, isTwoWay: true, backKeyID: keyID } }, values: [] },
+            ],
+        };
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
+            if (id === sourceAvID) return { av: source };
+            if (id === destinationAvID) return { av: destination };
+            throw new Error(`unexpected AV ${id}`);
+        });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
+            id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] } : { refDefs: [] }
+        ));
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id,
+            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+        }));
+
+        const result = await callAvTool(client, {
+            action: 'configure_two_way_relation', avID: sourceAvID, blockID: sourceBlockID, keyID,
+            destinationAvID, destinationBlockID, backRelationKeyID: backKeyID, sourceName: 'Projects', destinationName: 'Tasks',
+        }, enabledActions('configure_two_way_relation'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true, action: 'configure_two_way_relation', changed: false, status: 'already_applied',
+        });
+    });
+
+    it('does not certify matching two-way relation definitions after a transaction response is lost', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const sourceAvID = '20260813000009-iiiiiii';
+        const destinationAvID = '20260813000005-fffffff';
+        const sourceBlockID = '20260813000010-jjjjjjj';
+        const destinationBlockID = '20260813000011-kkkkkkk';
+        const keyID = '20260813000003-ddddddd';
+        const backKeyID = '20260813000004-eeeeeee';
+        const sourcePreimage = { id: sourceAvID, keyValues: [{ key: { type: 'block' }, values: [] }, { key: { id: keyID, type: 'relation', name: 'Projects' }, values: [] }] };
+        const destinationPreimage = { id: destinationAvID, keyValues: [{ key: { type: 'block' }, values: [] }] };
+        const sourcePostimage = { ...sourcePreimage, keyValues: [sourcePreimage.keyValues[0], { key: { id: keyID, type: 'relation', name: 'Projects', relation: { avID: destinationAvID, isTwoWay: true, backKeyID } }, values: [] }] };
+        const destinationPostimage = { id: destinationAvID, keyValues: [destinationPreimage.keyValues[0], { key: { id: backKeyID, type: 'relation', name: 'Tasks', relation: { avID: sourceAvID, isTwoWay: true, backKeyID: keyID } }, values: [] }] };
+        let sourceReads = 0;
+        let destinationReads = 0;
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
+            if (id === sourceAvID) return { av: sourceReads++ === 0 ? sourcePreimage : sourcePostimage };
+            if (id === destinationAvID) return { av: destinationReads++ === 0 ? destinationPreimage : destinationPostimage };
+            throw new Error(`unexpected AV ${id}`);
+        });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id,
+            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+        }));
+        vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('two-way response lost'));
+
+        const result = await callAvTool(client, {
+            action: 'configure_two_way_relation', avID: sourceAvID, blockID: sourceBlockID, keyID,
+            destinationAvID, destinationBlockID, backRelationKeyID: backKeyID, sourceName: 'Projects', destinationName: 'Tasks',
+        }, enabledActions('configure_two_way_relation'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+        expect(sourceReads).toBe(1);
+        expect(destinationReads).toBe(1);
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'internal_error', message: 'two-way response lost' },
+        });
+    });
+
     it('configures an existing rollup key using native RollupCalc data', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
@@ -825,6 +1057,97 @@ describe('av tool', () => {
         });
         expect(JSON.parse(result.content[0].text)).toMatchObject({
             success: true, action: 'configure_rollup', destinationAvID, destinationKeyID,
+        });
+    });
+
+    it('returns a zero-dispatch no-op when the native rollup metadata already matches', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const sourceAvID = '20260813000009-iiiiiii';
+        const destinationAvID = '20260813000005-fffffff';
+        const sourceBlockID = '20260813000010-jjjjjjj';
+        const destinationBlockID = '20260813000011-kkkkkkk';
+        const relationKeyID = '20260813000003-ddddddd';
+        const rollupKeyID = '20260813000004-eeeeeee';
+        const destinationKeyID = '20260813000006-ggggggg';
+        const calc = { operator: 'count', result: { type: 'number', number: { content: 0 } } };
+        const source = {
+            id: sourceAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [] },
+                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID } }, values: [] },
+                { key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc } }, values: [] },
+            ],
+        };
+        const destination = { id: destinationAvID, keyValues: [{ key: { type: 'block' }, values: [] }, { key: { id: destinationKeyID, type: 'number' }, values: [] }] };
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
+            if (id === sourceAvID) return { av: source };
+            if (id === destinationAvID) return { av: destination };
+            throw new Error(`unexpected AV ${id}`);
+        });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id,
+            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+        }));
+
+        const result = await callAvTool(client, {
+            action: 'configure_rollup', avID: sourceAvID, blockID: sourceBlockID, keyID: rollupKeyID,
+            relationKeyID, destinationKeyID, calc,
+        }, enabledActions('configure_rollup'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true, action: 'configure_rollup', changed: false, status: 'already_applied',
+        });
+    });
+
+    it('does not certify matching native rollup metadata after a transaction response is lost', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const transactionApi = await import('@/api/transaction');
+        const sourceAvID = '20260813000009-iiiiiii';
+        const destinationAvID = '20260813000005-fffffff';
+        const sourceBlockID = '20260813000010-jjjjjjj';
+        const destinationBlockID = '20260813000011-kkkkkkk';
+        const relationKeyID = '20260813000003-ddddddd';
+        const rollupKeyID = '20260813000004-eeeeeee';
+        const destinationKeyID = '20260813000006-ggggggg';
+        const calc = { operator: 'count', result: { type: 'number', number: { content: 0 } } };
+        const sourcePreimage = {
+            id: sourceAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [] },
+                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID } }, values: [] },
+                { key: { id: rollupKeyID, type: 'rollup' }, values: [] },
+            ],
+        };
+        const sourcePostimage = { ...sourcePreimage, keyValues: [sourcePreimage.keyValues[0], sourcePreimage.keyValues[1], { key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc } }, values: [] }] };
+        const destination = { id: destinationAvID, keyValues: [{ key: { type: 'block' }, values: [] }, { key: { id: destinationKeyID, type: 'number' }, values: [] }] };
+        let sourceReads = 0;
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
+            if (id === sourceAvID) return { av: sourceReads++ === 0 ? sourcePreimage : sourcePostimage };
+            if (id === destinationAvID) return { av: destination };
+            throw new Error(`unexpected AV ${id}`);
+        });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id,
+            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+        }));
+        vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('rollup response lost'));
+
+        const result = await callAvTool(client, {
+            action: 'configure_rollup', avID: sourceAvID, blockID: sourceBlockID, keyID: rollupKeyID,
+            relationKeyID, destinationKeyID, calc,
+        }, enabledActions('configure_rollup'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+        expect(sourceReads).toBe(1);
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'internal_error', message: 'rollup response lost' },
         });
     });
 
