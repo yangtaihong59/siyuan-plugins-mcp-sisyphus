@@ -247,6 +247,12 @@
 | `set_cells` | `POST /api/av/setAttributeViewBlockAttr` / `POST /api/av/batchSetAttributeViewBlockAttrs` | `src/api/av.ts` | 设置一个或多个单元格值 |
 | `duplicate` | `POST /api/av/duplicateAttributeView` / `POST /api/av/duplicateAttributeViewBlock` | `src/api/av.ts` | 复制属性视图定义，可按上下文实体化数据库块 |
 | `get_primary_key_values` | `POST /api/av/getAttributeViewPrimaryKeyValues` | `src/api/av.ts` | 获取主键值列表(用于relation字段) |
+| `add_view` | `POST /api/transactions` (`addAttrViewView` + `setAttrViewViewName`) | `src/tools/av/handlers.ts` | 通过精确 carrier 新增并命名 table/gallery/kanban；看板要求已有 select 字段，避免隐式 schema 写入 |
+| `set_filters` | `POST /api/av/setAttrViewFilters` | `src/api/av.ts` | 替换精确 carrier-selected view 的完整递归筛选树；`[]` 仅接受空 AND 根组规范化 |
+| `set_sorts` | `POST /api/av/setAttrViewSorts` | `src/api/av.ts` | 替换精确 carrier-selected view 的完整排序数组 |
+| `set_group` | `POST /api/av/setAttrViewGroup` | `src/api/av.ts` | 设置或清除精确 carrier-selected view 的分组；包含内核 select 分组排序规范化 |
+| `set_column_visibility` | `POST /api/transactions` (`setAttrViewColHidden`) | `src/tools/av/handlers.ts` | 设置指定 view layout 字段显隐 |
+| `set_column_order` | `POST /api/transactions` (`sortAttrViewCol`) | `src/tools/av/handlers.ts` | 在一次 transaction 中设置完整且不重复的 layout 字段顺序 |
 
 ## `mascot`
 

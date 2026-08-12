@@ -902,4 +902,64 @@ describe('write safety coordinator', () => {
 
         expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
     });
+
+    it('reads an AV empty AND root semantically after one strict filter replacement', async () => {
+        const avID = '20260813000000-avtest1';
+        const blockID = '20260813000001-avtest1';
+        const viewID = '20260813000002-avtest1';
+        const definition: Record<string, any> = {
+            id: avID,
+            viewID,
+            keyValues: [{ key: { id: 'key-status', type: 'select' }, values: [] }],
+            views: [{
+                id: viewID,
+                name: '主视图',
+                type: 'table',
+                filters: [{ column: 'key-status', operator: '=', value: { type: 'select', mSelect: [{ content: '进行中' }] } }],
+                sorts: [],
+                table: { columns: [{ id: 'key-status', hidden: false }] },
+            }],
+        };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
+                if (endpoint === '/api/attr/getBlockAttrs') return { 'custom-sy-av-view': viewID, 'custom-sy-av-visible-views': 'all' };
+                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'set_filters', avID, blockID, viewID, filters: [] };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'set_filters',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            // `filters,omitempty` means the durable empty AND root loses its
+            // empty child array and zero-value leaf fields on raw readback.
+            definition.views[0].filters = [{ column: '', operator: '', value: null, combination: 'and' }];
+            return success({ success: true, action: 'set_filters' });
+        });
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'set_filters',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000031'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(client.requestRead).toHaveBeenCalledWith('/api/av/getAttributeView', { id: avID });
+        expect(client.requestRead).not.toHaveBeenCalledWith('/api/av/renderAttributeView', expect.anything());
+        expect(permMgr.reload).toHaveBeenCalled();
+    });
 });

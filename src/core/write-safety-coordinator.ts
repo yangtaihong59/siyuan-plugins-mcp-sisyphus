@@ -16,7 +16,7 @@ import {
     USER_RULES_VIRTUAL_PATH,
     type ToolCategory,
 } from './config';
-import { hashWriteBytes, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
+import { canonicalizeWriteState, hashWriteBytes, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
 import {
     WritePreflightLeasePool,
     type WritePreflightLease,
@@ -48,7 +48,18 @@ interface StateProbe {
     hash: string;
     targetIds: string[];
     summary: Record<string, unknown>;
+    /** Raw probe data stays coordinator-internal; only its digest/summary reaches callers. */
+    state?: Record<string, unknown>;
 }
+
+const AV_VIEW_CONFIGURATION_ACTIONS = new Set([
+    'add_view',
+    'set_filters',
+    'set_sorts',
+    'set_group',
+    'set_column_visibility',
+    'set_column_order',
+]);
 
 /**
  * Process-wide mutation coordinator. HTTP mode shares one runtime across all
@@ -263,7 +274,7 @@ export class WriteSafetyCoordinator {
                 : policy.precondition === 'source'
                 ? await probeUploadedResult(client, result, before!)
                 : await probePostWriteState(client, permMgr, category, action, postWriteArgs, policy, before);
-            await verifyPostWriteSemanticState(client, category, action, args);
+            await verifyPostWriteSemanticState(client, category, action, args, before, after);
         } catch (error) {
             await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, error);
             if (activeLease) this.preflightLeases.consume(activeLease);
@@ -418,6 +429,11 @@ async function probePostWriteState(
     before: StateProbe | undefined,
 ): Promise<StateProbe> {
     let after = await probeCurrentState(client, permMgr, category, action, args, policy);
+    // AV view configuration is deliberately one dispatch plus one exact raw
+    // definition/carrier readback. The kernel persists these settings in the
+    // same request; polling would turn a response-loss investigation into
+    // repeated reads without authorizing a retry or changing the decision.
+    if (category === 'av' && AV_VIEW_CONFIGURATION_ACTIONS.has(action)) return after;
     if (!before || after.hash !== before.hash) return after;
 
     // Several SiYuan mutations acknowledge before secondary indexes and
@@ -514,6 +530,50 @@ async function probeCurrentState(
             }
             targetIds.sort();
         }
+        if (AV_VIEW_CONFIGURATION_ACTIONS.has(action)) {
+            const blockID = typeof args.blockID === 'string' ? args.blockID : '';
+            const viewID = typeof args.viewID === 'string' ? args.viewID : '';
+            if (!blockID || !viewID) {
+                throw safetyError('precondition_required', 'AV view configuration requires explicit avID, blockID, and viewID.');
+            }
+            const [attrs, dom, blockInfo] = await Promise.all([
+                client.requestRead('/api/attr/getBlockAttrs', { id: blockID }),
+                client.requestRead('/api/block/getBlockDOM', { id: blockID }),
+                client.requestRead('/api/block/getBlockInfo', { id: blockID }),
+            ]);
+            const selectedViewID = isRecord(attrs) && typeof attrs['custom-sy-av-view'] === 'string'
+                ? attrs['custom-sy-av-view']
+                : '';
+            const rawAv = extractRawAvDefinition(state.av);
+            if (!selectedViewID || !findRawAvView(rawAv, selectedViewID)) {
+                throw safetyError('precondition_required', 'The AV carrier does not select one exact persisted view. Refusing kernel fallback.');
+            }
+            if (action !== 'add_view' && selectedViewID !== viewID) {
+                throw safetyError('precondition_required', 'The AV carrier no longer selects the requested view. Refusing kernel fallback.');
+            }
+            const domText = isRecord(dom) && typeof dom.dom === 'string' ? dom.dom : '';
+            if (!domText.includes('data-type="NodeAttributeView"') || !domText.includes(`data-av-id="${args.avID}"`)) {
+                throw safetyError('precondition_required', 'The explicit AV carrier does not prove NodeAttributeView ownership of the requested avID.');
+            }
+            const box = isRecord(blockInfo) && typeof blockInfo.box === 'string' ? blockInfo.box.trim() : '';
+            if (!box) {
+                throw safetyError('precondition_required', 'The explicit AV carrier has no resolvable notebook owner. Refusing an unscoped write.');
+            }
+            state.avCarrier = {
+                blockID,
+                viewID: selectedViewID,
+                ...(action === 'add_view' ? { requestedViewID: viewID } : {}),
+                // This resolved owner is intentionally part of the strict
+                // preimage. A handler must not reach a kernel AV write when a
+                // carrier cannot be tied to a notebook permission decision.
+                box,
+                attrs: {
+                    'custom-sy-av-view': attrs['custom-sy-av-view'],
+                    'custom-sy-av-visible-views': attrs['custom-sy-av-visible-views'],
+                },
+                dom: domText,
+            };
+        }
     } else if (category === 'flashcard') {
         if (typeof args.deckID === 'string') {
             const cards = await client.requestRead<Record<string, unknown>>('/api/riff/getRiffCards', {
@@ -578,12 +638,20 @@ async function probeCurrentState(
         }
     }
     if (!managesNotebookPermission) {
+        if (category === 'av' && AV_VIEW_CONFIGURATION_ACTIONS.has(action)) {
+            // Validate-only also resolves permission so an execution cannot
+            // acquire a lease against a target the current permission file no
+            // longer permits. Handler-level checks repeat this immediately
+            // before dispatch as the final authorization boundary.
+            await permMgr.reload();
+        }
         enforceNotebookPermission(permMgr, state, targetIds, requiresDeletePermission(category, action));
     }
     return {
         hash: hashWriteState(state),
         targetIds,
         summary: { targetCount: targetIds.length },
+        state,
     };
 }
 
@@ -812,7 +880,13 @@ async function verifyPostWriteSemanticState(
     category: ToolCategory,
     action: string,
     args: Record<string, unknown>,
+    before?: StateProbe,
+    after?: StateProbe,
 ): Promise<void> {
+    if (category === 'av' && AV_VIEW_CONFIGURATION_ACTIONS.has(action)) {
+        verifyAvViewConfigurationReadback(action, args, before, after);
+        return;
+    }
     if (category !== 'search' || action !== 'find_replace') return;
     const method = typeof args.method === 'number' ? args.method : undefined;
     const methodName = typeof args.methodName === 'string' ? args.methodName : undefined;
@@ -841,6 +915,286 @@ async function verifyPostWriteSemanticState(
     if (replacement && replacement !== keyword && !markdown.includes(replacement)) {
         throw safetyError('readback_mismatch', 'The find/replace response returned, but the replacement text was not observed in the requested targets.');
     }
+}
+
+function verifyAvViewConfigurationReadback(
+    action: string,
+    args: Record<string, unknown>,
+    before?: StateProbe,
+    after?: StateProbe,
+): void {
+    const beforeState = before?.state;
+    const afterState = after?.state;
+    if (!beforeState || !afterState) {
+        throw safetyError('readback_mismatch', 'The strict AV write has no complete pre/post raw-definition probe.');
+    }
+    const avID = typeof args.avID === 'string' ? args.avID : '';
+    const blockID = typeof args.blockID === 'string' ? args.blockID : '';
+    const viewID = typeof args.viewID === 'string' ? args.viewID : '';
+    if (!avID || !blockID || !viewID) {
+        throw safetyError('readback_mismatch', 'The strict AV write lost its explicit target identity during readback.');
+    }
+    const beforeDefinition = extractRawAvDefinition(beforeState.av);
+    const afterDefinition = extractRawAvDefinition(afterState.av);
+    const beforeCarrier = requireAvCarrier(beforeState.avCarrier, blockID);
+    const afterCarrier = requireAvCarrier(afterState.avCarrier, blockID);
+    assertExactAvCarrierReadback(afterCarrier, avID, viewID);
+
+    // A carrier-visible list is user configuration, not navigation state. The
+    // current kernel does not alter it for these writes; fail closed if a
+    // future implementation starts changing it behind this narrow action.
+    if (carrierVisibleViews(beforeCarrier) !== carrierVisibleViews(afterCarrier)) {
+        throw safetyError('readback_mismatch', 'The AV carrier visible-view configuration changed outside the requested action.');
+    }
+    if (carrierBox(beforeCarrier) !== carrierBox(afterCarrier)) {
+        throw safetyError('readback_mismatch', 'The AV carrier notebook owner changed during the write.');
+    }
+
+    if (action === 'add_view') {
+        if (findRawAvView(beforeDefinition, viewID)) {
+            throw safetyError('readback_mismatch', `View ${viewID} existed before the requested addition.`);
+        }
+        const created = findRawAvView(afterDefinition, viewID);
+        if (!created || created.type !== args.layout || created.name !== args.name) {
+            throw safetyError('readback_mismatch', 'Raw AV readback did not prove the requested new view ID, layout, and name.');
+        }
+    } else {
+        const afterView = requireRawAvView(afterDefinition, viewID);
+        verifyAvTargetConfiguration(action, args, afterView, beforeDefinition);
+    }
+
+    const protectedBefore = projectProtectedAvDefinition(beforeDefinition, action, args, false);
+    const protectedAfter = projectProtectedAvDefinition(afterDefinition, action, args, true);
+    if (canonicalizeWriteState(protectedBefore) !== canonicalizeWriteState(protectedAfter)) {
+        throw safetyError('readback_mismatch', 'Raw AV readback observed an unrelated persistent definition change.');
+    }
+}
+
+function extractRawAvDefinition(value: unknown): Record<string, unknown> {
+    if (!isRecord(value) || !isRecord(value.av)) {
+        throw safetyError('readback_mismatch', 'The raw getAttributeView response has no AV definition.');
+    }
+    return value.av;
+}
+
+function findRawAvView(definition: Record<string, unknown>, viewID: string): Record<string, unknown> | undefined {
+    const views = definition.views;
+    if (!Array.isArray(views)) return undefined;
+    const matches = views.filter((value): value is Record<string, unknown> => isRecord(value) && value.id === viewID);
+    if (matches.length > 1) {
+        throw safetyError('readback_mismatch', `View ${viewID} resolved more than once in the raw AV definition.`);
+    }
+    return matches[0];
+}
+
+function requireRawAvView(definition: Record<string, unknown>, viewID: string): Record<string, unknown> {
+    const view = findRawAvView(definition, viewID);
+    if (!view) throw safetyError('readback_mismatch', `View ${viewID} is absent from raw AV readback.`);
+    return view;
+}
+
+function requireAvCarrier(value: unknown, blockID: string): Record<string, unknown> {
+    if (!isRecord(value) || value.blockID !== blockID) {
+        throw safetyError('readback_mismatch', 'The exact AV carrier was not present in strict readback.');
+    }
+    return value;
+}
+
+function carrierVisibleViews(carrier: Record<string, unknown>): unknown {
+    return isRecord(carrier.attrs) ? carrier.attrs['custom-sy-av-visible-views'] : undefined;
+}
+
+function carrierBox(carrier: Record<string, unknown>): string {
+    return typeof carrier.box === 'string' ? carrier.box : '';
+}
+
+function assertExactAvCarrierReadback(carrier: Record<string, unknown>, avID: string, viewID: string): void {
+    const attrs = isRecord(carrier.attrs) ? carrier.attrs : undefined;
+    const dom = typeof carrier.dom === 'string' ? carrier.dom : '';
+    if (carrier.viewID !== viewID || attrs?.['custom-sy-av-view'] !== viewID
+        || !dom.includes('data-type="NodeAttributeView"') || !dom.includes(`data-av-id="${avID}"`)) {
+        throw safetyError('readback_mismatch', 'The carrier did not retain the exact AV/view binding requested by this write.');
+    }
+}
+
+function verifyAvTargetConfiguration(
+    action: string,
+    args: Record<string, unknown>,
+    afterView: Record<string, unknown>,
+    definition: Record<string, unknown>,
+): void {
+    if (action === 'set_filters') {
+        if (!sameAvValue(normalizeAvFilters(args.filters), normalizeAvFilters(afterView.filters))) {
+            throw safetyError('readback_mismatch', 'The persisted filter tree does not match the requested complete replacement.');
+        }
+        return;
+    }
+    if (action === 'set_sorts') {
+        const expected = Array.isArray(args.sorts) ? args.sorts : [];
+        const actual = Array.isArray(afterView.sorts) ? afterView.sorts : [];
+        if (!sameAvValue(expected, actual)) {
+            throw safetyError('readback_mismatch', 'The persisted sort list does not match the requested complete replacement.');
+        }
+        return;
+    }
+    if (action === 'set_group') {
+        if (!sameAvValue(normalizeAvGroup(args.group, definition), normalizeAvGroup(afterView.group, definition))) {
+            throw safetyError('readback_mismatch', 'The persisted group configuration does not match the requested semantic group.');
+        }
+        return;
+    }
+    const keyID = typeof args.keyID === 'string' ? args.keyID : '';
+    const fields = rawViewFields(afterView);
+    if (action === 'set_column_visibility') {
+        const field = fields.find((value) => isRecord(value) && value.id === keyID);
+        if (!field || Boolean((field as Record<string, unknown>).hidden) !== args.hidden) {
+            throw safetyError('readback_mismatch', 'The persisted view-field visibility does not match the requested value.');
+        }
+        return;
+    }
+    if (action === 'set_column_order') {
+        const expected = Array.isArray(args.keyIDs) ? args.keyIDs : [];
+        const actual = fields.map((value) => isRecord(value) ? value.id : undefined);
+        if (!sameAvValue(expected, actual)) {
+            throw safetyError('readback_mismatch', 'The persisted view-field order does not match the required complete order.');
+        }
+        return;
+    }
+    throw safetyError('readback_mismatch', `Unsupported AV semantic readback action: ${action}.`);
+}
+
+function normalizeAvFilters(value: unknown): unknown[] {
+    const source = Array.isArray(value) ? value : [];
+    const normalizeNode = (node: unknown): unknown => {
+        if (!isRecord(node)) return node;
+        const normalized = cloneJsonRecord(node);
+        normalized.column = typeof normalized.column === 'string' ? normalized.column : '';
+        normalized.operator = typeof normalized.operator === 'string' ? normalized.operator : '';
+        if (!('value' in normalized)) normalized.value = null;
+        const children = Array.isArray(normalized.filters) ? normalized.filters : [];
+        if (children.length > 0) normalized.filters = children.map(normalizeNode);
+        else delete normalized.filters;
+        return normalized;
+    };
+    const isGroup = (node: unknown): boolean => isRecord(node)
+        && (typeof node.combination === 'string' || Array.isArray(node.filters));
+    if (source.length === 1 && isGroup(source[0])) return [normalizeNode(source[0])];
+    return [normalizeNode({ combination: 'and', filters: source })];
+}
+
+function normalizeAvGroup(value: unknown, definition: Record<string, unknown>): Record<string, unknown> | undefined {
+    if (!isRecord(value)) return undefined;
+    const normalized: Record<string, unknown> = {
+        field: typeof value.field === 'string' ? value.field : '',
+        method: typeof value.method === 'number' ? value.method : 0,
+        order: typeof value.order === 'number' ? value.order : 0,
+        hideEmpty: value.hideEmpty === true,
+    };
+    if (isRecord(value.range)) {
+        normalized.range = {
+            numStart: value.range.numStart,
+            numEnd: value.range.numEnd,
+            numStep: value.range.numStep,
+        };
+    }
+    // The kernel deliberately switches first-time select/multi-select groups
+    // to option-order (3), regardless of a caller's stale generic order.
+    // This is a documented semantic normalization, not permission to ignore
+    // arbitrary group changes or derived group-state drift.
+    const keyType = rawAvKeyType(definition, normalized.field as string);
+    if (normalized.field && (keyType === 'select' || keyType === 'mSelect')) normalized.order = 3;
+    return normalized;
+}
+
+function rawAvKeyType(definition: Record<string, unknown>, keyID: string): string | undefined {
+    const keyValues = definition.keyValues;
+    if (!Array.isArray(keyValues)) return undefined;
+    const found = keyValues.find((value) => isRecord(value) && isRecord(value.key) && value.key.id === keyID);
+    return isRecord(found) && isRecord(found.key) && typeof found.key.type === 'string' ? found.key.type : undefined;
+}
+
+function rawViewFields(view: Record<string, unknown>): unknown[] {
+    if (view.type === 'table' && isRecord(view.table) && Array.isArray(view.table.columns)) return view.table.columns;
+    if (view.type === 'gallery' && isRecord(view.gallery) && Array.isArray(view.gallery.fields)) return view.gallery.fields;
+    if (view.type === 'kanban' && isRecord(view.kanban) && Array.isArray(view.kanban.fields)) return view.kanban.fields;
+    throw safetyError('readback_mismatch', `View ${String(view.id)} has no fields for its persisted layout.`);
+}
+
+function projectProtectedAvDefinition(
+    definition: Record<string, unknown>,
+    action: string,
+    args: Record<string, unknown>,
+    after: boolean,
+): Record<string, unknown> {
+    const viewID = typeof args.viewID === 'string' ? args.viewID : '';
+    const projected = cloneJsonRecord(definition);
+    // AV-level current view is native navigation state. It changes when a
+    // view is added and is never proof that a carrier-targeted configuration
+    // write selected the intended view.
+    delete projected.viewID;
+    normalizeDerivedGroups(projected);
+    if (!Array.isArray(projected.views)) return projected;
+    if (action === 'add_view' && after) {
+        projected.views = projected.views.filter((value) => !isRecord(value) || value.id !== viewID);
+        return projected;
+    }
+    const target = projected.views.find((value): value is Record<string, unknown> => isRecord(value) && value.id === viewID);
+    if (!target) return projected;
+    if (action === 'set_filters') delete target.filters;
+    else if (action === 'set_sorts') delete target.sorts;
+    else if (action === 'set_group') {
+        delete target.group;
+        delete target.groups;
+        delete target.groupCreated;
+        delete target.groupItemIds;
+        delete target.groupCalc;
+        delete target.groupKey;
+    } else if (action === 'set_column_visibility') {
+        const keyID = typeof args.keyID === 'string' ? args.keyID : '';
+        const fields = rawViewFields(target);
+        const field = fields.find((value): value is Record<string, unknown> => isRecord(value) && value.id === keyID);
+        if (!field) throw safetyError('readback_mismatch', `View ${viewID} has no requested field ${keyID}.`);
+        delete field.hidden;
+    } else if (action === 'set_column_order') {
+        // The transaction repositions every requested field. Sort the local
+        // projection by stable field ID so the comparison still protects each
+        // field's full configuration while excluding only presentation order.
+        const fields = rawViewFields(target);
+        fields.sort((left, right) => {
+            const leftID = isRecord(left) && typeof left.id === 'string' ? left.id : '';
+            const rightID = isRecord(right) && typeof right.id === 'string' ? right.id : '';
+            return leftID.localeCompare(rightID);
+        });
+    }
+    return projected;
+}
+
+function cloneJsonRecord(value: Record<string, unknown>): Record<string, unknown> {
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function normalizeDerivedGroups(definition: Record<string, unknown>): void {
+    if (!Array.isArray(definition.views)) return;
+    for (const rawView of definition.views) {
+        if (!isRecord(rawView)) continue;
+        delete rawView.groupCreated;
+        if (!Array.isArray(rawView.groups)) continue;
+        const groups = rawView.groups
+            .filter(isRecord)
+            .map((group) => {
+                const semantic: Record<string, unknown> = {};
+                for (const key of ['id', 'groupItemIds', 'groupVal', 'groupFolded', 'groupHidden', 'groupSort']) {
+                    if (key in group) semantic[key] = group[key];
+                }
+                return semantic;
+            });
+        groups.sort((left, right) => canonicalizeWriteState(left).localeCompare(canonicalizeWriteState(right)));
+        rawView.groups = groups;
+    }
+}
+
+function sameAvValue(left: unknown, right: unknown): boolean {
+    return canonicalizeWriteState(left) === canonicalizeWriteState(right);
 }
 
 function enforceNotebookPermission(

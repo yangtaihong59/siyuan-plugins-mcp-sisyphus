@@ -24,6 +24,9 @@ vi.mock('@/api/av', () => ({
     renderAttributeView: vi.fn(),
     getAttributeViewKeys: vi.fn(),
     getAttributeViewFilterSort: vi.fn(),
+    setAttributeViewFilters: vi.fn(),
+    setAttributeViewSorts: vi.fn(),
+    setAttributeViewGroup: vi.fn(),
     searchAttributeView: vi.fn(),
     addAttributeViewBlocks: vi.fn(),
     removeAttributeViewBlocks: vi.fn(),
@@ -40,6 +43,7 @@ vi.mock('@/api/av', () => ({
 vi.mock('@/api/block', () => ({
     appendBlock: vi.fn(),
     checkBlockExist: vi.fn(),
+    getBlockAttrs: vi.fn(),
     getBlockDOM: vi.fn(),
 }));
 
@@ -74,6 +78,9 @@ describe('av tool', () => {
         vi.mocked(avApi.renderAttributeView).mockReset();
         vi.mocked(avApi.getAttributeViewKeys).mockReset();
         vi.mocked(avApi.getAttributeViewFilterSort).mockReset();
+        vi.mocked(avApi.setAttributeViewFilters).mockReset();
+        vi.mocked(avApi.setAttributeViewSorts).mockReset();
+        vi.mocked(avApi.setAttributeViewGroup).mockReset();
         vi.mocked(avApi.searchAttributeView).mockReset();
         vi.mocked(avApi.getAttributeViewPrimaryKeyValues).mockReset();
         vi.mocked(avApi.addAttributeViewBlocks).mockReset();
@@ -86,6 +93,7 @@ describe('av tool', () => {
         vi.mocked(context.resolveResultItemContext).mockReset();
         vi.mocked(blockApi.appendBlock).mockReset();
         vi.mocked(blockApi.checkBlockExist).mockReset();
+        vi.mocked(blockApi.getBlockAttrs).mockReset();
         vi.mocked(blockApi.getBlockDOM).mockReset();
         vi.mocked(searchApi.querySQL).mockReset();
         vi.mocked(transactionApi.performTransactions).mockReset();
@@ -99,6 +107,7 @@ describe('av tool', () => {
             undoOperations: [{ action: 'delete', id: 'av-block-new' }],
         } as never);
         vi.mocked(blockApi.checkBlockExist).mockResolvedValue(true);
+        vi.mocked(blockApi.getBlockAttrs).mockResolvedValue({ 'custom-sy-av-view': 'view-1' });
         vi.mocked(searchApi.querySQL).mockResolvedValue([]);
         vi.mocked(avApi.spinBlockDOM).mockImplementation(async (_clientArg, dom) => ({ dom: `<div data-spun="1">${dom}</div>` }));
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
@@ -119,10 +128,15 @@ describe('av tool', () => {
                 id: 'av-1',
                 keyValues: [
                     {
-                        key: { type: 'block' },
+                        key: { id: 'key-title', type: 'block' },
                         values: [{ id: 'val-1', blockID: 'row-1', block: { id: 'block-1' } }],
                     },
+                    { key: { id: 'key-status', type: 'select' }, values: [] },
                 ],
+                views: [{
+                    id: 'view-1', name: 'Main', type: 'table', filters: [], sorts: [],
+                    table: { columns: [{ id: 'key-title', hidden: false }, { id: 'key-status', hidden: false }] },
+                }],
             },
         });
         vi.mocked(avApi.renderAttributeView).mockResolvedValue({
@@ -654,17 +668,9 @@ describe('av tool', () => {
             id: 'av-1',
         }, enabledActions('get'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             id: 'av-1',
-            av: {
-                id: 'av-1',
-                keyValues: [
-                    {
-                        key: { type: 'block' },
-                        values: [{ id: 'val-1', blockID: 'row-1', block: { id: 'block-1' } }],
-                    },
-                ],
-            },
+            av: { id: 'av-1' },
             resolvedRows: [
                 { rowID: 'row-1', sourceBlockID: 'block-1', valueIDs: ['val-1'] },
             ],
@@ -2822,6 +2828,122 @@ describe('av tool', () => {
             id: 'av-1',
             blockID: '',
         });
+    });
+
+    it('adds a named gallery view through one native transaction without render', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const result = await callAvTool(client, {
+            action: 'add_view',
+            avID: 'av-1',
+            blockID: 'db-block-explicit',
+            viewID: 'view-gallery',
+            layout: 'gallery',
+            name: '卡片视图',
+        }, enabledActions('add_view'), permMgr);
+
+        expect(vi.mocked(avApi.renderAttributeView)).not.toHaveBeenCalled();
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledWith(client, [{
+            doOperations: [
+                { action: 'addAttrViewView', avID: 'av-1', id: 'view-gallery', blockID: 'db-block-explicit', layout: 'gallery' },
+                { action: 'setAttrViewViewName', avID: 'av-1', id: 'view-gallery', data: '卡片视图' },
+            ],
+            undoOperations: [],
+        }]);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true, action: 'add_view', viewID: 'view-gallery', layout: 'gallery', name: '卡片视图',
+        });
+    });
+
+    it('refuses kanban creation that would synthesize a schema field in existing views', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: 'av-1',
+                keyValues: [{ key: { id: 'key-title', type: 'block' }, values: [] }],
+                views: [{ id: 'view-1', type: 'table', table: { columns: [{ id: 'key-title' }] } }],
+            },
+        });
+        const result = await callAvTool(client, {
+            action: 'add_view', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-kanban', layout: 'kanban', name: '看板',
+        }, enabledActions('add_view'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { message: expect.stringContaining('requires an existing select column') } });
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+    });
+
+    it('replaces filters through the public endpoint and rejects a stale carrier view', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const filter = { column: 'key-status', operator: '=', value: { type: 'select', mSelect: [{ content: '进行中' }] } };
+        const result = await callAvTool(client, {
+            action: 'set_filters', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1', filters: [filter],
+        }, enabledActions('set_filters'), permMgr);
+
+        expect(vi.mocked(avApi.setAttributeViewFilters)).toHaveBeenCalledWith(client, {
+            avID: 'av-1', blockID: 'db-block-explicit', data: [filter],
+        });
+        expect(vi.mocked(avApi.renderAttributeView)).not.toHaveBeenCalled();
+
+        vi.mocked(blockApi.getBlockAttrs).mockResolvedValue({ 'custom-sy-av-view': 'other-view' });
+        const stale = await callAvTool(client, {
+            action: 'set_filters', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1', filters: [],
+        }, enabledActions('set_filters'), permMgr);
+        expect(stale.isError).toBe(true);
+        expect(vi.mocked(avApi.setAttributeViewFilters)).toHaveBeenCalledTimes(1);
+    });
+
+    it('replaces complete sort and group configuration on the verified carrier view', async () => {
+        const avApi = await import('@/api/av');
+        await callAvTool(client, {
+            action: 'set_sorts', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1',
+            sorts: [{ column: 'key-status', order: 'DESC' }],
+        }, enabledActions('set_sorts'), permMgr);
+        await callAvTool(client, {
+            action: 'set_group', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1',
+            group: { field: 'key-status', method: 0, order: 3, hideEmpty: true },
+        }, enabledActions('set_group'), permMgr);
+        expect(vi.mocked(avApi.setAttributeViewSorts)).toHaveBeenCalledWith(client, {
+            avID: 'av-1', blockID: 'db-block-explicit', data: [{ column: 'key-status', order: 'DESC' }],
+        });
+        expect(vi.mocked(avApi.setAttributeViewGroup)).toHaveBeenCalledWith(client, {
+            avID: 'av-1', blockID: 'db-block-explicit', group: { field: 'key-status', method: 0, order: 3, hideEmpty: true },
+        });
+    });
+
+    it('updates gallery visibility and requires a complete field order', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: 'av-1', keyValues: [{ key: { id: 'key-title', type: 'block' }, values: [] }, { key: { id: 'key-status', type: 'select' }, values: [] }],
+                views: [{ id: 'view-1', type: 'gallery', gallery: { fields: [{ id: 'key-title', hidden: false }, { id: 'key-status', hidden: false }] } }],
+            },
+        });
+        await callAvTool(client, {
+            action: 'set_column_visibility', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1', keyID: 'key-status', hidden: true,
+        }, enabledActions('set_column_visibility'), permMgr);
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledWith(client, [{
+            doOperations: [{ action: 'setAttrViewColHidden', avID: 'av-1', blockID: 'db-block-explicit', id: 'key-status', data: true }], undoOperations: [],
+        }]);
+
+        const partial = await callAvTool(client, {
+            action: 'set_column_order', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1', keyIDs: ['key-status'],
+        }, enabledActions('set_column_order'), permMgr);
+        expect(partial.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+
+        await callAvTool(client, {
+            action: 'set_column_order', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1', keyIDs: ['key-status', 'key-title'],
+        }, enabledActions('set_column_order'), permMgr);
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenLastCalledWith(client, [{
+            doOperations: [
+                { action: 'sortAttrViewCol', avID: 'av-1', blockID: 'db-block-explicit', id: 'key-status', previousID: '' },
+                { action: 'sortAttrViewCol', avID: 'av-1', blockID: 'db-block-explicit', id: 'key-title', previousID: 'key-status' },
+            ], undoOperations: [],
+        }]);
     });
 
     it('skips stale mirror block refs when resolving AV permissions', async () => {

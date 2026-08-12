@@ -8,6 +8,7 @@ import type { AvAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
 import {
     AvAddColumnSchema,
+    AvAddViewSchema,
     AvAddRowsSchema,
     AvDuplicateSchema,
     AvDuplicateRowsSchema,
@@ -21,6 +22,11 @@ import {
     AvSearchSchema,
     AvSetColumnOptionsSchema,
     AvSetCellsSchema,
+    AvSetColumnOrderSchema,
+    AvSetColumnVisibilitySchema,
+    AvSetFiltersSchema,
+    AvSetGroupSchema,
+    AvSetSortsSchema,
 } from '../../core/types';
 import { createResultResolutionCache, ensurePermissionForDocumentId, escapeSqlString, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
 import type { ToolActionHandler, ToolHandlerContext } from '../internal/define-tool';
@@ -663,6 +669,137 @@ function createAvBlockContextErrorResult(
         isError: true,
     };
 }
+
+type AvDefinition = {
+    id?: unknown;
+    views?: unknown;
+};
+
+type AvViewDefinition = {
+    id?: unknown;
+    type?: unknown;
+    name?: unknown;
+    filters?: unknown;
+    sorts?: unknown;
+    group?: unknown;
+    table?: { columns?: unknown };
+    gallery?: { fields?: unknown };
+    kanban?: { fields?: unknown };
+};
+
+function resolveExactCarrierView(
+    avID: string,
+    definition: unknown,
+    attrs: Record<string, string>,
+    blockID: string,
+    expectedViewID: string,
+): AvViewDefinition {
+    const actualViewID = attrs['custom-sy-av-view'];
+    if (actualViewID !== expectedViewID) {
+        throw new Error(`Carrier "${blockID}" no longer selects requested view "${expectedViewID}" for attribute view "${avID}". Refusing kernel fallback.`);
+    }
+    const views = (definition as AvDefinition | undefined)?.views;
+    if (!Array.isArray(views)) throw new Error(`Attribute view "${avID}" has no readable views array.`);
+    const matches = views.filter((view): view is AvViewDefinition => (
+        Boolean(view) && typeof view === 'object' && (view as AvViewDefinition).id === expectedViewID
+    ));
+    if (matches.length !== 1) throw new Error(`Requested view "${expectedViewID}" must resolve exactly once in attribute view "${avID}".`);
+    return matches[0];
+}
+
+async function verifyExactAvCarrier(
+    client: SiYuanClient,
+    avID: string,
+    avData: unknown,
+    blockID: string,
+    viewID: string,
+): Promise<AvViewDefinition> {
+    const matchesAv = await isExplicitAvDatabaseBlock(client, avID, avData, blockID);
+    if (!matchesAv) throw new Error(`blockID "${blockID}" is not a database block for attribute view "${avID}".`);
+
+    const [attrs, dom] = await Promise.all([
+        blockApi.getBlockAttrs(client, blockID),
+        blockApi.getBlockDOM(client, blockID),
+    ]);
+    if (attrs['custom-sy-av-view'] !== viewID) {
+        throw new Error(`Carrier "${blockID}" does not select view "${viewID}". Refusing kernel fallback.`);
+    }
+    if (!dom.dom.includes('data-type="NodeAttributeView"') || !dom.dom.includes(`data-av-id="${avID}"`)) {
+        throw new Error(`Carrier "${blockID}" DOM does not prove NodeAttributeView ownership of "${avID}".`);
+    }
+    return resolveExactCarrierView(avID, avData, attrs, blockID, viewID);
+}
+
+function assertKnownViewField(
+    avID: string,
+    view: AvViewDefinition,
+    keyID: string,
+): void {
+    const layout = view.type;
+    const fields = layout === 'table'
+        ? view.table?.columns
+        : layout === 'gallery'
+            ? view.gallery?.fields
+            : layout === 'kanban'
+                ? view.kanban?.fields
+                : undefined;
+    if (!Array.isArray(fields) || !fields.some((field) => field && typeof field === 'object' && (field as { id?: unknown }).id === keyID)) {
+        throw new Error(`Column "${keyID}" is not present in requested ${String(layout)} view "${String(view.id)}" of attribute view "${avID}".`);
+    }
+}
+
+function viewFieldIDs(view: AvViewDefinition): string[] {
+    const layout = view.type;
+    const fields = layout === 'table'
+        ? view.table?.columns
+        : layout === 'gallery'
+            ? view.gallery?.fields
+            : layout === 'kanban'
+                ? view.kanban?.fields
+                : undefined;
+    if (!Array.isArray(fields)) throw new Error(`Requested view "${String(view.id)}" has no readable ${String(layout)} field list.`);
+    const ids = fields.map((field) => field && typeof field === 'object' ? (field as { id?: unknown }).id : undefined);
+    if (!ids.every((id): id is string => typeof id === 'string' && id.length > 0)) {
+        throw new Error(`Requested view "${String(view.id)}" contains a malformed field ID.`);
+    }
+    return ids;
+}
+
+function assertKnownAvKey(avID: string, avData: unknown, keyID: string, label: string): void {
+    const keys = extractAttributeViewKeysFromData(avData);
+    if (!keys.some((key) => key && typeof key === 'object' && (key as { id?: unknown }).id === keyID)) {
+        throw new Error(`${label} "${keyID}" is not a key in attribute view "${avID}".`);
+    }
+}
+
+function assertKnownFilterColumns(avID: string, avData: unknown, filters: unknown[]): void {
+    const visit = (filter: unknown): void => {
+        if (!filter || typeof filter !== 'object') return;
+        const node = filter as Record<string, unknown>;
+        const children = Array.isArray(node.filters) ? node.filters : undefined;
+        if (typeof node.combination === 'string' || children !== undefined) {
+            for (const child of children ?? []) visit(child);
+            return;
+        }
+        if (typeof node.column === 'string' && node.column) {
+            assertKnownAvKey(avID, avData, node.column, 'Filter column');
+        }
+    };
+    for (const filter of filters) visit(filter);
+}
+
+function assertKanbanHasExistingSelectKey(avID: string, avData: unknown): void {
+    const keys = extractAttributeViewKeysFromData(avData);
+    if (!keys.some((key) => key && typeof key === 'object' && (key as { type?: unknown }).type === 'select')) {
+        // Kernel `addAttrViewView` synthesizes a Select key when a Kanban view
+        // has no grouping key, and adds it to every existing view. This action
+        // owns view structure only, so require the caller to add that schema
+        // field through the explicit column action first instead of smuggling a
+        // cross-view schema write into an apparently additive view operation.
+        throw new Error(`Kanban view creation for attribute view "${avID}" requires an existing select column; add it through av.add_column before creating the view.`);
+    }
+}
+
 
 async function ensurePermissionForAvId(
     client: SiYuanClient,
@@ -2187,6 +2324,208 @@ async function handleDuplicate({ client, permMgr, rawArgs }: ToolHandlerContext)
     }, response);
 }
 
+async function handleAddView({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvAddViewSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'add_view',
+    });
+    if (denied) return denied;
+
+    const carrierAttrs = await blockApi.getBlockAttrs(client, parsed.blockID);
+    const selectedViewID = carrierAttrs['custom-sy-av-view'];
+    if (!selectedViewID) {
+        throw new Error(`Carrier "${parsed.blockID}" has no selected view for attribute view "${parsed.avID}". Refusing kernel fallback.`);
+    }
+    const existing = await verifyExactAvCarrier(
+        client,
+        parsed.avID,
+        avData,
+        parsed.blockID,
+        // Creating a view targets the supplied carrier's existing selection;
+        // do not accept an absent carrier binding and let the kernel choose a
+        // different top-level view.
+        selectedViewID,
+    );
+    if (!existing.id) throw new Error(`Carrier "${parsed.blockID}" has no selected view for attribute view "${parsed.avID}".`);
+    const views = (avData as AvDefinition).views;
+    if (!Array.isArray(views)) throw new Error(`Attribute view "${parsed.avID}" has no readable views array.`);
+    if (views.some((view) => view && typeof view === 'object' && (view as AvViewDefinition).id === parsed.viewID)) {
+        throw new Error(`View "${parsed.viewID}" already exists in attribute view "${parsed.avID}".`);
+    }
+    if (parsed.layout === 'kanban') assertKanbanHasExistingSelectKey(parsed.avID, avData);
+
+    // The kernel changes the AV-wide current view and this carrier selection
+    // while adding a view. These two core operations share a single HTTP
+    // transaction, then strict raw-AV/carrier readback proves ID, type, name,
+    // and the carrier selection. If a future kernel partially applies it, the
+    // coordinator reports an unknown/readback mismatch and never retries.
+    await transactionApi.performTransactions(client, [{
+        doOperations: [
+            {
+                action: 'addAttrViewView',
+                avID: parsed.avID,
+                id: parsed.viewID,
+                blockID: parsed.blockID,
+                layout: parsed.layout,
+            },
+            {
+                action: 'setAttrViewViewName',
+                avID: parsed.avID,
+                id: parsed.viewID,
+                data: parsed.name,
+            },
+        ],
+        undoOperations: [],
+    }]);
+
+    return createWriteSuccessResult({
+        action: 'add_view',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        viewID: parsed.viewID,
+        layout: parsed.layout,
+        name: parsed.name,
+    });
+}
+
+async function handleSetFilters({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetFiltersSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'set_filters',
+    });
+    if (denied) return denied;
+    await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
+    assertKnownFilterColumns(parsed.avID, avData, parsed.filters);
+    await avApi.setAttributeViewFilters(client, {
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        data: parsed.filters,
+    });
+    return createWriteSuccessResult({
+        action: 'set_filters',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        viewID: parsed.viewID,
+        filters: parsed.filters,
+        completeReplacement: true,
+    });
+}
+
+async function handleSetSorts({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetSortsSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'set_sorts',
+    });
+    if (denied) return denied;
+    await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
+    for (const sort of parsed.sorts) assertKnownAvKey(parsed.avID, avData, sort.column, 'Sort column');
+    await avApi.setAttributeViewSorts(client, {
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        data: parsed.sorts,
+    });
+    return createWriteSuccessResult({
+        action: 'set_sorts',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        viewID: parsed.viewID,
+        sorts: parsed.sorts,
+        completeReplacement: true,
+    });
+}
+
+async function handleSetGroup({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetGroupSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'set_group',
+    });
+    if (denied) return denied;
+    await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
+    if (parsed.group.field) assertKnownAvKey(parsed.avID, avData, parsed.group.field, 'Grouping column');
+    await avApi.setAttributeViewGroup(client, {
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        group: parsed.group,
+    });
+    return createWriteSuccessResult({
+        action: 'set_group',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        viewID: parsed.viewID,
+        group: parsed.group,
+    });
+}
+
+async function handleSetColumnVisibility({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetColumnVisibilitySchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'set_column_visibility',
+    });
+    if (denied) return denied;
+    const view = await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
+    assertKnownViewField(parsed.avID, view, parsed.keyID);
+    await transactionApi.performTransactions(client, [{
+        doOperations: [{
+            action: 'setAttrViewColHidden',
+            avID: parsed.avID,
+            blockID: parsed.blockID,
+            id: parsed.keyID,
+            data: parsed.hidden,
+        }],
+        undoOperations: [],
+    }]);
+    return createWriteSuccessResult({
+        action: 'set_column_visibility',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        viewID: parsed.viewID,
+        keyID: parsed.keyID,
+        hidden: parsed.hidden,
+    });
+}
+
+async function handleSetColumnOrder({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetColumnOrderSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'set_column_order',
+    });
+    if (denied) return denied;
+    const view = await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
+    const existingKeyIDs = viewFieldIDs(view);
+    if (existingKeyIDs.length !== parsed.keyIDs.length || existingKeyIDs.some((keyID) => !parsed.keyIDs.includes(keyID))) {
+        throw new Error(`keyIDs must be the complete current field set for view "${parsed.viewID}" in attribute view "${parsed.avID}".`);
+    }
+
+    // sortAttrViewCol inserts each key immediately after previousID. Sending
+    // the complete sequence in one transaction makes presentation order a
+    // single strict-write outcome; accepting a partial list would silently
+    // preserve unspecified fields in a caller-dependent position.
+    await transactionApi.performTransactions(client, [{
+        doOperations: parsed.keyIDs.map((keyID, index) => ({
+            action: 'sortAttrViewCol',
+            avID: parsed.avID,
+            blockID: parsed.blockID,
+            id: keyID,
+            previousID: index === 0 ? '' : parsed.keyIDs[index - 1],
+        })),
+        undoOperations: [],
+    }]);
+    return createWriteSuccessResult({
+        action: 'set_column_order',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        viewID: parsed.viewID,
+        keyIDs: parsed.keyIDs,
+        completeReplacement: true,
+    });
+}
+
 async function handleGetPrimaryKeyValues({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvGetPrimaryKeyValuesSchema.parse(rawArgs);
     const { denied } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read');
@@ -2249,4 +2588,10 @@ export const AV_ACTION_HANDLERS: Record<AvAction, ToolActionHandler> = {
     duplicate_rows: handleDuplicateRows,
     duplicate: handleDuplicate,
     get_primary_key_values: handleGetPrimaryKeyValues,
+    add_view: handleAddView,
+    set_filters: handleSetFilters,
+    set_sorts: handleSetSorts,
+    set_group: handleSetGroup,
+    set_column_visibility: handleSetColumnVisibility,
+    set_column_order: handleSetColumnOrder,
 };

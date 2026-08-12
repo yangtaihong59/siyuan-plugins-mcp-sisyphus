@@ -39,6 +39,12 @@ describe('write safety action policy', () => {
         expect(getActionSafetyPolicy('extension', 'third_party_write')).toEqual({ mode: 'external' });
     });
 
+    it('routes AV view configuration through strict state preconditions', () => {
+        for (const action of ['add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order']) {
+            expect(getActionSafetyPolicy('av', action)).toMatchObject({ mode: 'mutation', precondition: 'state', validateOnly: true });
+        }
+    });
+
     it('advertises strict fields only while strict mode is enabled', () => {
         const strict = buildDefaultToolConfig();
         const strictBlock = listAllTools(strict).find((tool) => tool.name === 'block')!;

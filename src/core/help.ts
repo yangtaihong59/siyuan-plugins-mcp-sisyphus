@@ -82,6 +82,10 @@ export const AV_GUIDANCE: string[] = [
     'AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.',
     'av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.',
     'av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.',
+    'For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.',
+    'These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.',
+    'set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.',
+    'add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. To curate a carrier visible-view list, use the existing block(action="set_attrs") deliberately; this AV tool does not alter it.',
 ];
 
 export const FILE_GUIDANCE: string[] = [
@@ -231,6 +235,12 @@ export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     duplicate_rows: 'Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.',
     duplicate: 'Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.',
     get_primary_key_values: 'Returns the AV name plus primary-key rows, with optional keyword/page/pageSize filtering.',
+    add_view: 'Provide avID + exact NodeAttributeView blockID + a new stable viewID + table/gallery/kanban + name. First run validateOnly=true. It does not use render; kanban requires an existing select key to avoid an implicit schema write.',
+    set_filters: 'Provide avID + exact carrier blockID + its current viewID + the complete typed recursive filter tree. [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.',
+    set_sorts: 'Provide avID + exact carrier blockID + its current viewID + the complete [{column, order}] array. [] clears all sorts; partial patch input is rejected by contract. First run validateOnly=true.',
+    set_group: 'Provide avID + exact carrier blockID + its current viewID + group. field="" clears grouping; numeric range method requires range. First run validateOnly=true.',
+    set_column_visibility: 'Provide avID + exact carrier blockID + its current viewID + keyID + hidden. keyID must exist in that view layout. First run validateOnly=true.',
+    set_column_order: 'Provide avID + exact carrier blockID + its current viewID + every current keyID exactly once in desired order. Partial lists are refused. First run validateOnly=true.',
 };
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {

@@ -924,6 +924,128 @@ export const AvGetPrimaryKeyValuesSchema = z.object({
     pageSize: z.number().int().min(1).optional().describe("Rows per page, default all"),
 });
 
+const AvViewIDSchema = z.string().min(1).describe('Attribute-view view ID');
+const AvCarrierBlockIDSchema = z.string().min(1).describe('Exact NodeAttributeView carrier block ID; kernel fallback is not permitted');
+const AvLayoutSchema = z.enum(['table', 'gallery', 'kanban']).describe('View layout type');
+const AvFilterValueSchema = z.object({
+    type: z.enum(['block', 'text', 'number', 'date', 'select', 'mSelect', 'url', 'email', 'phone', 'mAsset', 'template', 'created', 'updated', 'checkbox', 'relation', 'rollup']),
+    text: z.object({ content: z.string() }).optional(),
+    number: z.object({ content: z.number(), isNotEmpty: z.boolean().optional(), format: z.string().optional(), formattedContent: z.string().optional() }).optional(),
+    date: z.object({ content: z.number(), content2: z.number().optional(), isNotEmpty: z.boolean().optional(), isNotTime: z.boolean().optional(), hasEndDate: z.boolean().optional() }).optional(),
+    mSelect: z.array(z.object({ content: z.string(), color: z.string().optional() })).optional(),
+    checkbox: z.object({ checked: z.boolean() }).optional(),
+    url: z.object({ content: z.string() }).optional(),
+    email: z.object({ content: z.string() }).optional(),
+    phone: z.object({ content: z.string() }).optional(),
+    relation: z.object({ contents: z.array(z.unknown()).optional() }).optional(),
+}).strict().describe('Typed SiYuan AV filter value. This is a Value-shaped predicate operand, not arbitrary AV JSON.');
+
+type AvFilterInput = {
+    column?: string;
+    quantifier?: 'Any' | 'All' | 'None';
+    operator?: '=' | '!=' | '>' | '>=' | '<' | '<=' | 'Contains' | 'Does not contains' | 'Is empty' | 'Is not empty' | 'Starts with' | 'Ends with' | 'Is between' | 'Is true' | 'Is false';
+    value?: unknown;
+    relativeDate?: { count: number; unit: 0 | 1 | 2 | 3; direction: -1 | 0 | 1 };
+    relativeDate2?: { count: number; unit: 0 | 1 | 2 | 3; direction: -1 | 0 | 1 };
+    combination?: 'and' | 'or';
+    filters?: AvFilterInput[];
+};
+const AvRelativeDateSchema = z.object({
+    count: z.number().int(),
+    unit: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+    direction: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+}).strict();
+const AvFilterSchema = z.lazy(() => z.object({
+    column: z.string().min(1).optional().describe('Existing AV key ID for a leaf filter'),
+    quantifier: z.enum(['Any', 'All', 'None']).optional(),
+    operator: z.enum(['=', '!=', '>', '>=', '<', '<=', 'Contains', 'Does not contains', 'Is empty', 'Is not empty', 'Starts with', 'Ends with', 'Is between', 'Is true', 'Is false']).optional(),
+    value: AvFilterValueSchema.nullable().optional(),
+    relativeDate: AvRelativeDateSchema.optional(),
+    relativeDate2: AvRelativeDateSchema.optional(),
+    combination: z.enum(['and', 'or']).optional(),
+    filters: z.array(AvFilterSchema).optional(),
+}).strict().superRefine((filter, ctx) => {
+    const group = filter.combination !== undefined || filter.filters !== undefined;
+    if (!group && (!filter.column || !filter.operator)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A leaf filter requires column and operator.', path: ['column'] });
+    }
+}));
+
+export const AvAddViewSchema = z.object({
+    action: z.literal('add_view'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('New view ID. Supply a stable ID before strict preflight; MCP never invents one after preflight.'),
+    layout: AvLayoutSchema,
+    name: z.string().trim().min(1).max(255).describe('Name for the new view. Creation and naming are sent in one native transaction and read back together.'),
+});
+
+export const AvSetFiltersSchema = z.object({
+    action: z.literal('set_filters'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    filters: z.array(AvFilterSchema).describe('Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root.'),
+});
+
+export const AvSetSortsSchema = z.object({
+    action: z.literal('set_sorts'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    sorts: z.array(z.object({
+        column: z.string().min(1).describe('Column key ID'),
+        order: z.enum(['ASC', 'DESC']).describe('Sort direction'),
+    })).describe('Complete replacement sort array; [] clears all sorts.'),
+});
+
+export const AvSetGroupSchema = z.object({
+    action: z.literal('set_group'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    group: z.object({
+        field: z.string().describe('Grouping key ID; empty string clears grouping'),
+        method: z.number().int().min(0).max(6).describe('0=value, 1=numeric range, 2=relative date, 3=day, 4=week, 5=month, 6=year'),
+        range: z.object({
+            numStart: z.number(),
+            numEnd: z.number(),
+            numStep: z.number().positive(),
+        }).optional().describe('Required by the kernel for numeric-range grouping'),
+        order: z.number().int().min(0).max(3).describe('0=ascending, 1=descending, 2=manual, 3=select-option order'),
+        hideEmpty: z.boolean(),
+    }).superRefine((group, ctx) => {
+        if (group.method === 1 && !group.range) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'range is required when group.method is 1 (numeric range).', path: ['range'] });
+        }
+    }),
+});
+
+export const AvSetColumnVisibilitySchema = z.object({
+    action: z.literal('set_column_visibility'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    keyID: z.string().min(1).describe('Column key ID in the carrier-selected view'),
+    hidden: z.boolean().describe('Whether the column is hidden in the carrier-selected view'),
+});
+
+export const AvSetColumnOrderSchema = z.object({
+    action: z.literal('set_column_order'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    keyIDs: z.array(z.string().min(1)).min(1).describe('Complete column key order for the current table, gallery, or kanban layout.'),
+}).superRefine((value, ctx) => {
+    if (new Set(value.keyIDs).size !== value.keyIDs.length) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'keyIDs must not contain duplicates.',
+            path: ['keyIDs'],
+        });
+    }
+});
+
 export const FileUploadAssetSchema = z.object({
     action: z.literal("upload_asset"),
     assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),

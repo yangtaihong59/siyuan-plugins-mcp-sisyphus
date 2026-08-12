@@ -42,6 +42,30 @@ export async function getAttributeViewFilterSort(
     });
 }
 
+/** Replace one carrier-selected view's complete filter array. */
+export async function setAttributeViewFilters(
+    client: SiYuanClient,
+    payload: { avID: string; blockID: string; data: Array<Record<string, unknown>> },
+): Promise<null> {
+    return client.requestWrite<null>('/api/av/setAttrViewFilters', payload);
+}
+
+/** Replace one carrier-selected view's complete sort array. */
+export async function setAttributeViewSorts(
+    client: SiYuanClient,
+    payload: { avID: string; blockID: string; data: Array<{ column: string; order: 'ASC' | 'DESC' }> },
+): Promise<null> {
+    return client.requestWrite<null>('/api/av/setAttrViewSorts', payload);
+}
+
+/** Set or clear grouping on one carrier-selected view. */
+export async function setAttributeViewGroup(
+    client: SiYuanClient,
+    payload: { avID: string; blockID: string; group: Record<string, unknown> },
+): Promise<null> {
+    return client.requestWrite<null>('/api/av/setAttrViewGroup', payload);
+}
+
 export async function searchAttributeView(
     client: SiYuanClient,
     keyword: string,

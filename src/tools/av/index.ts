@@ -5,6 +5,7 @@ import type { PermissionManager } from '../../core/permissions';
 import {
     AvActionSchema,
     AvAddColumnSchema,
+    AvAddViewSchema,
     AvAddRowsSchema,
     AvDuplicateSchema,
     AvGetAttributeViewFilterSortSchema,
@@ -18,6 +19,11 @@ import {
     AvSetColumnOptionsSchema,
     AvSetCellsSchema,
     AvDuplicateRowsSchema,
+    AvSetColumnOrderSchema,
+    AvSetColumnVisibilitySchema,
+    AvSetFiltersSchema,
+    AvSetGroupSchema,
+    AvSetSortsSchema,
 } from '../../core/types';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
@@ -40,6 +46,12 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('duplicate_rows', AvDuplicateRowsSchema, 'Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations.'),
     createZodActionVariant('duplicate', AvDuplicateSchema, 'Duplicate an attribute view using SiYuan copy-as-mirror semantics; previousID overrides the insertion target.'),
     createZodActionVariant('get_primary_key_values', AvGetPrimaryKeyValuesSchema, 'Get primary key values for an attribute view.'),
+    createZodActionVariant('add_view', AvAddViewSchema, 'Add one reviewed table, gallery, or kanban view through a verified carrier.'),
+    createZodActionVariant('set_filters', AvSetFiltersSchema, 'Replace the complete filter array on the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_sorts', AvSetSortsSchema, 'Replace the complete sort array on the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_group', AvSetGroupSchema, 'Set or clear grouping on the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_column_visibility', AvSetColumnVisibilitySchema, 'Set one column\'s hidden state in the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_column_order', AvSetColumnOrderSchema, 'Replace the complete column order in the exact view selected by a verified carrier.'),
 ];
 
 const avTool = defineTool<AvAction>({
