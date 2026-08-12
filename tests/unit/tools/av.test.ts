@@ -727,6 +727,58 @@ describe('av tool', () => {
         expect(payload.templatePostimageHash).toMatch(/^sha256:v1:/);
     });
 
+    it('accepts a template field for a newly added v3.8 key whose empty values list is omitted', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const avID = '20260813000009-iiiiiii';
+        const databaseBlockID = '20260813000010-jjjjjjj';
+        const templateID = '20260813000000-aaaaaaa';
+        const textKeyID = '20260813000002-ccccccc';
+        const requestedTemplate = {
+            id: templateID,
+            name: 'Text default',
+            targetType: 'detached',
+            fieldValues: {
+                [textKeyID]: {
+                    mode: 'static',
+                    value: { type: 'text', text: { content: 'template-default' } },
+                },
+            },
+        };
+        const source = {
+            id: avID,
+            keyValues: [
+                { key: { id: '20260813000001-bbbbbbb', type: 'block' }, values: [{ blockID: 'row-1', block: { id: 'bound-doc' } }] },
+                // Go KeyValues.Values is json:"values,omitempty". A just-added
+                // text key therefore has metadata but no `values` property.
+                { key: { id: textKeyID, type: 'text' } },
+            ],
+            newItemTemplates: [],
+            defaultTemplateID: '',
+        };
+        const after = { ...source, newItemTemplates: [requestedTemplate], defaultTemplateID: templateID };
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        vi.mocked(avApi.getAttributeView)
+            .mockResolvedValueOnce({ av: source })
+            .mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_new_item_templates',
+            avID,
+            blockID: databaseBlockID,
+            templates: [requestedTemplate],
+            defaultTemplateID: templateID,
+        }, enabledActions('set_new_item_templates'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'set_new_item_templates',
+            avID,
+            defaultTemplateID: templateID,
+        });
+    });
+
     it('returns a zero-dispatch no-op when the complete native template configuration already matches', async () => {
         const avApi = await import('@/api/av');
         const blockApi = await import('@/api/block');

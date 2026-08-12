@@ -127,6 +127,7 @@ const ATTRIBUTE_VIEW_DIR = '/data/storage/av';
 const ATTRIBUTE_VIEW_ID_PATTERN = /^\d{14}-[a-z0-9]{7}$/;
 
 type AvKeyDefinition = Record<string, unknown>;
+type AvKeyEntryDefinition = { key: AvKeyDefinition; values?: unknown };
 type AvKeyValueDefinition = { key: AvKeyDefinition; values: Array<Record<string, unknown>> };
 type AttributeViewDefinition = Record<string, unknown> & { keyValues?: unknown[]; newItemTemplates?: unknown[] };
 type RelationMetadata = Record<string, unknown> & { avID?: string; backKeyID?: string; isTwoWay?: boolean };
@@ -147,19 +148,28 @@ function asAttributeViewDefinition(value: unknown, avID: string): AttributeViewD
     return definition;
 }
 
-function getAvKeyValue(definition: AttributeViewDefinition, keyID: string, context: string): AvKeyValueDefinition {
-    const matches = (definition.keyValues ?? []).filter((entry): entry is AvKeyValueDefinition => {
+function getAvKeyEntry(definition: AttributeViewDefinition, keyID: string, context: string): AvKeyEntryDefinition {
+    const matches = (definition.keyValues ?? []).filter((entry): entry is AvKeyEntryDefinition => {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
         const value = entry as { key?: unknown; values?: unknown };
         return Boolean(value.key && typeof value.key === 'object' && !Array.isArray(value.key)
-            && (value.key as Record<string, unknown>).id === keyID && Array.isArray(value.values));
+            && (value.key as Record<string, unknown>).id === keyID);
     });
     if (matches.length !== 1) throw new Error(`${context}: keyID "${keyID}" did not resolve exactly once.`);
     return matches[0];
 }
 
+function getAvKeyValue(definition: AttributeViewDefinition, keyID: string, context: string): AvKeyValueDefinition {
+    const entry = getAvKeyEntry(definition, keyID, context);
+    // SiYuan encodes a newly added key with no cells as { key: ... }, because
+    // KeyValues.Values has omitempty. Key metadata remains valid for template
+    // validation, but row/cell readers must still reject the absent value list.
+    if (!Array.isArray(entry.values)) throw new Error(`${context}: keyID "${keyID}" has no value list.`);
+    return { key: entry.key, values: entry.values as Array<Record<string, unknown>> };
+}
+
 function getAvKey(definition: AttributeViewDefinition, keyID: string, context: string): AvKeyDefinition {
-    return getAvKeyValue(definition, keyID, context).key;
+    return getAvKeyEntry(definition, keyID, context).key;
 }
 
 function normalizeIdSet(ids: string[]): string[] {
