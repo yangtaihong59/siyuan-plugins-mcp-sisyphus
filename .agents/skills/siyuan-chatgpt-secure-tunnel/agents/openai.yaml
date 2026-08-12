@@ -1,0 +1,4 @@
+interface:
+  display_name: "思源 ChatGPT 安全隧道"
+  short_description: "安装 Sisyphus 并配置 ChatGPT 官方安全隧道"
+  default_prompt: "使用 $siyuan-chatgpt-secure-tunnel 下载并启用 SiYuan Sisyphus，然后在这台 Mac 上配置和验证 ChatGPT 到本地思源的长期安全连接。"
