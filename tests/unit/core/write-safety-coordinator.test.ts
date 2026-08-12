@@ -18,6 +18,49 @@ function success(payload: Record<string, unknown>) {
 }
 
 describe('write safety coordinator', () => {
+    it('preflights select options against a verified rw AV carrier without requiring rwd', async () => {
+        const avID = '20260813000000-avopts01';
+        const carrierBlockID = '20260813000001-carrier';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/av/getAttributeView') {
+                    return {
+                        av: {
+                            id: avID,
+                            keyValues: [{ key: { id: 'status', type: 'select', options: [] }, values: [] }],
+                            views: [],
+                        },
+                    };
+                }
+                if (endpoint === '/api/block/getBlockDOM') {
+                    return { id: body?.id, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                }
+                if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, box: 'nb-rw' };
+                return [];
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: (notebook) => notebook === 'nb-rw', canDelete: () => false });
+        permMgr.getAll = vi.fn(() => ({ 'nb-rw': 'rw' }));
+        const result = parseResult(await new WriteSafetyCoordinator(client).run({
+            client,
+            permMgr,
+            category: 'av',
+            action: 'set_column_options',
+            args: {
+                action: 'set_column_options', avID, blockID: carrierBlockID, keyID: 'status', options: [], validateOnly: true,
+            },
+            strictMode: true,
+            execute: vi.fn(),
+        }));
+
+        expect(result).toMatchObject({ validateOnly: true, writeAttempted: false });
+        expect(result.stateHash).toMatch(/^sha256:v1:/);
+        expect(permMgr.canWrite).toHaveBeenCalledWith('nb-rw');
+        expect(permMgr.canDelete).not.toHaveBeenCalled();
+    });
+
     it('observes timeline rollback changes through live document markdown', async () => {
         const documentID = '20260812000000-timeline';
         const blockID = '20260812000001-timeline';

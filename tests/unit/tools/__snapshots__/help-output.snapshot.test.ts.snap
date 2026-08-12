@@ -19,6 +19,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -48,6 +50,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -75,6 +79,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -86,6 +92,39 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "requiresConfirmation": false,
         "shapes": [
           "avID",
+        ],
+        "tool": "av",
+      },
+      "duplicate_rows": {
+        "action": "duplicate_rows",
+        "example": {
+          "action": "duplicate_rows",
+          "avID": "<avID>",
+          "sourceRowIDs": [
+            "<sourceRowIDsItem>",
+          ],
+        },
+        "fullDocResource": "siyuan://help/action/av/duplicate_rows",
+        "guidance": [
+          "AV actions operate on real SiYuan attribute views (database blocks), not Markdown tables.",
+          "To initialize a new AV definition, call av(action="render", blockID, createIfNotExist=true). MCP can generate the AV ID automatically and materialize a SiYuan-style NodeAttributeView block in the target document through a transaction.",
+          "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
+          "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
+          "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
+          "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
+          "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
+          "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
+        ],
+        "hint": "Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.",
+        "requiredFields": [
+          "avID",
+          "sourceRowIDs",
+        ],
+        "requiresConfirmation": true,
+        "shapes": [
+          "avID + sourceRowIDs",
         ],
         "tool": "av",
       },
@@ -102,6 +141,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -129,6 +170,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -156,6 +199,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -183,6 +228,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -210,6 +257,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -240,6 +289,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -286,6 +337,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -311,6 +364,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -338,6 +393,8 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
           "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
           "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
           "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -352,12 +409,49 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         ],
         "tool": "av",
       },
+      "set_column_options": {
+        "action": "set_column_options",
+        "example": {
+          "action": "set_column_options",
+          "avID": "<avID>",
+          "keyID": "<keyID>",
+          "options": [
+            {
+              "name": "Research",
+            },
+          ],
+        },
+        "fullDocResource": "siyuan://help/action/av/set_column_options",
+        "guidance": [
+          "AV actions operate on real SiYuan attribute views (database blocks), not Markdown tables.",
+          "To initialize a new AV definition, call av(action="render", blockID, createIfNotExist=true). MCP can generate the AV ID automatically and materialize a SiYuan-style NodeAttributeView block in the target document through a transaction.",
+          "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
+          "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
+          "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+          "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+          "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
+          "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
+          "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
+          "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
+        ],
+        "hint": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
+        "requiredFields": [
+          "avID",
+          "keyID",
+          "options",
+        ],
+        "requiresConfirmation": true,
+        "shapes": [
+          "avID + keyID + options",
+        ],
+        "tool": "av",
+      },
     },
     "description": "🗃️ Grouped attribute-view (database) operations. Use the "action" field to select the operation.
 
 Common actions: get, render, get_attribute_view_keys, get_attribute_view_filter_sort, search, get_primary_key_values. Required fields: get: id; render: no additional fields; get_attribute_view_keys: id; get_attribute_view_filter_sort: id; search: keyword; get_primary_key_values: avID.
 
-Additional actions: add_rows, remove_rows, add_column, remove_column, set_cells, duplicate. Read siyuan://help/action/av/{action} for details, or call action="help" if resources are unavailable.
+Additional actions: add_rows, remove_rows, add_column, remove_column, set_cells, set_column_options, duplicate_rows, duplicate. Read siyuan://help/action/av/{action} for details, or call action="help" if resources are unavailable.
 
 Parameter contract per action (fields outside the action's optional list should not be sent):
 av.get: required [id] | optional [blockID]
@@ -370,15 +464,18 @@ av.remove_rows: required [avID, srcIDs] | optional [blockID]
 av.add_column: required [avID, keyName, keyType] | optional [blockID, keyID, keyIcon, previousKeyID]
 av.remove_column: required [avID] | optional [blockID, keyID, columnID, removeRelationDest]
 av.set_cells: required [avID] | optional [blockID, cells, items, rowID, columnID, valueType, text, number, numberFormat, date, endDate, includeTime, checked, option, options, relationBlockIDs, url, email, phone, assets]
+av.set_column_options: required [avID, keyID, options] | optional [blockID]
+av.duplicate_rows: required [avID, sourceRowIDs] | optional [blockID, previousID]
 av.duplicate: required [avID] | optional [blockID, previousID]
 av.get_primary_key_values: required [avID] | optional [keyword, page, pageSize]
 
-AV actions operate on real SiYuan attribute views (database blocks), not Markdown tables. To initialize a new AV definition, call av(action="render", blockID, createIfNotExist=true). MCP can generate the AV ID automatically and materialize a SiYuan-style NodeAttributeView block in the target document through a transaction.",
+AV actions operate on real SiYuan attribute views (database blocks), not Markdown tables. To initialize a new AV definition, call av(action="render", blockID, createIfNotExist=true). MCP can generate the AV ID automatically and materialize a SiYuan-style NodeAttributeView block in the target document through a transaction. Requires user confirmation before: set_column_options, duplicate_rows.",
     "overview": {
       "actionSummaries": {
         "add_column": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
         "add_rows": "Use avID + blockIDs to add existing blocks as bound rows, or avID + primaryKeyTexts to add detached rows whose primary key is plain text. Optional blockID/viewID/groupID/previousID refine the insertion target and preserve the intended database-block view/group defaults. MCP polls briefly after insertion and only reports success when each new row resolves to a writable rowID. To add initial non-primary-key cell values, follow add_rows with av(action="set_cells", avID, cells=[{rowID, columnID, valueType, ...}, ...]); reuse the rowID returned by add_rows.",
         "duplicate": "Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.",
+        "duplicate_rows": "Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.",
         "get": "Use an attribute view ID. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
         "get_attribute_view_filter_sort": "Use id + blockID to return the filters and sorts applied to that database block view.",
         "get_attribute_view_keys": "Use id to return database keys/columns for a block-bound attribute view.",
@@ -388,6 +485,7 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "render": "Use id (the AV ID; avID is accepted as a compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if id is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.",
         "search": "Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.",
         "set_cells": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[].",
+        "set_column_options": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
       },
       "actions": {
         "add_column": {
@@ -401,6 +499,10 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "duplicate": {
           "hint": "Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.",
           "requiresConfirmation": false,
+        },
+        "duplicate_rows": {
+          "hint": "Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.",
+          "requiresConfirmation": true,
         },
         "get": {
           "hint": "Use an attribute view ID. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
@@ -438,6 +540,10 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
           "hint": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[].",
           "requiresConfirmation": false,
         },
+        "set_column_options": {
+          "hint": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
+          "requiresConfirmation": true,
+        },
       },
       "advancedActions": [
         "add_rows",
@@ -445,6 +551,8 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "add_column",
         "remove_column",
         "set_cells",
+        "set_column_options",
+        "duplicate_rows",
         "duplicate",
       ],
       "commonActions": [
@@ -462,6 +570,8 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.",
         "Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").",
         "For cell writes, rowID must be the database row item ID stored in each AV value's blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.",
+        "av(action="set_column_options") replaces a select or multi-select key's complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.",
+        "av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.",
         "AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.",
         "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
         "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
@@ -471,6 +581,10 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "siyuan://help/tool-overview",
         "siyuan://help/examples",
         "siyuan://help/ai-layout-guide",
+      ],
+      "requiresConfirmation": [
+        "set_column_options",
+        "duplicate_rows",
       ],
       "tool": "av",
     },

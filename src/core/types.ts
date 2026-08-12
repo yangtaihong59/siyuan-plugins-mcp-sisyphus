@@ -746,6 +746,12 @@ const AvCellUpdateItemSchema = z.object({
     columnID: z.string().describe("Column key ID"),
 }).and(AvSetCellValueFieldsSchema);
 
+const AvSelectOptionSchema = z.object({
+    name: z.string().min(1).describe("Option label; empty option names are rejected before the transaction."),
+    color: z.string().optional().describe("Optional SiYuan option color token"),
+    desc: z.string().optional().describe("Optional option description"),
+}).strict();
+
 export const AvGetSchema = z.object({
     action: z.literal("get"),
     id: z.string().describe("Attribute view ID"),
@@ -872,6 +878,34 @@ export const AvSetCellsSchema = z.object({
                 });
             }
         }
+    }
+});
+
+export const AvSetColumnOptionsSchema = z.object({
+    action: z.literal("set_column_options"),
+    avID: z.string().describe("Attribute view ID"),
+    blockID: z.string().optional().describe("Registered database block ID for exact context, permission resolution, and UI refresh"),
+    keyID: z.string().describe("Select or multi-select column key ID"),
+    options: z.array(AvSelectOptionSchema).describe("Complete desired option list, which may be empty. This is not a patch: omit no existing option unless its removal is intentional."),
+}).superRefine((value, ctx) => {
+    const names = value.options.map((option) => option.name.trim());
+    if (names.some((name) => !name)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Option names must not be blank after trimming.", path: ["options"] });
+    }
+    if (new Set(names).size !== names.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Option names must be unique within the complete desired list.", path: ["options"] });
+    }
+});
+
+export const AvDuplicateRowsSchema = z.object({
+    action: z.literal("duplicate_rows"),
+    avID: z.string().describe("Attribute view ID"),
+    blockID: z.string().optional().describe("Registered database block ID for exact context, permission resolution, and UI refresh"),
+    sourceRowIDs: z.array(z.string()).min(1).describe("Canonical AV row item IDs to copy, in source order. Do not pass cell value IDs or bound source block IDs."),
+    previousID: z.string().optional().describe("Optional row item ID after which the copied rows are inserted; omit to let SiYuan append them"),
+}).superRefine((value, ctx) => {
+    if (new Set(value.sourceRowIDs).size !== value.sourceRowIDs.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "sourceRowIDs must not contain duplicates.", path: ["sourceRowIDs"] });
     }
 });
 

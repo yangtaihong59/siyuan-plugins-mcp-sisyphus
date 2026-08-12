@@ -15,7 +15,9 @@ import {
     AvRemoveRowsSchema,
     AvRenderSchema,
     AvSearchSchema,
+    AvSetColumnOptionsSchema,
     AvSetCellsSchema,
+    AvDuplicateRowsSchema,
 } from '../../core/types';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
@@ -34,6 +36,8 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('add_column', AvAddColumnSchema, 'Add a column to a database.'),
     createZodActionVariant('remove_column', AvRemoveColumnSchema, 'Remove a column from a database.'),
     createZodActionVariant('set_cells', AvSetCellsSchema, 'Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write.'),
+    createZodActionVariant('set_column_options', AvSetColumnOptionsSchema, 'Replace one select or multi-select column\'s complete option list. Read the current options first: omitted entries are not preserved.'),
+    createZodActionVariant('duplicate_rows', AvDuplicateRowsSchema, 'Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations.'),
     createZodActionVariant('duplicate', AvDuplicateSchema, 'Duplicate an attribute view using SiYuan copy-as-mirror semantics; previousID overrides the insertion target.'),
     createZodActionVariant('get_primary_key_values', AvGetPrimaryKeyValuesSchema, 'Get primary key values for an attribute view.'),
 ];

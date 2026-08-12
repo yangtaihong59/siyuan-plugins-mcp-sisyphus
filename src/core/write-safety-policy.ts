@@ -57,7 +57,9 @@ export const ACTION_SAFETY_POLICIES: {
         get: read(), render: mutation(), get_attribute_view_keys: read(), get_attribute_view_filter_sort: read(),
         search: read(), get_primary_key_values: read(),
         add_rows: mutation(), remove_rows: mutation('manifest'), add_column: mutation('state'),
-        remove_column: mutation('state'), set_cells: mutation('manifest'), duplicate: mutation('state'),
+        remove_column: mutation('state'), set_cells: mutation('manifest'),
+        set_column_options: mutation('state'),
+        duplicate_rows: mutation('manifest'), duplicate: mutation('state'),
     },
     file: {
         list_templates: read(), read_template: read(), render: read(), export_md: read(), list_unused_assets: read(),

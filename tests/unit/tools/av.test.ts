@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isDangerousAction } from '@/core/config';
 import { callAvTool, listAvTools } from '@/tools/av';
 import type { ToolResult } from '@/tools/internal/shared';
 
@@ -153,6 +154,141 @@ describe('av tool', () => {
 
         expect(properties?.cells?.items?.properties?.options?.items).toEqual({ type: 'string' });
         expect(properties?.cells?.items?.properties?.assets?.items?.properties?.content?.type).toBe('string');
+    });
+
+    it('publishes complete-list options and bounded row-copy schemas', () => {
+        const [tool] = listAvTools(enabledActions('set_column_options', 'duplicate_rows'));
+        const schemas = tool.inputSchema['x-sisyphus-actionSchemas'] as Array<{ properties?: Record<string, any> }>;
+        const options = schemas.find((schema) => schema.properties?.action?.const === 'set_column_options')?.properties;
+        const duplicateRows = schemas.find((schema) => schema.properties?.action?.const === 'duplicate_rows')?.properties;
+
+        expect(options?.options?.type).toBe('array');
+        expect(options?.options?.items?.additionalProperties).toBe(false);
+        expect(duplicateRows?.sourceRowIDs?.items?.type).toBe('string');
+        expect(duplicateRows?.previousID?.type).toBe('string');
+        expect(isDangerousAction('av', 'set_column_options')).toBe(true);
+        expect(isDangerousAction('av', 'duplicate_rows')).toBe(true);
+    });
+
+    it('replaces select options with native update plus intentional removals and exact readback', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-1', block: { id: 'block-1', content: 'Row' } }] },
+                { key: { id: 'status', type: 'select', options: [{ name: 'Old', color: '1', desc: '' }, { name: 'Keep', color: '2', desc: 'old description' }] }, values: [{ id: 'value-status', blockID: 'row-1', mSelect: [{ content: 'Keep', color: '2' }] }] },
+            ],
+            views: [{ id: 'view-1', itemIDs: ['row-1'], groups: [] }],
+        };
+        const after = structuredClone(before);
+        ((after.keyValues[1] as any).key.options) = [{ name: 'Keep', color: '3', desc: 'new description' }, { name: 'New', color: '4', desc: '' }];
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options',
+            avID: 'av-1',
+            keyID: 'status',
+            options: [
+                { name: 'Keep', color: '3', desc: 'new description' },
+                { name: 'New', color: '4' },
+            ],
+        }, enabledActions('set_column_options'), permMgr);
+
+        const operations = vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations;
+        expect(operations[0]).toMatchObject({ action: 'updateAttrViewColOptions', avID: 'av-1', id: 'status', data: [{ name: 'Keep', color: '3', desc: 'new description' }, { name: 'New', color: '4' }] });
+        expect(operations[1]).toMatchObject({ action: 'removeAttrViewColOption', avID: 'av-1', id: 'status', data: 'Old' });
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'set_column_options',
+            status: 'applied',
+            observedOptions: [{ name: 'Keep', color: '3', desc: 'new description' }, { name: 'New', color: '4', desc: '' }],
+        });
+    });
+
+    it('reports append-order option readback as intermediate without a second write', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-1', block: { id: 'block-1', content: 'Row' } }] },
+                { key: { id: 'status', type: 'select', options: [{ name: 'Old', color: '1', desc: '' }] }, values: [] },
+            ],
+            views: [{ id: 'view-1', itemIDs: ['row-1'], groups: [] }],
+        };
+        const after = structuredClone(before);
+        ((after.keyValues[1] as any).key.options) = [{ name: 'Old', color: '1', desc: '' }, { name: 'New', color: '2', desc: '' }];
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID: 'av-1', keyID: 'status',
+            options: [{ name: 'New', color: '2' }, { name: 'Old', color: '1' }],
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            status: 'intermediate_option_order',
+            observedOptions: [{ name: 'Old', color: '1', desc: '' }, { name: 'New', color: '2', desc: '' }],
+        });
+    });
+
+    it('copies only a persistent bound row and verifies detached copy placement', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-1', block: { id: 'block-1', content: 'Bound Row' } }] },
+                { key: { id: 'note', type: 'text' }, values: [{ id: 'value-note', blockID: 'row-1', text: { content: 'copied note' } }] },
+            ],
+            views: [{ id: 'view-1', itemIDs: ['row-1'], groups: [] }],
+        };
+        let copiedRowID = '';
+        vi.mocked(avApi.getAttributeView).mockImplementation(async () => {
+            if (!copiedRowID) return { av: before };
+            const after = structuredClone(before);
+            (after.keyValues[0] as any).values.push({ id: 'value-title-copy', blockID: copiedRowID, isDetached: true, block: { content: 'Bound Row' } });
+            (after.keyValues[1] as any).values.push({ id: 'value-note-copy', blockID: copiedRowID, text: { content: 'copied note' } });
+            (after.views[0] as any).itemIDs.push(copiedRowID);
+            return { av: after };
+        });
+        vi.mocked(transactionApi.performTransactions).mockImplementation(async (_clientArg, transactions) => {
+            copiedRowID = String((transactions[0].doOperations[0] as { id?: unknown }).id);
+            return [] as never;
+        });
+
+        const result = await callAvTool(client, {
+            action: 'duplicate_rows', avID: 'av-1', blockID: 'db-block-copy', sourceRowIDs: ['row-1'],
+        }, enabledActions('duplicate_rows'), permMgr);
+
+        const operations = vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations;
+        expect(operations[0]).toMatchObject({ action: 'duplicateAttrViewRow', avID: 'av-1', srcIDs: ['row-1'], previousID: '' });
+        const payload = JSON.parse(result.content[0].text);
+        expect(payload).toMatchObject({ success: true, action: 'duplicate_rows', copied: 1 });
+        expect(payload.rowIDs).toHaveLength(1);
+    });
+
+    it('rejects detached rows before duplicate_rows dispatch', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: 'av-1',
+                keyValues: [{ key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-detached', isDetached: true, block: { content: 'Detached' } }] }],
+                views: [{ id: 'view-1', itemIDs: ['row-detached'] }],
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'duplicate_rows', avID: 'av-1', blockID: 'db-block-copy', sourceRowIDs: ['row-detached'],
+        }, enabledActions('duplicate_rows'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { action: 'duplicate_rows', type: 'validation_error', sourceRowID: 'row-detached' },
+        });
     });
 
     it('publishes JSON types for render creation parameters', () => {

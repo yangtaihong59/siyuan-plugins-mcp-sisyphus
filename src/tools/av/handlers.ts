@@ -10,6 +10,7 @@ import {
     AvAddColumnSchema,
     AvAddRowsSchema,
     AvDuplicateSchema,
+    AvDuplicateRowsSchema,
     AvGetAttributeViewFilterSortSchema,
     AvGetAttributeViewKeysSchema,
     AvGetPrimaryKeyValuesSchema,
@@ -18,6 +19,7 @@ import {
     AvRemoveColumnSchema,
     AvRemoveRowsSchema,
     AvSearchSchema,
+    AvSetColumnOptionsSchema,
     AvSetCellsSchema,
 } from '../../core/types';
 import { createResultResolutionCache, ensurePermissionForDocumentId, escapeSqlString, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
@@ -55,6 +57,7 @@ type AvContextResolution = {
 type AvRowBinding = {
     rowID?: string;
     sourceBlockID?: string;
+    isDetached?: boolean;
     valueIDs: string[];
 };
 
@@ -63,6 +66,14 @@ type AvRowLookup = {
     rowIDs: Set<string>;
     sourceBlockToRowIDs: Map<string, string[]>;
     valueIdToRowIDs: Map<string, string[]>;
+};
+
+type DuplicateRowsRelationDestination = {
+    avID: string;
+    backKeyID: string;
+    destinationRowIDs: string[];
+    carrierBlockID: string;
+    preimage: unknown;
 };
 
 type AddRowsResolution = {
@@ -195,7 +206,9 @@ function extractAvRowLookup(avData: unknown): AvRowLookup {
 
             const valueID = extractValueIdFromValue(value);
             const sourceBlockID = typedEntry.key?.type === 'block' ? extractSourceBlockIdFromBlockValue(value) : undefined;
+            const isDetached = typedEntry.key?.type === 'block' && (value as { isDetached?: unknown }).isDetached === true;
             if (sourceBlockID) row.sourceBlockID = sourceBlockID;
+            if (isDetached) row.isDetached = true;
             if (valueID && !row.valueIDs.includes(valueID)) row.valueIDs.push(valueID);
         });
     }
@@ -227,8 +240,90 @@ function extractAvRowLookup(avData: unknown): AvRowLookup {
     return { rows, rowIDs, sourceBlockToRowIDs, valueIdToRowIDs };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : undefined;
+}
+
+function extractKeyValueEntries(avData: unknown): Array<{ key: Record<string, unknown>; values: Array<Record<string, unknown>> }> {
+    const keyValues = asRecord(avData)?.keyValues;
+    if (!Array.isArray(keyValues)) return [];
+    return keyValues.flatMap((entry) => {
+        const record = asRecord(entry);
+        const key = asRecord(record?.key);
+        const values = Array.isArray(record?.values)
+            ? record.values.flatMap((value) => asRecord(value) ? [value] : [])
+            : [];
+        return key ? [{ key, values }] : [];
+    });
+}
+
+function getRowValue(entries: Array<{ key: Record<string, unknown>; values: Array<Record<string, unknown>> }>, keyID: string, rowID: string): Record<string, unknown> | undefined {
+    return entries.find((entry) => getStringField(entry.key, ['id']) === keyID)?.values
+        .find((value) => getStringField(value, ['blockID']) === rowID);
+}
+
+function relationBlockIDs(value: Record<string, unknown> | undefined): string[] {
+    const relation = asRecord(value?.relation);
+    return Array.isArray(relation?.blockIDs)
+        ? relation.blockIDs.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : [];
+}
+
+function collectDuplicateRowsRelationDestinations(
+    avData: unknown,
+    sourceRowIDs: string[],
+): Array<Omit<DuplicateRowsRelationDestination, 'carrierBlockID' | 'preimage'>> {
+    const destinations = new Map<string, Omit<DuplicateRowsRelationDestination, 'carrierBlockID' | 'preimage'>>();
+    for (const entry of extractKeyValueEntries(avData)) {
+        if (getStringField(entry.key, ['type']) !== 'relation') continue;
+        const relation = asRecord(entry.key.relation);
+        const avID = getStringField(relation, ['avID']);
+        const backKeyID = getStringField(relation, ['backKeyID']);
+        if (relation?.isTwoWay !== true || !avID || !backKeyID) continue;
+        const destination = destinations.get(`${avID}:${backKeyID}`) ?? {
+            avID,
+            backKeyID,
+            destinationRowIDs: [],
+        };
+        for (const sourceRowID of sourceRowIDs) {
+            for (const destinationRowID of relationBlockIDs(entry.values.find((value) => getStringField(value, ['blockID']) === sourceRowID))) {
+                if (!destination.destinationRowIDs.includes(destinationRowID)) {
+                    destination.destinationRowIDs.push(destinationRowID);
+                }
+            }
+        }
+        destinations.set(`${avID}:${backKeyID}`, destination);
+    }
+    return [...destinations.values()];
+}
+
+function createDuplicateRowsValidationResult(
+    avID: string,
+    sourceRowID: string,
+    message: string,
+): ToolResult {
+    return {
+        content: [{
+            type: 'text',
+            text: JSON.stringify({
+                error: {
+                    type: 'validation_error',
+                    tool: AV_TOOL_NAME,
+                    action: 'duplicate_rows',
+                    avID,
+                    sourceRowID,
+                    message,
+                },
+            }, null, 2),
+        }],
+        isError: true,
+    };
+}
+
 function createAvRowIdErrorResult(
-    action: 'set_cells',
+    action: 'set_cells' | 'duplicate_rows',
     payload: Record<string, unknown>,
 ): ToolResult {
     return {
@@ -347,7 +442,7 @@ async function waitForAddedRows(
 
 function validateRowIdForAv(
     avID: string,
-    action: 'set_cells',
+    action: 'set_cells' | 'duplicate_rows',
     rowLookup: AvRowLookup,
     requestedRowID: string,
     itemIndex?: number,
@@ -675,6 +770,86 @@ async function resolveAvOwningBlockId(
     const candidateBlockIDs = await collectAvDatabaseBlockCandidates(client, avID, effectiveAvData);
 
     return candidateBlockIDs[0];
+}
+
+async function resolveVerifiedAvCarrierBlockId(
+    client: SiYuanClient,
+    avID: string,
+    avData: unknown,
+): Promise<string | undefined> {
+    // A row's source block is a useful permission fallback for normal AV
+    // writes, but it is not proof that it is the database carrier. A copied
+    // two-way relation can mutate a different AV, so accepting that fallback
+    // here could authorize a cross-notebook write against the wrong document.
+    // Require the rendered carrier marker before dispatch and fail closed when
+    // SiYuan cannot expose one.
+    const candidates = await collectAvDatabaseBlockCandidates(client, avID, avData);
+    for (const candidate of candidates) {
+        try {
+            const response = await blockApi.getBlockDOM(client, candidate);
+            const dom = typeof response?.dom === 'string' ? response.dom : '';
+            if (dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)) {
+                return candidate;
+            }
+        } catch (error) {
+            if (isMissingBlockError(error)) continue;
+            throw error;
+        }
+    }
+    return undefined;
+}
+
+async function resolveDuplicateRowsRelationDestinations(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    sourceAvID: string,
+    avData: unknown,
+    sourceRowIDs: string[],
+): Promise<{ denied: ToolResult | null; destinations: DuplicateRowsRelationDestination[] }> {
+    const discovered = collectDuplicateRowsRelationDestinations(avData, sourceRowIDs);
+    const destinations: DuplicateRowsRelationDestination[] = [];
+    for (const destination of discovered) {
+        // A copied two-way relation writes the reverse key in this AV. Resolve
+        // a real database carrier before dispatch so a source-only permission
+        // check cannot authorize a cross-notebook mutation by accident.
+        const response = await avApi.getAttributeView(client, destination.avID);
+        const carrierBlockID = await resolveVerifiedAvCarrierBlockId(client, destination.avID, response.av);
+        if (!carrierBlockID) {
+            return {
+                denied: createDuplicateRowsValidationResult(sourceAvID, destination.avID,
+                    `Could not resolve a database carrier for two-way relation destination AV "${destination.avID}".`),
+                destinations: [],
+            };
+        }
+        const permission = await ensurePermissionForDocumentId(client, permMgr, carrierBlockID, 'write');
+        if (permission.denied) return { denied: permission.denied, destinations: [] };
+        destinations.push({ ...destination, carrierBlockID, preimage: response.av });
+    }
+    return { denied: null, destinations };
+}
+
+function verifyDuplicateRowsRelationDestinations(
+    destinations: DuplicateRowsRelationDestination[],
+    copiedRowIDs: string[],
+    readbacks: Map<string, unknown>,
+): string | undefined {
+    for (const destination of destinations) {
+        const beforeEntries = extractKeyValueEntries(destination.preimage);
+        const after = readbacks.get(destination.avID);
+        const afterEntries = extractKeyValueEntries(after);
+        for (const destinationRowID of destination.destinationRowIDs) {
+            const beforeValue = getRowValue(beforeEntries, destination.backKeyID, destinationRowID);
+            const afterValue = getRowValue(afterEntries, destination.backKeyID, destinationRowID);
+            const beforeIDs = relationBlockIDs(beforeValue);
+            const afterIDs = relationBlockIDs(afterValue);
+            const missing = copiedRowIDs.filter((rowID) => !afterIDs.includes(rowID));
+            const unexpected = afterIDs.filter((rowID) => !beforeIDs.includes(rowID) && !copiedRowIDs.includes(rowID));
+            if (missing.length > 0 || unexpected.length > 0) {
+                return `Two-way relation readback drifted in destination AV "${destination.avID}" row "${destinationRowID}".`;
+            }
+        }
+    }
+    return undefined;
 }
 
 async function resolveAvWriteRefreshOperations(
@@ -1032,6 +1207,213 @@ function buildStrongCellValue(
         default:
             throw new Error(`Unsupported AV valueType: ${(input as { valueType: string }).valueType}`);
     }
+}
+
+function normalizeSelectOptions(options: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+    return options.map((option) => ({
+        ...option,
+        name: typeof option.name === 'string' ? option.name.trim() : option.name,
+        ...(typeof option.color === 'string' ? { color: option.color } : {}),
+        ...(typeof option.desc === 'string' ? { desc: option.desc } : {}),
+    }));
+}
+
+type ComparableSelectOption = { name: string; color: string; desc: string };
+
+function comparableSelectOptions(value: unknown): ComparableSelectOption[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const normalized: ComparableSelectOption[] = [];
+    for (const option of value) {
+        const record = asRecord(option);
+        const name = typeof record?.name === 'string' ? record.name.trim() : undefined;
+        if (!name) return undefined;
+        normalized.push({
+            name,
+            color: typeof record.color === 'string' ? record.color : '',
+            desc: typeof record.desc === 'string' ? record.desc : '',
+        });
+    }
+    return normalized;
+}
+
+function sameComparableOptions(left: ComparableSelectOption[], right: ComparableSelectOption[]): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameComparableOptionSet(left: ComparableSelectOption[], right: ComparableSelectOption[]): boolean {
+    if (left.length !== right.length) return false;
+    const encode = (option: ComparableSelectOption) => JSON.stringify(option);
+    const leftEntries = [...left].map(encode).sort();
+    const rightEntries = [...right].map(encode).sort();
+    return leftEntries.every((entry, index) => entry === rightEntries[index]);
+}
+
+function protectSetColumnOptionsState(avData: unknown, targetKeyID: string): unknown {
+    if (!avData || typeof avData !== 'object') return avData;
+    const protectedState = JSON.parse(JSON.stringify(avData)) as Record<string, unknown>;
+    // Updating options can upgrade the on-disk AV format revision. It is a
+    // kernel normalization, not collateral schema drift; treating it as a
+    // foreign change would falsely report an otherwise exact write unknown.
+    delete protectedState.spec;
+    const keyValues = Array.isArray(protectedState.keyValues) ? protectedState.keyValues : [];
+    for (const entry of keyValues) {
+        const record = asRecord(entry);
+        const key = asRecord(record?.key);
+        if (getStringField(key, ['id']) !== targetKeyID) continue;
+        // Option-group membership and select cell presentation are derived from
+        // the one changed definition. Mask only that key's options and values
+        // so this comparison still catches drift in every unrelated key,
+        // filter, sort, template, relation, and view configuration.
+        if (key) key.options = '__sisyphus_target_options__';
+        if (record) record.values = '__sisyphus_target_column_values__';
+    }
+    const views = Array.isArray(protectedState.views) ? protectedState.views : [];
+    for (const view of views) {
+        const record = asRecord(view);
+        if (!record) continue;
+        delete record.groups;
+    }
+    return protectedState;
+}
+
+function normalizeCopiedRowValue(value: Record<string, unknown>): unknown {
+    const clone = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+    delete clone.id;
+    delete clone.blockID;
+    delete clone.isDetached;
+    delete clone.isRenderAutoFill;
+    delete clone.createdAt;
+    delete clone.updatedAt;
+    const block = asRecord(clone.block);
+    if (block) {
+        delete block.id;
+        delete block.updated;
+        delete block.created;
+    }
+    const relation = asRecord(clone.relation);
+    if (relation) delete relation.contents;
+    return clone;
+}
+
+function topLevelViewItemIDs(avData: unknown): Set<string> {
+    const itemIDs = new Set<string>();
+    const views = asRecord(avData)?.views;
+    if (!Array.isArray(views)) return itemIDs;
+    for (const view of views) {
+        const record = asRecord(view);
+        if (!Array.isArray(record?.itemIDs)) continue;
+        for (const rowID of record.itemIDs) {
+            if (typeof rowID === 'string' && rowID) itemIDs.add(rowID);
+        }
+    }
+    return itemIDs;
+}
+
+function collectItemIDSnapshots(value: unknown, snapshots: string[][] = []): string[][] {
+    if (Array.isArray(value)) {
+        for (const item of value) collectItemIDSnapshots(item, snapshots);
+        return snapshots;
+    }
+    const record = asRecord(value);
+    if (!record) return snapshots;
+    if (Array.isArray(record.itemIDs) && record.itemIDs.every((id) => typeof id === 'string')) {
+        snapshots.push(record.itemIDs as string[]);
+    }
+    for (const [key, nested] of Object.entries(record)) {
+        if (key !== 'itemIDs') collectItemIDSnapshots(nested, snapshots);
+    }
+    return snapshots;
+}
+
+function verifyDuplicateRowsSourceReadback(
+    before: unknown,
+    after: unknown,
+    sourceRowIDs: string[],
+    copiedRowIDs: string[],
+    previousID?: string,
+): string | undefined {
+    const beforeEntries = extractKeyValueEntries(before);
+    const afterEntries = extractKeyValueEntries(after);
+    const afterLookup = extractAvRowLookup(after);
+
+    for (let index = 0; index < copiedRowIDs.length; index += 1) {
+        const copiedRowID = copiedRowIDs[index];
+        const sourceRowID = sourceRowIDs[index];
+        const copied = afterLookup.rows.find((row) => row.rowID === copiedRowID);
+        if (!copied || copied.isDetached !== true || copied.sourceBlockID) {
+            return `Copied row "${copiedRowID}" was not observed as a detached AV row.`;
+        }
+        for (const entry of beforeEntries) {
+            const keyID = getStringField(entry.key, ['id']);
+            const keyType = getStringField(entry.key, ['type']);
+            if (['rollup', 'created', 'updated'].includes(keyType ?? '')) continue;
+            const afterEntry = keyID
+                ? afterEntries.find((candidate) => getStringField(candidate.key, ['id']) === keyID)
+                : afterEntries.find((candidate) => getStringField(candidate.key, ['type']) === keyType);
+            const sourceValue = entry.values.find((value) => getStringField(value, ['blockID']) === sourceRowID);
+            if (!sourceValue) continue;
+            const copiedValue = afterEntry?.values.find((value) => getStringField(value, ['blockID']) === copiedRowID);
+            if (!copiedValue) {
+                return `Copied row "${copiedRowID}" did not preserve source row "${sourceRowID}" value for key "${keyID ?? keyType ?? 'unknown'}".`;
+            }
+            if (keyType === 'block') {
+                const sourceContent = getStringField(asRecord(sourceValue.block), ['content']) ?? '';
+                const copiedContent = getStringField(asRecord(copiedValue.block), ['content']) ?? '';
+                if (sourceContent !== copiedContent) {
+                    return `Copied row "${copiedRowID}" primary key text does not match source row "${sourceRowID}".`;
+                }
+                continue;
+            }
+            if (JSON.stringify(normalizeCopiedRowValue(sourceValue)) !== JSON.stringify(normalizeCopiedRowValue(copiedValue))) {
+                return `Copied row "${copiedRowID}" did not preserve source row "${sourceRowID}" value for key "${keyID ?? keyType ?? 'unknown'}".`;
+            }
+        }
+    }
+
+    const afterItemLists = collectItemIDSnapshots(after);
+    const hasExpectedPlacement = afterItemLists.some((itemIDs) => {
+        if (!copiedRowIDs.every((rowID) => itemIDs.includes(rowID))) return false;
+        if (previousID) {
+            const start = itemIDs.indexOf(previousID) + 1;
+            return start > 0 && copiedRowIDs.every((rowID, index) => itemIDs[start + index] === rowID);
+        }
+        return copiedRowIDs.every((rowID, index) => itemIDs[itemIDs.length - copiedRowIDs.length + index] === rowID);
+    });
+    if (!hasExpectedPlacement) {
+        return previousID
+            ? `Copied rows were not observed immediately after previousID "${previousID}" in AV item ordering.`
+            : 'Copied rows were not observed at the append position in AV item ordering.';
+    }
+    return undefined;
+}
+
+function getAvKeyById(avData: unknown, keyID: string): Record<string, unknown> | undefined {
+    return extractAttributeViewKeysFromData(avData)
+        .find((key): key is Record<string, unknown> => getStringField(key, ['id']) === keyID);
+}
+
+function createAvFieldValidationResult(
+    action: 'set_column_options',
+    avID: string,
+    keyID: string,
+    message: string,
+): ToolResult {
+    return {
+        content: [{
+            type: 'text',
+            text: JSON.stringify({
+                error: {
+                    type: 'validation_error',
+                    tool: AV_TOOL_NAME,
+                    action,
+                    avID,
+                    keyID,
+                    message,
+                },
+            }, null, 2),
+        }],
+        isError: true,
+    };
 }
 
 async function handleGet({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -1498,6 +1880,197 @@ async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerContext):
     }), refreshOperations);
 }
 
+async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetColumnOptionsSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', { blockID: parsed.blockID, action: 'set_column_options' });
+    if (denied) return denied;
+
+    const key = getAvKeyById(avData, parsed.keyID);
+    if (!key) {
+        return createAvFieldValidationResult('set_column_options', parsed.avID, parsed.keyID,
+            `keyID "${parsed.keyID}" does not exist in attribute view "${parsed.avID}".`);
+    }
+    const keyType = getStringField(key, ['type']);
+    if (keyType !== 'select' && keyType !== 'mSelect') {
+        return createAvFieldValidationResult('set_column_options', parsed.avID, parsed.keyID,
+            `keyID "${parsed.keyID}" has type "${keyType ?? 'unknown'}". set_column_options only supports select and mSelect columns.`);
+    }
+
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
+    const options = normalizeSelectOptions(parsed.options as Array<Record<string, unknown>>);
+    const beforeOptions = comparableSelectOptions(key.options) ?? [];
+    const desiredNames = new Set(options.map((option) => String(option.name)));
+    const optionsToRemove = beforeOptions
+        .map((option) => option.name)
+        .filter((name) => !desiredNames.has(name));
+    if (sameComparableOptions(beforeOptions, comparableSelectOptions(options) ?? [])) {
+        return createWriteSuccessResult({
+            action: 'set_column_options',
+            avID: parsed.avID,
+            keyID: parsed.keyID,
+            optionCount: options.length,
+            changed: false,
+            semantics: 'complete_option_list_replacement',
+            status: 'already_applied',
+            observedOptions: beforeOptions,
+        });
+    }
+    const operations: TransactionOperation[] = [
+        ...(options.length > 0 ? [{
+            action: 'updateAttrViewColOptions',
+            avID: parsed.avID,
+            id: parsed.keyID,
+            data: options,
+        }] : []),
+        ...optionsToRemove.map((name) => ({
+            action: 'removeAttrViewColOption',
+            avID: parsed.avID,
+            id: parsed.keyID,
+            data: name,
+        })),
+    ];
+    const updatedOps = withUpdatedOperation(operations, transactionBlockID);
+    await transactionApi.performTransactions(client, [{
+        doOperations: updatedOps.doOperations,
+        undoOperations: updatedOps.undoOperations,
+    }]);
+
+    // The kernel may acknowledge an options write before its derived select
+    // groups have caught up. Read exactly once here to prove the requested
+    // definition changed without allowing unrelated AV configuration to drift.
+    // A known "new names appended" intermediate is reported, never repaired by
+    // a hidden second write; the caller must make a fresh strict preflight.
+    const readback = await avApi.getAttributeView(client, parsed.avID);
+    const readbackKey = getAvKeyById(readback.av, parsed.keyID);
+    const expectedOptions = comparableSelectOptions(options);
+    const actualOptions = comparableSelectOptions(readbackKey?.options);
+    if (!expectedOptions || !actualOptions) {
+        throw new Error(`Select option readback for key "${parsed.keyID}" was incomplete.`);
+    }
+    if (JSON.stringify(protectSetColumnOptionsState(avData, parsed.keyID)) !== JSON.stringify(protectSetColumnOptionsState(readback.av, parsed.keyID))) {
+        throw new Error(`Unrelated AV state changed while replacing options for key "${parsed.keyID}".`);
+    }
+    const exactOrder = sameComparableOptions(expectedOptions, actualOptions);
+    const appendOnlyIntermediate = !exactOrder && sameComparableOptionSet(expectedOptions, actualOptions);
+    if (!exactOrder && !appendOnlyIntermediate) {
+        throw new Error(`Select option readback for key "${parsed.keyID}" does not match the complete requested option list.`);
+    }
+
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'set_column_options',
+        avID: parsed.avID,
+        keyID: parsed.keyID,
+        optionCount: options.length,
+        semantics: 'complete_option_list_replacement',
+        ...(appendOnlyIntermediate ? {
+            status: 'intermediate_option_order',
+            observedOptions: actualOptions,
+            message: 'SiYuan accepted the full option set but retained its append order for new names. No second write was sent; run a new strict preflight before an explicit reorder request.',
+        } : { status: 'applied', observedOptions: actualOptions }),
+    }), refreshOperations);
+}
+
+async function handleDuplicateRows({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvDuplicateRowsSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', { blockID: parsed.blockID, action: 'duplicate_rows' });
+    if (denied) return denied;
+
+    const rowLookup = extractAvRowLookup(avData);
+    const persistentTopLevelRows = topLevelViewItemIDs(avData);
+    for (let index = 0; index < parsed.sourceRowIDs.length; index += 1) {
+        const sourceRowID = parsed.sourceRowIDs[index];
+        const checked = validateRowIdForAv(parsed.avID, 'duplicate_rows', rowLookup, sourceRowID, index);
+        if (checked.ok === false) return checked.result;
+        const row = rowLookup.rows.find((candidate) => candidate.rowID === sourceRowID);
+        if (!row || !row.sourceBlockID || row.isDetached === true) {
+            return createDuplicateRowsValidationResult(parsed.avID, sourceRowID,
+                `sourceRowID "${sourceRowID}" must be a bound AV row. SiYuan duplicateAttrViewRow creates a detached text record and is not exposed for detached source rows.`);
+        }
+        if (!persistentTopLevelRows.has(sourceRowID)) {
+            return createDuplicateRowsValidationResult(parsed.avID, sourceRowID,
+                `sourceRowID "${sourceRowID}" is not present in a persistent top-level AV view and cannot be copied safely.`);
+        }
+    }
+    if (parsed.previousID) {
+        const checked = validateRowIdForAv(parsed.avID, 'duplicate_rows', rowLookup, parsed.previousID);
+        if (checked.ok === false) return checked.result;
+    }
+
+    const relationDestinations = await resolveDuplicateRowsRelationDestinations(
+        client,
+        permMgr,
+        parsed.avID,
+        avData,
+        parsed.sourceRowIDs,
+    );
+    if (relationDestinations.denied) return relationDestinations.denied;
+
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
+    let previousID = parsed.previousID ?? '';
+    const createdRowIDs: string[] = [];
+    const operations: TransactionOperation[] = [];
+    for (const sourceRowID of parsed.sourceRowIDs) {
+        const rowID = generateSiYuanNodeId();
+        createdRowIDs.push(rowID);
+        operations.push({
+            action: 'duplicateAttrViewRow',
+            avID: parsed.avID,
+            id: rowID,
+            srcIDs: [sourceRowID],
+            previousID,
+        });
+        previousID = rowID;
+    }
+    const updatedOps = withUpdatedOperation(operations, transactionBlockID);
+    await transactionApi.performTransactions(client, [{
+        doOperations: updatedOps.doOperations,
+        undoOperations: [
+            {
+                action: 'removeAttrViewBlock',
+                avID: parsed.avID,
+                srcIDs: createdRowIDs,
+            },
+            ...updatedOps.undoOperations,
+        ],
+    }]);
+
+    // A transport error intentionally reaches the single strict coordinator:
+    // it records outcome_unknown and never resends duplicateAttrViewRow. Only
+    // a normal transaction response reaches this bounded, exact source and
+    // reverse-relation readback.
+    const sourceReadback = await avApi.getAttributeView(client, parsed.avID);
+    const sourceError = verifyDuplicateRowsSourceReadback(
+        avData,
+        sourceReadback.av,
+        parsed.sourceRowIDs,
+        createdRowIDs,
+        parsed.previousID,
+    );
+    if (sourceError) throw new Error(sourceError);
+    const destinationReadbacks = new Map<string, unknown>();
+    for (const destination of relationDestinations.destinations) {
+        destinationReadbacks.set(destination.avID, (await avApi.getAttributeView(client, destination.avID)).av);
+    }
+    const relationError = verifyDuplicateRowsRelationDestinations(
+        relationDestinations.destinations,
+        createdRowIDs,
+        destinationReadbacks,
+    );
+    if (relationError) throw new Error(relationError);
+
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'duplicate_rows',
+        avID: parsed.avID,
+        sourceRowIDs: parsed.sourceRowIDs,
+        rowIDs: createdRowIDs,
+        copied: createdRowIDs.length,
+        relationDestinationAVIDs: relationDestinations.destinations.map((destination) => destination.avID),
+        semantics: 'detached_row_copies_with_verified_source_and_two_way_relation_readback',
+    }), refreshOperations);
+}
+
 async function handleDuplicate({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvDuplicateSchema.parse(rawArgs);
     const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', { blockID: parsed.blockID, action: 'duplicate' });
@@ -1667,6 +2240,8 @@ export const AV_ACTION_HANDLERS: Record<AvAction, ToolActionHandler> = {
     add_column: handleAddColumn,
     remove_column: handleRemoveColumn,
     set_cells: handleSetCells,
+    set_column_options: handleSetColumnOptions,
+    duplicate_rows: handleDuplicateRows,
     duplicate: handleDuplicate,
     get_primary_key_values: handleGetPrimaryKeyValues,
 };

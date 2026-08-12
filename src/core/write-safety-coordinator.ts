@@ -500,6 +500,20 @@ async function probeCurrentState(
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
         state.av = await client.requestRead('/api/av/getAttributeView', { id: args.avID });
+        if (action === 'set_column_options' || action === 'duplicate_rows') {
+            const inspectedAv = await inspectHighRiskAvMutation(
+                client,
+                permMgr,
+                action,
+                args,
+                state.av,
+            );
+            state.avMutationScope = inspectedAv.state;
+            for (const id of inspectedAv.targetIds) {
+                if (!targetIds.includes(id)) targetIds.push(id);
+            }
+            targetIds.sort();
+        }
     } else if (category === 'flashcard') {
         if (typeof args.deckID === 'string') {
             const cards = await client.requestRead<Record<string, unknown>>('/api/riff/getRiffCards', {
@@ -564,7 +578,7 @@ async function probeCurrentState(
         }
     }
     if (!managesNotebookPermission) {
-        enforceNotebookPermission(permMgr, state, targetIds, isDangerousAction(category, action));
+        enforceNotebookPermission(permMgr, state, targetIds, requiresDeletePermission(category, action));
     }
     return {
         hash: hashWriteState(state),
@@ -844,6 +858,193 @@ function enforceNotebookPermission(
         const allowed = destructive ? permMgr.canDelete(box) : permMgr.canWrite(box);
         if (!allowed) throw safetyError('permission_denied', `Notebook ${box} does not allow this write.`);
     }
+}
+
+function requiresDeletePermission(category: ToolCategory, action: string): boolean {
+    // AV schema/record changes can be dangerous enough to require an explicit
+    // confirmation, yet they are not notebook deletion. Keep confirmation and
+    // permission as separate concepts: W2 AV writes require rw/rwd, while
+    // actual destructive actions retain the rwd gate.
+    return isDangerousAction(category, action) && !(category === 'av' && [
+        'set_column_options',
+        'duplicate_rows',
+    ].includes(action));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : undefined;
+}
+
+function stringField(value: unknown, keys: string[]): string | undefined {
+    const record = asRecord(value);
+    for (const key of keys) {
+        const candidate = record?.[key];
+        if (typeof candidate === 'string' && candidate) return candidate;
+    }
+    return undefined;
+}
+
+function avEnvelope(value: unknown): unknown {
+    const record = asRecord(value);
+    return record && Object.prototype.hasOwnProperty.call(record, 'av') ? record.av : value;
+}
+
+function avKeyValueEntries(avData: unknown): Array<{ key: Record<string, unknown>; values: Array<Record<string, unknown>> }> {
+    const keyValues = asRecord(avData)?.keyValues;
+    if (!Array.isArray(keyValues)) return [];
+    return keyValues.flatMap((entry) => {
+        const record = asRecord(entry);
+        const key = asRecord(record?.key);
+        const values = Array.isArray(record?.values)
+            ? record.values.flatMap((item) => asRecord(item) ? [item] : [])
+            : [];
+        return key ? [{ key, values }] : [];
+    });
+}
+
+function avRelationBlockIDs(value: Record<string, unknown> | undefined): string[] {
+    const relation = asRecord(value?.relation);
+    return Array.isArray(relation?.blockIDs)
+        ? relation.blockIDs.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : [];
+}
+
+function inspectDuplicateRowsRelationDestinations(
+    avData: unknown,
+    sourceRowIDs: string[],
+): Array<{ avID: string; backKeyID: string; destinationRowIDs: string[] }> {
+    const destinations = new Map<string, { avID: string; backKeyID: string; destinationRowIDs: string[] }>();
+    for (const entry of avKeyValueEntries(avData)) {
+        if (stringField(entry.key, ['type']) !== 'relation') continue;
+        const relation = asRecord(entry.key.relation);
+        const avID = stringField(relation, ['avID']);
+        const backKeyID = stringField(relation, ['backKeyID']);
+        if (relation?.isTwoWay !== true || !avID || !backKeyID) continue;
+        const destination = destinations.get(`${avID}:${backKeyID}`) ?? {
+            avID,
+            backKeyID,
+            destinationRowIDs: [],
+        };
+        for (const sourceRowID of sourceRowIDs) {
+            const sourceValue = entry.values.find((value) => stringField(value, ['blockID']) === sourceRowID);
+            for (const destinationRowID of avRelationBlockIDs(sourceValue)) {
+                if (!destination.destinationRowIDs.includes(destinationRowID)) destination.destinationRowIDs.push(destinationRowID);
+            }
+        }
+        destinations.set(`${avID}:${backKeyID}`, destination);
+    }
+    return [...destinations.values()];
+}
+
+async function resolveVerifiedAvCarrier(
+    client: SiYuanClient,
+    avID: string,
+    explicitBlockID?: string,
+): Promise<string | undefined> {
+    const candidates: string[] = explicitBlockID ? [explicitBlockID] : [];
+    if (explicitBlockID) {
+        try {
+            const response = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: explicitBlockID });
+            const dom = typeof response?.dom === 'string' ? response.dom : '';
+            return dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)
+                ? explicitBlockID
+                : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+    try {
+        const mirrors = await client.requestRead<{ refDefs?: Array<{ refID?: string }> }>('/api/av/getMirrorDatabaseBlocks', { avID });
+        for (const ref of mirrors?.refDefs ?? []) {
+            if (typeof ref.refID === 'string' && ref.refID && !candidates.includes(ref.refID)) candidates.push(ref.refID);
+        }
+    } catch {
+        // SQL lookup below is the compatibility path for databases without
+        // registered mirrors; a missing mirror response alone is not a reason
+        // to grant a cross-AV write.
+    }
+    const escapedAvID = avID.replace(/\0/g, '').replace(/'/g, "''");
+    const rows = await client.requestRead<unknown[]>('/api/query/sql', {
+        stmt: `SELECT id FROM blocks WHERE type = 'av' AND (markdown LIKE '%${escapedAvID}%' OR ial LIKE '%${escapedAvID}%' OR content LIKE '%${escapedAvID}%') ORDER BY updated DESC LIMIT 20`,
+    });
+    for (const row of Array.isArray(rows) ? rows : []) {
+        const id = stringField(row, ['id']);
+        if (id && !candidates.includes(id)) candidates.push(id);
+    }
+    for (const candidate of candidates) {
+        try {
+            const response = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: candidate });
+            const dom = typeof response?.dom === 'string' ? response.dom : '';
+            if (dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)) return candidate;
+        } catch {
+            // A stale candidate is not evidence of AV ownership; continue to
+            // the next exact carrier candidate and fail closed if none remain.
+        }
+    }
+    return undefined;
+}
+
+async function resolveCarrierNotebook(client: SiYuanClient, carrierBlockID: string): Promise<string | undefined> {
+    const info = await client.requestRead<unknown>('/api/block/getBlockInfo', { id: carrierBlockID });
+    return stringField(info, ['box', 'notebook', 'notebookID']);
+}
+
+async function requireCarrierWritePermission(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    avID: string,
+    explicitBlockID?: string,
+): Promise<{ carrierBlockID: string; notebook: string }> {
+    const carrierBlockID = await resolveVerifiedAvCarrier(client, avID, explicitBlockID);
+    if (!carrierBlockID) {
+        throw safetyError('permission_denied', `Could not resolve a verified database carrier for attribute view "${avID}". No write was attempted.`);
+    }
+    const notebook = await resolveCarrierNotebook(client, carrierBlockID);
+    if (!notebook) {
+        throw safetyError('permission_denied', `Could not resolve the notebook for database carrier "${carrierBlockID}". No write was attempted.`);
+    }
+    await permMgr.reload();
+    if (!permMgr.canWrite(notebook)) {
+        throw safetyError('permission_denied', `Notebook ${notebook} does not allow writes to attribute view "${avID}".`);
+    }
+    return { carrierBlockID, notebook };
+}
+
+async function inspectHighRiskAvMutation(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    action: string,
+    args: Record<string, unknown>,
+    sourceReadback: unknown,
+): Promise<{ state: Record<string, unknown>; targetIds: string[] }> {
+    const source = avEnvelope(sourceReadback);
+    const avID = typeof args.avID === 'string' ? args.avID : '';
+    const explicitSourceBlockID = typeof args.blockID === 'string' && args.blockID ? args.blockID : undefined;
+    const sourceCarrier = await requireCarrierWritePermission(client, permMgr, avID, explicitSourceBlockID);
+    if (action === 'set_column_options') {
+        const keyID = typeof args.keyID === 'string' ? args.keyID : '';
+        const key = avKeyValueEntries(source).map((entry) => entry.key).find((candidate) => stringField(candidate, ['id']) === keyID);
+        if (!key || !['select', 'mSelect'].includes(stringField(key, ['type']) ?? '')) {
+            throw safetyError('precondition_required', `keyID ${keyID || '<missing>'} is not a select or multi-select key in attribute view ${avID}. No write was attempted.`);
+        }
+        return { state: { source, sourceCarrier }, targetIds: [sourceCarrier.carrierBlockID] };
+    }
+
+    const sourceRowIDs = Array.isArray(args.sourceRowIDs)
+        ? args.sourceRowIDs.filter((item): item is string => typeof item === 'string' && item.length > 0)
+        : [];
+    const destinations = [];
+    const targetIds: string[] = [sourceCarrier.carrierBlockID];
+    for (const destination of inspectDuplicateRowsRelationDestinations(source, sourceRowIDs)) {
+        const response = await client.requestRead('/api/av/getAttributeView', { id: destination.avID });
+        const av = avEnvelope(response);
+        const carrier = await requireCarrierWritePermission(client, permMgr, destination.avID);
+        targetIds.push(destination.avID, carrier.carrierBlockID);
+        destinations.push({ ...destination, ...carrier, av });
+    }
+    return { state: { source, sourceCarrier, destinations }, targetIds };
 }
 
 function collectNotebookBoxes(value: unknown, boxes: Set<string>): void {
