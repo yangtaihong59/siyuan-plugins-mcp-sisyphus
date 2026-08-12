@@ -1856,6 +1856,12 @@ export function projectAvStateWithoutColumnOptions(avData: unknown, targetKeyID:
     for (const view of views) {
         const record = asRecord(view);
         if (!record) continue;
+        // v3.8 SaveAttributeView rewrites every View.Icon because its JSON
+        // field has no omitempty tag. A legacy raw preimage may omit the
+        // default icon, while the option transaction's save emits icon: "".
+        // Normalize only that absent-to-empty serialization; any non-empty
+        // icon still remains collateral view drift and rejects the write.
+        if (!Object.prototype.hasOwnProperty.call(record, 'icon')) record.icon = '';
         // regenAttrViewGroups only owns groups derived from the changed select
         // key. Retaining groups for other fields keeps the collateral check
         // able to catch an unrelated view mutation in the same response.

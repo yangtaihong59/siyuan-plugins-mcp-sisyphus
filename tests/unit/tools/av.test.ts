@@ -371,6 +371,67 @@ describe('av tool', () => {
         expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
     });
 
+    it('accepts the retest5 shape when SaveAttributeView materializes only a missing view icon', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        // v3.8 View.Icon has no omitempty JSON tag. This mirrors the saved
+        // raw pre/post shape without retaining live IDs or content.
+        const before = {
+            spec: 7, id: 'av-retest5', name: '', keyIDs: null, viewID: 'view-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block', icon: '', desc: '', numberFormat: '', template: '' }, values: [{ id: 'title-value', blockID: 'row-1', block: { id: 'source-1', content: 'Source', created: 1, updated: 1 }, createdAt: 1, updatedAt: 1 }] },
+                { key: { id: 'status', type: 'select', icon: '', desc: '', numberFormat: '', template: '' } },
+            ],
+            views: [{
+                id: 'view-1', name: 'Table', hideAttrViewName: false, desc: '',
+                filters: [{ column: '', operator: '', value: null, combination: 'and' }], pageSize: 50, type: 'table',
+                table: { spec: 0, id: 'layout-1', showIcon: true, wrapField: false, columns: [{ id: 'title', wrap: false, hidden: false, pin: false, width: '' }, { id: 'status', wrap: false, hidden: false, pin: false, width: '' }], rowIds: null },
+                itemIds: ['row-1'], groupCreated: 0, groupItemIds: null, groupFolded: false, groupHidden: 0, groupSort: 0,
+            }],
+        };
+        const after = structuredClone(before);
+        ((after.keyValues[1] as any).key.options) = [
+            { name: '待办', color: '1', desc: '目标派生' },
+            { name: '进行中', color: '2', desc: '' },
+        ];
+        (after.views[0] as any).icon = '';
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID: 'av-retest5', keyID: 'status',
+            options: [{ name: '待办', color: '1', desc: '目标派生' }, { name: '进行中', color: '2' }],
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ success: true, status: 'applied' });
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+    });
+
+    it('still rejects a non-empty view icon drift while replacing target options', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [] },
+                { key: { id: 'status', type: 'select', options: [{ name: 'Old', color: '1', desc: '' }] }, values: [] },
+            ],
+            views: [{ id: 'view-1', name: 'Table', icon: '', itemIDs: [] }],
+        };
+        const after = structuredClone(before);
+        ((after.keyValues[1] as any).key.options) = [{ name: 'New', color: '2', desc: '' }];
+        (after.views[0] as any).icon = '1f4cc';
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID: 'av-1', blockID: 'db-block-options', keyID: 'status', options: [{ name: 'New', color: '2' }],
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'internal_error', message: expect.stringContaining('Unrelated AV state changed') },
+        });
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+    });
+
     it('accepts a v3.8 complete clear with omitted options and an empty AND filter root', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
