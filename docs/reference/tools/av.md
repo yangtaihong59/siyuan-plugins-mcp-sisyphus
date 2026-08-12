@@ -16,18 +16,25 @@ Related pages:
 | Read | `get`, `render`, `get_attribute_view_keys`, `get_attribute_view_filter_sort`, `search`, `get_primary_key_values` |
 | Row operations | `add_rows`, `remove_rows`, `duplicate_rows` |
 | Column operations | `add_column`, `remove_column`, `set_column_options` |
-| Cell updates | `set_cells` |
+| Scalar cell updates | `set_cells` |
 | View structure and configuration | `duplicate`, `add_view`, `set_filters`, `set_sorts`, `set_group`, `set_column_visibility`, `set_column_order` |
+| Relation cell updates | `set_relation` |
+| Templates | `set_new_item_templates`, `create_from_template` |
+| Relation and rollup schema | `configure_two_way_relation`, `configure_rollup` |
 
 ## Parameters and Semantics
 
 - `render` can also create and materialize an AV when `createIfNotExist=true` and `blockID` is provided. In this mode, `blockID` is the target parent/insertion context, and MCP inserts a SiYuan-style spun AV block through a transaction.
 - To render an existing AV, pass the AV ID as `id`. For smoother Agent workflows, `render` also accepts `avID` as a compatibility alias, and `av.search` results include reusable `renderArgs`.
 - Keep the `blockID` returned by `render(createIfNotExist=true)`. Later AV reads and writes usually only need `avID`; MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record. Pass `blockID` when you need an exact database-block view context, when multiple mirrors are possible, or as an explicit fallback for a brand-new empty AV.
-- `set_cells` is typed by `valueType` and accepts either single-cell fields or a `cells` / `items` array.
-- `rowID` refers to the row item ID, not the source block ID.
+- `set_cells` is typed by `valueType` and accepts either single-cell fields or a `cells` / `items` array. It deliberately rejects `valueType="relation"`; use `set_relation` for a complete relation value so MCP can verify destination write permission and a two-way reverse cell.
+- `rowID` and `set_relation.itemID` refer to the AV row item ID, not the source/bound document block ID. Although SiYuan names the relation payload array `blockIDs`, `set_relation.relatedItemIDs` contains destination AV row item IDs.
 - `set_column_options` accepts the complete desired option list for one `select` or `mSelect` key. It is a replacement, not a patch: names omitted from the list are removed through the native transaction operation. An empty list is valid. SiYuan can retain a temporary append order when new names are introduced; MCP returns `intermediate_option_order` in that case and never sends a second, hidden reorder transaction.
 - `duplicate_rows` accepts ordered, canonical **bound** row item IDs that are present in a persistent top-level view. It creates detached text-record copies; it does not accept detached source rows, cell value IDs, or bound source block IDs. Primary-key text and permitted cell values are copied, while rollup/created/updated values follow SiYuan's native copy behavior. A copied two-way relation writes its reverse destination AV values too.
+- `set_new_item_templates` replaces, never patches, the whole ordered native template array. It requires `defaultTemplateID` (use `""` to clear it), validates every template field against the raw current keys and select/mSelect options, then reads back the entire array, ordering, and default. SiYuan can otherwise silently prune a missing select option while creating a row; MCP refuses that preflight rather than changing the AV options automatically.
+- `create_from_template` uses SiYuan’s narrow native creation API, not a generic JSON write. Its result distinguishes `itemID` (new AV row) from `blockID` (bound document/block). It reads back every requested default field. A document template must declare an explicit `saveLocation`, because an inherited global document-creation location cannot be authorized safely before the write.
+- `configure_two_way_relation` is limited to an existing source relation key and a named destination AV. It verifies both writable AV carriers and both relation metadata directions after one native transaction; it refuses an existing source relation whose retarget would touch a third AV.
+- `configure_rollup` takes native `RollupCalc` data without custom calculation aliases. SiYuan removes filters which reference a reconfigured rollup key; this is reported as a native side effect.
 - AV writes follow SiYuan frontend transaction operations where possible, including row/column/cell operations and database block `updated` refresh metadata.
 - `duplicate` follows SiYuan's copy-as-mirror flow: it duplicates the AV definition, spins the AV block DOM, and inserts the mirror database block through a transaction. `previousID` controls the insertion position when provided; otherwise `blockID` or an automatically resolved owning database block is used as the default insertion context.
 - View-local configuration is deliberately explicit. `add_view`, `set_filters`, `set_sorts`, `set_group`, `set_column_visibility`, and `set_column_order` require all of `avID`, `blockID`, and `viewID`. The `blockID` must be a real `NodeAttributeView` carrier for `avID`, and its current `custom-sy-av-view` must equal `viewID`; MCP rejects a stale carrier instead of accepting the kernel's current-view fallback.
@@ -42,6 +49,8 @@ Related pages:
 - `set_column_options` and `duplicate_rows` are dangerous W2 mutations: they require explicit confirmation and a strict `validateOnly=true` preflight before execution. `duplicate_rows` also requires `rw` or `rwd` on the source AV carrier and every resolved reverse-relation destination carrier.
 - If either action reports `outcome_unknown` or `readback_mismatch`, do not retry automatically. Inspect the exact source and relation destinations first.
 - These six view configuration actions are strict writes. Call with `validateOnly: true`, then repeat with the issued `expectedStateHash` and a new UUIDv7 `requestId`. Sisyphus uses one HTTP dispatch, then raw `/api/av/getAttributeView` plus carrier attrs/DOM for readback; it never uses `renderAttributeView` as persistence proof and does not automatically retry an unknown response.
+- `set_new_item_templates`, `create_from_template`, `configure_two_way_relation`, `configure_rollup`, and `set_relation` are dangerous actions and require user confirmation plus a current strict-write preflight hash.
+- All template, relation, and rollup postimages are read with `getAttributeView`; these paths never use `renderAttributeView` as a readback shortcut. An unknown write response is never replayed.
 
 ## Examples
 
@@ -110,6 +119,11 @@ siyuan av set-column-visibility --av-id <attribute-view-id> --block-id <carrier-
 - `set_cells`
 - `set_column_options`
 - `duplicate_rows`
+- `set_new_item_templates`
+- `create_from_template`
+- `configure_two_way_relation`
+- `configure_rollup`
+- `set_relation`
 - `duplicate`
 - `get_primary_key_values`
 - `add_view`

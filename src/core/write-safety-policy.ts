@@ -64,6 +64,8 @@ export const ACTION_SAFETY_POLICIES: {
         // different view, so every action requires the strict state lease.
         add_view: mutation('state'), set_filters: mutation('state'), set_sorts: mutation('state'),
         set_group: mutation('state'), set_column_visibility: mutation('state'), set_column_order: mutation('state'),
+        set_new_item_templates: mutation('state'), create_from_template: mutation('state'),
+        configure_two_way_relation: mutation('state'), configure_rollup: mutation('state'), set_relation: mutation('state'),
     },
     file: {
         list_templates: read(), read_template: read(), render: read(), export_md: read(), list_unused_assets: read(),

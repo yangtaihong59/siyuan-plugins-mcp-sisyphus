@@ -1,15 +1,20 @@
 import type { SiYuanClient } from '@/api/client';
 import * as avApi from '../../api/av';
 import * as blockApi from '../../api/block';
+import * as documentApi from '../../api/document';
 import * as searchApi from '../../api/search';
 import * as transactionApi from '../../api/transaction';
 import type { TransactionOperation } from '../../api/transaction';
 import type { AvAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
+import { hashCanonicalState } from '../../shared/canonical-state';
 import {
     AvAddColumnSchema,
     AvAddViewSchema,
     AvAddRowsSchema,
+    AvConfigureRollupSchema,
+    AvConfigureTwoWayRelationSchema,
+    AvCreateFromTemplateSchema,
     AvDuplicateSchema,
     AvDuplicateRowsSchema,
     AvGetAttributeViewFilterSortSchema,
@@ -27,8 +32,10 @@ import {
     AvSetFiltersSchema,
     AvSetGroupSchema,
     AvSetSortsSchema,
+    AvSetNewItemTemplatesSchema,
+    AvSetRelationSchema,
 } from '../../core/types';
-import { createResultResolutionCache, ensurePermissionForDocumentId, escapeSqlString, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
+import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, escapeSqlString, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
 import type { ToolActionHandler, ToolHandlerContext } from '../internal/define-tool';
 import { isMissingBlockError, translateError } from '../internal/errorTranslation';
 import { createJsonResult, createPaginatedResult, createWriteSuccessResult, type ToolResult } from '../internal/shared';
@@ -118,6 +125,256 @@ const AV_MATERIALIZATION_POLL_ATTEMPTS = 6;
 const AV_MATERIALIZATION_POLL_DELAY_MS = 300;
 const ATTRIBUTE_VIEW_DIR = '/data/storage/av';
 const ATTRIBUTE_VIEW_ID_PATTERN = /^\d{14}-[a-z0-9]{7}$/;
+
+type AvKeyDefinition = Record<string, unknown>;
+type AvKeyValueDefinition = { key: AvKeyDefinition; values: Array<Record<string, unknown>> };
+type AttributeViewDefinition = Record<string, unknown> & { keyValues?: unknown[]; newItemTemplates?: unknown[] };
+type RelationMetadata = Record<string, unknown> & { avID?: string; backKeyID?: string; isTwoWay?: boolean };
+
+/**
+ * Persistence-sensitive actions use only raw getAttributeView. Rendering can
+ * materialize or normalize an AV, so using it for template/relation/rollup
+ * readback would turn an observation into an undocumented side effect.
+ */
+function asAttributeViewDefinition(value: unknown, avID: string): AttributeViewDefinition {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(`Attribute view "${avID}" returned no raw definition.`);
+    }
+    const definition = value as AttributeViewDefinition;
+    if (definition.id !== avID || !Array.isArray(definition.keyValues)) {
+        throw new Error(`Attribute view "${avID}" returned an incomplete or mismatched raw definition.`);
+    }
+    return definition;
+}
+
+function getAvKeyValue(definition: AttributeViewDefinition, keyID: string, context: string): AvKeyValueDefinition {
+    const matches = (definition.keyValues ?? []).filter((entry): entry is AvKeyValueDefinition => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+        const value = entry as { key?: unknown; values?: unknown };
+        return Boolean(value.key && typeof value.key === 'object' && !Array.isArray(value.key)
+            && (value.key as Record<string, unknown>).id === keyID && Array.isArray(value.values));
+    });
+    if (matches.length !== 1) throw new Error(`${context}: keyID "${keyID}" did not resolve exactly once.`);
+    return matches[0];
+}
+
+function getAvKey(definition: AttributeViewDefinition, keyID: string, context: string): AvKeyDefinition {
+    return getAvKeyValue(definition, keyID, context).key;
+}
+
+function normalizeIdSet(ids: string[]): string[] {
+    return [...new Set(ids)].sort();
+}
+
+function sameIdSet(left: string[], right: string[]): boolean {
+    const normalizedLeft = normalizeIdSet(left);
+    const normalizedRight = normalizeIdSet(right);
+    return normalizedLeft.length === normalizedRight.length
+        && normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
+function extractRelationCellItemIDs(
+    definition: AttributeViewDefinition,
+    keyID: string,
+    itemID: string,
+    context: string,
+): string[] {
+    const matches = getAvKeyValue(definition, keyID, context).values.filter((value) => value.blockID === itemID);
+    if (matches.length > 1) throw new Error(`${context}: relation cell ${keyID}/${itemID} resolves more than once.`);
+    if (matches.length === 0) return [];
+    const relation = matches[0].relation;
+    if (!relation || typeof relation !== 'object' || Array.isArray(relation)) {
+        throw new Error(`${context}: relation cell ${keyID}/${itemID} has no relation payload.`);
+    }
+    const blockIDs = (relation as Record<string, unknown>).blockIDs;
+    if (blockIDs === null || blockIDs === undefined) return [];
+    if (!Array.isArray(blockIDs) || blockIDs.some((id) => typeof id !== 'string')) {
+        throw new Error(`${context}: relation cell ${keyID}/${itemID} has an invalid blockIDs payload.`);
+    }
+    return blockIDs as string[];
+}
+
+function getTemplate(definition: AttributeViewDefinition, templateID: string, context: string): Record<string, unknown> {
+    const templates = definition.newItemTemplates;
+    if (!Array.isArray(templates)) throw new Error(`${context}: attribute view has no native new-item templates.`);
+    const matches = templates.filter((template): template is Record<string, unknown> => Boolean(
+        template && typeof template === 'object' && !Array.isArray(template)
+            && (template as Record<string, unknown>).id === templateID,
+    ));
+    if (matches.length !== 1) throw new Error(`${context}: templateID "${templateID}" did not resolve exactly once.`);
+    return matches[0];
+}
+
+function validateTemplateFieldValues(definition: AttributeViewDefinition, template: Record<string, unknown>, context: string): void {
+    const fieldValues = template.fieldValues;
+    if (fieldValues === undefined) return;
+    if (!fieldValues || typeof fieldValues !== 'object' || Array.isArray(fieldValues)) {
+        throw new Error(`${context}: template fieldValues must be an object when present.`);
+    }
+    for (const [keyID, rawFieldValue] of Object.entries(fieldValues as Record<string, unknown>)) {
+        const key = getAvKey(definition, keyID, context);
+        if (!rawFieldValue || typeof rawFieldValue !== 'object' || Array.isArray(rawFieldValue)) {
+            throw new Error(`${context}: template field ${keyID} has an invalid field value.`);
+        }
+        const fieldValue = rawFieldValue as Record<string, unknown>;
+        const mode = fieldValue.mode === undefined ? 'static' : fieldValue.mode;
+        if (mode === 'currentTime') {
+            if (key.type !== 'date') throw new Error(`${context}: currentTime is only valid for date key "${keyID}".`);
+            continue;
+        }
+        if (mode !== 'static' || !fieldValue.value || typeof fieldValue.value !== 'object' || Array.isArray(fieldValue.value)) {
+            throw new Error(`${context}: template field ${keyID} has an invalid static value.`);
+        }
+        const typedValue = fieldValue.value as Record<string, unknown>;
+        if (typedValue.type !== key.type) throw new Error(`${context}: template field ${keyID} has a mismatched value type.`);
+        if (key.type === 'select' || key.type === 'mSelect') {
+            const validNames = new Set((Array.isArray(key.options) ? key.options : []).flatMap((option) => (
+                option && typeof option === 'object' && typeof (option as Record<string, unknown>).name === 'string'
+                    ? [(option as Record<string, unknown>).name as string] : []
+            )));
+            const selections = Array.isArray(typedValue.mSelect) ? typedValue.mSelect : [];
+            if (selections.length === 0 || (key.type === 'select' && selections.length !== 1)
+                || selections.some((selection) => !selection || typeof selection !== 'object'
+                    || typeof (selection as Record<string, unknown>).content !== 'string'
+                    || !validNames.has((selection as Record<string, unknown>).content as string))) {
+                // SiYuan can prune an absent option only in its creation clone,
+                // returning success without a field warning. Refuse before the
+                // write; silently adding options would broaden this action.
+                throw new Error(`${context}: template ${keyID} contains an option absent from this AV key.`);
+            }
+        }
+        if (key.type === 'relation') {
+            const relation = typedValue.relation;
+            if (!relation || typeof relation !== 'object' || Array.isArray(relation)
+                || !Array.isArray((relation as Record<string, unknown>).blockIDs)) {
+                throw new Error(`${context}: template relation field ${keyID} has no blockIDs array.`);
+            }
+        }
+    }
+}
+
+function cloneJsonRecord(value: Record<string, unknown>): Record<string, unknown> {
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function normalizeTemplateValueForKernel(rawValue: Record<string, unknown>, key: AvKeyDefinition): Record<string, unknown> {
+    const value = cloneJsonRecord(rawValue);
+    for (const field of ['id', 'keyID', 'blockID', 'block', 'template', 'created', 'updated', 'rollup', 'isDetached', 'createdAt', 'updatedAt', 'isRenderAutoFill']) delete value[field];
+    value.type = key.type;
+    if (key.type === 'number' && value.number && typeof value.number === 'object' && !Array.isArray(value.number)) {
+        const number = value.number as Record<string, unknown>;
+        if (typeof key.numberFormat === 'string') number.format = key.numberFormat;
+        delete number.formattedContent;
+    }
+    if (key.type === 'date' && value.date && typeof value.date === 'object' && !Array.isArray(value.date)) delete (value.date as Record<string, unknown>).formattedContent;
+    if (key.type === 'relation' && value.relation && typeof value.relation === 'object' && !Array.isArray(value.relation)) delete (value.relation as Record<string, unknown>).contents;
+    return value;
+}
+
+function normalizeTemplateForKernel(rawTemplate: Record<string, unknown>, definition: AttributeViewDefinition, context: string): Record<string, unknown> {
+    const template = cloneJsonRecord(rawTemplate);
+    template.name = typeof template.name === 'string' ? template.name.trim() : template.name;
+    template.icon = typeof template.icon === 'string' ? template.icon.trim() : template.icon;
+    template.contentTemplatePath = typeof template.contentTemplatePath === 'string' ? template.contentTemplatePath.trim() : template.contentTemplatePath;
+    if (template.targetType !== 'document' || template.icon === '') delete template.icon;
+    if (template.contentTemplatePath === '') delete template.contentTemplatePath;
+    if (template.saveLocation && typeof template.saveLocation === 'object' && !Array.isArray(template.saveLocation)) {
+        const location = template.saveLocation as Record<string, unknown>;
+        if (typeof location.boxID === 'string') location.boxID = location.boxID.trim();
+        if (typeof location.pathTemplate === 'string') location.pathTemplate = location.pathTemplate.trim();
+        if (location.boxID === '') delete location.boxID;
+    }
+    if (template.fieldValues && typeof template.fieldValues === 'object' && !Array.isArray(template.fieldValues)) {
+        const fieldValues = template.fieldValues as Record<string, unknown>;
+        for (const [keyID, rawFieldValue] of Object.entries(fieldValues)) {
+            if (!rawFieldValue || typeof rawFieldValue !== 'object' || Array.isArray(rawFieldValue)) continue;
+            const fieldValue = rawFieldValue as Record<string, unknown>;
+            const key = getAvKey(definition, keyID, context);
+            if (fieldValue.mode === 'currentTime') delete fieldValue.value;
+            else if (fieldValue.value && typeof fieldValue.value === 'object' && !Array.isArray(fieldValue.value)) fieldValue.value = normalizeTemplateValueForKernel(fieldValue.value as Record<string, unknown>, key);
+        }
+        // The kernel's empty map omits the field during serialization. This is
+        // the only template-shape normalization accepted by strict readback.
+        if (Object.keys(fieldValues).length === 0) delete template.fieldValues;
+    }
+    return template;
+}
+
+function templateConfigProjection(
+    definition: AttributeViewDefinition,
+    templates: unknown,
+    defaultTemplateID: unknown,
+    context: string,
+): { templates: Record<string, unknown>[]; defaultTemplateID: string } {
+    if (templates === undefined || templates === null) return { templates: [], defaultTemplateID: typeof defaultTemplateID === 'string' ? defaultTemplateID : '' };
+    if (!Array.isArray(templates)) throw new Error(`${context}: newItemTemplates must be an array.`);
+    return {
+        templates: templates.map((template, index) => {
+            if (!template || typeof template !== 'object' || Array.isArray(template)) throw new Error(`${context}: template at index ${index} is invalid.`);
+            const copied = cloneJsonRecord(template as Record<string, unknown>);
+            if (Array.isArray(copied.fieldValues) && copied.fieldValues.length === 0) delete copied.fieldValues;
+            return normalizeTemplateForKernel(copied, definition, context);
+        }),
+        defaultTemplateID: typeof defaultTemplateID === 'string' ? defaultTemplateID : '',
+    };
+}
+
+function validateCompleteTemplateConfiguration(definition: AttributeViewDefinition, templates: Record<string, unknown>[], defaultTemplateID: string, context: string): void {
+    const ids = new Set<string>();
+    for (const template of templates) {
+        if (typeof template.id !== 'string' || !ATTRIBUTE_VIEW_ID_PATTERN.test(template.id)) throw new Error(`${context}: template has an invalid ID.`);
+        if (ids.has(template.id)) throw new Error(`${context}: duplicate template ID "${template.id}".`);
+        ids.add(template.id);
+        if (typeof template.name !== 'string' || template.name.trim().length === 0 || (template.targetType !== 'detached' && template.targetType !== 'document')) throw new Error(`${context}: template "${template.id}" has invalid required fields.`);
+        validateTemplateFieldValues(definition, template, context);
+    }
+    if (defaultTemplateID && !ids.has(defaultTemplateID)) throw new Error(`${context}: defaultTemplateID "${defaultTemplateID}" is absent from the complete template array.`);
+}
+
+function createAvValidationErrorResult(action: AvAction, payload: Record<string, unknown>): ToolResult {
+    return { content: [{ type: 'text', text: JSON.stringify({ error: { type: 'validation_error', tool: AV_TOOL_NAME, action, ...payload } }, null, 2) }], isError: true };
+}
+
+async function requireWritableRelationDestinations(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    definition: AttributeViewDefinition,
+    keyID: string,
+    relatedItemIDs: string[],
+    context: string,
+): Promise<{ destinationAvID: string; backKeyID?: string; destination: AttributeViewDefinition }> {
+    const key = getAvKey(definition, keyID, context);
+    if (key.type !== 'relation' || !key.relation || typeof key.relation !== 'object' || Array.isArray(key.relation)) {
+        throw new Error(`${context}: keyID "${keyID}" is not a configured relation key.`);
+    }
+    const relation = key.relation as Record<string, unknown>;
+    const destinationAvID = relation.avID;
+    if (typeof destinationAvID !== 'string' || !ATTRIBUTE_VIEW_ID_PATTERN.test(destinationAvID)) {
+        throw new Error(`${context}: relation key "${keyID}" has no valid destination AV ID.`);
+    }
+    const destination = asAttributeViewDefinition((await avApi.getAttributeView(client, destinationAvID)).av, destinationAvID);
+    const backKeyID = typeof relation.backKeyID === 'string' && relation.backKeyID ? relation.backKeyID : undefined;
+    if (relation.isTwoWay === true) {
+        if (!backKeyID) throw new Error(`${context}: two-way relation key "${keyID}" has no backKeyID.`);
+        const backKey = getAvKey(destination, backKeyID, context);
+        if (backKey.type !== 'relation' || !backKey.relation || typeof backKey.relation !== 'object'
+            || (backKey.relation as Record<string, unknown>).avID !== definition.id) {
+            throw new Error(`${context}: destination reverse relation metadata does not match the source AV.`);
+        }
+    }
+    // A relation can mutate reverse cells. The destination's first bound row
+    // is not proof of a carrier, so permission is established only through a
+    // verified NodeAttributeView before this cross-AV write is dispatched.
+    const destinationCarrier = await resolveVerifiedAvCarrier(client, destinationAvID, destination);
+    if (!destinationCarrier) throw new Error(`${context}: destination AV "${destinationAvID}" has no verified database carrier.`);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, destinationCarrier, 'write');
+    if (denied) throw new Error(`${context}: destination AV write permission was denied.`);
+    const destinationLookup = extractAvRowLookup(destination);
+    for (const itemID of relatedItemIDs) {
+        if (!destinationLookup.rowIDs.has(itemID)) throw new Error(`${context}: relatedItemID "${itemID}" is not a canonical destination AV item ID.`);
+    }
+    return { destinationAvID, backKeyID, destination };
+}
 
 function extractFirstRowBlockId(avData: unknown): string | undefined {
     if (!avData || typeof avData !== 'object') return undefined;
@@ -939,6 +1196,27 @@ async function resolveVerifiedAvCarrierBlockId(
         }
     }
     return undefined;
+}
+
+async function resolveVerifiedAvCarrier(
+    client: SiYuanClient,
+    avID: string,
+    avData: unknown,
+    explicitBlockID?: string,
+): Promise<string | undefined> {
+    if (explicitBlockID) {
+        try {
+            const response = await blockApi.getBlockDOM(client, explicitBlockID);
+            const dom = typeof response?.dom === 'string' ? response.dom : '';
+            return dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)
+                ? explicitBlockID
+                : undefined;
+        } catch (error) {
+            if (isMissingBlockError(error)) return undefined;
+            throw error;
+        }
+    }
+    return resolveVerifiedAvCarrierBlockId(client, avID, avData);
 }
 
 async function resolveDuplicateRowsRelationDestinations(
@@ -2213,6 +2491,512 @@ async function handleDuplicateRows({ client, permMgr, rawArgs }: ToolHandlerCont
     }), refreshOperations);
 }
 
+// Template, relation, and rollup writes remain separate from the scalar and
+// view handlers above. Their native endpoints can alter a second AV or create
+// a bound document, so every path below keeps complete raw readback and never
+// converts an unknown transport response into a replayed write.
+async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetNewItemTemplatesSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'set_new_item_templates',
+    });
+    if (denied) return denied;
+
+    const definition = asAttributeViewDefinition(avData, parsed.avID);
+    const expectedTemplates = parsed.templates.map((template) => normalizeTemplateForKernel(template, definition, 'set_new_item_templates'));
+    try {
+        validateCompleteTemplateConfiguration(definition, expectedTemplates, parsed.defaultTemplateID, 'set_new_item_templates');
+    } catch (error) {
+        return createAvValidationErrorResult('set_new_item_templates', {
+            reason: 'template_configuration_invalid',
+            message: error instanceof Error ? error.message : String(error),
+            hint: 'Every template field must match a currently existing AV key and select/mSelect options must already exist. SiYuan currently prunes unknown options during creation without a warning, so Sisyphus refuses this unsafe configuration instead of adding options automatically.',
+        });
+    }
+    const expected = { templates: expectedTemplates, defaultTemplateID: parsed.defaultTemplateID };
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
+    const updatedOps = withUpdatedOperation([{
+        action: 'setAttrViewNewItemTemplates',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        data: expected,
+    }], transactionBlockID);
+
+    const verifyExactPostimage = async (): Promise<{ definition: AttributeViewDefinition; config: { templates: Record<string, unknown>[]; defaultTemplateID: string } }> => {
+        const after = await readTemplateConfig(client, parsed.avID, 'set_new_item_templates readback');
+        if (await templateConfigHash(after.config) !== await templateConfigHash(expected)) {
+            throw new Error(`set_new_item_templates: complete template order, defaults, or defaultTemplateID readback did not match the requested postimage for AV "${parsed.avID}".`);
+        }
+        return after;
+    };
+
+    let responseUnknown = false;
+    let after: { definition: AttributeViewDefinition; config: { templates: Record<string, unknown>[]; defaultTemplateID: string } } | undefined;
+    try {
+        await transactionApi.performTransactions(client, [{
+            doOperations: updatedOps.doOperations,
+            // A complete replacement may cross a concurrent template edit. The
+            // strict preflight protects its preimage; do not fabricate a lossy
+            // undo operation that could erase another template field.
+            undoOperations: updatedOps.undoOperations,
+        }]);
+    } catch (error) {
+        // Probe the exact postimage once; do not resend a whole-template write.
+        try {
+            after = await verifyExactPostimage();
+            responseUnknown = true;
+        } catch {
+            throw error;
+        }
+    }
+    after ??= await verifyExactPostimage();
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'set_new_item_templates',
+        avID: parsed.avID,
+        templateCount: expected.templates.length,
+        defaultTemplateID: expected.defaultTemplateID,
+        templatePreimageHash: await rawTemplateConfigHash(definition),
+        templatePostimageHash: await rawTemplateConfigHash(after.definition),
+        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
+    }), refreshOperations);
+}
+
+async function templateConfigHash(config: { templates: Record<string, unknown>[]; defaultTemplateID: string }): Promise<string> {
+    return hashCanonicalState({ templates: config.templates, defaultTemplateID: config.defaultTemplateID });
+}
+
+async function rawTemplateConfigHash(definition: AttributeViewDefinition): Promise<string> {
+    // Report complete native state, not a handler-specific projection. The
+    // projection is used only for the documented empty-map serialization.
+    return hashCanonicalState({ templates: definition.newItemTemplates, defaultTemplateID: definition.defaultTemplateID });
+}
+
+async function readTemplateConfig(
+    client: SiYuanClient,
+    avID: string,
+    context: string,
+): Promise<{ definition: AttributeViewDefinition; config: { templates: Record<string, unknown>[]; defaultTemplateID: string } }> {
+    const definition = asAttributeViewDefinition((await avApi.getAttributeView(client, avID)).av, avID);
+    return { definition, config: templateConfigProjection(definition, definition.newItemTemplates, definition.defaultTemplateID, context) };
+}
+
+function relationCellValue(itemIDs: string[]): Record<string, unknown> {
+    return {
+        type: 'relation',
+        relation: {
+            // Kernel calls this blockIDs, but the values are AV item IDs. A
+            // bound document block ID would make a cross-AV relation unsafe.
+            blockIDs: itemIDs,
+            contents: null,
+        },
+    };
+}
+
+async function readRelationPostimage(
+    client: SiYuanClient,
+    sourceAvID: string,
+    sourceKeyID: string,
+    sourceItemID: string,
+    expectedItemIDs: string[],
+    destinationAvID: string,
+    backKeyID: string | undefined,
+    priorItemIDs: string[],
+    context: string,
+): Promise<{ source: AttributeViewDefinition; destination: AttributeViewDefinition }> {
+    const source = asAttributeViewDefinition((await avApi.getAttributeView(client, sourceAvID)).av, sourceAvID);
+    const sourceActual = extractRelationCellItemIDs(source, sourceKeyID, sourceItemID, context);
+    if (!sameIdSet(sourceActual, expectedItemIDs)) {
+        throw new Error(`${context}: source relation readback did not match the complete requested itemID set.`);
+    }
+    const destination = asAttributeViewDefinition((await avApi.getAttributeView(client, destinationAvID)).av, destinationAvID);
+    if (!backKeyID) return { source, destination };
+    for (const destinationItemID of normalizeIdSet([...priorItemIDs, ...expectedItemIDs])) {
+        const reverseItemIDs = extractRelationCellItemIDs(destination, backKeyID, destinationItemID, context);
+        const shouldContainSource = expectedItemIDs.includes(destinationItemID);
+        if (reverseItemIDs.includes(sourceItemID) !== shouldContainSource) {
+            throw new Error(`${context}: two-way reverse relation readback did not ${shouldContainSource ? 'add' : 'clear'} source itemID for destination item "${destinationItemID}".`);
+        }
+    }
+    return { source, destination };
+}
+
+async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvSetRelationSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'set_relation',
+    });
+    if (denied) return denied;
+    const source = asAttributeViewDefinition(avData, parsed.avID);
+    let relation: RelationMetadata;
+    let destination: AttributeViewDefinition;
+    let destinationCarrier: string;
+    let previousItemIDs: string[];
+    try {
+        const key = getAvKey(source, parsed.keyID, 'set_relation preflight');
+        relation = getRelationMetadata(key, 'set_relation preflight');
+        if (typeof relation.avID !== 'string' || !ATTRIBUTE_VIEW_ID_PATTERN.test(relation.avID)) {
+            throw new Error('set_relation preflight: relation key has no valid destination AV ID.');
+        }
+        destination = asAttributeViewDefinition((await avApi.getAttributeView(client, relation.avID)).av, relation.avID);
+        destinationCarrier = await resolveVerifiedAvCarrier(client, relation.avID, destination) ?? '';
+        if (!destinationCarrier) throw new Error(`set_relation preflight: destination AV "${relation.avID}" has no verified database carrier.`);
+        const permission = await ensurePermissionForDocumentId(client, permMgr, destinationCarrier, 'write');
+        if (permission.denied) return permission.denied;
+        for (const itemID of parsed.relatedItemIDs) {
+            if (!extractAvRowLookup(destination).rowIDs.has(itemID)) {
+                throw new Error(`set_relation preflight: relatedItemID "${itemID}" is not a canonical destination AV item ID.`);
+            }
+        }
+        previousItemIDs = extractRelationCellItemIDs(source, parsed.keyID, parsed.itemID, 'set_relation preflight');
+    } catch (error) {
+        return createAvValidationErrorResult('set_relation', {
+            reason: 'relation_preflight_failed',
+            message: error instanceof Error ? error.message : String(error),
+        });
+    }
+
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
+    const updatedOps = withUpdatedOperation([{
+        action: 'updateAttrViewCell',
+        avID: parsed.avID,
+        keyID: parsed.keyID,
+        rowID: parsed.itemID,
+        data: relationCellValue(parsed.relatedItemIDs),
+    }], transactionBlockID);
+    const verifyExactPostimage = () => readRelationPostimage(
+        client, parsed.avID, parsed.keyID, parsed.itemID, parsed.relatedItemIDs,
+        relation.avID, relation.isTwoWay === true ? relation.backKeyID : undefined,
+        previousItemIDs, 'set_relation readback',
+    );
+    let responseUnknown = false;
+    try {
+        await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
+    } catch (error) {
+        try {
+            await verifyExactPostimage();
+            responseUnknown = true;
+        } catch {
+            throw error;
+        }
+    }
+    await verifyExactPostimage();
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'set_relation', avID: parsed.avID, keyID: parsed.keyID, itemID: parsed.itemID,
+        relatedItemIDs: parsed.relatedItemIDs, destinationAvID: relation.avID, destinationCarrier,
+        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
+    }), refreshOperations);
+}
+
+async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvConfigureTwoWayRelationSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'configure_two_way_relation',
+    });
+    if (denied) return denied;
+    const source = asAttributeViewDefinition(avData, parsed.avID);
+    let destination: AttributeViewDefinition;
+    let sourceRelation: RelationMetadata | undefined;
+    try {
+        const sourceKey = getAvKey(source, parsed.keyID, 'configure_two_way_relation preflight');
+        if (sourceKey.type !== 'relation') throw new Error(`configure_two_way_relation preflight: keyID "${parsed.keyID}" is not a relation key.`);
+        sourceRelation = maybeRelationMetadata(sourceKey);
+        if (sourceRelation?.avID && sourceRelation.avID !== parsed.destinationAvID) {
+            throw new Error(`configure_two_way_relation preflight: existing source relation targets "${sourceRelation.avID}"; retargeting would mutate an unpreflighted third AV.`);
+        }
+        destination = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.destinationAvID)).av, parsed.destinationAvID);
+        const destinationCarrier = await resolveVerifiedAvCarrier(client, parsed.destinationAvID, destination, parsed.destinationBlockID);
+        if (!destinationCarrier) throw new Error(`configure_two_way_relation preflight: destination AV "${parsed.destinationAvID}" has no verified database carrier.`);
+        const permission = await ensurePermissionForDocumentId(client, permMgr, destinationCarrier, 'write');
+        if (permission.denied) return permission.denied;
+    } catch (error) {
+        return createAvValidationErrorResult('configure_two_way_relation', {
+            reason: 'two_way_relation_preflight_failed',
+            message: error instanceof Error ? error.message : String(error),
+        });
+    }
+
+    const expected = {
+        avID: parsed.avID, keyID: parsed.keyID, destinationAvID: parsed.destinationAvID,
+        backRelationKeyID: parsed.backRelationKeyID, sourceName: parsed.sourceName, destinationName: parsed.destinationName,
+    };
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
+    const updatedOps = withUpdatedOperation([{
+        action: 'updateAttrViewColRelation', avID: parsed.avID, id: parsed.keyID, keyID: parsed.keyID,
+        data: parsed.destinationAvID, backRelationKeyID: parsed.backRelationKeyID, isTwoWay: true,
+        name: parsed.destinationName, format: parsed.sourceName,
+    }], transactionBlockID);
+    const verifyExactPostimage = async (): Promise<{ source: AttributeViewDefinition; destination: AttributeViewDefinition }> => {
+        const actualSource = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.avID)).av, parsed.avID);
+        const actualDestination = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.destinationAvID)).av, parsed.destinationAvID);
+        verifyTwoWayRelationMetadata(actualSource, actualDestination, expected, 'configure_two_way_relation readback');
+        return { source: actualSource, destination: actualDestination };
+    };
+    let responseUnknown = false;
+    let after: { source: AttributeViewDefinition; destination: AttributeViewDefinition } | undefined;
+    try {
+        await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
+    } catch (error) {
+        try {
+            after = await verifyExactPostimage();
+            responseUnknown = true;
+        } catch {
+            throw error;
+        }
+    }
+    after ??= await verifyExactPostimage();
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'configure_two_way_relation', ...expected,
+        sourcePreimageHash: await hashCanonicalState(source), sourcePostimageHash: await hashCanonicalState(after.source),
+        destinationPreimageHash: await hashCanonicalState(destination!), destinationPostimageHash: await hashCanonicalState(after.destination),
+        ...(sourceRelation ? { priorDestinationAvID: sourceRelation.avID } : {}),
+        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
+    }), refreshOperations);
+}
+
+function getRelationMetadata(key: AvKeyDefinition, context: string): Record<string, unknown> {
+    if (key.type !== 'relation' || !key.relation || typeof key.relation !== 'object' || Array.isArray(key.relation)) {
+        throw new Error(`${context}: key is not a relation with native metadata.`);
+    }
+    return key.relation as Record<string, unknown>;
+}
+
+function maybeRelationMetadata(key: AvKeyDefinition): Record<string, unknown> | undefined {
+    return key.type === 'relation' && key.relation && typeof key.relation === 'object' && !Array.isArray(key.relation)
+        ? key.relation as Record<string, unknown>
+        : undefined;
+}
+
+function verifyTwoWayRelationMetadata(
+    source: AttributeViewDefinition,
+    destination: AttributeViewDefinition,
+    expected: { avID: string; keyID: string; destinationAvID: string; backRelationKeyID: string; sourceName: string; destinationName: string },
+    context: string,
+): void {
+    const sourceKey = getAvKey(source, expected.keyID, context);
+    const sourceRelation = getRelationMetadata(sourceKey, context);
+    if (sourceRelation.avID !== expected.destinationAvID || sourceRelation.backKeyID !== expected.backRelationKeyID || sourceRelation.isTwoWay !== true) {
+        throw new Error(`${context}: source relation metadata does not match the requested two-way postimage.`);
+    }
+    const backKey = getAvKey(destination, expected.backRelationKeyID, context);
+    const backRelation = getRelationMetadata(backKey, context);
+    if (backRelation.avID !== expected.avID || backRelation.backKeyID !== expected.keyID || backRelation.isTwoWay !== true) {
+        throw new Error(`${context}: destination reverse relation metadata does not match the requested two-way postimage.`);
+    }
+}
+
+async function handleConfigureRollup({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvConfigureRollupSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'configure_rollup',
+    });
+    if (denied) return denied;
+    const source = asAttributeViewDefinition(avData, parsed.avID);
+    let relationDestinationAvID: string;
+    try {
+        const rollupKey = getAvKey(source, parsed.keyID, 'configure_rollup preflight');
+        if (rollupKey.type !== 'rollup') throw new Error(`configure_rollup preflight: keyID "${parsed.keyID}" is not a rollup key.`);
+        const relationKey = getAvKey(source, parsed.relationKeyID, 'configure_rollup preflight');
+        const relation = getRelationMetadata(relationKey, 'configure_rollup preflight');
+        if (typeof relation.avID !== 'string' || !ATTRIBUTE_VIEW_ID_PATTERN.test(relation.avID)) throw new Error('configure_rollup preflight: relation key has no valid destination AV ID.');
+        relationDestinationAvID = relation.avID;
+        const destination = asAttributeViewDefinition((await avApi.getAttributeView(client, relationDestinationAvID)).av, relationDestinationAvID);
+        getAvKey(destination, parsed.destinationKeyID, 'configure_rollup preflight');
+        const carrier = await resolveVerifiedAvCarrier(client, relationDestinationAvID, destination);
+        if (!carrier) throw new Error(`configure_rollup preflight: destination AV "${relationDestinationAvID}" has no verified database carrier.`);
+        const permission = await ensurePermissionForDocumentId(client, permMgr, carrier, 'read');
+        if (permission.denied) return permission.denied;
+    } catch (error) {
+        return createAvValidationErrorResult('configure_rollup', {
+            reason: 'rollup_preflight_failed', message: error instanceof Error ? error.message : String(error),
+        });
+    }
+
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
+    const updatedOps = withUpdatedOperation([{
+        action: 'updateAttrViewColRollup', id: parsed.keyID, avID: parsed.avID,
+        parentID: parsed.relationKeyID, keyID: parsed.destinationKeyID, data: { calc: parsed.calc },
+    }], transactionBlockID);
+    const verifyExactPostimage = async (): Promise<AttributeViewDefinition> => {
+        const actual = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.avID)).av, parsed.avID);
+        await verifyRollupMetadata(actual, parsed.keyID, parsed.relationKeyID, parsed.destinationKeyID, parsed.calc, 'configure_rollup readback');
+        return actual;
+    };
+    let responseUnknown = false;
+    let after: AttributeViewDefinition | undefined;
+    try {
+        await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
+    } catch (error) {
+        try {
+            after = await verifyExactPostimage();
+            responseUnknown = true;
+        } catch {
+            throw error;
+        }
+    }
+    after ??= await verifyExactPostimage();
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'configure_rollup', avID: parsed.avID, keyID: parsed.keyID, relationKeyID: parsed.relationKeyID,
+        destinationAvID: relationDestinationAvID!, destinationKeyID: parsed.destinationKeyID, calc: parsed.calc,
+        sourcePreimageHash: await hashCanonicalState(source), sourcePostimageHash: await hashCanonicalState(after),
+        nativeFilterSideEffect: 'filters referencing this rollup key may be removed by SiYuan',
+        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
+    }), refreshOperations);
+}
+
+async function verifyRollupMetadata(
+    definition: AttributeViewDefinition,
+    keyID: string,
+    relationKeyID: string,
+    destinationKeyID: string,
+    calc: Record<string, unknown>,
+    context: string,
+): Promise<void> {
+    const key = getAvKey(definition, keyID, context);
+    if (key.type !== 'rollup' || !key.rollup || typeof key.rollup !== 'object' || Array.isArray(key.rollup)) {
+        throw new Error(`${context}: rollup key is missing native rollup metadata.`);
+    }
+    const rollup = key.rollup as Record<string, unknown>;
+    if (rollup.relationKeyID !== relationKeyID || rollup.keyID !== destinationKeyID || await hashCanonicalState(rollup.calc) !== await hashCanonicalState(calc)) {
+        throw new Error(`${context}: native rollup metadata did not match relationKeyID, destinationKeyID, and calc postimage.`);
+    }
+}
+
+async function handleCreateFromTemplate({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvCreateFromTemplateSchema.parse(rawArgs);
+    const sourcePermission = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
+        blockID: parsed.blockID,
+        action: 'create_from_template',
+    });
+    if (sourcePermission.denied) return sourcePermission.denied;
+    const source = asAttributeViewDefinition(sourcePermission.avData, parsed.avID);
+    let template: Record<string, unknown>;
+    const relationTargets = new Map<string, { destinationAvID: string; backKeyID?: string; destination: AttributeViewDefinition; relatedItemIDs: string[] }>();
+    try {
+        template = getTemplate(source, parsed.templateID, 'create_from_template preflight');
+        validateTemplateFieldValues(source, template, 'create_from_template preflight');
+        const fieldValues = template.fieldValues;
+        if (fieldValues && typeof fieldValues === 'object' && !Array.isArray(fieldValues)) {
+            for (const [keyID, rawFieldValue] of Object.entries(fieldValues as Record<string, unknown>)) {
+                const fieldValue = rawFieldValue && typeof rawFieldValue === 'object' && !Array.isArray(rawFieldValue) ? rawFieldValue as Record<string, unknown> : undefined;
+                const value = fieldValue?.value;
+                if (!value || typeof value !== 'object' || Array.isArray(value) || (value as Record<string, unknown>).type !== 'relation') continue;
+                const relation = (value as Record<string, unknown>).relation;
+                const relatedItemIDs = relation && typeof relation === 'object' && !Array.isArray(relation) && Array.isArray((relation as Record<string, unknown>).blockIDs)
+                    ? (relation as Record<string, unknown>).blockIDs as string[] : [];
+                const target = await requireWritableRelationDestinations(client, permMgr, source, keyID, relatedItemIDs, 'create_from_template preflight');
+                relationTargets.set(keyID, { ...target, relatedItemIDs });
+            }
+        }
+        if (template.targetType === 'document') {
+            const saveLocation = template.saveLocation;
+            if (!saveLocation || typeof saveLocation !== 'object' || Array.isArray(saveLocation)) throw new Error('Document template inherits SiYuan global document-create location, so its target notebook cannot be preflighted. Give this native template an explicit saveLocation before calling create_from_template.');
+            const sourceContext = await ensurePermissionForDocumentId(client, permMgr, parsed.blockID, 'write');
+            if (sourceContext.denied) return sourceContext.denied;
+            const requestedBoxID = (saveLocation as Record<string, unknown>).boxID;
+            const targetNotebookID = typeof requestedBoxID === 'string' && requestedBoxID.trim() ? requestedBoxID.trim() : sourceContext.context.notebook;
+            const destinationDenied = await ensurePermissionForNotebook(permMgr, targetNotebookID, 'write');
+            if (destinationDenied) return destinationDenied;
+        }
+    } catch (error) {
+        return createAvValidationErrorResult('create_from_template', {
+            reason: 'template_create_preflight_failed', message: error instanceof Error ? error.message : String(error),
+            hint: 'The wrapper creates only fully preflighted native templates. It does not add missing options, infer a global document location, or treat an AV itemID as a document blockID.',
+        });
+    }
+
+    const createdAfterMs = Date.now();
+    const response = await avApi.createAttributeViewItem(client, {
+        avID: parsed.avID, blockID: parsed.blockID, viewID: parsed.viewID, templateID: parsed.templateID,
+        previousID: parsed.previousID, groupID: parsed.groupID,
+    });
+    if (!response.itemID || !response.blockID || typeof response.isDetached !== 'boolean') throw new Error(`create_from_template: native endpoint returned incomplete itemID/blockID identity for AV "${parsed.avID}".`);
+
+    const after = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.avID)).av, parsed.avID);
+    const createdLookup = extractAvRowLookup(after);
+    if (!createdLookup.rowIDs.has(response.itemID)) throw new Error(`create_from_template readback: returned itemID "${response.itemID}" is not a raw AV row item.`);
+    const boundBlockID = getBoundBlockIDForItem(after, response.itemID, 'create_from_template readback');
+    if (boundBlockID !== response.blockID) throw new Error('create_from_template readback: native returned blockID differs from the row bound block identity.');
+    await verifyCreatedTemplateFieldValues(after, template, response.itemID, createdAfterMs, 'create_from_template readback');
+    for (const [keyID, target] of relationTargets) {
+        await readRelationPostimage(client, parsed.avID, keyID, response.itemID, target.relatedItemIDs, target.destinationAvID, target.backKeyID, [], 'create_from_template relation readback');
+    }
+    if (response.isDetached) {
+        if (response.blockID !== response.itemID) throw new Error('create_from_template readback: detached template returned a distinct document blockID.');
+    } else {
+        if (response.blockID === response.itemID || !await blockApi.checkBlockExist(client, response.blockID)) throw new Error('create_from_template readback: document template did not materialize its returned bound document block.');
+        const hPath = await documentApi.getHPathByID(client, response.blockID);
+        if (!hPath || (response.content && !hPath.endsWith(`/${response.content}`))) throw new Error('create_from_template readback: returned document content did not match its persisted document path.');
+    }
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, sourcePermission.avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'create_from_template', avID: parsed.avID, templateID: parsed.templateID, itemID: response.itemID,
+        blockID: response.blockID, isDetached: response.isDetached, content: response.content, fieldReadback: 'verified',
+        ...(relationTargets.size > 0 ? { relationReadback: 'verified' } : {}),
+        ...(response.warnings && response.warnings.length > 0 ? { warnings: response.warnings } : {}),
+    }), refreshOperations);
+}
+
+function getCellValueForItem(definition: AttributeViewDefinition, keyID: string, itemID: string, context: string): Record<string, unknown> {
+    const matches = getAvKeyValue(definition, keyID, context).values.filter((value) => value.blockID === itemID);
+    if (matches.length !== 1) throw new Error(`${context}: key "${keyID}" did not return exactly one value for AV itemID "${itemID}".`);
+    return matches[0];
+}
+
+function getBoundBlockIDForItem(definition: AttributeViewDefinition, itemID: string, context: string): string {
+    const blockKeyValue = (definition.keyValues ?? []).find((entry): entry is AvKeyValueDefinition => Boolean(
+        entry && typeof entry === 'object' && !Array.isArray(entry)
+            && (entry as { key?: unknown; values?: unknown }).key && typeof (entry as { key?: unknown }).key === 'object'
+            && ((entry as { key?: Record<string, unknown> }).key?.type === 'block')
+            && Array.isArray((entry as { values?: unknown }).values),
+    ));
+    if (!blockKeyValue) throw new Error(`${context}: AV has no block primary-key definition.`);
+    const cell = blockKeyValue.values.find((value) => value.blockID === itemID);
+    const boundID = cell?.block && typeof cell.block === 'object' && !Array.isArray(cell.block)
+        ? (cell.block as Record<string, unknown>).id : undefined;
+    if (typeof boundID !== 'string' || !boundID) throw new Error(`${context}: AV itemID "${itemID}" has no bound block identity.`);
+    return boundID;
+}
+
+async function verifyCreatedTemplateFieldValues(
+    definition: AttributeViewDefinition,
+    template: Record<string, unknown>,
+    itemID: string,
+    createdAfterMs: number,
+    context: string,
+): Promise<void> {
+    const fieldValues = template.fieldValues;
+    if (!fieldValues || typeof fieldValues !== 'object' || Array.isArray(fieldValues)) return;
+    for (const [keyID, rawFieldValue] of Object.entries(fieldValues as Record<string, unknown>)) {
+        if (!rawFieldValue || typeof rawFieldValue !== 'object' || Array.isArray(rawFieldValue)) continue;
+        const fieldValue = rawFieldValue as Record<string, unknown>;
+        const key = getAvKey(definition, keyID, context);
+        if (key.type === 'relation' && fieldValue.value && typeof fieldValue.value === 'object' && !Array.isArray(fieldValue.value)) {
+            const relation = (fieldValue.value as Record<string, unknown>).relation;
+            const ids = relation && typeof relation === 'object' && !Array.isArray(relation) ? (relation as Record<string, unknown>).blockIDs : undefined;
+            if (Array.isArray(ids) && ids.length === 0) continue;
+        }
+        const actual = getCellValueForItem(definition, keyID, itemID, context);
+        if (fieldValue.mode === 'currentTime') {
+            const date = actual.date;
+            const content = date && typeof date === 'object' && !Array.isArray(date) ? (date as Record<string, unknown>).content : undefined;
+            if (actual.type !== 'date' || typeof content !== 'number' || content < createdAfterMs) throw new Error(`${context}: currentTime field "${keyID}" did not materialize as a new date value.`);
+            continue;
+        }
+        if (!fieldValue.value || typeof fieldValue.value !== 'object' || Array.isArray(fieldValue.value)) throw new Error(`${context}: static field "${keyID}" has no value for readback comparison.`);
+        if (await hashCanonicalState(normalizeTemplateValueForKernel(actual, key)) !== await hashCanonicalState(normalizeTemplateValueForKernel(fieldValue.value as Record<string, unknown>, key))) {
+            throw new Error(`${context}: static template field "${keyID}" did not match its native readback.`);
+        }
+    }
+}
+
 async function handleDuplicate({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvDuplicateSchema.parse(rawArgs);
     const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', { blockID: parsed.blockID, action: 'duplicate' });
@@ -2586,6 +3370,11 @@ export const AV_ACTION_HANDLERS: Record<AvAction, ToolActionHandler> = {
     set_cells: handleSetCells,
     set_column_options: handleSetColumnOptions,
     duplicate_rows: handleDuplicateRows,
+    set_new_item_templates: handleSetNewItemTemplates,
+    create_from_template: handleCreateFromTemplate,
+    configure_two_way_relation: handleConfigureTwoWayRelation,
+    configure_rollup: handleConfigureRollup,
+    set_relation: handleSetRelation,
     duplicate: handleDuplicate,
     get_primary_key_values: handleGetPrimaryKeyValues,
     add_view: handleAddView,

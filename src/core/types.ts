@@ -1046,6 +1046,83 @@ export const AvSetColumnOrderSchema = z.object({
     }
 });
 
+const SiYuanNodeIdSchema = z.string().regex(/^\d{14}-[a-z0-9]{7}$/, "Must be a SiYuan node ID.");
+
+/** The native template model is intentionally passed through as one complete array. */
+export const AvNewItemTemplateSchema = z.object({
+    id: SiYuanNodeIdSchema.describe("Stable new-item template ID"),
+    name: z.string().min(1).describe("Template name; SiYuan trims surrounding whitespace"),
+    icon: z.string().optional().describe("Document template icon"),
+    targetType: z.enum(['detached', 'document']).describe("Whether creation makes a detached row or a document-bound row"),
+    primaryKeyTemplate: z.string().optional().describe("Native Go-template primary-key source"),
+    fieldValues: z.record(z.string(), z.object({
+        mode: z.enum(['static', 'currentTime']).describe("Native new-item field-value mode"),
+        value: z.record(z.string(), z.unknown()).optional().describe("Native AV value payload; omitted for currentTime"),
+    })).optional().describe("Defaults keyed by AV key ID"),
+    saveLocation: z.object({
+        boxID: z.string().optional(),
+        pathTemplate: z.string(),
+    }).optional().describe("Document target location; omitted means inherit SiYuan's document-create configuration"),
+    contentTemplatePath: z.string().optional().describe("Native content-template path for document targets"),
+});
+
+export const AvSetNewItemTemplatesSchema = z.object({
+    action: z.literal('set_new_item_templates'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Materialized database block used for permission and transaction context"),
+    templates: z.array(AvNewItemTemplateSchema).describe("Complete ordered replacement template array"),
+    defaultTemplateID: SiYuanNodeIdSchema.or(z.literal('')).describe("Default template ID, or empty to clear it; required because this replaces the complete configuration"),
+});
+
+export const AvCreateFromTemplateSchema = z.object({
+    action: z.literal('create_from_template'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Materialized database block; never an AV row item ID"),
+    templateID: SiYuanNodeIdSchema.describe("Existing native new-item template ID"),
+    viewID: SiYuanNodeIdSchema.optional().describe("Optional exact view placement context"),
+    previousID: SiYuanNodeIdSchema.optional().describe("Optional preceding AV row item ID"),
+    groupID: SiYuanNodeIdSchema.optional().describe("Optional target group ID"),
+});
+
+export const AvConfigureTwoWayRelationSchema = z.object({
+    action: z.literal('configure_two_way_relation'),
+    avID: SiYuanNodeIdSchema.describe("Source attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Source materialized database block"),
+    keyID: SiYuanNodeIdSchema.describe("Existing source relation key ID"),
+    destinationAvID: SiYuanNodeIdSchema.describe("Destination attribute view ID"),
+    destinationBlockID: SiYuanNodeIdSchema.optional().describe("Optional explicit destination database block for permission verification"),
+    backRelationKeyID: SiYuanNodeIdSchema.describe("Stable destination reverse relation key ID; created when absent"),
+    sourceName: z.string().min(1).describe("Source relation field name"),
+    destinationName: z.string().min(1).describe("Destination reverse relation field name"),
+});
+
+export const AvConfigureRollupSchema = z.object({
+    action: z.literal('configure_rollup'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view that owns the rollup field"),
+    blockID: SiYuanNodeIdSchema.describe("Materialized database block used for permission and transaction context"),
+    keyID: SiYuanNodeIdSchema.describe("Existing rollup key ID"),
+    relationKeyID: SiYuanNodeIdSchema.describe("Existing relation key in the same AV"),
+    destinationKeyID: SiYuanNodeIdSchema.describe("Existing key in the relation destination AV"),
+    calc: z.record(z.string(), z.unknown()).describe("Native RollupCalc payload, preserved without invented calculation aliases"),
+});
+
+export const AvSetRelationSchema = z.object({
+    action: z.literal('set_relation'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Verified source database block; relation writes never infer this from a row's bound block"),
+    itemID: SiYuanNodeIdSchema.describe("AV row item ID; never the bound document block ID"),
+    keyID: SiYuanNodeIdSchema.describe("Relation key ID"),
+    relatedItemIDs: z.array(SiYuanNodeIdSchema).describe("Target AV row item IDs; an empty array clears the relation"),
+}).superRefine((value, ctx) => {
+    if (new Set(value.relatedItemIDs).size !== value.relatedItemIDs.length) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "relatedItemIDs must not contain duplicates.",
+            path: ['relatedItemIDs'],
+        });
+    }
+});
+
 export const FileUploadAssetSchema = z.object({
     action: z.literal("upload_asset"),
     assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),

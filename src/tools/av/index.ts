@@ -7,6 +7,9 @@ import {
     AvAddColumnSchema,
     AvAddViewSchema,
     AvAddRowsSchema,
+    AvConfigureRollupSchema,
+    AvConfigureTwoWayRelationSchema,
+    AvCreateFromTemplateSchema,
     AvDuplicateSchema,
     AvGetAttributeViewFilterSortSchema,
     AvGetAttributeViewKeysSchema,
@@ -24,6 +27,8 @@ import {
     AvSetFiltersSchema,
     AvSetGroupSchema,
     AvSetSortsSchema,
+    AvSetNewItemTemplatesSchema,
+    AvSetRelationSchema,
 } from '../../core/types';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
@@ -52,6 +57,11 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('set_group', AvSetGroupSchema, 'Set or clear grouping on the exact view selected by a verified carrier.'),
     createZodActionVariant('set_column_visibility', AvSetColumnVisibilitySchema, 'Set one column\'s hidden state in the exact view selected by a verified carrier.'),
     createZodActionVariant('set_column_order', AvSetColumnOrderSchema, 'Replace the complete column order in the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_new_item_templates', AvSetNewItemTemplatesSchema, 'Replace the complete ordered native new-item-template configuration after checking each field against the current AV schema.'),
+    createZodActionVariant('create_from_template', AvCreateFromTemplateSchema, 'Create one AV item from a native new-item template. The returned itemID is the AV row identity; blockID is the distinct bound document/block identity.'),
+    createZodActionVariant('configure_two_way_relation', AvConfigureTwoWayRelationSchema, 'Configure an existing source relation key and its stable two-way reverse relation key.'),
+    createZodActionVariant('configure_rollup', AvConfigureRollupSchema, 'Configure an existing rollup key from an existing relation key and destination key using native RollupCalc data.'),
+    createZodActionVariant('set_relation', AvSetRelationSchema, 'Set or clear one relation cell by AV item IDs, then verify the two-way reverse cell when configured.'),
 ];
 
 const avTool = defineTool<AvAction>({
