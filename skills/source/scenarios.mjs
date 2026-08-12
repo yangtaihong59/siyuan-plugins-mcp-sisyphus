@@ -31,6 +31,12 @@ export const scenarios = [
 
 Prefer \`fs\` for ordinary human-readable workspace paths. Use \`document\` or \`block\` for IDs, storage paths, metadata, or block-granular changes. Use \`av\` for real databases rather than Markdown tables. Use \`timeline\` for named snapshots, document diffs, and rollback. Low-complexity \`feedback\` and \`mascot\` actions need no separate scenario skill.
 
+The CLI, a raw MCP payload, and an Agent-generated call are invocation forms, not proof that Sisyphus strict-write handling ran. For a protected mutation, follow the selected runtime's current help and returned safety fields. The documented preflight, single-attempt transport, idempotency, and readback guarantees apply only when the call is routed through the active Sisyphus write coordinator with strict mode enabled. Do not infer kernel-level compare-and-swap or parity with native SiYuan and third-party calls.
+
+## Operation risk before routing
+
+Classify the requested operation before choosing a surface: **R** is read or discovery; **W1** is an additive or local write; **W2** changes structure, references, assets, or attribute-view data; **W3** affects notebooks, imports, sync, history, or workspace-wide state. Use the narrowest surface and confirmation appropriate to the tier. Treat an undocumented or uncertain operation as the higher-risk tier until current action help and returned policy fields establish otherwise. This is routing discipline, not a replacement for the current action schema or safety policy.
+
 {{call version}}
 {{call notebooks}}
 {{call tree}}
@@ -40,8 +46,10 @@ Prefer \`fs\` for ordinary human-readable workspace paths. Use \`document\` or \
 
 - Read \`/AGENTS.md\` through \`fs\` before workspace-aware tasks when it exists.
 - A workspace path such as \`/Notebook/Folder/Doc\`, an hpath such as \`/Folder/Doc\`, and a storage path such as \`/20260712123000-abc123.sy\` are different values.
+- Resolve the exact target before mutating: map a human path or search candidate to the returned stable ID and retain its notebook, hpath, and storage path. Never derive an opaque ID or storage path from a title, and never treat a candidate list as the final target.
 - Read before writing; after a mutation, read the affected object again.
-- For document reads, continue with \`nextWindow\` or explicit \`blockStart\`/\`blockLimit\`/\`tokenBudget\`; for list and search results, use their page parameters.
+- Keep reads bounded and prove completeness: use \`nextWindow\` or explicit \`blockStart\`/\`blockLimit\`/\`tokenBudget\` for documents, and page parameters for lists and searches. Continue while another page/window is advertised, then reread the exact affected ID/path and compare the intended field or status.
+- If a write response is lost, or the result is \`outcome_unknown\` or \`readback_mismatch\`, stop and inspect the exact target. Do not resend with a new \`requestId\` merely because the acknowledgement was missing.
 - Missing results may be caused by notebook permissions or indexing delay.
 - Obtain explicit approval before deletes, moves, bulk replacement, permission changes, local upload/export, or sensitive workspace disclosure.
 `,
@@ -91,6 +99,8 @@ Use search-assisted discovery when the path is unknown:
 | Storage path | \`/20260712123000-abc123.sy\` | low-level rename, remove, or move |
 
 Never derive a storage path from a title. Resolve the document first and reuse the returned path. For \`fs.read\` and Markdown \`document.get_doc\`, treat \`hasNextWindow=true\` as incomplete data and continue with the returned \`nextWindow\`. For list and search results, continue with explicit \`page\` and \`pageSize\` values.
+
+Discovery identifies candidates; it does not authorize a write. Before changing one result, reread it by stable ID or resolved path and record the exact target. If a read is incomplete, continue the bounded window or page sequence instead of deciding from a truncated response.
 `,
         calls: {
             notebooks: call('notebook', 'list'),
@@ -115,6 +125,12 @@ Never derive a storage path from a title. Resolve the document first and reuse t
         shortDescription: 'Create and edit SiYuan note content',
         defaultPrompt: 'Use $NAME to make this SiYuan content change safely and verify it.',
         body: `Read the target first, choose the highest-level action that preserves intent, perform one bounded change, then read it again.
+
+## Protected writes and readback
+
+For a mutation covered by strict safe writes, call the same action and business arguments with \`validateOnly=true\`, use the returned precondition field, and submit one fresh UUIDv7 \`requestId\`. Never invent or recycle a hash credential. After the write, reread the exact stable ID or resolved path with enough bounded fields to prove the intended change and continue until the response is complete.
+
+If the connection fails after execution may have started, or the result says \`outcome_unknown\` or \`readback_mismatch\`, do not retry with a new request ID. Inspect the target and resolve the outcome first. A CLI command, raw MCP payload, or Agent-generated call is not by itself evidence that this coordinator path or its guarantees applied; use the current safety response and runtime help.
 
 ## Create documents
 
@@ -220,6 +236,8 @@ Keep these identifiers distinct: AV ID identifies the database; view ID identifi
 {{call cells}}
 
 Before writing cells, render the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Re-render after mutation. Read {{help av set_cells}} for the current cell schema.
+
+Treat a successful mutation response as provisional until the same view and affected rows/cells are read back. Keep the render and readback paginated, continue while more data is advertised, and compare the intended cell values by stable row and column IDs. A raw MCP or CLI success message does not establish that strict-write coordination or complete readback occurred.
 `,
         calls: {
             get: call('av', 'get', { id: '<av-id>' }),
@@ -374,6 +392,10 @@ Obtain explicit approval before notebook/document/block deletion or move, bulk r
 {{call notify}}
 
 If an action or field is rejected, inspect {{help * *}} instead of guessing. Search results can lag recent writes; direct ID/path reads do not depend on indexing.
+
+## Runtime and write guarantees
+
+CLI execution is an explicit command, but that consent does not prove strict safe writes. Raw MCP payloads and Agent-generated calls likewise do not establish which coordinator or confirmation path handled them. Check the active runtime help and returned fields such as \`writeSafetyGuaranteed\` before relying on preflight, idempotency, or readback guarantees. If execution may have started and the response is lost, do not blindly resend; reread the exact target. Direct kernel, native, third-party, notification, sync, feedback, and local export effects remain outside Sisyphus strict-write guarantees.
 
 {{runtime system}}
 `,

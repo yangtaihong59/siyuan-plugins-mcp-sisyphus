@@ -35,6 +35,10 @@ siyuan-sisyphus system notify --msg 'Task complete' --level 'info' --timeout '50
 
 If an action or field is rejected, inspect `siyuan-sisyphus list` and `siyuan-sisyphus help <tool> <action>` instead of guessing. Search results can lag recent writes; direct ID/path reads do not depend on indexing.
 
+## Runtime and write guarantees
+
+CLI execution is an explicit command, but that consent does not prove strict safe writes. Raw MCP payloads and Agent-generated calls likewise do not establish which coordinator or confirmation path handled them. Check the active runtime help and returned fields such as `writeSafetyGuaranteed` before relying on preflight, idempotency, or readback guarantees. If execution may have started and the response is lost, do not blindly resend; reread the exact target. Direct kernel, native, third-party, notification, sync, feedback, and local export effects remain outside Sisyphus strict-write guarantees.
+
 ## CLI setup
 
 Use `siyuan-sisyphus init` and `siyuan-sisyphus config list|get|set|use` to manage profiles. Configuration precedence is command flags, environment variables, active profile, then defaults. Use `--json` for scripts. The CLI treats execution as confirmation, so the agent must still ask the user before risky commands.
