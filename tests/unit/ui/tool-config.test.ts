@@ -23,6 +23,8 @@ describe('setting tool config', () => {
         expect(config.flashcard.actions.remove_card).toBe(true);
         expect(config.extension.enabled).toBe(true);
         expect(config.extension.actions.list).toBe(true);
+        expect(config.extension.actions.validate_package).toBe(true);
+        expect(config.extension.actions.diagnose_plugin_mcp).toBe(true);
         expect(config.extension.includeNativeTools).toBe(false);
         expect(config.extension.blockedTools).toEqual([]);
         expect(config.mascot.actions.get_balance).toBe(true);

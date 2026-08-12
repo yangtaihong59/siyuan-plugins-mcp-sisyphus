@@ -58,6 +58,69 @@ siyuan extension document \
   --arguments-json '{"action":"read","id":"20240318112233-abc123"}'
 ```
 
+## Package and lifecycle diagnostics
+
+`extension` also provides two Sisyphus-owned read-only diagnostics. They are not themselves forwarded as official MCP tools, and they never accept a host filesystem path. The registry diagnostic makes an explicit read-only official `tools/list` refresh.
+
+### Validate explicit package content
+
+Use `validate_package` before a separate install or enablement task. Give it the candidate manifest and only the package text files that matter to the package shape and executable surfaces:
+
+```json
+{
+  "action": "validate_package",
+  "package": {
+    "type": "plugin",
+    "manifest": {
+      "name": "example-plugin",
+      "version": "1.0.0",
+      "minAppVersion": "3.7.0",
+      "displayName": {"default": "Example Plugin"},
+      "description": {"default": "Example"},
+      "kernels": ["darwin"]
+    },
+    "files": {
+      "index.js": "module.exports = class Example extends Plugin { onunload() {} };",
+      "kernel.js": "// candidate source supplied by the caller"
+    }
+  },
+  "runtime": {
+    "appVersion": "3.7.3",
+    "backend": "darwin",
+    "frontend": "desktop"
+  }
+}
+```
+
+It checks shared metadata, `minAppVersion`, optional backend/frontend/kernel compatibility, theme modes, required `theme.css`/`index.html`/`index.js`, runtime-derived manifest fields that should not be authored, and visible executable surfaces. For a plugin it also reports static signs of `onunload` plus `siyuan.mcp.registerTool`/`unregisterTool` calls. It is deliberately a static result: a valid package is neither installed nor trusted, loaded, running, registered, reloaded, or functionally verified.
+
+Use only relative filenames in `package.files`. The action does not read `path`, expand an archive, scan a directory, install a package, alter trust, enable/disable a plugin, or reload SiYuan. Supply package content explicitly through the MCP/CLI request so remote deployments have the same boundary as local deployments.
+
+### Read back plugin MCP registration
+
+After an independently authorized lifecycle step, use `diagnose_plugin_mcp` to force a fresh official `tools/list` observation for one plugin's kernel MCP registrations:
+
+```json
+{
+  "action": "diagnose_plugin_mcp",
+  "pluginName": "example-plugin",
+  "expectedToolNames": ["echo"],
+  "expectedState": "present"
+}
+```
+
+The manifest name is transformed with SiYuan's current rule—each non-alphanumeric character becomes `_`—so the expected local `echo` tool is checked as `plugin__example_plugin__echo`. The response includes only registry evidence with `source="plugin"`, the selected tools, any expectation result, and explicit lifecycle limits.
+
+The distinction matters:
+
+| Observation | What it supports | What it does not support |
+|---|---|---|
+| `validate_package` static result | Candidate metadata/file shape and visible executable-risk signals | Provenance, trust, installation, discovery, loading, running state, registration, reload, or behavior |
+| Fresh `Source="plugin"` registry entry | The named kernel-plugin MCP tool is registered at that observation; kernel running is a limited inference | Frontend plugin/UI loaded, widget iframe works, every tool function works, or a reload happened |
+| Fresh registry absence | The named tool was absent from that observation | Disable, unload, cleanup, or reload completed successfully |
+
+Neither diagnostic invokes a plugin MCP handler. A real reload/disable test remains a separate, explicitly approved live-notebook operation and must read back the correct surface afterwards: plugin MCP tools via a fresh registry, frontend behavior through the real UI, widgets through the iframe, and themes through the relevant appearance surface.
+
 ## Safety and lifecycle
 
 - Before connecting to `/mcp`, Sisyphus checks the SiYuan version through `/api/system/version`. Versions below 3.7.0 are marked unsupported without contacting the official endpoint.

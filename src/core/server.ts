@@ -402,7 +402,13 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         const actionEnabled = appActionConfig
             ? (appActionConfig.actions as Record<string, boolean>)[action] === true
             : category === 'extension'
-                ? true
+                // Official MCP actions are discovered dynamically and remain
+                // governed by bridge discovery/trust. The named diagnostics
+                // are Sisyphus-owned actions, so their persisted action
+                // switches must still work like every other category.
+                ? (Object.prototype.hasOwnProperty.call(config.extension.actions, action)
+                    ? config.extension.actions[action as keyof typeof config.extension.actions] === true
+                    : true)
                 : (config[category].actions as Record<string, boolean>)[action] === true;
         if (action !== 'help' && !actionEnabled) {
             const disabled = {
@@ -426,9 +432,11 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         const extensionTool = category === 'extension'
             ? officialMcpBridge.getTools().find((tool) => tool.name === action)
             : undefined;
+        const extensionDynamicAction = category === 'extension'
+            && !['list', 'help', 'validate_package', 'diagnose_plugin_mcp'].includes(action);
         const requiresConfirmation = actionEnabled && args?.validateOnly !== true && (
             isDangerousAction(category as ToolCategory, action)
-            || (category === 'extension' && action !== 'list' && action !== 'help' && extensionTool?.readOnlyHint !== true)
+            || (extensionDynamicAction && extensionTool?.readOnlyHint !== true)
         );
 
         // 2026-07-28 carries confirmation in-band through MRTR. Legacy

@@ -18,7 +18,7 @@ export const FLASHCARD_REVIEW_APP_ACTIONS = ['review_card'] as const;
 export const MASCOT_SHOP_APP_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
 export const SYSTEM_ACTIONS = ['workspace_info', 'network', 'conf', 'notify', 'changelog', 'perform_sync', 'get_version', 'get_current_time'] as const;
 export const FLASHCARD_ACTIONS = ['list_cards', 'get_decks', 'get_cards', 'review_card', 'create_card', 'remove_card'] as const;
-export const EXTENSION_ACTIONS = ['list'] as const;
+export const EXTENSION_ACTIONS = ['list', 'validate_package', 'diagnose_plugin_mcp'] as const;
 export const MASCOT_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
 export const FEEDBACK_ACTIONS = ['submit'] as const;
 
@@ -226,7 +226,7 @@ const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
         review_card: 'advanced', create_card: 'advanced', remove_card: 'advanced',
     },
     extension: {
-        list: 'basic',
+        list: 'basic', validate_package: 'basic', diagnose_plugin_mcp: 'basic',
     },
     mascot: {
         get_balance: 'basic', shop: 'basic', buy: 'basic',
@@ -317,7 +317,7 @@ export function buildDefaultToolConfig(): ToolConfig {
         },
         extension: {
             enabled: true,
-            actions: createActionsRecord(EXTENSION_ACTIONS, ['list']),
+            actions: createActionsRecord(EXTENSION_ACTIONS, EXTENSION_ACTIONS),
             includeNativeTools: false,
             blockedTools: [],
         },
