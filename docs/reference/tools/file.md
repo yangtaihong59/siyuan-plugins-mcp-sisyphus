@@ -20,6 +20,20 @@ Related pages:
 
 `get_doc_assets` is a direct-reference inspection action. It reports assets referenced by the current document tree and does not expand query embed blocks. When you need to inspect the full document content and assets, use `extract_doc`.
 
+## Export boundaries
+
+`export_md` and `export_resources` are read/export operations, not recovery actions. Resolve the concrete target before calling either action: use a document ID for `export_md`, and verify every workspace-relative path for `export_resources`. A title, search result, or remembered path is not enough when more than one document or resource can match.
+
+- `export_md` returns the document's Markdown in the tool result. It does not create a repo/history snapshot or write a local file. The returned content is therefore an in-memory export that may leave the SiYuan process through the caller; treat it as a content-disclosure boundary and save it separately only when that external effect is intended.
+- `export_resources` packages the explicitly supplied workspace paths. Common asset forms such as `assets/example.png` are normalized to `/data/assets/example.png` before the kernel call. The result is a file-level ZIP, not a semantic document backup: it cannot by itself restore block IDs, references, attribute-view state, or document-tree relationships.
+- Without `outputPath`, `export_resources` returns the kernel's temporary export path. With `outputPath`, the handler reads that ZIP and writes it to the local filesystem, which is an external side effect and requires explicit confirmation. Resolve and review the destination before execution; do not assume the path is harmless because the source operation is read-only.
+
+Choose the narrowest export for the intent: use `export_md` for text inspection, `export_resources` for selected workspace files or a portable resource bundle, and `extract_doc` when the goal is to inspect one document together with its referenced assets. None of these actions creates a rollback point automatically.
+
+### Bounded export readback
+
+After `export_md`, check the returned document identity fields and content rather than treating an HTTP success envelope as a saved artifact. After `export_resources`, check the returned temporary path or the explicit local `outputPath` and reported byte count; verify the requested path set, not an unrelated directory listing. If the response is lost, perform one exact target/path read before considering a retry. Do not blindly repeat an export that may already have produced a local file.
+
 ## Safety Rules
 
 - `upload_asset` requires confirmation and reads a local file path as an explicit binary-transfer exception. Canonical input is `assetsDirPath + localFilePath`; `file` is accepted as a shorthand for `localFilePath`, and `assetsDirPath` defaults to `/assets/`.
