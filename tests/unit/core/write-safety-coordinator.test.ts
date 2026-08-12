@@ -25,6 +25,10 @@ function createCrossObjectAvFixture() {
     const sourceItemID = '20260813000004-sourcei';
     const destinationItemID = '20260813000005-desti01';
     const sourceKeyID = '20260813000006-relkey1';
+    const destinationKeyID = '20260813000008-destkey';
+    const rollupKeyID = '20260813000009-rollup1';
+    const templateID = '20260813000010-templat';
+    const notebookConfig = { revision: 1 };
     const carriers: Record<string, { avID: string; box: string; domRevision: number }> = {
         [sourceBlockID]: { avID: sourceAvID, box: 'nb-source', domRevision: 1 },
         [destinationBlockID]: { avID: destinationAvID, box: 'nb-destination', domRevision: 1 },
@@ -41,6 +45,7 @@ function createCrossObjectAvFixture() {
                 key: {
                     id: sourceKeyID,
                     type: 'relation',
+                    name: 'Source links',
                     relation: { avID: destinationAvID, backKeyID: '20260813000007-backkey', isTwoWay: true },
                 },
                 values: [{
@@ -49,8 +54,29 @@ function createCrossObjectAvFixture() {
                     relation: { blockIDs: [destinationItemID] },
                 }],
             },
+            {
+                key: {
+                    id: rollupKeyID,
+                    type: 'rollup',
+                    name: 'Destination status',
+                    rollup: { relationKeyID: sourceKeyID, keyID: destinationKeyID, calc: { operator: 'count' } },
+                },
+                values: [],
+            },
         ],
-        views: [],
+        views: [{ id: '20260813000017-view001', itemIDs: [sourceItemID] }],
+        newItemTemplates: [{
+            id: templateID,
+            name: 'Linked document',
+            targetType: 'document',
+            saveLocation: { boxID: 'nb-destination', pathTemplate: '/Linked' },
+            fieldValues: {
+                [sourceKeyID]: {
+                    mode: 'static',
+                    value: { type: 'relation', relation: { blockIDs: [destinationItemID] } },
+                },
+            },
+        }],
     };
     const destinationAv: Record<string, any> = {
         id: destinationAvID,
@@ -64,6 +90,7 @@ function createCrossObjectAvFixture() {
                 key: {
                     id: '20260813000007-backkey',
                     type: 'relation',
+                    name: 'Destination links',
                     relation: { avID: sourceAvID, backKeyID: sourceKeyID, isTwoWay: true },
                 },
                 values: [{
@@ -71,6 +98,10 @@ function createCrossObjectAvFixture() {
                     blockID: destinationItemID,
                     relation: { blockIDs: [sourceItemID] },
                 }],
+            },
+            {
+                key: { id: destinationKeyID, type: 'text', name: 'Status' },
+                values: [{ id: '20260813000018-destval', blockID: destinationItemID, text: { content: 'Ready' } }],
             },
         ],
         views: [],
@@ -87,6 +118,9 @@ function createCrossObjectAvFixture() {
             }
             if (endpoint === '/api/av/getMirrorDatabaseBlocks') {
                 return { refDefs: [{ refID: destinationBlockID }] };
+            }
+            if (endpoint === '/api/notebook/getNotebookConf') {
+                return { notebook: body?.notebook, revision: notebookConfig.revision };
             }
             if (endpoint === '/api/query/sql') return [];
             if (endpoint === '/api/block/getBlockDOM') {
@@ -113,6 +147,7 @@ function createCrossObjectAvFixture() {
         sourceAv,
         destinationAv,
         carriers,
+        notebookConfig,
         ids: {
             sourceAvID,
             destinationAvID,
@@ -121,8 +156,83 @@ function createCrossObjectAvFixture() {
             sourceItemID,
             destinationItemID,
             sourceKeyID,
+            destinationKeyID,
+            rollupKeyID,
+            templateID,
         },
     };
+}
+
+async function assertStableCrossObjectActionThenRejectDrift(
+    action: 'duplicate_rows' | 'configure_two_way_relation' | 'configure_rollup' | 'create_from_template',
+    args: Record<string, unknown>,
+    drift: (fixture: ReturnType<typeof createCrossObjectAvFixture>) => void,
+    suffix: string,
+) {
+    const stableFixture = createCrossObjectAvFixture();
+    const stableCoordinator = new WriteSafetyCoordinator(stableFixture.client);
+    const stablePreflight = parseResult(await stableCoordinator.run({
+        client: stableFixture.client,
+        permMgr: stableFixture.permMgr,
+        category: 'av',
+        action,
+        args: { ...args, validateOnly: true },
+        strictMode: true,
+        execute: vi.fn(),
+    }));
+    const stableExecute = vi.fn(async () => success({ success: true, action, changed: false, status: 'already_applied' }));
+    const stableResult = parseResult(await stableCoordinator.run({
+        client: stableFixture.client,
+        permMgr: stableFixture.permMgr,
+        category: 'av',
+        action,
+        args: {
+            ...args,
+            requestId: uuidV7(Date.now(), `${suffix.slice(0, 10)}01`),
+            [action === 'duplicate_rows' ? 'expectedManifestHash' : 'expectedStateHash']:
+                action === 'duplicate_rows' ? stablePreflight.manifestHash : stablePreflight.stateHash,
+        },
+        strictMode: true,
+        execute: stableExecute,
+    }));
+    expect(stableExecute).toHaveBeenCalledTimes(1);
+    expect(stableResult).toMatchObject({
+        success: true,
+        safety: { writeAttempted: false, writeExecuted: false, transactionState: 'no_change' },
+    });
+
+    const staleFixture = createCrossObjectAvFixture();
+    const staleCoordinator = new WriteSafetyCoordinator(staleFixture.client);
+    const stalePreflight = parseResult(await staleCoordinator.run({
+        client: staleFixture.client,
+        permMgr: staleFixture.permMgr,
+        category: 'av',
+        action,
+        args: { ...args, validateOnly: true },
+        strictMode: true,
+        execute: vi.fn(),
+    }));
+    drift(staleFixture);
+    const staleExecute = vi.fn();
+    const staleResult = parseResult(await staleCoordinator.run({
+        client: staleFixture.client,
+        permMgr: staleFixture.permMgr,
+        category: 'av',
+        action,
+        args: {
+            ...args,
+            requestId: uuidV7(Date.now(), `${suffix.slice(0, 10)}02`),
+            [action === 'duplicate_rows' ? 'expectedManifestHash' : 'expectedStateHash']:
+                action === 'duplicate_rows' ? stalePreflight.manifestHash : stalePreflight.stateHash,
+        },
+        strictMode: true,
+        execute: staleExecute,
+    }));
+    expect(staleResult.error).toMatchObject({
+        code: 'state_changed',
+        expectedHash: action === 'duplicate_rows' ? stalePreflight.manifestHash : stalePreflight.stateHash,
+    });
+    expect(staleExecute).not.toHaveBeenCalled();
 }
 
 describe('write safety coordinator', () => {
@@ -153,6 +263,57 @@ describe('write safety coordinator', () => {
 
         expect(result.error).toMatchObject({ code: 'state_changed', expectedHash: preflight.stateHash });
         expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('leases duplicate_rows against its linked destination AV and carrier', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'duplicate_rows',
+            { action: 'duplicate_rows', avID: ids.sourceAvID, blockID: ids.sourceBlockID, sourceRowIDs: [ids.sourceItemID] },
+            (fixture) => { fixture.destinationAv.revision += 1; },
+            '000000000111',
+        );
+    });
+
+    it('leases configure_two_way_relation against the verified destination carrier', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'configure_two_way_relation',
+            {
+                action: 'configure_two_way_relation', avID: ids.sourceAvID, blockID: ids.sourceBlockID,
+                keyID: ids.sourceKeyID, destinationAvID: ids.destinationAvID, destinationBlockID: ids.destinationBlockID,
+                backRelationKeyID: '20260813000007-backkey', sourceName: 'Source links', destinationName: 'Destination links',
+            },
+            (fixture) => { fixture.carriers[fixture.ids.destinationBlockID].domRevision += 1; },
+            '000000000112',
+        );
+    });
+
+    it('leases configure_rollup against the relation destination AV', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'configure_rollup',
+            {
+                action: 'configure_rollup', avID: ids.sourceAvID, blockID: ids.sourceBlockID,
+                keyID: ids.rollupKeyID, relationKeyID: ids.sourceKeyID, destinationKeyID: ids.destinationKeyID,
+                calc: { operator: 'count' },
+            },
+            (fixture) => { fixture.destinationAv.revision += 1; },
+            '000000000113',
+        );
+    });
+
+    it('leases create_from_template against its explicit destination notebook', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'create_from_template',
+            {
+                action: 'create_from_template', avID: ids.sourceAvID, blockID: ids.sourceBlockID,
+                templateID: ids.templateID, viewID: '20260813000017-view001',
+            },
+            (fixture) => { fixture.notebookConfig.revision += 1; },
+            '000000000114',
+        );
     });
 
     it('preflights select options against a verified rw AV carrier without requiring rwd', async () => {

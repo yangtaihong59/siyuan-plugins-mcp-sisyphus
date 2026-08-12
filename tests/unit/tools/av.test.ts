@@ -808,7 +808,7 @@ describe('av tool', () => {
         let sourceReads = 0;
         let destinationReads = 0;
         vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
-            if (id === sourceAvID) return { av: sourceReads++ === 0 ? sourceBefore : sourceAfter };
+            if (id === sourceAvID) return { av: sourceReads++ < 2 ? sourceBefore : sourceAfter };
             if (id === '20260813000005-fffffff') return { av: destinationReads++ === 0 ? destinationBefore : destinationAfter };
             throw new Error(`unexpected AV ${id}`);
         });
@@ -840,6 +840,102 @@ describe('av tool', () => {
             cleared: true,
             reverseReadback: 'verified',
         });
+    });
+
+    it('does not dispatch set_relation when the complete two-way postimage already exists', async () => {
+        const avApi = await import('@/api/av');
+        const sourceAvID = '20260813000109-iiiiiii';
+        const sourceBlockID = '20260813000110-jjjjjjj';
+        const sourceItemID = '20260813000101-bbbbbbb';
+        const destinationItemID = '20260813000102-ccccccc';
+        const relationKeyID = '20260813000103-ddddddd';
+        const backKeyID = '20260813000104-eeeeeee';
+        const destinationAvID = '20260813000105-fffffff';
+        const source = {
+            id: sourceAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [{ blockID: sourceItemID, block: { id: 'source-doc' } }] },
+                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID, isTwoWay: true, backKeyID } }, values: [{ blockID: sourceItemID, relation: { blockIDs: [destinationItemID], contents: null } }] },
+            ],
+        };
+        const destination = {
+            id: destinationAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [{ blockID: destinationItemID, block: { id: 'destination-doc' } }] },
+                { key: { id: backKeyID, type: 'relation', relation: { avID: sourceAvID, isTwoWay: true, backKeyID: relationKeyID } }, values: [{ blockID: destinationItemID, relation: { blockIDs: [sourceItemID], contents: null } }] },
+            ],
+        };
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => ({ av: id === sourceAvID ? source : destination }));
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
+            id === destinationAvID ? { refDefs: [{ refID: '20260813000111-kkkkkkk' }] } : { refDefs: [{ refID: sourceBlockID }] }
+        ));
+
+        const result = await callAvTool(client, {
+            action: 'set_relation', avID: sourceAvID, blockID: sourceBlockID,
+            itemID: sourceItemID, keyID: relationKeyID, relatedItemIDs: [destinationItemID],
+        }, enabledActions('set_relation'), permMgr);
+
+        expect(vi.mocked(avApi.setAttributeViewBlockAttr)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true, action: 'set_relation', changed: false, status: 'already_applied', reverseReadback: 'verified',
+        });
+    });
+
+    it('does not recover a lost set_relation response from an ambiguous postimage', async () => {
+        const avApi = await import('@/api/av');
+        const sourceAvID = '20260813000209-iiiiiii';
+        const sourceBlockID = '20260813000210-jjjjjjj';
+        const sourceItemID = '20260813000201-bbbbbbb';
+        const destinationItemID = '20260813000202-ccccccc';
+        const relationKeyID = '20260813000203-ddddddd';
+        const backKeyID = '20260813000204-eeeeeee';
+        const destinationAvID = '20260813000205-fffffff';
+        const sourceBefore = {
+            id: sourceAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [{ blockID: sourceItemID, block: { id: 'source-doc' } }] },
+                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID, isTwoWay: true, backKeyID } }, values: [{ blockID: sourceItemID, relation: { blockIDs: null, contents: null } }] },
+            ],
+        };
+        const destinationBefore = {
+            id: destinationAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [{ blockID: destinationItemID, block: { id: 'destination-doc' } }] },
+                { key: { id: backKeyID, type: 'relation', relation: { avID: sourceAvID, isTwoWay: true, backKeyID: relationKeyID } }, values: [{ blockID: destinationItemID, relation: { blockIDs: null, contents: null } }] },
+            ],
+        };
+        const sourceAfter = {
+            ...sourceBefore,
+            keyValues: [sourceBefore.keyValues[0], { ...sourceBefore.keyValues[1], values: [{ blockID: sourceItemID, relation: { blockIDs: [destinationItemID], contents: null } }] }],
+        };
+        const destinationAfter = {
+            ...destinationBefore,
+            keyValues: [destinationBefore.keyValues[0], { ...destinationBefore.keyValues[1], values: [{ blockID: destinationItemID, relation: { blockIDs: [sourceItemID], contents: null } }] }],
+        };
+        let sourceReads = 0;
+        let destinationReads = 0;
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
+            if (id === sourceAvID) return { av: sourceReads++ < 2 ? sourceBefore : sourceAfter };
+            if (id === destinationAvID) return { av: destinationReads++ === 0 ? destinationBefore : destinationAfter };
+            throw new Error(`unexpected AV ${id}`);
+        });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
+            id === destinationAvID ? { refDefs: [{ refID: '20260813000211-kkkkkkk' }] } : { refDefs: [{ refID: sourceBlockID }] }
+        ));
+        vi.mocked(avApi.setAttributeViewBlockAttr).mockRejectedValue(new Error('relation response lost'));
+
+        const result = await callAvTool(client, {
+            action: 'set_relation', avID: sourceAvID, blockID: sourceBlockID,
+            itemID: sourceItemID, keyID: relationKeyID, relatedItemIDs: [destinationItemID],
+        }, enabledActions('set_relation'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { type: 'internal_error', message: 'relation response lost' } });
+        expect(vi.mocked(avApi.setAttributeViewBlockAttr)).toHaveBeenCalledTimes(1);
+        // The postimage was intentionally available after the transport error,
+        // but the handler must not inspect it and claim this request wrote it.
+        expect(sourceReads).toBe(2);
+        expect(destinationReads).toBe(1);
     });
 
     it('configures both sides of a two-way relation with native transaction metadata', async () => {

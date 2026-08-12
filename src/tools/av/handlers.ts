@@ -2877,24 +2877,32 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
         client, parsed.avID, parsed.keyID, parsed.itemID, parsed.relatedItemIDs,
         target.destinationAvID, target.backKeyID, priorItemIDs, 'set_relation readback',
     );
-    let responseUnknown = false;
-    let after: { source: AttributeViewDefinition; destination: AttributeViewDefinition } | undefined;
     try {
-        await avApi.setAttributeViewBlockAttr(client, {
-            avID: parsed.avID,
-            keyID: parsed.keyID,
-            itemID: parsed.itemID,
-            value: relationCellValue(parsed.relatedItemIDs),
+        const observed = await verifyExactPostimage();
+        return createWriteSuccessResult({
+            action: 'set_relation', avID: parsed.avID, keyID: parsed.keyID, itemID: parsed.itemID,
+            destinationAvID: target.destinationAvID, relatedItemIDs: parsed.relatedItemIDs,
+            cleared: parsed.relatedItemIDs.length === 0,
+            changed: false,
+            status: 'already_applied',
+            sourcePreimageHash: await hashCanonicalState(observed.source),
+            sourcePostimageHash: await hashCanonicalState(observed.source),
+            destinationPreimageHash: await hashCanonicalState(observed.destination),
+            destinationPostimageHash: await hashCanonicalState(observed.destination),
+            ...(target.backKeyID ? { backRelationKeyID: target.backKeyID, reverseReadback: 'verified' } : {}),
         });
-    } catch (error) {
-        try {
-            after = await verifyExactPostimage();
-            responseUnknown = true;
-        } catch {
-            throw error;
-        }
+    } catch {
+        // The expected relation postimage is not established yet. Continue to
+        // one native write; a response failure below deliberately reaches the
+        // coordinator as outcome_unknown because raw state has no request ID.
     }
-    after ??= await verifyExactPostimage();
+    await avApi.setAttributeViewBlockAttr(client, {
+        avID: parsed.avID,
+        keyID: parsed.keyID,
+        itemID: parsed.itemID,
+        value: relationCellValue(parsed.relatedItemIDs),
+    });
+    const after = await verifyExactPostimage();
     const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'set_relation', avID: parsed.avID, keyID: parsed.keyID, itemID: parsed.itemID,
@@ -2905,7 +2913,6 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
         destinationPreimageHash: await hashCanonicalState(target.destination),
         destinationPostimageHash: await hashCanonicalState(after.destination),
         ...(target.backKeyID ? { backRelationKeyID: target.backKeyID, reverseReadback: 'verified' } : {}),
-        ...(responseUnknown ? { responseUnknown: true, recovery: 'exact_raw_readback_matched_postimage_without_retry' } : {}),
     }), refreshOperations);
 }
 

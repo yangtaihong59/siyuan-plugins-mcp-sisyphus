@@ -266,6 +266,42 @@ export class WriteSafetyCoordinator {
             });
         }
 
+        // A handler may prove its requested postimage was already present
+        // before dispatch. That is an idempotent no-op, not a successful
+        // mutation: preserving this distinction prevents a lost response or
+        // a later replay from being reported as this request having written.
+        if (isExplicitNoop(result)) {
+            const safetyResult = {
+                requestId,
+                writeSafetyMode: 'strict',
+                writeSafetyGuaranteed: true,
+                writeAttempted: false,
+                writeExecuted: false,
+                replayed: false,
+                transactionState: 'no_change',
+                previousHash: before?.hash,
+                resultHash: before?.hash,
+            };
+            try {
+                await this.ledger.record({
+                    requestId,
+                    tool: category,
+                    action,
+                    argsHash: inspected!.argsHash,
+                    targetIds,
+                    state: 'committed',
+                    result: safetyResult,
+                });
+            } catch {
+                if (activeLease) this.preflightLeases.consume(activeLease);
+                return writeSafetyFailure('idempotency_unavailable', 'The operation was already applied, but its idempotency result could not be recorded. No write was attempted; revalidate before submitting again.', {
+                    requestId,
+                });
+            }
+            if (activeLease) this.preflightLeases.consume(activeLease);
+            return addSafetyMetadata(result, safetyResult);
+        }
+
         let after: StateProbe | undefined;
         try {
             const postWriteArgs = derivePostWriteProbeArgs(category, action, args, result);
@@ -1427,7 +1463,14 @@ async function inspectHighRiskAvMutation(
                     destination,
                 },
             },
-            targetIds: sortedUniqueIds([avID, sourceCarrier.carrierBlockID, relation.avID, destination.carrierBlockID]),
+            targetIds: sortedUniqueIds([
+                avID,
+                sourceCarrier.carrierBlockID,
+                sourceCarrier.notebook,
+                relation.avID,
+                destination.carrierBlockID,
+                destination.notebook,
+            ]),
         };
     }
 
@@ -1451,7 +1494,14 @@ async function inspectHighRiskAvMutation(
                     destination,
                 },
             },
-            targetIds: sortedUniqueIds([avID, sourceCarrier.carrierBlockID, destinationAvID, destination.carrierBlockID]),
+            targetIds: sortedUniqueIds([
+                avID,
+                sourceCarrier.carrierBlockID,
+                sourceCarrier.notebook,
+                destinationAvID,
+                destination.carrierBlockID,
+                destination.notebook,
+            ]),
         };
     }
 
@@ -1475,7 +1525,14 @@ async function inspectHighRiskAvMutation(
                     destination,
                 },
             },
-            targetIds: sortedUniqueIds([avID, sourceCarrier.carrierBlockID, relation.avID, destination.carrierBlockID]),
+            targetIds: sortedUniqueIds([
+                avID,
+                sourceCarrier.carrierBlockID,
+                sourceCarrier.notebook,
+                relation.avID,
+                destination.carrierBlockID,
+                destination.notebook,
+            ]),
         };
     }
 
@@ -1498,7 +1555,8 @@ async function inspectHighRiskAvMutation(
             targetIds: sortedUniqueIds([
                 avID,
                 sourceCarrier.carrierBlockID,
-                ...relationDestinations.flatMap((destination) => [destination.avID, destination.carrierBlockID]),
+                sourceCarrier.notebook,
+                ...relationDestinations.flatMap((destination) => [destination.avID, destination.carrierBlockID, destination.notebook]),
                 ...(documentDestination ? [documentDestination.notebook] : []),
             ]),
         };
@@ -1508,12 +1566,16 @@ async function inspectHighRiskAvMutation(
         ? args.sourceRowIDs.filter((item): item is string => typeof item === 'string' && item.length > 0)
         : [];
     const destinations = [];
-    const targetIds: string[] = [sourceCarrier.carrierBlockID];
+    const targetIds: string[] = [avID, sourceCarrier.carrierBlockID, sourceCarrier.notebook];
     for (const destination of inspectDuplicateRowsRelationDestinations(source, sourceRowIDs)) {
         const response = await client.requestRead('/api/av/getAttributeView', { id: destination.avID });
         const av = avEnvelope(response);
         const carrier = await requireCarrierWritePermission(client, permMgr, destination.avID);
-        targetIds.push(destination.avID, carrier.carrierBlockID);
+        targetIds.push(
+            destination.avID,
+            carrier.carrierBlockID,
+            carrier.notebook,
+        );
         destinations.push({ ...destination, ...carrier, av });
     }
     return { state: { source, sourceCarrier, destinations }, targetIds: sortedUniqueIds(targetIds) };
@@ -1658,7 +1720,7 @@ function collectNotebookBoxes(value: unknown, boxes: Set<string>): void {
     }
     if (!value || typeof value !== 'object') return;
     for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-        if ((key === 'box' || key === 'notebookID') && typeof nested === 'string' && nested.trim()) boxes.add(nested.trim());
+        if ((key === 'box' || key === 'notebookID' || key === 'notebook') && typeof nested === 'string' && nested.trim()) boxes.add(nested.trim());
         else collectNotebookBoxes(nested, boxes);
     }
 }
@@ -1791,6 +1853,10 @@ function expectsObservableChange(category: ToolCategory, action: string, result:
         if (value === true || (typeof value === 'number' && value > 0)) return true;
     }
     return category === 'search' && action === 'find_replace';
+}
+
+function isExplicitNoop(result: ToolResult): boolean {
+    return parseResultObject(result)?.changed === false;
 }
 
 function fromSafetyError(error: unknown): ToolResult {
