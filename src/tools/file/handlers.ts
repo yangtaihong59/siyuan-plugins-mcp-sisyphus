@@ -414,27 +414,55 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
     const deniedNotebook = await ensurePermissionForNotebook(permMgr, parsed.notebookID, 'read');
     if (deniedNotebook) return deniedNotebook;
 
+    const roots = parsed.roots ? [...new Set(parsed.roots)].sort(compareSnapshotText) : undefined;
+    const documentIDs = parsed.documentIDs ? [...new Set(parsed.documentIDs)].sort(compareSnapshotText) : undefined;
     const scope = {
         notebookID: parsed.notebookID,
-        ...(parsed.roots ? { roots: [...parsed.roots].sort(compareSnapshotText) } : { documentIDs: [...parsed.documentIDs!].sort(compareSnapshotText) }),
+        ...(roots ? { roots } : { documentIDs: documentIDs! }),
     };
     const scopeHash = await hashSnapshotMetadata(scope);
     const cursor = parsed.cursor ? decodeSnapshotCursor(parsed.cursor) : undefined;
     const offset = cursor?.offset ?? 0;
     const limit = parsed.limit ?? 20;
 
-    const candidates: SnapshotDocumentCandidate[] = parsed.documentIDs
-        ? parsed.documentIDs.map((id) => ({ id }))
-        : (await Promise.all(parsed.roots!.map((root) => documentApi.listDocTree(client, parsed.notebookID, root))))
-            .flatMap((tree) => flattenDocumentTree(tree));
+    const candidates: SnapshotDocumentCandidate[] = documentIDs
+        ? documentIDs.map((id) => ({ id }))
+        : [];
     const byID = new Map<string, SnapshotDocumentCandidate>();
+    const errors: SnapshotErrorRecord[] = [];
+    if (roots) {
+        // Keep successful roots exportable when one root is stale or inaccessible;
+        // callers can retry only the structured failed root instead of losing a
+        // whole page to an aggregate Promise rejection.
+        const rootResults = await Promise.all(roots.map(async (root) => {
+            try {
+                return { root, tree: await documentApi.listDocTree(client, parsed.notebookID, root) };
+            } catch (error) {
+                return {
+                    root,
+                    error: {
+                        code: 'enumeration_failed',
+                        message: error instanceof Error ? error.message : String(error),
+                        path: root,
+                        retryable: true,
+                    } satisfies SnapshotErrorRecord,
+                };
+            }
+        }));
+        for (const result of rootResults) {
+            if ('error' in result) {
+                errors.push(result.error);
+            } else {
+                candidates.push(...flattenDocumentTree(result.tree));
+            }
+        }
+    }
     for (const candidate of candidates) {
         if (!candidate.id) continue;
         if (!byID.has(candidate.id)) byID.set(candidate.id, candidate);
     }
 
     const records: SnapshotDocumentRecord[] = [];
-    const errors: SnapshotErrorRecord[] = [];
     for (const candidate of byID.values()) {
         try {
             const resolved = await ensurePermissionForDocumentId(client, permMgr, candidate.id, 'read');
@@ -479,6 +507,11 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
         throw new Error('export_markdown_snapshot cursor does not match the current notebook inventory; restart from the first page.');
     }
     const conflicts = planSnapshotPaths(records);
+    for (const record of records) {
+        for (const error of record.errors ?? []) {
+            if (!errors.includes(error)) errors.push(error);
+        }
+    }
     const pageRecords = records.slice(offset, offset + limit);
     for (const record of pageRecords) {
         try {
@@ -511,7 +544,7 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
             notebookID: parsed.notebookID,
             inventorySurface: parsed.documentIDs ? 'documentIDs' : 'document.list_tree',
             exportSurface: 'file.export_md',
-            roots: parsed.roots,
+            ...(scope.roots ? { roots: scope.roots } : { documentIDs: scope.documentIDs }),
         },
         scope: { ...scope, scopeHash },
         page: {
