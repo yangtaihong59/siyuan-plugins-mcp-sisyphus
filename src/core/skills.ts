@@ -10,6 +10,7 @@ import tagFlashcardSkill from '../../skills/siyuan-mcp/siyuan-mcp-tag-flashcard/
 import timelineSkill from '../../skills/siyuan-mcp/siyuan-mcp-timeline/SKILL.md?raw';
 import systemSafetySkill from '../../skills/siyuan-mcp/siyuan-mcp-system-safety/SKILL.md?raw';
 import markupGuideSkill from '../../skills/siyuan-mcp/siyuan-mcp-markup-guide/SKILL.md?raw';
+import importMigrationSkill from '../../skills/siyuan-mcp/siyuan-mcp-import-migration/SKILL.md?raw';
 import sepIndexSkill from '../../skills/siyuan-mcp-bundles/siyuan-mcp-sisyphus/SKILL.md?raw';
 import sepIndexAgent from '../../skills/siyuan-mcp-bundles/siyuan-mcp-sisyphus/agents/openai.yaml?raw';
 import sepReadSkill from '../../skills/siyuan-mcp-bundles/siyuan-mcp-read-discover/SKILL.md?raw';
@@ -72,6 +73,7 @@ export const MCP_SKILLS: readonly McpSkillDefinition[] = [
     timelineSkill,
     systemSafetySkill,
     markupGuideSkill,
+    importMigrationSkill,
 ].map((text) => createMcpSkill(text));
 
 const SEP_LISTED_SKILLS: readonly McpSkillDefinition[] = [

@@ -16,6 +16,7 @@ Use the narrowest scenario skill that matches the task. For unfamiliar fields, i
 | Fulltext, SQL, backlinks, references, and replacement | `siyuan-mcp-search-query` |
 | Attribute views, columns, rows, and cells | `siyuan-mcp-database` |
 | Assets, extraction, and exports | `siyuan-mcp-file-export` |
+| Staged Markdown/database import and migration | `siyuan-mcp-import-migration` |
 | Tags, decks, cards, and review | `siyuan-mcp-tag-flashcard` |
 | Timeline nodes, snapshot comparison, and rollback | `siyuan-mcp-timeline` |
 | Permissions, system information, and dangerous operations | `siyuan-mcp-system-safety` |

@@ -38,10 +38,10 @@ const variantsByTool: Record<string, Array<{ action: string; schema: Record<stri
 };
 
 describe('core/skills', () => {
-    it('embeds ten valid MCP skills without CLI invocation examples', () => {
-        expect(MCP_SKILLS).toHaveLength(10);
-        expect(new Set(MCP_SKILLS.map((skill) => skill.name)).size).toBe(10);
-        expect(new Set(MCP_SKILLS.map((skill) => skill.promptName)).size).toBe(10);
+    it('embeds valid MCP skills without CLI invocation examples', () => {
+        expect(MCP_SKILLS).toHaveLength(scenarios.length);
+        expect(new Set(MCP_SKILLS.map((skill) => skill.name)).size).toBe(scenarios.length);
+        expect(new Set(MCP_SKILLS.map((skill) => skill.promptName)).size).toBe(scenarios.length);
 
         for (const skill of MCP_SKILLS) {
             expect(skill.text).toContain(`name: ${skill.name}`);
@@ -55,7 +55,7 @@ describe('core/skills', () => {
         const prompt = getMcpPrompt('siyuan_create_edit', 'Append a summary.');
 
         expect(index).toContain('siyuan://help/action/{tool}/{action}');
-        expect(prompts).toHaveLength(10);
+        expect(prompts).toHaveLength(scenarios.length);
         expect(index).toContain('siyuan-mcp-timeline');
         expect(prompts).toContainEqual(expect.objectContaining({ name: 'siyuan_timeline' }));
         expect(prompts.find((item) => item.name === 'siyuan_create_edit')?.arguments).toEqual([
@@ -64,6 +64,18 @@ describe('core/skills', () => {
         expect(prompt?.messages[0].content.text).toContain('Append a summary.');
         expect(prompt?.messages[0].content.text).toContain('name: siyuan-mcp-create-edit');
         expect(getMcpPrompt('unknown')).toBeNull();
+    });
+
+    it('keeps import migration guidance generic and explicit about unsupported native gaps', () => {
+        const skill = MCP_SKILLS.find((candidate) => candidate.name === 'siyuan-mcp-import-migration');
+        expect(skill?.text).toContain('caller-preprocessed Markdown');
+        expect(skill?.text).toContain('does not parse arbitrary local files');
+        expect(skill?.text).toContain('NodeCallout');
+        expect(skill?.text).toContain('Schema/data PASS never implies functional or presentation completion');
+        expect(skill?.text).toContain('FLO.W');
+        expect(skill?.text).not.toContain('exam/question-bank');
+        expect(skill?.text).not.toContain('/Users/');
+        expect(skill?.text).not.toMatch(/[A-Z]:\\/);
     });
 
     it('keeps every structured example aligned with the live action schemas', () => {

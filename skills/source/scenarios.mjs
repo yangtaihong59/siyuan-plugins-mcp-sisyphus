@@ -22,6 +22,7 @@ export const scenarios = [
 | Fulltext, SQL, backlinks, references, and replacement | {{skill search-query}} |
 | Attribute views, columns, rows, and cells | {{skill database}} |
 | Assets, extraction, and exports | {{skill file-export}} |
+| Staged Markdown/database import and migration | {{skill import-migration}} |
 | Tags, decks, cards, and review | {{skill tag-flashcard}} |
 | Timeline nodes, snapshot comparison, and rollback | {{skill timeline}} |
 | Permissions, system information, and dangerous operations | {{skill system-safety}} |
@@ -277,6 +278,124 @@ Large uploads must stop and require explicit confirmation before retrying with t
             exportResources: call('file', 'export_resources', { paths: ['assets/file.png', 'assets/file.pdf'] }),
             assets: call('file', 'get_doc_assets', { id: '<doc-id>', assetType: 'image' }),
             ocr: call('file', 'get_image_ocr_text', { path: 'assets/image.png' }),
+        },
+    },
+    {
+        // This scenario coordinates existing actions; caller-owned parsing,
+        // IDs, paths, and business profiles must stay explicit because no
+        // native importer or generic callout repair action exists here.
+        id: 'import-migration',
+        cliName: 'siyuan-sisyphus-import-migration',
+        mcpName: 'siyuan-mcp-import-migration',
+        cliDescription: 'CLI-only staged playbook for Markdown and external database migration with explicit targets, mappings, bounded writes, and layered readback.',
+        mcpDescription: 'MCP staged playbook for Markdown and external database migration with explicit targets, mappings, bounded writes, and layered readback.',
+        title: 'SiYuan Import and Migration',
+        displayName: 'SiYuan Import & Migration',
+        shortDescription: 'Stage and verify imports safely',
+        defaultPrompt: 'Use $NAME to stage this import or migration with explicit mappings and layered verification.',
+        body: `Use this scenario for caller-preprocessed Markdown or external database/template migration. It does not parse arbitrary local files, promise NodeCallout conversion, read exact \.sy\ files, preserve source IDs, decrypt notebooks, or perform browser UI acceptance.
+
+## P0: freeze the contract
+
+Record source descriptor/hash, target notebook/path, scope, conflict policy, business-profile boundary, recoverable safety net, one-writer state, confirmation, and the three acceptance gates before W3 writes.
+
+{{call version}}
+{{call notebooks}}
+{{call permissions}}
+{{call conf}}
+{{call tree}}
+
+Stop on an ambiguous target, missing authorization or safety net, multiple writers, unresolved business rules, or a direct \.sy\/encrypted request. Titles, labels, search hits, and UI positions are discovery hints, never foreign keys.
+
+## P1: validate the external source
+
+The caller or a separately reviewed preprocessor supplies preprocessed Markdown, source hash, transform report, ordered image refs, stable wikilink map, and unresolved diagnostics. It removes YAML frontmatter and normalizes supported image/callout/list syntax without inventing IDs or silently dropping values.
+
+{{call stagedRead}}
+{{call sourceSearch}}
+{{call templates}}
+{{call template}}
+
+\`fs.read\` reads a SiYuan workspace path, not an arbitrary local file. Unsupported syntax, path escape, unmapped dot-prefixed image, or unresolved wikilink blocks apply until the caller supplies a policy.
+
+## P2: resolve identities and dependencies
+
+Resolve exact notebook, parent path, existing targets, and dependencies before writing. Persist one mapping-ledger row per source document/block/asset/AV/field/row/view/template with stable source key, actual target ID/path, status, normalization, and readback evidence.
+
+{{call lookup}}
+{{call create}}
+{{call lookupCreated}}
+{{call upload}}
+{{call av}}
+{{call avKeys}}
+
+Create missing documents only after approval. Generated target IDs are recorded; this action set cannot preserve source IDs or force remapping. On lost acknowledgement, perform one identity-fixed read and classify the outcome; never resend blindly.
+
+## P3: bounded writes
+
+Apply a reviewed manifest incrementally under one writer and dependency order. Prefer explicit \`document.create\`, additive \`block.append/insert\`, scoped \`block.update\`, and typed AV actions. Do not root-overwrite documents containing AV, mirrors, super blocks, HTML, media, or other complex native blocks without a separate contract.
+
+{{call append}}
+{{call insert}}
+{{call update}}
+{{call attrs}}
+{{call rows}}
+{{call cells}}
+
+Asset upload is an explicit approved local-file operation; use only the returned asset path. It is not a recursive importer. HTTP success remains provisional until exact readback.
+
+## P4: structural readback
+
+Read stable IDs and continue every advertised window/page before search or UI observations.
+
+{{call documentRead}}
+{{call kramdown}}
+{{call children}}
+{{call dom}}
+{{call attrsRead}}
+{{call assetsRead}}
+{{call avRead}}
+{{call avRender}}
+
+Check exact notebook/path, document/block identity, parent/sibling order, list containment, tables/images/references, typed AV values, and relation endpoints. Observe whether a callout is \`NodeCallout\` or \`NodeBlockquote\`; if conversion is needed, report the known gap. \`file.extract_doc\` and \`file.export_md\` supplement evidence but cannot prove exact \.sy\ or UI state.
+
+## P5: three independent gates
+
+1. Schema/data: mapping ledger, IDs/paths, blocks, AV definitions/keys/rows/typed cells/relation endpoints, templates, normalization, and unresolved items read back.
+2. Functional view/workflow: relevant AV filters/sorts/groups/layouts, relations/rollups, carrier bindings, and one bounded workflow are evidenced.
+3. User presentation: approved real UI observation confirms entry pages, visible fields/order/labels, device route, and absence of internal markers.
+
+Schema/data PASS never implies functional or presentation completion. Without live UI evidence, report presentation as unverified. Never hard-code FLO.W fields, exam labels, Chinese tags, personal notebooks, host paths, ports, tokens, source IDs, or secrets.`,
+        calls: {
+            version: call('system', 'get_version'),
+            notebooks: call('notebook', 'list'),
+            permissions: call('notebook', 'get_permissions'),
+            conf: call('system', 'conf', { mode: 'summary' }),
+            tree: call('fs', 'tree', { path: '<target-workspace-path>', maxDepth: 4 }),
+            stagedRead: call('fs', 'read', { path: '<staged-workspace-document>', blockStart: 0, blockLimit: 50, tokenBudget: 2000, includeBlockIds: true }),
+            sourceSearch: call('fs', 'search', { path: '<staged-workspace-root>', query: '<source-keyword>', page: 1, pageSize: 20 }),
+            templates: call('file', 'list_templates', { query: '<template-keyword>', page: 1, pageSize: 20 }),
+            template: call('file', 'read_template', { path: '<resolved-template-path>', offset: 0, limit: 8000 }),
+            lookup: call('document', 'lookup', { notebook: '<notebook-id>', hpath: '<target-parent-hpath>', include: ['id', 'path', 'hpath', 'docInfo'] }),
+            create: call('document', 'create', { notebook: '<notebook-id>', path: '<target-document-path>', markdown: '<preprocessed-markdown>' }),
+            lookupCreated: call('document', 'lookup', { id: '<returned-document-id>', include: ['id', 'path', 'hpath', 'docInfo'] }),
+            upload: call('file', 'upload_asset', { assetsDirPath: '<approved-assets-dir>', localFilePath: '<approved-staged-file>' }),
+            av: call('av', 'get', { id: '<av-id>', blockID: '<database-block-id>' }),
+            avKeys: call('av', 'get_attribute_view_keys', { id: '<av-id>' }),
+            append: call('block', 'append', { parentID: '<resolved-parent-id>', dataType: 'markdown', data: '<one-reviewed-block>' }),
+            insert: call('block', 'insert', { blocks: [{ previousID: '<resolved-previous-id>', dataType: 'markdown', data: '<one-reviewed-block>' }] }),
+            update: call('block', 'update', { items: [{ id: '<reviewed-leaf-block-id>', dataType: 'markdown', data: '<replacement-block-content>' }] }),
+            attrs: call('block', 'set_attrs', { id: '<reviewed-block-id>', attrs: { 'custom-source-key': '<stable-source-key>' } }),
+            rows: call('av', 'add_rows', { avID: '<av-id>', blockIDs: ['<bound-document-block-id>'], viewID: '<view-id>' }),
+            cells: call('av', 'set_cells', { avID: '<av-id>', cells: [{ rowID: '<row-item-id>', columnID: '<column-key-id>', valueType: 'text', text: '<typed-value>' }] }),
+            documentRead: call('document', 'get_doc', { id: '<returned-document-id>', mode: 'markdown', blockStart: 0, blockLimit: 50, tokenBudget: 2000, includeBlockIds: true }),
+            kramdown: call('block', 'get_kramdown', { id: '<written-block-id>' }),
+            children: call('block', 'get_children', { id: '<resolved-parent-id>', page: 1, pageSize: 200 }),
+            dom: call('block', 'dom', { id: '<written-block-id>' }),
+            attrsRead: call('block', 'get_attrs', { id: '<reviewed-block-id>' }),
+            assetsRead: call('file', 'get_doc_assets', { id: '<returned-document-id>', assetType: 'all' }),
+            avRead: call('av', 'get', { id: '<av-id>' }),
+            avRender: call('av', 'render', { id: '<av-id>', viewID: '<view-id>', page: 1, pageSize: 50 }),
         },
     },
     {
