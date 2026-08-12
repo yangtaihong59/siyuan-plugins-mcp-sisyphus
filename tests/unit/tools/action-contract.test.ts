@@ -100,6 +100,7 @@ function createContractClient() {
                 return [];
             }
             if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, rootID: 'doc-1' };
+            if (endpoint === '/api/block/getDocInfo') return { id: body?.id, rootID: body?.id, name: 'Doc 1' };
             if (endpoint === '/api/block/getBlockBreadcrumb') return [{ id: 'doc-1', name: 'Doc' }];
             if (endpoint === '/api/block/getBlockDOM') return { id: body?.id as string, dom: '<p>content</p>' };
             if (endpoint === '/api/block/getRecentUpdatedBlocks') return [{ id: 'block-1', rootID: 'doc-1', box: 'nb-1', path: '/doc-1.sy', type: 'p' }];
@@ -218,6 +219,7 @@ describe('tool action contract coverage', () => {
         await runContracts('document', DOCUMENT_VARIANTS, callDocumentTool as ToolCaller, [
             { action: 'create', args: { action: 'create', notebook: 'nb-1', path: '/Doc', markdown: 'hello' }, expectedEndpoint: '/api/filetree/createDocWithMd' },
             { action: 'lookup', args: { action: 'lookup', id: 'doc-1' }, expectedEndpoint: '/api/filetree/getPathByID' },
+            { action: 'ensure_link_targets', args: { action: 'ensure_link_targets', notebook: 'nb-1', parentId: 'doc-1', mode: 'resolve', targets: [{ key: 'parent', id: 'doc-1' }] }, expectedEndpoint: '/api/filetree/listDocsByPath' },
             { action: 'rename', args: { action: 'rename', id: 'doc-1', title: 'Renamed' }, expectedEndpoint: '/api/filetree/renameDocByID' },
             { action: 'remove', args: { action: 'remove', id: 'doc-1' }, expectedEndpoint: '/api/filetree/removeDocByID' },
             { action: 'move', args: { action: 'move', fromIDs: ['doc-1'], toID: 'doc-parent' }, expectedEndpoint: '/api/filetree/moveDocsByID' },

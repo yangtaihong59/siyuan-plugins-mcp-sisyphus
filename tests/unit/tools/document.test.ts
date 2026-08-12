@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
-import { DocumentMoveSchema } from '@/core/types';
+import { DocumentEnsureLinkTargetsSchema, DocumentMoveSchema } from '@/core/types';
 import { callDocumentTool, DOCUMENT_VARIANTS, listDocumentTools } from '@/tools/document';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
@@ -20,6 +20,171 @@ describe('document tool extended actions', () => {
         expect(actionDescription).toContain('heading_to_doc');
         expect(actionDescription).toContain('doc_to_heading');
         expect(actionDescription).toContain('get_outline');
+        expect(actionDescription).toContain('ensure_link_targets');
+    });
+});
+
+describe('document.ensure_link_targets', () => {
+    const parentId = '20260813010101-parent01';
+    const existingId = '20260813010102-child001';
+    const createdId = '20260813010103-child002';
+
+    function createScopedClient(options: { existingName?: string; createId?: string } = {}) {
+        const existingName = options.existingName ?? 'Existing target';
+        let client: ReturnType<typeof createMockClient>;
+        client = createMockClient({
+            request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                const id = body?.id as string | undefined;
+                if (endpoint === '/api/filetree/getPathByID') {
+                    if (id === parentId) return { notebook: 'nb-1', path: `/${parentId}.sy` };
+                    if (id === existingId) return { notebook: 'nb-1', path: `/${parentId}/${existingId}.sy` };
+                    if (id === createdId) return { notebook: 'nb-1', path: `/${parentId}/${createdId}.sy` };
+                }
+                if (endpoint === '/api/filetree/getHPathByID') {
+                    if (id === parentId) return '/Imports';
+                    if (id === existingId) return '/Imports/Existing target';
+                    if (id === createdId) return '/Imports/New target';
+                }
+                if (endpoint === '/api/block/getDocInfo') {
+                    if (id === parentId) return { id, rootID: id, name: 'Imports' };
+                    if (id === existingId) return { id, rootID: id, name: existingName };
+                    if (id === createdId) return { id, rootID: id, name: 'New target' };
+                }
+                if (endpoint === '/api/filetree/listDocsByPath') {
+                    expect(body).toEqual({ notebook: 'nb-1', path: `/${parentId}.sy` });
+                    const files = [{ id: existingId, box: 'nb-1', path: `/${parentId}/${existingId}.sy`, name: `${existingName}.sy`, hPath: `/Imports/${existingName}` }];
+                    if (options.createId && body?.path === `/${parentId}.sy`) {
+                        // The action reads scope before and after creation. The mock
+                        // reveals the new ID only after the API create endpoint runs.
+                        const created = (client.request as ReturnType<typeof vi.fn>).mock.calls.some(([called]) => called === '/api/filetree/createDocWithMd');
+                        if (created) files.push({ id: createdId, box: 'nb-1', path: `/${parentId}/${createdId}.sy`, name: 'New target.sy', hPath: '/Imports/New target' });
+                    }
+                    return { box: 'nb-1', path: `/${parentId}.sy`, files };
+                }
+                if (endpoint === '/api/filetree/createDocWithMd') {
+                    expect(body).toEqual({ notebook: 'nb-1', path: '/Imports/New target', markdown: 'seed' });
+                    return options.createId ?? createdId;
+                }
+                if (endpoint.startsWith('/api/ui/')) return null;
+                throw new Error(`Unexpected endpoint: ${endpoint}`);
+            }),
+        });
+        return client;
+    }
+
+    const writablePermMgr = {
+        reload: vi.fn(async () => undefined),
+        canRead: vi.fn(() => true),
+        canWrite: vi.fn(() => true),
+        get: vi.fn(() => 'rwd'),
+    };
+    const readOnlyPermMgr = {
+        reload: vi.fn(async () => undefined),
+        canRead: vi.fn(() => true),
+        canWrite: vi.fn(() => false),
+        get: vi.fn(() => 'r'),
+    };
+
+    it('resolves only an explicit direct-child ID and returns exact identity readback', async () => {
+        const client = createScopedClient();
+        const result = await callDocumentTool(
+            client,
+            { action: 'ensure_link_targets', notebook: 'nb-1', parentId, mode: 'resolve', targets: [{ key: 'existing', id: existingId }] },
+            buildDefaultToolConfig().document,
+            writablePermMgr as never,
+        );
+
+        expect(parseResult(result)).toMatchObject({
+            success: true,
+            createdCount: 0,
+            resolvedCount: 1,
+            unresolvedCount: 0,
+            resolved: [{ key: 'existing', disposition: 'resolved', id: existingId }],
+            linkMap: {
+                existing: {
+                    id: existingId,
+                    notebook: 'nb-1',
+                    path: `/${parentId}/${existingId}.sy`,
+                    hPath: '/Imports/Existing target',
+                },
+            },
+        });
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/createDocWithMd', expect.anything());
+    });
+
+    it('returns a reused exact child ID with read-only permission and never writes', async () => {
+        const client = createScopedClient();
+        const result = await callDocumentTool(
+            client,
+            { action: 'ensure_link_targets', notebook: 'nb-1', parentId, mode: 'reuse', targets: [{ key: 'existing', id: existingId }] },
+            buildDefaultToolConfig().document,
+            readOnlyPermMgr as never,
+        );
+
+        expect(parseResult(result)).toMatchObject({
+            success: true,
+            reusedCount: 1,
+            reused: [{ key: 'existing', disposition: 'reused', id: existingId }],
+            unresolvedCount: 0,
+        });
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/createDocWithMd', expect.anything());
+    });
+
+    it('does not reuse a same-title child during create dry-run', async () => {
+        const client = createScopedClient({ existingName: 'New target' });
+        const result = await callDocumentTool(
+            client,
+            { action: 'ensure_link_targets', notebook: 'nb-1', parentId, mode: 'create', dryRun: true, targets: [{ key: 'new', title: 'New target' }] },
+            buildDefaultToolConfig().document,
+            readOnlyPermMgr as never,
+        );
+
+        expect(parseResult(result)).toMatchObject({
+            success: false,
+            dryRun: true,
+            created: [],
+            unresolved: [{ key: 'new', title: 'New target', reason: 'same_title_child_requires_explicit_id' }],
+        });
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/createDocWithMd', expect.anything());
+    });
+
+    it('creates only explicit missing children and then reads the exact created ID back', async () => {
+        const client = createScopedClient({ createId: createdId });
+        const result = await callDocumentTool(
+            client,
+            { action: 'ensure_link_targets', notebook: 'nb-1', parentId, mode: 'create', markdown: 'seed', targets: [{ key: 'new', title: 'New target' }] },
+            buildDefaultToolConfig().document,
+            writablePermMgr as never,
+        );
+
+        expect(parseResult(result)).toMatchObject({
+            success: true,
+            createdCount: 1,
+            reusedCount: 0,
+            unresolvedCount: 0,
+            created: [{
+                key: 'new',
+                disposition: 'created',
+                id: createdId,
+                notebook: 'nb-1',
+                path: `/${parentId}/${createdId}.sy`,
+                hPath: '/Imports/New target',
+            }],
+        });
+    });
+
+    it('rejects title-based resolve/reuse input and duplicate create titles before any API call', () => {
+        expect(DocumentEnsureLinkTargetsSchema.safeParse({
+            action: 'ensure_link_targets', notebook: 'nb-1', parentId, mode: 'resolve', targets: [{ key: 'wrong', title: 'Existing target' }],
+        }).success).toBe(false);
+        expect(DocumentEnsureLinkTargetsSchema.safeParse({
+            action: 'ensure_link_targets', notebook: 'nb-1', parentId, mode: 'create', targets: [
+                { key: 'a', title: 'Same' }, { key: 'b', title: 'Same' },
+            ],
+        }).success).toBe(false);
+        expect(DocumentEnsureLinkTargetsSchema.safeParse({
+            action: 'ensure_link_targets', notebook: 'nb-1', parentId, mode: 'reuse', dryRun: true, targets: [{ key: 'existing', id: existingId }],
+        }).success).toBe(false);
     });
 });
 

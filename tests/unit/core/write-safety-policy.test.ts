@@ -36,6 +36,12 @@ describe('write safety action policy', () => {
         expect(getActionSafetyPolicy('file', 'create_template', { overwrite: true })).toMatchObject({
             mode: 'mutation', precondition: 'state',
         });
+        expect(getActionSafetyPolicy('document', 'ensure_link_targets', { mode: 'resolve' })).toEqual({ mode: 'read' });
+        expect(getActionSafetyPolicy('document', 'ensure_link_targets', { mode: 'reuse' })).toEqual({ mode: 'read' });
+        expect(getActionSafetyPolicy('document', 'ensure_link_targets', { mode: 'create', dryRun: true })).toEqual({ mode: 'read' });
+        expect(getActionSafetyPolicy('document', 'ensure_link_targets', { mode: 'create' })).toMatchObject({
+            mode: 'mutation', precondition: 'structure',
+        });
         expect(getActionSafetyPolicy('extension', 'third_party_write')).toEqual({ mode: 'external' });
     });
 

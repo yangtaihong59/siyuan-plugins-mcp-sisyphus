@@ -42,7 +42,7 @@ export const ACTION_SAFETY_POLICIES: {
     document: {
         lookup: read(), get_child_blocks: read(), get_child_docs: read(), list_tree: read(), search_docs: read(),
         get_doc: read(), get_outline: read(),
-        create: mutation(), create_daily_note: mutation(), duplicate: mutation('state'), rename: mutation('state'),
+        create: mutation(), ensure_link_targets: mutation('structure'), create_daily_note: mutation(), duplicate: mutation('state'), rename: mutation('state'),
         remove: mutation('state'), move: mutation('structure'), set_attr: mutation('state'),
         heading_to_doc: mutation('structure'), doc_to_heading: mutation('structure'),
     },
@@ -118,6 +118,16 @@ export function getActionSafetyPolicy(
     // kernel to create a missing database.
     if (category === 'av' && action === 'render') {
         return args.createIfNotExist === true ? mutation() : read();
+    }
+    // Existing-target resolution never changes SiYuan state: both resolve and
+    // reuse require only read permission and return the exact supplied IDs.
+    // Creation alone freezes the parent child list under a structural lease.
+    // That credential catches a same-title collision or concurrent child
+    // creation between preflight and the final dispatch.
+    if (category === 'document' && action === 'ensure_link_targets') {
+        return args.dryRun === true || args.mode === 'resolve' || args.mode === 'reuse'
+            ? read()
+            : mutation('structure');
     }
     return policy;
 }

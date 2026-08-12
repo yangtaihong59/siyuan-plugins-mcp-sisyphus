@@ -6,6 +6,7 @@ import {
     DocumentActionSchema,
     DocumentCreateDailyNoteSchema,
     DocumentCreateSchema,
+    DocumentEnsureLinkTargetsSchema,
     DocumentDocToHeadingSchema,
     DocumentDuplicateSchema,
     DocumentGetChildBlocksSchema,
@@ -30,6 +31,7 @@ export const DOCUMENT_TOOL_NAME = 'document';
 export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
     createZodActionVariant('create', DocumentCreateSchema, 'Create a new document. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.'),
     createZodActionVariant('lookup', DocumentLookupSchema, 'Look up document IDs, storage paths, human-readable paths, and document metadata from one document reference.'),
+    createZodActionVariant('ensure_link_targets', DocumentEnsureLinkTargetsSchema, 'Resolve, reuse, or create explicitly scoped direct-child document link targets. Existing targets require IDs; titles are never guessed as identities.'),
     createZodActionVariant('rename', DocumentRenameSchema, 'Rename a document'),
     createZodActionVariant('remove', DocumentRemoveSchema, 'Delete a document'),
     createZodActionVariant('move', DocumentMoveSchema, 'Move a document to another location'),
