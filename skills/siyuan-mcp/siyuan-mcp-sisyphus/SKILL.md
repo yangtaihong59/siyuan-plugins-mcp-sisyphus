@@ -19,6 +19,7 @@ Use the narrowest scenario skill that matches the task. For unfamiliar fields, i
 | Tags, decks, cards, and review | `siyuan-mcp-tag-flashcard` |
 | Timeline nodes, snapshot comparison, and rollback | `siyuan-mcp-timeline` |
 | Permissions, system information, and dangerous operations | `siyuan-mcp-system-safety` |
+| Extension package trust, compatibility, and lifecycle verification | `siyuan-mcp-system-safety` |
 | Rich Markdown, math, diagrams, and SiYuan markup | `siyuan-mcp-markup-guide` |
 
 ## Tool choice

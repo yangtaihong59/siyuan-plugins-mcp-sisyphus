@@ -19,6 +19,7 @@ Use the narrowest scenario skill that matches the task. For unfamiliar fields, i
 | Tags, decks, cards, and review | `siyuan-sisyphus-tag-flashcard` |
 | Timeline nodes, snapshot comparison, and rollback | `siyuan-sisyphus-timeline` |
 | Permissions, system information, and dangerous operations | `siyuan-sisyphus-system-cli` |
+| Extension package trust, compatibility, and lifecycle verification | `siyuan-sisyphus-system-cli` |
 | Rich Markdown, math, diagrams, and SiYuan markup | `siyuan-markup-guide` |
 
 ## Tool choice

@@ -25,6 +25,7 @@ export const scenarios = [
 | Tags, decks, cards, and review | {{skill tag-flashcard}} |
 | Timeline nodes, snapshot comparison, and rollback | {{skill timeline}} |
 | Permissions, system information, and dangerous operations | {{skill system-safety}} |
+| Extension package trust, compatibility, and lifecycle verification | {{skill system-safety}} |
 | Rich Markdown, math, diagrams, and SiYuan markup | {{skill markup-guide}} |
 
 ## Tool choice
@@ -390,6 +391,18 @@ Obtain explicit approval before notebook/document/block deletion or move, bulk r
 {{call conf}}
 {{call network}}
 {{call notify}}
+{{call extensionList}}
+
+## Extension trust and lifecycle verification
+
+Treat an extension package as executable third-party code. Keep these checks separate; passing one does not prove the next one:
+
+1. **Static package check**: inspect the package metadata and required files, exact \`minAppVersion\`, \`backends\`, \`kernels\`, and \`frontends\` values, then review the source, entrypoint, handlers, and cleanup paths. A package validator can catch malformed or incompatible files, but it cannot prove that SiYuan loaded the package.
+2. **Actual loading**: inspect the current runtime inventory and the user-visible enabled state. A package being present, discoverable, or statically valid is not evidence that its \`onload\` or kernel entrypoint ran.
+3. **Registration and unregistration**: for an approved live check, verify the lifecycle-owned surface after enablement (for example a frontend Agent action or plugin MCP tool), then disable/unload it and verify the same name is gone. Confirm that DOM nodes, listeners, timers, RPC methods, and MCP tools are cleaned up; the official {{help extension list}} bridge only reports tools exposed by SiYuan's \`/mcp\` registry and is not a substitute for frontend UI evidence.
+4. **Reload and functional readback**: use the supported reload path, then repeat discovery and one harmless surface-specific interaction. Check that the new behavior works once, old registrations are absent, and no duplicate handlers remain. Do not treat a refreshed tool list as proof that a plugin UI or desktop-only code path works.
+
+Browser-desktop verification covers browser-compatible surfaces and ordinary web UI only. SiYuan desktop-app verification is required for desktop-only surfaces such as Electron/desktop-window or backend/kernel behavior; a desktop pass does not prove browser compatibility. Use the exact manifest frontend values (\`desktop\`, \`desktop-window\`, \`browser-desktop\`, or \`browser-mobile\`) and validate each declared surface separately. Enabling, disabling, reloading, or invoking an untrusted package is a live side effect and requires explicit user approval; this scenario guidance does not authorize it.
 
 If an action or field is rejected, inspect {{help * *}} instead of guessing. Search results can lag recent writes; direct ID/path reads do not depend on indexing.
 
@@ -406,6 +419,7 @@ CLI execution is an explicit command, but that consent does not prove strict saf
             conf: call('system', 'conf', { mode: 'summary' }),
             network: call('system', 'network'),
             notify: call('system', 'notify', { msg: 'Task complete', level: 'info', timeout: 5000 }),
+            extensionList: call('extension', 'list', { refresh: false }),
         },
         runtime: {
             cli: `## CLI setup
