@@ -1,29 +1,29 @@
 # Action Test Coverage
 
-本文档记录当前源码中 14 个聚合工具 action 的自动化测试覆盖口径。它补充 `AI_INTERFACE_TEST.md` 的人工/真实思源回归流程，重点回答一个问题：
+本文档记录当前源码中聚合工具 action 的自动化测试覆盖口径。它补充 `AI_INTERFACE_TEST.md` 的人工/真实思源回归流程，重点回答一个问题：
 
 > 每个已声明 action 是否至少有一条自动化测试能跑到运行时调用路径？
 
 ## 覆盖结论
 
-截至当前代码，源码中声明的静态 action 总数为 121 个；`extension` 还会按官方注册表生成动态 action。
+静态 action 总数和每个工具的 action 清单从 `src/core/config.ts` 的 `ACTIONS_BY_CATEGORY` 计算；`extension` 还会按官方注册表生成动态 action。`tests/unit/core/action-inventory-docs.test.ts` 会确认类别和静态 action 均由该注册表导出，因此新增 action 不需要手工改写本页的计数。
 
-| 工具 | action 数 | 覆盖方式 |
+| 工具 | action 清单来源 | 覆盖方式 |
 | --- | ---: | --- |
-| `fs` | 8 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `notebook` | 11 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `document` | 16 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `block` | 21 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `av` | 12 | `tests/unit/tools/av.test.ts` 对每个 action 有直接调用覆盖 |
-| `search` | 8 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `file` | 17 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `system` | 8 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `flashcard` | 6 | `tests/unit/tools/flashcard.test.ts` 对每个 action 有直接调用覆盖 |
-| `extension` | 1 + 动态 | `tests/unit/core/official-mcp-bridge.test.ts` 与 `tests/unit/tools/extension.test.ts` 覆盖发现、schema、屏蔽和转发 |
-| `tag` | 3 | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
-| `timeline` | 6 | `tests/unit/tools/timeline.test.ts` 覆盖默认开关、节点创建/删除、diff、块回档与 `rwd` 权限 |
-| `mascot` | 3 | `tests/unit/tools/mascot.test.ts` 对每个 action 有直接调用覆盖 |
-| `feedback` | 1 | `tests/unit/core/feedback.test.ts` 和 `tests/unit/tools/feedback.test.ts` 覆盖 WPS payload 与工具路由 |
+| `fs` | `ACTIONS_BY_CATEGORY.fs` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `notebook` | `ACTIONS_BY_CATEGORY.notebook` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `document` | `ACTIONS_BY_CATEGORY.document` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `block` | `ACTIONS_BY_CATEGORY.block` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `av` | `ACTIONS_BY_CATEGORY.av` | `tests/unit/tools/av.test.ts` 对每个 action 有直接调用覆盖 |
+| `search` | `ACTIONS_BY_CATEGORY.search` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `file` | `ACTIONS_BY_CATEGORY.file` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `system` | `ACTIONS_BY_CATEGORY.system` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `flashcard` | `ACTIONS_BY_CATEGORY.flashcard` | `tests/unit/tools/flashcard.test.ts` 对每个 action 有直接调用覆盖 |
+| `extension` | `ACTIONS_BY_CATEGORY.extension` + 动态官方注册表 | `tests/unit/core/official-mcp-bridge.test.ts` 与 `tests/unit/tools/extension.test.ts` 覆盖发现、schema、屏蔽和转发 |
+| `tag` | `ACTIONS_BY_CATEGORY.tag` | `tests/unit/tools/action-contract.test.ts` 对每个 action 做最小运行时契约调用 |
+| `timeline` | `ACTIONS_BY_CATEGORY.timeline` | `tests/unit/tools/timeline.test.ts` 覆盖默认开关、节点创建/删除、diff、块回档与 `rwd` 权限 |
+| `mascot` | `ACTIONS_BY_CATEGORY.mascot` | `tests/unit/tools/mascot.test.ts` 对每个 action 有直接调用覆盖 |
+| `feedback` | `ACTIONS_BY_CATEGORY.feedback` | `tests/unit/core/feedback.test.ts` 和 `tests/unit/tools/feedback.test.ts` 覆盖 WPS payload 与工具路由 |
 
 ## 契约测试规则
 
@@ -40,6 +40,7 @@
 
 ```bash
 pnpm vitest run tests/unit/tools/action-contract.test.ts
+pnpm vitest run tests/unit/core/action-inventory-docs.test.ts
 pnpm vitest run tests/unit/tools
 ```
 

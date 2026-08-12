@@ -14,7 +14,7 @@ src/
 ├── core/                     # MCP Server 核心
 │   ├── server.ts             # MCP Server 创建与 Handler 注册
 │   ├── http-transport.ts     # HTTP/S MCP 传输层
-│   ├── tool-registry.ts      # 14 个聚合工具注册表，包含动态 extension action
+│   ├── tool-registry.ts      # 聚合工具注册表，包含动态 extension action
 │   ├── tool-lifecycle.ts     # 工具调用 AOP 切面（analytics/telemetry/puppy）
 │   ├── permissions.ts        # 笔记本级四级权限管理
 │   ├── config.ts             # ToolConfig schema / 默认值 / 迁移
@@ -32,7 +32,7 @@ src/
 │   ├── normalize.ts          # 请求参数归一化
 │   └── noops/                # SDK v2 显式 no-op schema validator
 │       └── noop-schema-validator.ts
-├── tools/                    # 14 个聚合工具的实现
+├── tools/                    # 聚合工具的实现
 │   ├── index.ts              # Barrel export：统一导出所有工具
 │   ├── internal/             # 工具层共享基础设施
 │   │   ├── types.ts          # 工具层共享类型
@@ -187,7 +187,7 @@ src/
 
 ## 3. 工具注册表：`src/core/tool-registry.ts`
 
-**职责**：维护 `TOOL_REGISTRY` 映射表，将 14 个 category 统一收敛为 `ToolModule` 接口。category 模块在编译期注册，`extension` 在可选的 prepare 阶段动态发现 action 集合。
+**职责**：维护 `TOOL_REGISTRY` 映射表，将 `TOOL_CATEGORIES` 声明的 category 统一收敛为 `ToolModule` 接口。category 模块在编译期注册，`extension` 在可选的 prepare 阶段动态发现 action 集合。
 
 **关键接口**：
 
@@ -204,7 +204,7 @@ interface ToolModule {
 
 | 导出 | 说明 |
 |------|------|
-| `TOOL_REGISTRY: Record<ToolCategory, ToolModule>` | 14 个聚合 category 的编译期映射 |
+| `TOOL_REGISTRY: Record<ToolCategory, ToolModule>` | `TOOL_CATEGORIES` 声明的聚合 category 编译期映射 |
 | `prepareAllTools(config, runtime)` | 在动态校验或列举前执行可选的发现/准备钩子 |
 | `listAllTools(config, runtime)` | 扁平化聚合所有启用状态下的 tool descriptor |
 | `resolveCategory(name)` | 从 tool name（如 `"notebook"`）反查 category |
@@ -295,7 +295,7 @@ runToolCall(ctx, handler)
 type ToolConfig = {
     notebook:  { enabled: boolean, actions: { list: boolean, create: boolean, ... } };
     document:  { enabled: boolean, actions: { ... } };
-    // ... 共 14 个 category
+    // ... 以 TOOL_CATEGORIES 声明的 category 为准
     file:      { enabled: boolean, actions: { ... }, uploadLargeFileThresholdMB: number };
     // ...
     userRulesText: string;  // 用户自定义规则文本
@@ -472,7 +472,7 @@ CLI flag (--url / --token)
 
 ### `tool-config.ts` — Schema 定义
 
-定义 14 个 `ToolCategory`，每个含 `enabled` + `actions` + 额外字段（如 `file` 的 `uploadLargeFileThresholdMB`、`extension` 的 `includeNativeTools` 与 `blockedTools`）。
+定义 `TOOL_CATEGORIES` 中的 `ToolCategory`，每个含 `enabled` + `actions` + 额外字段（如 `file` 的 `uploadLargeFileThresholdMB`、`extension` 的 `includeNativeTools` 与 `blockedTools`）。
 
 ### `tool-config-storage.ts` — 持久化层
 
@@ -494,7 +494,7 @@ CLI flag (--url / --token)
 | 组件 | 职责 |
 |------|------|
 | `HttpServerPanel` | HTTP/HTTPS 开关、host/port/token/TLS、客户端配置片段生成、实时状态与日志 |
-| `ToolCategoriesPanel` | 14 大工具分类的 checkbox + Notebook 权限矩阵（`none/r/rw/rwd`） |
+| `ToolCategoriesPanel` | 工具分类的 checkbox + Notebook 权限矩阵（`none/r/rw/rwd`） |
 | `PuppyPanel` | 吉祥物开关 + 可见性/气泡/点击提示/测试模式 |
 | `TelemetryPanel` | 遥测开关/间隔/endpoint；本地分析看板（总调用数、token、错误率、Top Actions、Daily Trend） |
 | `UserRulesPanel` | 用户自定义规则文本域 |

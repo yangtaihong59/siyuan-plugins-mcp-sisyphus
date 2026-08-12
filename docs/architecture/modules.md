@@ -14,7 +14,7 @@ src/
 ├── core/                     # MCP Server core
 │   ├── server.ts             # MCP Server creation & handler registration
 │   ├── http-transport.ts     # HTTP/S MCP transport layer
-│   ├── tool-registry.ts      # Registry of 14 aggregated tools, including dynamic extension actions
+│   ├── tool-registry.ts      # Registry of aggregated tools, including dynamic extension actions
 │   ├── tool-lifecycle.ts     # Tool call AOP wrapper (analytics/telemetry/puppy)
 │   ├── permissions.ts        # Notebook-level 4-tier permission management
 │   ├── config.ts             # ToolConfig schema / defaults / migration
@@ -32,7 +32,7 @@ src/
 │   ├── normalize.ts          # Request parameter normalization
 │   └── noops/                # Explicit no-op schema validator for SDK v2
 │       └── noop-schema-validator.ts
-├── tools/                    # 14 aggregated tool implementations
+├── tools/                    # Aggregated tool implementations
 │   ├── index.ts              # Barrel export: re-exports all tool modules
 │   ├── internal/             # Shared infrastructure for the tool layer
 │   │   ├── types.ts          # Shared types for the tool layer
@@ -187,7 +187,7 @@ With `SIYUAN_MCP_SKILLS_EXTENSION` enabled (the default), `skills/list` and `ski
 
 ## 3. Tool Registry: `src/core/tool-registry.ts`
 
-**Responsibility**: Maintain the `TOOL_REGISTRY` mapping table, converging 14 categories into the `ToolModule` interface. Category modules are registered at compile time; `extension` discovers its action set during the optional prepare phase.
+**Responsibility**: Maintain the `TOOL_REGISTRY` mapping table, converging the categories declared by `TOOL_CATEGORIES` into the `ToolModule` interface. Category modules are registered at compile time; `extension` discovers its action set during the optional prepare phase.
 
 **Key interface**:
 
@@ -204,7 +204,7 @@ interface ToolModule {
 
 | Export | Description |
 |--------|-------------|
-| `TOOL_REGISTRY: Record<ToolCategory, ToolModule>` | Compile-time mapping of 14 aggregated categories |
+| `TOOL_REGISTRY: Record<ToolCategory, ToolModule>` | Compile-time mapping of the aggregated categories declared by `TOOL_CATEGORIES` |
 | `prepareAllTools(config, runtime)` | Run optional discovery/prepare hooks before dynamic validation or listing |
 | `listAllTools(config, runtime)` | Flatten and aggregate all enabled tool descriptors |
 | `resolveCategory(name)` | Reverse lookup category from tool name (e.g. `"notebook"`) |
@@ -295,7 +295,7 @@ runToolCall(ctx, handler)
 type ToolConfig = {
     notebook:  { enabled: boolean, actions: { list: boolean, create: boolean, ... } };
     document:  { enabled: boolean, actions: { ... } };
-    // ... 14 categories total
+    // ... categories declared by TOOL_CATEGORIES
     file:      { enabled: boolean, actions: { ... }, uploadLargeFileThresholdMB: number };
     // ...
     userRulesText: string;  // User custom rules text
@@ -472,7 +472,7 @@ All business modules export **pure functions** taking `client: SiYuanClient` as 
 
 ### `tool-config.ts` — Schema Definition
 
-Defines 14 `ToolCategory` entries, each with `enabled` + `actions` + extra fields (e.g. `file`'s `uploadLargeFileThresholdMB`, or `extension`'s `includeNativeTools` and `blockedTools`).
+Defines the `ToolCategory` entries in `TOOL_CATEGORIES`, each with `enabled` + `actions` + extra fields (e.g. `file`'s `uploadLargeFileThresholdMB`, or `extension`'s `includeNativeTools` and `blockedTools`).
 
 ### `tool-config-storage.ts` — Persistence Layer
 
@@ -494,7 +494,7 @@ All `load*` functions perform defensive `normalize*` conversion.
 | Component | Responsibility |
 |-----------|---------------|
 | `HttpServerPanel` | HTTP/HTTPS toggle, host/port/token/TLS, client config snippet generation, real-time status & logs |
-| `ToolCategoriesPanel` | 14 tool category checkboxes + Notebook permission matrix (`none/r/rw/rwd`) |
+| `ToolCategoriesPanel` | Tool category checkboxes + Notebook permission matrix (`none/r/rw/rwd`) |
 | `PuppyPanel` | Mascot toggle + visibility/bubble/click hint/test mode |
 | `TelemetryPanel` | Telemetry toggle/interval/endpoint; local analytics dashboard (total calls, tokens, error rate, Top Actions, Daily Trend) |
 | `UserRulesPanel` | User custom rules text area |
