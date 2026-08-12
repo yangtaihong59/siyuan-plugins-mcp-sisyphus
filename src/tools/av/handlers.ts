@@ -1816,7 +1816,13 @@ function projectSameAvFieldFiltersAfterOptionRemoval(
     }
 }
 
-function protectSetColumnOptionsState(avData: unknown, targetKeyID: string, removedOptionNames: string[]): unknown {
+/**
+ * Pure collateral projection for set_column_options. It deliberately retains
+ * all primary-row bindings and view item IDs: the native option transaction
+ * cannot create rows, so masking them would turn a concurrent/pending row
+ * write into a false success.
+ */
+export function projectAvStateWithoutColumnOptions(avData: unknown, targetKeyID: string, removedOptionNames: string[]): unknown {
     if (!avData || typeof avData !== 'object') return avData;
     const protectedState = JSON.parse(JSON.stringify(avData)) as Record<string, unknown>;
     // Updating options can upgrade the on-disk AV format revision. It is a
@@ -1857,6 +1863,33 @@ function protectSetColumnOptionsState(avData: unknown, targetKeyID: string, remo
         if (removed.size > 0) record.filters = projectViewFiltersAfterSelectOptionRemoval(record.filters, targetKeyID, removed);
     }
     return protectedState;
+}
+
+/**
+ * Test-only diagnostic companion for the narrow projection above. Keeping the
+ * first divergent raw path makes live evidence actionable without broadening
+ * the write contract to whatever happened to differ in one response.
+ */
+export function firstJsonDifferencePath(left: unknown, right: unknown, path = '$'): string | undefined {
+    if (Object.is(left, right)) return undefined;
+    if (Array.isArray(left) || Array.isArray(right)) {
+        if (!Array.isArray(left) || !Array.isArray(right)) return path;
+        const sharedLength = Math.min(left.length, right.length);
+        for (let index = 0; index < sharedLength; index += 1) {
+            const nested = firstJsonDifferencePath(left[index], right[index], `${path}[${index}]`);
+            if (nested) return nested;
+        }
+        return left.length === right.length ? undefined : `${path}.length`;
+    }
+    const leftRecord = asRecord(left);
+    const rightRecord = asRecord(right);
+    if (!leftRecord || !rightRecord) return path;
+    const keys = [...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])].sort();
+    for (const key of keys) {
+        const nested = firstJsonDifferencePath(leftRecord[key], rightRecord[key], `${path}.${key}`);
+        if (nested) return nested;
+    }
+    return undefined;
 }
 
 function normalizeCopiedRowValue(value: Record<string, unknown>): unknown {
@@ -2542,7 +2575,7 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
     if (!expectedOptions || !actualOptions) {
         throw new Error(`Select option readback for key "${parsed.keyID}" was incomplete.`);
     }
-    if (JSON.stringify(protectSetColumnOptionsState(avData, parsed.keyID, optionsToRemove)) !== JSON.stringify(protectSetColumnOptionsState(readback.av, parsed.keyID, optionsToRemove))) {
+    if (JSON.stringify(projectAvStateWithoutColumnOptions(avData, parsed.keyID, optionsToRemove)) !== JSON.stringify(projectAvStateWithoutColumnOptions(readback.av, parsed.keyID, optionsToRemove))) {
         throw new Error(`Unrelated AV state changed while replacing options for key "${parsed.keyID}".`);
     }
     const exactOrder = sameComparableOptions(expectedOptions, actualOptions);

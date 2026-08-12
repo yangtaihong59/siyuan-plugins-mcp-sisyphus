@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isDangerousAction } from '@/core/config';
 import { callAvTool, listAvTools } from '@/tools/av';
+import { firstJsonDifferencePath, projectAvStateWithoutColumnOptions } from '@/tools/av/handlers';
 import type { ToolResult } from '@/tools/internal/shared';
 
 vi.mock('@/tools/internal/context', () => ({
@@ -351,6 +352,46 @@ describe('av tool', () => {
             error: { type: 'internal_error', message: expect.stringContaining('Unrelated AV state changed') },
         });
         expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+    });
+
+    it('diagnoses the saved ac9b468 live pre/post raw shape as a new bound row, not target option drift', () => {
+        // These values are copied from the isolated FLO.W v3.8.0 raw
+        // getAttributeView snapshots. Keep this fixture local: a repository
+        // regression test must not depend on the private live-evidence path.
+        const avID = '20260813030615-avview1';
+        const primaryKeyID = '20260813030636-ppzghqp';
+        const targetKeyID = '20260813030636-8vwj098';
+        const rowID = '20260813030737-fr91sts';
+        const before = {
+            spec: 7, id: avID, name: '', keyIDs: null, viewID: '20260813030636-zza0o0m',
+            keyValues: [
+                { key: { id: primaryKeyID, name: '主键', type: 'block', icon: '', desc: '', numberFormat: '', template: '' } },
+                { key: { id: targetKeyID, name: '单选', type: 'select', icon: '', desc: '', numberFormat: '', template: '' } },
+            ],
+            views: [{
+                id: '20260813030636-zza0o0m', icon: '', name: '表格', hideAttrViewName: false, desc: '',
+                filters: [{ column: '', operator: '', value: null, combination: 'and' }], pageSize: 50, type: 'table',
+                table: { spec: 0, id: '20260813030636-yjqebdx', showIcon: true, wrapField: false, columns: [{ id: primaryKeyID, wrap: false, hidden: false, pin: false, width: '' }, { id: targetKeyID, wrap: false, hidden: false, pin: false, width: '' }], rowIds: null },
+                groupCreated: 0, groupItemIds: null, groupFolded: false, groupHidden: 0, groupSort: 0,
+            }],
+        };
+        const after = structuredClone(before);
+        (after.keyValues[0] as any).values = [{
+            id: '20260813030737-wzrib28', keyID: primaryKeyID, blockID: rowID, type: 'block',
+            createdAt: 1786561657455, updatedAt: 1786561657455,
+            block: { id: '20260813030613-19lt4ra', content: 'Disposable AV retest document.', created: 1786561657455, updated: 1786561657455 },
+        }];
+        (after.keyValues[1] as any).key.options = [
+            { name: '待办', color: '1', desc: '目标模板触发' },
+            { name: '进行中', color: '2', desc: '' },
+        ];
+        (after.views[0] as any).itemIds = [rowID];
+        (after.views[0] as any).groupSort = null;
+
+        expect(firstJsonDifferencePath(
+            projectAvStateWithoutColumnOptions(before, targetKeyID, []),
+            projectAvStateWithoutColumnOptions(after, targetKeyID, []),
+        )).toBe('$.keyValues[0].values');
     });
 
     it('copies only a persistent bound row and verifies detached copy placement', async () => {
