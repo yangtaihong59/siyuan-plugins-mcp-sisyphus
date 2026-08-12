@@ -516,7 +516,7 @@ async function probeCurrentState(
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
         state.av = await client.requestRead('/api/av/getAttributeView', { id: args.avID });
-        if (action === 'set_column_options' || action === 'duplicate_rows') {
+        if (action === 'set_column_options' || isCrossObjectAvMutation(action)) {
             const inspectedAv = await inspectHighRiskAvMutation(
                 client,
                 permMgr,
@@ -1354,7 +1354,7 @@ async function requireCarrierWritePermission(
     permMgr: PermissionManager,
     avID: string,
     explicitBlockID?: string,
-): Promise<{ carrierBlockID: string; notebook: string }> {
+): Promise<{ carrierBlockID: string; notebook: string; carrier: Record<string, unknown> }> {
     const carrierBlockID = await resolveVerifiedAvCarrier(client, avID, explicitBlockID);
     if (!carrierBlockID) {
         throw safetyError('permission_denied', `Could not resolve a verified database carrier for attribute view "${avID}". No write was attempted.`);
@@ -1367,7 +1367,20 @@ async function requireCarrierWritePermission(
     if (!permMgr.canWrite(notebook)) {
         throw safetyError('permission_denied', `Notebook ${notebook} does not allow writes to attribute view "${avID}".`);
     }
-    return { carrierBlockID, notebook };
+    const [domResponse, info] = await Promise.all([
+        client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: carrierBlockID }),
+        client.requestRead<unknown>('/api/block/getBlockInfo', { id: carrierBlockID }),
+    ]);
+    const dom = typeof domResponse?.dom === 'string' ? domResponse.dom : '';
+    const currentNotebook = stringField(info, ['box', 'notebook', 'notebookID']);
+    if (!dom.includes('data-type="NodeAttributeView"') || !dom.includes(`data-av-id="${avID}"`) || currentNotebook !== notebook) {
+        throw safetyError('precondition_required', `The verified database carrier for attribute view "${avID}" changed while establishing the strict lease. No write was attempted.`);
+    }
+    return {
+        carrierBlockID,
+        notebook,
+        carrier: { blockID: carrierBlockID, notebook, dom, info },
+    };
 }
 
 async function inspectHighRiskAvMutation(
@@ -1390,6 +1403,107 @@ async function inspectHighRiskAvMutation(
         return { state: { source, sourceCarrier }, targetIds: [sourceCarrier.carrierBlockID] };
     }
 
+    if (action === 'set_relation') {
+        const sourceItemID = requiredAvActionId(args, 'itemID', action);
+        const keyID = requiredAvActionId(args, 'keyID', action);
+        const relatedItemIDs = stringArrayArgument(args, 'relatedItemIDs');
+        const relation = requireAvRelationKey(source, keyID, action);
+        const destination = await inspectAvMutationDestination(client, permMgr, relation.avID);
+        for (const itemID of [sourceItemID, ...relatedItemIDs]) {
+            const definition = itemID === sourceItemID ? source : destination.av;
+            if (!hasAvRowItem(definition, itemID)) {
+                throw safetyError('precondition_required', `${action}: itemID ${itemID} is not a canonical AV row in its resolved attribute view. No write was attempted.`);
+            }
+        }
+        return {
+            state: {
+                source,
+                sourceCarrier,
+                relation: {
+                    keyID,
+                    itemID: sourceItemID,
+                    relatedItemIDs,
+                    ...relation,
+                    destination,
+                },
+            },
+            targetIds: sortedUniqueIds([avID, sourceCarrier.carrierBlockID, relation.avID, destination.carrierBlockID]),
+        };
+    }
+
+    if (action === 'configure_two_way_relation') {
+        const keyID = requiredAvActionId(args, 'keyID', action);
+        const destinationAvID = requiredAvActionId(args, 'destinationAvID', action);
+        const sourceRelation = requireAvRelationKey(source, keyID, action);
+        if (sourceRelation.avID !== destinationAvID) {
+            throw safetyError('precondition_required', `${action}: source relation targets ${sourceRelation.avID}, not requested destination ${destinationAvID}. No write was attempted.`);
+        }
+        const explicitDestinationBlockID = optionalAvActionId(args, 'destinationBlockID');
+        const destination = await inspectAvMutationDestination(client, permMgr, destinationAvID, explicitDestinationBlockID);
+        return {
+            state: {
+                source,
+                sourceCarrier,
+                twoWayRelation: {
+                    keyID,
+                    destinationAvID,
+                    backRelationKeyID: requiredAvActionId(args, 'backRelationKeyID', action),
+                    destination,
+                },
+            },
+            targetIds: sortedUniqueIds([avID, sourceCarrier.carrierBlockID, destinationAvID, destination.carrierBlockID]),
+        };
+    }
+
+    if (action === 'configure_rollup') {
+        const relationKeyID = requiredAvActionId(args, 'relationKeyID', action);
+        const destinationKeyID = requiredAvActionId(args, 'destinationKeyID', action);
+        const relation = requireAvRelationKey(source, relationKeyID, action);
+        const destination = await inspectAvMutationDestination(client, permMgr, relation.avID);
+        if (!hasAvKey(destination.av, destinationKeyID)) {
+            throw safetyError('precondition_required', `${action}: destination key ${destinationKeyID} is absent from attribute view ${relation.avID}. No write was attempted.`);
+        }
+        return {
+            state: {
+                source,
+                sourceCarrier,
+                rollup: {
+                    keyID: requiredAvActionId(args, 'keyID', action),
+                    relationKeyID,
+                    destinationKeyID,
+                    relation,
+                    destination,
+                },
+            },
+            targetIds: sortedUniqueIds([avID, sourceCarrier.carrierBlockID, relation.avID, destination.carrierBlockID]),
+        };
+    }
+
+    if (action === 'create_from_template') {
+        const templateID = requiredAvActionId(args, 'templateID', action);
+        const template = requireAvTemplate(source, templateID, action);
+        const relationDestinations = await inspectTemplateRelationDestinations(client, permMgr, source, template, action);
+        const documentDestination = await inspectTemplateDocumentDestination(client, permMgr, template, sourceCarrier, action);
+        return {
+            state: {
+                source,
+                sourceCarrier,
+                template: {
+                    templateID,
+                    definition: template,
+                    relationDestinations,
+                    documentDestination,
+                },
+            },
+            targetIds: sortedUniqueIds([
+                avID,
+                sourceCarrier.carrierBlockID,
+                ...relationDestinations.flatMap((destination) => [destination.avID, destination.carrierBlockID]),
+                ...(documentDestination ? [documentDestination.notebook] : []),
+            ]),
+        };
+    }
+
     const sourceRowIDs = Array.isArray(args.sourceRowIDs)
         ? args.sourceRowIDs.filter((item): item is string => typeof item === 'string' && item.length > 0)
         : [];
@@ -1402,7 +1516,139 @@ async function inspectHighRiskAvMutation(
         targetIds.push(destination.avID, carrier.carrierBlockID);
         destinations.push({ ...destination, ...carrier, av });
     }
-    return { state: { source, sourceCarrier, destinations }, targetIds };
+    return { state: { source, sourceCarrier, destinations }, targetIds: sortedUniqueIds(targetIds) };
+}
+
+function isCrossObjectAvMutation(action: string): boolean {
+    return [
+        'duplicate_rows',
+        'set_relation',
+        'configure_two_way_relation',
+        'configure_rollup',
+        'create_from_template',
+    ].includes(action);
+}
+
+function requiredAvActionId(args: Record<string, unknown>, key: string, action: string): string {
+    const value = optionalAvActionId(args, key);
+    if (!value) throw safetyError('precondition_required', `${action} requires ${key} to resolve its complete strict mutation scope.`);
+    return value;
+}
+
+function optionalAvActionId(args: Record<string, unknown>, key: string): string | undefined {
+    const value = args[key];
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function stringArrayArgument(args: Record<string, unknown>, key: string): string[] {
+    return Array.isArray(args[key])
+        ? args[key].filter((value): value is string => typeof value === 'string' && value.trim()).map((value) => value.trim())
+        : [];
+}
+
+function requireAvRelationKey(
+    definition: unknown,
+    keyID: string,
+    action: string,
+): { avID: string; backKeyID?: string; isTwoWay: boolean } {
+    const key = avKeyValueEntries(definition).map((entry) => entry.key).find((candidate) => stringField(candidate, ['id']) === keyID);
+    const relation = asRecord(key?.relation);
+    const avID = stringField(relation, ['avID']);
+    if (!key || stringField(key, ['type']) !== 'relation' || !avID) {
+        throw safetyError('precondition_required', `${action}: keyID ${keyID} is not a configured relation with a destination AV. No write was attempted.`);
+    }
+    return {
+        avID,
+        backKeyID: stringField(relation, ['backKeyID']),
+        isTwoWay: relation?.isTwoWay === true,
+    };
+}
+
+function hasAvKey(definition: unknown, keyID: string): boolean {
+    return avKeyValueEntries(definition).some((entry) => stringField(entry.key, ['id']) === keyID);
+}
+
+function hasAvRowItem(definition: unknown, itemID: string): boolean {
+    return avKeyValueEntries(definition).some((entry) => entry.values.some((value) => stringField(value, ['blockID']) === itemID));
+}
+
+function requireAvTemplate(definition: unknown, templateID: string, action: string): Record<string, unknown> {
+    const templates = asRecord(definition)?.newItemTemplates;
+    const matches = Array.isArray(templates)
+        ? templates.filter((template): template is Record<string, unknown> => isRecord(template) && template.id === templateID)
+        : [];
+    if (matches.length !== 1) {
+        throw safetyError('precondition_required', `${action}: templateID ${templateID} did not resolve exactly once in the source AV. No write was attempted.`);
+    }
+    return matches[0];
+}
+
+async function inspectAvMutationDestination(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    avID: string,
+    explicitBlockID?: string,
+): Promise<{ av: unknown; carrierBlockID: string; notebook: string }> {
+    const response = await client.requestRead('/api/av/getAttributeView', { id: avID });
+    const carrier = await requireCarrierWritePermission(client, permMgr, avID, explicitBlockID);
+    // A destination AV can be mutated by a relation/template action even though
+    // the API request names only the source. Keeping its raw definition,
+    // verified carrier, and notebook in this one coordinator probe makes the
+    // lease reject destination drift before the handler can dispatch.
+    return { av: avEnvelope(response), ...carrier };
+}
+
+async function inspectTemplateRelationDestinations(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    source: unknown,
+    template: Record<string, unknown>,
+    action: string,
+): Promise<Array<{ keyID: string; relatedItemIDs: string[]; avID: string; backKeyID?: string; isTwoWay: boolean; av: unknown; carrierBlockID: string; notebook: string }>> {
+    const fieldValues = asRecord(template.fieldValues);
+    const destinations: Array<{ keyID: string; relatedItemIDs: string[]; avID: string; backKeyID?: string; isTwoWay: boolean; av: unknown; carrierBlockID: string; notebook: string }> = [];
+    for (const keyID of Object.keys(fieldValues ?? {}).sort()) {
+        const fieldValue = asRecord(fieldValues?.[keyID]);
+        const value = asRecord(fieldValue?.value);
+        if (value?.type !== 'relation') continue;
+        const relatedItemIDs = avRelationBlockIDs(value);
+        const relation = requireAvRelationKey(source, keyID, action);
+        const destination = await inspectAvMutationDestination(client, permMgr, relation.avID);
+        for (const itemID of relatedItemIDs) {
+            if (!hasAvRowItem(destination.av, itemID)) {
+                throw safetyError('precondition_required', `${action}: template relation itemID ${itemID} is absent from destination AV ${relation.avID}. No write was attempted.`);
+            }
+        }
+        destinations.push({ keyID, relatedItemIDs, ...relation, ...destination });
+    }
+    return destinations;
+}
+
+async function inspectTemplateDocumentDestination(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    template: Record<string, unknown>,
+    sourceCarrier: { carrierBlockID: string; notebook: string },
+    action: string,
+): Promise<{ notebook: string; config: unknown } | undefined> {
+    if (template.targetType !== 'document') return undefined;
+    const saveLocation = asRecord(template.saveLocation);
+    if (!saveLocation) {
+        throw safetyError('precondition_required', `${action}: document templates require an explicit saveLocation so the destination notebook can enter the strict lease.`);
+    }
+    const notebook = stringField(saveLocation, ['boxID']) ?? sourceCarrier.notebook;
+    await permMgr.reload();
+    if (!permMgr.canWrite(notebook)) {
+        throw safetyError('permission_denied', `Notebook ${notebook} does not allow this document-template write.`);
+    }
+    return {
+        notebook,
+        config: await client.requestRead('/api/notebook/getNotebookConf', { notebook }),
+    };
+}
+
+function sortedUniqueIds(values: string[]): string[] {
+    return [...new Set(values.filter(Boolean))].sort();
 }
 
 function collectNotebookBoxes(value: unknown, boxes: Set<string>): void {

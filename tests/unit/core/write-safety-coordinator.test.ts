@@ -17,7 +17,144 @@ function success(payload: Record<string, unknown>) {
     };
 }
 
+function createCrossObjectAvFixture() {
+    const sourceAvID = '20260813000000-sourcea';
+    const destinationAvID = '20260813000001-desta01';
+    const sourceBlockID = '20260813000002-sourceb';
+    const destinationBlockID = '20260813000003-destb01';
+    const sourceItemID = '20260813000004-sourcei';
+    const destinationItemID = '20260813000005-desti01';
+    const sourceKeyID = '20260813000006-relkey1';
+    const carriers: Record<string, { avID: string; box: string; domRevision: number }> = {
+        [sourceBlockID]: { avID: sourceAvID, box: 'nb-source', domRevision: 1 },
+        [destinationBlockID]: { avID: destinationAvID, box: 'nb-destination', domRevision: 1 },
+    };
+    const sourceAv: Record<string, any> = {
+        id: sourceAvID,
+        revision: 1,
+        keyValues: [
+            {
+                key: { id: '20260813000011-blockkey', type: 'block' },
+                values: [{ blockID: sourceItemID, block: { id: '20260813000012-sourcedoc' } }],
+            },
+            {
+                key: {
+                    id: sourceKeyID,
+                    type: 'relation',
+                    relation: { avID: destinationAvID, backKeyID: '20260813000007-backkey', isTwoWay: true },
+                },
+                values: [{
+                    id: '20260813000015-relvalue',
+                    blockID: sourceItemID,
+                    relation: { blockIDs: [destinationItemID] },
+                }],
+            },
+        ],
+        views: [],
+    };
+    const destinationAv: Record<string, any> = {
+        id: destinationAvID,
+        revision: 1,
+        keyValues: [
+            {
+                key: { id: '20260813000013-destblock', type: 'block' },
+                values: [{ blockID: destinationItemID, block: { id: '20260813000014-destdoc' } }],
+            },
+            {
+                key: {
+                    id: '20260813000007-backkey',
+                    type: 'relation',
+                    relation: { avID: sourceAvID, backKeyID: sourceKeyID, isTwoWay: true },
+                },
+                values: [{
+                    id: '20260813000016-backvalue',
+                    blockID: destinationItemID,
+                    relation: { blockIDs: [sourceItemID] },
+                }],
+            },
+        ],
+        views: [],
+    };
+    const client = {
+        readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+        writeFile: vi.fn(async () => undefined),
+        requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+            if (endpoint === '/api/av/getAttributeView') {
+                const avID = body?.id;
+                if (avID === sourceAvID) return { av: structuredClone(sourceAv) };
+                if (avID === destinationAvID) return { av: structuredClone(destinationAv) };
+                throw new Error(`unexpected AV ${String(avID)}`);
+            }
+            if (endpoint === '/api/av/getMirrorDatabaseBlocks') {
+                return { refDefs: [{ refID: destinationBlockID }] };
+            }
+            if (endpoint === '/api/query/sql') return [];
+            if (endpoint === '/api/block/getBlockDOM') {
+                const carrier = carriers[String(body?.id)];
+                if (!carrier) return { dom: '' };
+                return {
+                    dom: `<div data-type="NodeAttributeView" data-av-id="${carrier.avID}" data-lease-revision="${carrier.domRevision}"></div>`,
+                };
+            }
+            if (endpoint === '/api/block/getBlockInfo') {
+                const carrier = carriers[String(body?.id)];
+                return carrier ? { id: body?.id, box: carrier.box, revision: carrier.domRevision } : {};
+            }
+            return null;
+        }),
+    } as never;
+    const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+    permMgr.getAll = vi.fn(() => ({ 'nb-source': 'rw', 'nb-destination': 'rw' }));
+    permMgr.get = vi.fn((notebook: string) => notebook === 'nb-source' || notebook === 'nb-destination' ? 'rw' : 'r');
+
+    return {
+        client,
+        permMgr,
+        sourceAv,
+        destinationAv,
+        carriers,
+        ids: {
+            sourceAvID,
+            destinationAvID,
+            sourceBlockID,
+            destinationBlockID,
+            sourceItemID,
+            destinationItemID,
+            sourceKeyID,
+        },
+    };
+}
+
 describe('write safety coordinator', () => {
+    it('rejects a set_relation destination AV drift before dispatch', async () => {
+        const fixture = createCrossObjectAvFixture();
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const args = {
+            action: 'set_relation', avID: fixture.ids.sourceAvID, blockID: fixture.ids.sourceBlockID,
+            itemID: fixture.ids.sourceItemID, keyID: fixture.ids.sourceKeyID,
+            relatedItemIDs: [fixture.ids.destinationItemID],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        fixture.destinationAv.revision += 1;
+        const execute = vi.fn();
+        const result = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000101'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(result.error).toMatchObject({ code: 'state_changed', expectedHash: preflight.stateHash });
+        expect(execute).not.toHaveBeenCalled();
+    });
+
     it('preflights select options against a verified rw AV carrier without requiring rwd', async () => {
         const avID = '20260813000000-avopts01';
         const carrierBlockID = '20260813000001-carrier';
