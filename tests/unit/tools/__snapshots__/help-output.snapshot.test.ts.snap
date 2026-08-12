@@ -2322,6 +2322,7 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It reports expected/actual/missing/extra references using basename matching and ignores SiYuan timestamp/id filename suffixes; it never reads local .sy files or repairs content.",
         ],
         "hint": "Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.",
         "requiredFields": [
