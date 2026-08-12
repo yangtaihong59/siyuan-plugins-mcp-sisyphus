@@ -530,7 +530,7 @@ describe('av tool', () => {
         )).toBe('$.keyValues[0].values');
     });
 
-    it('copies only a persistent bound row and verifies detached copy placement', async () => {
+    it('copies a persistent bound row from the raw getAttributeView itemIds shape', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
         const before = {
@@ -539,7 +539,10 @@ describe('av tool', () => {
                 { key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-1', block: { id: 'block-1', content: 'Bound Row' } }] },
                 { key: { id: 'note', type: 'text' }, values: [{ id: 'value-note', blockID: 'row-1', text: { content: 'copied note' } }] },
             ],
-            views: [{ id: 'view-1', itemIDs: ['row-1'], groups: [] }],
+            // SiYuan raw getAttributeView uses itemIds, not itemIDs, for the
+            // persistent top-level view membership that duplicate_rows must
+            // validate before it submits a native copy transaction.
+            views: [{ id: 'view-1', itemIds: ['row-1'], groups: [] }],
         };
         let copiedRowID = '';
         vi.mocked(avApi.getAttributeView).mockImplementation(async () => {
@@ -547,7 +550,7 @@ describe('av tool', () => {
             const after = structuredClone(before);
             (after.keyValues[0] as any).values.push({ id: 'value-title-copy', blockID: copiedRowID, isDetached: true, block: { content: 'Bound Row' } });
             (after.keyValues[1] as any).values.push({ id: 'value-note-copy', blockID: copiedRowID, text: { content: 'copied note' } });
-            (after.views[0] as any).itemIDs.push(copiedRowID);
+            (after.views[0] as any).itemIds.push(copiedRowID);
             return { av: after };
         });
         vi.mocked(transactionApi.performTransactions).mockImplementation(async (_clientArg, transactions) => {

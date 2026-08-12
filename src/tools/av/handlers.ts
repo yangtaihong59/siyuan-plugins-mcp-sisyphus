@@ -1923,8 +1923,16 @@ function topLevelViewItemIDs(avData: unknown): Set<string> {
     if (!Array.isArray(views)) return itemIDs;
     for (const view of views) {
         const record = asRecord(view);
-        if (!Array.isArray(record?.itemIDs)) continue;
-        for (const rowID of record.itemIDs) {
+        // Raw getAttributeView serializes this persisted top-level membership
+        // as itemIds (lowercase d). Keep the historical itemIDs spelling as a
+        // compatibility fallback for older kernel payloads/test fixtures; using
+        // only the latter rejects a valid canonical row before dispatch.
+        const rows = Array.isArray(record?.itemIds)
+            ? record.itemIds
+            : Array.isArray(record?.itemIDs)
+                ? record.itemIDs
+                : [];
+        for (const rowID of rows) {
             if (typeof rowID === 'string' && rowID) itemIDs.add(rowID);
         }
     }
@@ -1938,11 +1946,16 @@ function collectItemIDSnapshots(value: unknown, snapshots: string[][] = []): str
     }
     const record = asRecord(value);
     if (!record) return snapshots;
-    if (Array.isArray(record.itemIDs) && record.itemIDs.every((id) => typeof id === 'string')) {
-        snapshots.push(record.itemIDs as string[]);
+    const itemIDs = Array.isArray(record.itemIds)
+        ? record.itemIds
+        : Array.isArray(record.itemIDs)
+            ? record.itemIDs
+            : undefined;
+    if (itemIDs && itemIDs.every((id) => typeof id === 'string')) {
+        snapshots.push(itemIDs as string[]);
     }
     for (const [key, nested] of Object.entries(record)) {
-        if (key !== 'itemIDs') collectItemIDSnapshots(nested, snapshots);
+        if (key !== 'itemIds' && key !== 'itemIDs') collectItemIDSnapshots(nested, snapshots);
     }
     return snapshots;
 }
