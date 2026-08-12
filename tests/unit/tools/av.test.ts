@@ -260,6 +260,99 @@ describe('av tool', () => {
         });
     });
 
+    it('accepts v3.8 option replacement readback after target-key dependent normalization without replaying', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1', spec: 6,
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-1', block: { id: 'block-1', content: 'Row' } }] },
+                { key: { id: 'status', type: 'select', options: [{ name: 'Old', color: '1', desc: '' }, { name: 'Keep', color: '2', desc: '' }] }, values: [{ id: 'value-status', blockID: 'row-1', mSelect: [{ content: 'Old', color: '1' }] }] },
+                { key: { id: 'other', type: 'select', options: [{ name: 'Other', color: '3', desc: '' }] }, values: [] },
+            ],
+            newItemTemplates: [{ id: 'template-1', name: 'Target default', fieldValues: { status: { mode: 'static', value: { type: 'select', mSelect: [{ content: 'Old', color: '1' }] } } } }],
+            views: [{
+                id: 'view-1', itemIDs: ['row-1'], group: { field: 'status', method: 0 }, groups: [{ id: 'old-group' }],
+                filters: [{ column: 'status', operator: '=', value: { type: 'select', mSelect: [{ content: 'Old', color: '1' }] } }],
+                sorts: [{ column: 'other', order: 1 }],
+            }],
+        };
+        const after = structuredClone(before);
+        after.spec = 7;
+        ((after.keyValues[1] as any).key.options) = [{ name: 'Keep', color: '4', desc: 'retained' }, { name: 'New', color: '5', desc: '' }];
+        ((after.keyValues[1] as any).values) = [];
+        ((after.newItemTemplates[0] as any).fieldValues) = undefined;
+        ((after.views[0] as any).filters) = [{ combination: 'and' }];
+        ((after.views[0] as any).groups) = [{ id: 'regenerated-group' }];
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID: 'av-1', keyID: 'status',
+            options: [{ name: 'Keep', color: '4', desc: 'retained' }, { name: 'New', color: '5' }],
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ success: true, status: 'applied' });
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts a v3.8 complete clear with omitted options and an empty AND filter root', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-1', block: { id: 'block-1', content: 'Row' } }] },
+                { key: { id: 'status', type: 'select', options: [{ name: 'Old', color: '1', desc: '' }] }, values: [{ id: 'value-status', blockID: 'row-1', mSelect: [{ content: 'Old', color: '1' }] }] },
+            ],
+            views: [{ id: 'view-1', itemIDs: ['row-1'], filters: [{ column: 'status', operator: '=', value: { type: 'select', mSelect: [{ content: 'Old', color: '1' }] } }] }],
+        };
+        const after = structuredClone(before);
+        delete (after.keyValues[1] as any).key.options;
+        ((after.keyValues[1] as any).values) = [];
+        ((after.views[0] as any).filters) = [{ combination: 'and' }];
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID: 'av-1', keyID: 'status', options: [],
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ success: true, status: 'applied', optionCount: 0, observedOptions: [] });
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+    });
+
+    it('still rejects unrelated key, template, and filter drift after target-key option normalization', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-1',
+            keyValues: [
+                { key: { id: 'title', type: 'block' }, values: [{ id: 'value-title', blockID: 'row-1', block: { id: 'block-1', content: 'Row' } }] },
+                { key: { id: 'status', type: 'select', options: [{ name: 'Old', color: '1', desc: '' }] }, values: [] },
+                { key: { id: 'other', type: 'select', options: [{ name: 'Stable', color: '2', desc: '' }] }, values: [] },
+            ],
+            newItemTemplates: [{ id: 'template-1', name: 'Unrelated default', fieldValues: { other: { mode: 'static', value: { type: 'select', mSelect: [{ content: 'Stable', color: '2' }] } } } }],
+            views: [{
+                id: 'view-1', itemIDs: ['row-1'],
+                filters: [{ column: 'other', operator: '=', value: { type: 'select', mSelect: [{ content: 'Stable', color: '2' }] } }],
+            }],
+        };
+        const after = structuredClone(before);
+        delete (after.keyValues[1] as any).key.options;
+        ((after.keyValues[2] as any).key.options) = [{ name: 'Drifted', color: '2', desc: '' }];
+        ((after.newItemTemplates[0] as any).fieldValues.other.value.mSelect[0].content) = 'Drifted';
+        ((after.views[0] as any).filters[0].value.mSelect[0].content) = 'Drifted';
+        vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
+
+        const result = await callAvTool(client, {
+            action: 'set_column_options', avID: 'av-1', keyID: 'status', options: [],
+        }, enabledActions('set_column_options'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'internal_error', message: expect.stringContaining('Unrelated AV state changed') },
+        });
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+    });
+
     it('copies only a persistent bound row and verifies detached copy placement', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');

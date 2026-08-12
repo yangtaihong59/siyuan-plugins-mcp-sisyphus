@@ -1640,7 +1640,12 @@ function normalizeSelectOptions(options: Array<Record<string, unknown>>): Array<
 
 type ComparableSelectOption = { name: string; color: string; desc: string };
 
-function comparableSelectOptions(value: unknown): ComparableSelectOption[] | undefined {
+function comparableSelectOptions(value: unknown, allowOmittedEmpty = false): ComparableSelectOption[] | undefined {
+    // Key.Options uses `omitempty` in SiYuan's raw AV model. A successful
+    // complete clear therefore reads back with no `options` member at all,
+    // rather than `options: []`. Only the explicit empty requested postimage
+    // may use that equivalence; null or malformed values remain a failed proof.
+    if (value === undefined && allowOmittedEmpty) return [];
     if (!Array.isArray(value)) return undefined;
     const normalized: ComparableSelectOption[] = [];
     for (const option of value) {
@@ -1668,7 +1673,150 @@ function sameComparableOptionSet(left: ComparableSelectOption[], right: Comparab
     return leftEntries.every((entry, index) => entry === rightEntries[index]);
 }
 
-function protectSetColumnOptionsState(avData: unknown, targetKeyID: string): unknown {
+function projectRemovedSelectOptionsFromFilterNode(
+    value: unknown,
+    targetKeyID: string,
+    removedOptionNames: Set<string>,
+): Record<string, unknown> | undefined {
+    const filter = asRecord(value);
+    if (!filter) return undefined;
+    const children = Array.isArray(filter.filters) ? filter.filters : undefined;
+    const isGroup = typeof filter.combination === 'string' || children !== undefined;
+    if (isGroup) {
+        const projectedChildren = (children ?? [])
+            .flatMap((child) => {
+                const projected = projectRemovedSelectOptionsFromFilterNode(child, targetKeyID, removedOptionNames);
+                return projected ? [projected] : [];
+            });
+        if (projectedChildren.length === 0) return undefined;
+        return { ...filter, filters: projectedChildren };
+    }
+    if (filter.column !== targetKeyID || filter.operator === 'Is empty' || filter.operator === 'Is not empty') {
+        return filter;
+    }
+    const filterValue = asRecord(filter.value);
+    if (!filterValue || !['select', 'mSelect'].includes(getStringField(filterValue, ['type']) ?? '')) return filter;
+    const selections = Array.isArray(filterValue.mSelect) ? filterValue.mSelect : undefined;
+    if (!selections) return filter;
+    const projectedSelections = selections.filter((selection) => {
+        const record = asRecord(selection);
+        return !record || !removedOptionNames.has(getStringField(record, ['content']) ?? '');
+    });
+    if (projectedSelections.length === 0) return undefined;
+    return projectedSelections.length === selections.length
+        ? filter
+        : { ...filter, value: { ...filterValue, mSelect: projectedSelections } };
+}
+
+function projectViewFiltersAfterSelectOptionRemoval(
+    filters: unknown,
+    targetKeyID: string,
+    removedOptionNames: Set<string>,
+): unknown {
+    if (!Array.isArray(filters)) return filters;
+    const projected = filters.flatMap((filter) => {
+        const node = projectRemovedSelectOptionsFromFilterNode(filter, targetKeyID, removedOptionNames);
+        return node ? [node] : [];
+    });
+    // `removeAttributeViewColumnOption` persists this exact empty AND root for
+    // every view after an option removal. Keep it narrow to option removals:
+    // treating arbitrary missing filters as equivalent would hide real drift.
+    return projected.length > 0 ? projected : [{ combination: 'and' }];
+}
+
+function filterReferencesRemovedSelectOption(
+    filters: unknown,
+    targetKeyID: string,
+    removedOptionNames: Set<string>,
+): boolean {
+    if (!Array.isArray(filters)) return false;
+    for (const filter of filters) {
+        const record = asRecord(filter);
+        if (!record) continue;
+        if (filterReferencesRemovedSelectOption(record.filters, targetKeyID, removedOptionNames)) return true;
+        if (record.column !== targetKeyID || record.operator === 'Is empty' || record.operator === 'Is not empty') continue;
+        const filterValue = asRecord(record.value);
+        if (!filterValue || !['select', 'mSelect'].includes(getStringField(filterValue, ['type']) ?? '')) continue;
+        if (Array.isArray(filterValue.mSelect) && filterValue.mSelect.some((selection) => {
+            const item = asRecord(selection);
+            return item ? removedOptionNames.has(getStringField(item, ['content']) ?? '') : false;
+        })) return true;
+    }
+    return false;
+}
+
+function projectTemplateSelectValuesAfterOptionRemoval(
+    templates: unknown,
+    targetKeyID: string,
+    removedOptionNames: Set<string>,
+): unknown {
+    if (!Array.isArray(templates)) return templates;
+    return templates.map((template) => {
+        const record = asRecord(template);
+        const fieldValues = asRecord(record?.fieldValues);
+        const fieldValue = asRecord(fieldValues?.[targetKeyID]);
+        const value = asRecord(fieldValue?.value);
+        const selections = Array.isArray(value?.mSelect) ? value.mSelect : undefined;
+        if (!record || !fieldValues || !fieldValue || !value || getStringField(fieldValue, ['mode']) !== 'static'
+            || !['select', 'mSelect'].includes(getStringField(value, ['type']) ?? '') || !selections) return template;
+        const projectedSelections = selections.filter((selection) => {
+            const item = asRecord(selection);
+            return !item || !removedOptionNames.has(getStringField(item, ['content']) ?? '');
+        });
+        if (projectedSelections.length === selections.length) return template;
+        const projectedFieldValues = { ...fieldValues };
+        if (projectedSelections.length === 0) delete projectedFieldValues[targetKeyID];
+        else projectedFieldValues[targetKeyID] = { ...fieldValue, value: { ...value, mSelect: projectedSelections } };
+        return Object.keys(projectedFieldValues).length > 0
+            ? { ...record, fieldValues: projectedFieldValues }
+            : Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'fieldValues'));
+    });
+}
+
+function projectSameAvFieldFiltersAfterOptionRemoval(
+    keyValues: unknown[],
+    avID: string | undefined,
+    targetKeyID: string,
+    removedOptionNames: Set<string>,
+): void {
+    const keyByID = new Map<string, Record<string, unknown>>();
+    for (const entry of keyValues) {
+        const key = asRecord(asRecord(entry)?.key);
+        const keyID = getStringField(key, ['id']);
+        if (key && keyID) keyByID.set(keyID, key);
+    }
+    for (const entry of keyValues) {
+        const record = asRecord(entry);
+        const key = asRecord(record?.key);
+        if (!key || !avID) continue;
+        const relation = asRecord(key.relation);
+        if (key.type === 'relation' && relation?.avID === avID
+            && filterReferencesRemovedSelectOption(relation.candidateFilters, targetKeyID, removedOptionNames)) {
+            const projected = projectRemovedSelectOptionsFromFilterNode(
+                { combination: 'and', filters: relation.candidateFilters }, targetKeyID, removedOptionNames,
+            );
+            key.relation = projected && Array.isArray(projected.filters)
+                ? { ...relation, candidateFilters: projected.filters }
+                : Object.fromEntries(Object.entries(relation).filter(([name]) => name !== 'candidateFilters'));
+            continue;
+        }
+        const rollup = asRecord(key.rollup);
+        const relationKeyID = getStringField(rollup, ['relationKeyID']);
+        const relationKey = relationKeyID ? keyByID.get(relationKeyID) : undefined;
+        const sourceRelation = asRecord(relationKey?.relation);
+        if (key.type === 'rollup' && rollup && sourceRelation?.avID === avID
+            && filterReferencesRemovedSelectOption(rollup.filters, targetKeyID, removedOptionNames)) {
+            const projected = projectRemovedSelectOptionsFromFilterNode(
+                { combination: 'and', filters: rollup.filters }, targetKeyID, removedOptionNames,
+            );
+            key.rollup = projected && Array.isArray(projected.filters)
+                ? { ...rollup, filters: projected.filters }
+                : Object.fromEntries(Object.entries(rollup).filter(([name]) => name !== 'filters'));
+        }
+    }
+}
+
+function protectSetColumnOptionsState(avData: unknown, targetKeyID: string, removedOptionNames: string[]): unknown {
     if (!avData || typeof avData !== 'object') return avData;
     const protectedState = JSON.parse(JSON.stringify(avData)) as Record<string, unknown>;
     // Updating options can upgrade the on-disk AV format revision. It is a
@@ -1687,11 +1835,26 @@ function protectSetColumnOptionsState(avData: unknown, targetKeyID: string): unk
         if (key) key.options = '__sisyphus_target_options__';
         if (record) record.values = '__sisyphus_target_column_values__';
     }
+    const removed = new Set(removedOptionNames);
+    if (removed.size > 0) {
+        // v3.8.0 removes an omitted option from templates and filter values in
+        // the same native transaction. Project exactly those documented
+        // dependents before comparing, but leave every unrelated key, filter,
+        // template field, relation and rollup visible as collateral evidence.
+        protectedState.newItemTemplates = projectTemplateSelectValuesAfterOptionRemoval(
+            protectedState.newItemTemplates, targetKeyID, removed,
+        );
+        projectSameAvFieldFiltersAfterOptionRemoval(keyValues, getStringField(protectedState, ['id']), targetKeyID, removed);
+    }
     const views = Array.isArray(protectedState.views) ? protectedState.views : [];
     for (const view of views) {
         const record = asRecord(view);
         if (!record) continue;
-        delete record.groups;
+        // regenAttrViewGroups only owns groups derived from the changed select
+        // key. Retaining groups for other fields keeps the collateral check
+        // able to catch an unrelated view mutation in the same response.
+        if (getStringField(asRecord(record.group), ['field']) === targetKeyID) delete record.groups;
+        if (removed.size > 0) record.filters = projectViewFiltersAfterSelectOptionRemoval(record.filters, targetKeyID, removed);
     }
     return protectedState;
 }
@@ -2375,11 +2538,11 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
     const readback = await avApi.getAttributeView(client, parsed.avID);
     const readbackKey = getAvKeyById(readback.av, parsed.keyID);
     const expectedOptions = comparableSelectOptions(options);
-    const actualOptions = comparableSelectOptions(readbackKey?.options);
+    const actualOptions = comparableSelectOptions(readbackKey?.options, expectedOptions?.length === 0);
     if (!expectedOptions || !actualOptions) {
         throw new Error(`Select option readback for key "${parsed.keyID}" was incomplete.`);
     }
-    if (JSON.stringify(protectSetColumnOptionsState(avData, parsed.keyID)) !== JSON.stringify(protectSetColumnOptionsState(readback.av, parsed.keyID))) {
+    if (JSON.stringify(protectSetColumnOptionsState(avData, parsed.keyID, optionsToRemove)) !== JSON.stringify(protectSetColumnOptionsState(readback.av, parsed.keyID, optionsToRemove))) {
         throw new Error(`Unrelated AV state changed while replacing options for key "${parsed.keyID}".`);
     }
     const exactOrder = sameComparableOptions(expectedOptions, actualOptions);
