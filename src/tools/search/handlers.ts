@@ -24,6 +24,7 @@ import {
 import { ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveNotebookForPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { enrichItemsWithNotebookNames } from '../internal/helpers/notebook-names';
+import { listDocumentBlocksInTreeOrder } from '../internal/document-kramdown';
 import { applyTruncation, createErrorResult, createJsonResult, createPaginatedResult, type ToolResult, type TruncationMeta } from '../internal/shared';
 import {
     createPartialMetadata,
@@ -205,6 +206,33 @@ function createFulltextAssetContentResult(
     });
 }
 
+async function resolveFindReplaceTargetIDs(
+    client: Parameters<ToolActionHandler>[0]['client'],
+    ids: string[],
+    replaceTypes: Record<string, boolean>,
+): Promise<string[]> {
+    const resolved = new Set<string>();
+    for (const id of ids) {
+        const info = await client.requestRead<Record<string, unknown>>('/api/block/getBlockInfo', { id });
+        const rootID = typeof info?.rootID === 'string' ? info.rootID : '';
+        if (rootID !== id) {
+            resolved.add(id);
+            continue;
+        }
+
+        // The kernel interprets a document ID as "document title only" and
+        // does not walk its body. Expand document scopes to concrete block IDs
+        // so the public schema's document-or-block promise is actually true.
+        if (replaceTypes.docTitle) resolved.add(id);
+        const blocks = await listDocumentBlocksInTreeOrder(client, id);
+        for (const block of blocks) resolved.add(block.id);
+        // Never send an empty ids array: the kernel interprets that as a
+        // workspace-wide replacement scope.
+        if (blocks.length === 0 && !replaceTypes.docTitle) resolved.add(id);
+    }
+    return [...resolved];
+}
+
 export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     fulltext: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchFulltextSchema.parse(rawArgs);
@@ -355,25 +383,33 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         }
         const resolvedMethod = resolveSearchMethodMeta(parsed);
         const resolvedOrderBy = resolveSortAlias(parsed.sortBy, parsed.orderBy);
+        // SiYuan treats an omitted replaceTypes object as "replace nothing"
+        // while still returning code=0. Plain text is the least-surprising,
+        // narrow default for this action; callers can opt into titles, links,
+        // code, tags, and other node kinds explicitly.
+        const resolvedReplaceTypes = parsed.replaceTypes ?? { text: true };
+        const resolvedTargetIDs = await resolveFindReplaceTargetIDs(client, parsed.ids, resolvedReplaceTypes);
         await searchApi.findReplace(client, {
             k: parsed.k,
             r: parsed.r,
-            ids: parsed.ids,
+            ids: resolvedTargetIDs,
             ...(parsed.paths ? { paths: parsed.paths } : {}),
             ...(parsed.types ? { types: parsed.types } : {}),
             ...(resolvedMethod.method !== undefined ? { method: resolvedMethod.method } : {}),
             ...(resolvedOrderBy !== undefined ? { orderBy: resolvedOrderBy } : {}),
             ...(parsed.groupBy !== undefined ? { groupBy: parsed.groupBy } : {}),
-            ...(parsed.replaceTypes ? { replaceTypes: parsed.replaceTypes } : {}),
+            replaceTypes: resolvedReplaceTypes,
         });
         const shouldExposeResolvedArgs = parsed.methodName !== undefined || parsed.sortBy !== undefined;
         return createJsonResult({
             success: true,
             replaced: true,
             ids: parsed.ids,
+            targetIDs: resolvedTargetIDs,
             k: parsed.k,
             r: parsed.r,
             ...(parsed.paths ? { paths: parsed.paths } : {}),
+            replaceTypes: resolvedReplaceTypes,
             ...(shouldExposeResolvedArgs ? {
                 resolvedArgs: buildResolvedArgs({
                     ...resolvedMethod,

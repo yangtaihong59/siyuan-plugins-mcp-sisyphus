@@ -17,7 +17,7 @@ export async function pushMsg(
         msg,
         timeout,
     };
-    return client.request<IResPushMsg>('/api/notification/pushMsg', request);
+    return client.requestWrite<IResPushMsg>('/api/notification/pushMsg', request);
 }
 
 /**
@@ -32,5 +32,5 @@ export async function pushErrMsg(
         msg,
         timeout,
     };
-    return client.request<IResPushMsg>('/api/notification/pushErrMsg', request);
+    return client.requestWrite<IResPushMsg>('/api/notification/pushErrMsg', request);
 }

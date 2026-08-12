@@ -1,0 +1,4 @@
+interface:
+  display_name: "思源构建产物真实笔记本测试"
+  short_description: "用最新构建的 CJS 在隔离思源测试本执行真实端到端验收"
+  default_prompt: "使用 $siyuan-built-cjs-live-test，以仓库刚构建的 CJS 对真实思源测试笔记本执行隔离验收并生成测试报告。"

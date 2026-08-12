@@ -7,6 +7,22 @@ export interface SiYuanClientConfig {
 
 export type { SiYuanResponse } from '../types/shared';
 
+export type RequestSemantics = 'read' | 'write';
+
+/** A write may already have reached SiYuan when transport acknowledgement fails. */
+export class WriteOutcomeUnknownError extends Error {
+    readonly code = 'outcome_unknown';
+    readonly endpoint: string;
+
+    constructor(endpoint: string, cause: unknown) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        super(`Write outcome is unknown for ${endpoint}: ${message}`);
+        this.name = 'WriteOutcomeUnknownError';
+        this.endpoint = endpoint;
+        (this as Error & { cause?: unknown }).cause = cause;
+    }
+}
+
 export class SiYuanClient {
     private baseUrl: string;
     private timeout: number;
@@ -38,12 +54,17 @@ export class SiYuanClient {
         return headers;
     }
 
-    private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    private async fetchWithTimeout(
+        url: string,
+        init: RequestInit,
+        semantics: RequestSemantics,
+    ): Promise<Response> {
         const DEFAULT_MAX_RETRIES = 3;
         const DEFAULT_RETRY_BASE_DELAY_MS = 300;
         let lastError: Error | null = null;
 
-        for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt++) {
+        const maxRetries = semantics === 'read' ? DEFAULT_MAX_RETRIES : 0;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -54,23 +75,29 @@ export class SiYuanClient {
                 if (!response.ok) {
                     // Do not retry 4xx (except 429).
                     if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-                        throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+                        throw Object.assign(
+                            new Error(`HTTP error: ${response.status} ${response.statusText}`),
+                            { retryable: false },
+                        );
                     }
                     // 5xx / 429 — drain body so the connection can be reused, then retry.
                     await response.arrayBuffer().catch(() => {});
                     lastError = new Error(`HTTP error: ${response.status} ${response.statusText}`);
-                    if (attempt < DEFAULT_MAX_RETRIES) continue;
+                    if (attempt < maxRetries) continue;
                     throw lastError;
                 }
                 return response;
             } catch (error) {
                 clearTimeout(timeoutId);
+                if (error && typeof error === 'object' && (error as { retryable?: unknown }).retryable === false) {
+                    throw error;
+                }
                 if (error instanceof Error && error.name === 'AbortError') {
                     lastError = new Error(`Request timeout after ${this.timeout}ms`);
                 } else {
                     lastError = error instanceof Error ? error : new Error(String(error));
                 }
-                if (attempt >= DEFAULT_MAX_RETRIES) throw lastError;
+                if (attempt >= maxRetries) throw lastError;
             }
 
             // Exponential backoff: 0.3s, 0.6s, 0.9s (matches siyuan-agent-bridge).
@@ -86,11 +113,11 @@ export class SiYuanClient {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
             body: JSON.stringify({ path }),
-        });
+        }, 'read');
     }
 
-    private async readData<T>(url: string, init: RequestInit): Promise<T> {
-        const response = await this.fetchWithTimeout(url, init);
+    private async readData<T>(url: string, init: RequestInit, semantics: RequestSemantics): Promise<T> {
+        const response = await this.fetchWithTimeout(url, init, semantics);
         const rawText = await response.text();
         if (rawText.trim() === '') {
             return null as T;
@@ -130,23 +157,66 @@ export class SiYuanClient {
         formData.append('modTime', String(Date.now()));
         formData.append('file', file);
 
-        await this.requestFormData<null>('/api/file/putFile', formData);
+        await this.requestFormDataWrite<null>('/api/file/putFile', formData);
     }
 
+    /** @deprecated Prefer requestFormDataRead/requestFormDataWrite. Defaults to write-safe semantics. */
     async requestFormData<T>(endpoint: string, formData: FormData): Promise<T> {
+        return this.requestFormDataWrite(endpoint, formData);
+    }
+
+    async requestFormDataRead<T>(endpoint: string, formData: FormData): Promise<T> {
+        return this.requestFormDataWithSemantics(endpoint, formData, 'read');
+    }
+
+    async requestFormDataWrite<T>(endpoint: string, formData: FormData): Promise<T> {
+        try {
+            return await this.requestFormDataWithSemantics(endpoint, formData, 'write');
+        } catch (error) {
+            if (isAmbiguousTransportFailure(error)) throw new WriteOutcomeUnknownError(endpoint, error);
+            throw error;
+        }
+    }
+
+    private async requestFormDataWithSemantics<T>(endpoint: string, formData: FormData, semantics: RequestSemantics): Promise<T> {
         // Do not set Content-Type manually for FormData: fetch must add the multipart boundary.
         return this.readData<T>(`${this.baseUrl}${endpoint}`, {
             method: 'POST',
             headers: this.getAuthHeaders(),
             body: formData,
-        });
+        }, semantics);
     }
 
+    /** @deprecated Prefer requestRead/requestWrite. Defaults to write-safe semantics. */
     async request<T>(endpoint: string, data?: object): Promise<T> {
+        return this.requestWrite(endpoint, data);
+    }
+
+    async requestRead<T>(endpoint: string, data?: object): Promise<T> {
         return this.readData<T>(`${this.baseUrl}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
             body: JSON.stringify(data ?? {}),
-        });
+        }, 'read');
     }
+
+    async requestWrite<T>(endpoint: string, data?: object): Promise<T> {
+        try {
+            return await this.readData<T>(`${this.baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+                body: JSON.stringify(data ?? {}),
+            }, 'write');
+        } catch (error) {
+            if (isAmbiguousTransportFailure(error)) throw new WriteOutcomeUnknownError(endpoint, error);
+            throw error;
+        }
+    }
+}
+
+function isAmbiguousTransportFailure(error: unknown): boolean {
+    if (!(error instanceof Error)) return true;
+    return error.message.startsWith('Request timeout')
+        || !error.message.startsWith('SiYuan API error:')
+            && !error.message.startsWith('HTTP error: 4');
 }

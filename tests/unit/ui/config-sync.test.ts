@@ -367,6 +367,15 @@ describe('setting and mcp config stay behaviorally aligned', () => {
         expect(rootSource).toContain('key === "versionControl__enabled"');
     });
 
+    it('places strict safe writes in Settings & Debug instead of Permissions', () => {
+        const debugSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/DebugPanel.svelte'), 'utf8');
+        const permissionsSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/PermissionsPanel.svelte'), 'utf8');
+
+        expect(debugSource).toContain('key: "writeSafety__strictMode"');
+        expect(debugSource).toContain('write_safety_strict_title');
+        expect(permissionsSource).not.toContain('writeSafety__strictMode');
+    });
+
     it('rebuilds persisted settings panels from explicit Svelte reactive dependencies', () => {
         const debugSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/DebugPanel.svelte'), 'utf8');
         const puppySource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/PuppyPanel.svelte'), 'utf8');

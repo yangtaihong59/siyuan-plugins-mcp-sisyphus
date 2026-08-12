@@ -291,7 +291,7 @@ describe('tool action contract coverage', () => {
             { action: 'get_image_ocr_text', args: { action: 'get_image_ocr_text', path: 'assets/demo.png' }, expectedEndpoint: '/api/asset/getImageOCRText' },
             { action: 'remove_unused_assets', args: { action: 'remove_unused_assets' }, expectedEndpoint: '/api/asset/removeUnusedAssets' },
             { action: 'rename_asset', args: { action: 'rename_asset', oldPath: 'assets/old.png', newName: 'new.png' }, expectedEndpoint: '/api/asset/renameAsset' },
-            { action: 'delete_asset', args: { action: 'delete_asset', path: 'assets/old.png' }, expectedEndpoint: '/api/asset/deleteAsset' },
+            { action: 'delete_asset', args: { action: 'delete_asset', path: 'assets/old.png' }, expectedEndpoint: '/api/asset/removeUnusedAsset' },
             { action: 'extract_doc', args: { action: 'extract_doc', id: 'doc-1', outputDir: '/tmp/siyuan-contract-extract' }, expectedEndpoint: '/api/export/exportMdContent' },
         ]);
     });

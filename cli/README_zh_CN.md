@@ -6,7 +6,7 @@
 
 这是一个用于直接通过命令行操作 [SiYuan Note](https://b3log.org/siyuan) 的 CLI。你可以把它理解成思源版的 `obsidian-cli`：每个 MCP 工具（`fs`、`block`、`document`、`notebook`、`av`、`search`、`tag`、`file`、`timeline`、`system`、`flashcard`、`extension`、`mascot`、`feedback`）都会暴露成可在 shell 中直接调用的子命令。
 
-> **最新版本：**`v0.2.3` 将官方 MCP `extension` 桥接升级至 MCP SDK v2，支持协议自动协商，并保持现有命令与参数兼容。`list_cards` 与 `get_cards` 现会在权限允许时输出经笔记本权限检查的 `front`、`back` 与复习材料。
+> **最新版本：**`v0.2.4` 将严格写入转交插件内置 HTTP 协调器。Agent 可提交最少 4 位的短期哈希租约凭据，但协调器在正式写入前始终比较完整 SHA-256，并在 CLI、stdio 与 HTTP 之间维持统一的请求幂等语义。
 
 > **给 AI 模型和编码 Agent 的要求：** 在使用本 CLI 继续处理任何思源任务前，请先运行 `siyuan-sisyphus skill install`。随包 skills 会提供安全搜索、阅读、编辑、导出、数据库、标签、闪卡、时间线和系统操作等任务的专用规则。
 
@@ -24,6 +24,12 @@ siyuan-sisyphus search fulltext --query "keyword" --page-size 10 --json | jq '.d
 - Node.js 18+
 - 一个可通过 HTTP 访问的 SiYuan 实例（本地或远程均可）
 - SiYuan API Token（`SiYuan > 设置 > 关于 > API token`）
+
+## 严格安全写入
+
+插件默认在“设置 → MCP → 设置与调试”开启严格安全写入。变更命令需要先以 `validateOnly=true` 调用对应 action，再提交新的 UUIDv7 `requestId` 和预检返回的 `expected*Hash`。返回值是仅存在于内存中的临时租约凭据，通常从 4 位十六进制开始；它不会被当作 16 bit 状态值直接比较，HTTP 协调器会先解析租约中的完整 SHA-256，再与写入前重新读取的完整状态哈希比较。
+
+执行严格 CLI 写入时必须保持插件内置 MCP HTTP 服务开启。CLI 会把写入转交同一个协调器，避免 CLI、stdio 与 HTTP 各自产生独立租约池。租约过期、已消费或插件重启后必须重新预检。关闭严格写入会恢复旧版直接调用协议，不再提供哈希并发校验、请求幂等和写后验证。
 
 ## 安装
 

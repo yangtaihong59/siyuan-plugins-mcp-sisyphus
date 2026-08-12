@@ -6,61 +6,61 @@ import type { NotebookConf } from '../types/shared';
  * List all notebooks
  */
 export async function listNotebooks(client: SiYuanClient): Promise<IReslsNotebooks> {
-    return client.request<IReslsNotebooks>('/api/notebook/lsNotebooks');
+    return client.requestRead<IReslsNotebooks>('/api/notebook/lsNotebooks');
 }
 
 /**
  * Open a notebook
  */
 export async function openNotebook(client: SiYuanClient, notebook: string): Promise<null> {
-    return client.request<null>('/api/notebook/openNotebook', { notebook });
+    return client.requestWrite<null>('/api/notebook/openNotebook', { notebook });
 }
 
 /**
  * Close a notebook
  */
 export async function closeNotebook(client: SiYuanClient, notebook: string): Promise<null> {
-    return client.request<null>('/api/notebook/closeNotebook', { notebook });
+    return client.requestWrite<null>('/api/notebook/closeNotebook', { notebook });
 }
 
 /**
  * Create a new notebook
  */
 export async function createNotebook(client: SiYuanClient, name: string): Promise<IResCreateNotebook> {
-    return client.request<IResCreateNotebook>('/api/notebook/createNotebook', { name });
+    return client.requestWrite<IResCreateNotebook>('/api/notebook/createNotebook', { name });
 }
 
 /**
  * Remove a notebook
  */
 export async function removeNotebook(client: SiYuanClient, notebook: string): Promise<null> {
-    return client.request<null>('/api/notebook/removeNotebook', { notebook });
+    return client.requestWrite<null>('/api/notebook/removeNotebook', { notebook });
 }
 
 /**
  * Rename a notebook
  */
 export async function renameNotebook(client: SiYuanClient, notebook: string, name: string): Promise<null> {
-    return client.request<null>('/api/notebook/renameNotebook', { notebook, name });
+    return client.requestWrite<null>('/api/notebook/renameNotebook', { notebook, name });
 }
 
 /**
  * Get notebook configuration
  */
 export async function getNotebookConf(client: SiYuanClient, notebook: string): Promise<IResGetNotebookConf> {
-    return client.request<IResGetNotebookConf>('/api/notebook/getNotebookConf', { notebook });
+    return client.requestRead<IResGetNotebookConf>('/api/notebook/getNotebookConf', { notebook });
 }
 
 /**
  * Set notebook configuration
  */
 export async function setNotebookConf(client: SiYuanClient, notebook: string, conf: Partial<NotebookConf>): Promise<IResSetNotebookConf> {
-    return client.request<IResSetNotebookConf>('/api/notebook/setNotebookConf', { notebook, conf });
+    return client.requestWrite<IResSetNotebookConf>('/api/notebook/setNotebookConf', { notebook, conf });
 }
 
 /**
  * Set notebook icon
  */
 export async function setNotebookIcon(client: SiYuanClient, notebook: string, icon: string): Promise<null> {
-    return client.request<null>('/api/notebook/setNotebookIcon', { notebook, icon } as IReqSetNotebookIcon);
+    return client.requestWrite<null>('/api/notebook/setNotebookIcon', { notebook, icon } as IReqSetNotebookIcon);
 }

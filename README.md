@@ -23,7 +23,7 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.0` — Upgrades to MCP SDK v2 with MCP 2026-07-28 negotiation, protocol-level elicitation, structured tool metadata, and default Skills-over-MCP publication over HTTP and stdio; adds MCP Apps for flashcard review, document timelines, and the mascot shop; and refreshes the analytics dashboard and mascot interactions. CLI is now `v0.2.3`.
+> **Latest:** `v0.6.1` — Adds strict safe writes for built-in mutations, using short-lived hash leases that begin at four hexadecimal characters while always validating the full SHA-256 before committing. The setting is enabled by default under Settings & Debug, and HTTP, stdio, CLI, timeline rollback, and MCP App preview paths were refreshed and verified. CLI is now `v0.2.4`.
 
 ## Project Direction Update
 
@@ -104,6 +104,21 @@ Version 0.6.0 adds three inline MCP Apps for clients that negotiate `io.modelcon
 | Flashcard review | `flashcard_review_session` | The agent selects 1–20 due cards from a fixed, permission-checked candidate snapshot. The user reveals each answer and rates it Again / Hard / Good / Easy without exposing the remaining cards in chat. After the round, the user can ask the agent to explain the reviewed material. |
 | Document timeline | `timeline_app` | Browse and create named nodes, compare a snapshot with the current document, inspect a compact block-level diff, and restore the whole document or one supported block. Pass `documentId` for a document timeline; omitting it intentionally opens a global-only view that can show only global nodes. Rollback uses an in-place second-click confirmation, so the target button does not move under the pointer. |
 | Mascot shop | `mascot_shop_app` | Browse the pixel-art vending machine, queue items in the pickup slot, and complete a purchase only when the item is collected. A successful pickup also triggers the desktop mascot's item and heart animation. |
+
+<p align="center">
+  <img src="./assets/mcp-apps/flashcard-review.jpg" alt="MCP App flashcard review with a prompt, reference answer, and four ratings" width="880">
+</p>
+<p align="center"><em>Flashcard review: the agent selects the cards; the user reveals each answer and rates their recall.</em></p>
+
+<p align="center">
+  <img src="./assets/mcp-apps/document-timeline.jpg" alt="MCP App document timeline showing block-level changes between a node and the current document" width="880">
+</p>
+<p align="center"><em>Document timeline: inspect additions, deletions, and edits in one compact diff, then restore only when needed.</em></p>
+
+<p align="center">
+  <img src="./assets/mcp-apps/mascot-shop.jpg" alt="MCP App mascot shop with a pixel-art vending machine, balance, and pickup slot" width="880">
+</p>
+<p align="center"><em>Mascot shop: choose an item and collect it from the pickup slot to complete the purchase.</em></p>
 
 The Apps follow a deliberately separated interaction model:
 
@@ -201,8 +216,13 @@ Sisyphus-owned tools are designed around explicit user control:
 
 - each notebook can be read-only, writable, deletable, or hidden from AI;
 - dangerous actions such as delete, move, replace, and asset upload are treated separately;
+- Strict Safe Writes is enabled by default under Settings → MCP → Settings & Debug. A mutation first uses `validateOnly=true` to obtain the current-state hash, then submits a fresh UUIDv7 `requestId` with the matching `expected*Hash`;
+- write transport is attempted once. A timeout or disconnect returns `outcome_unknown` instead of risking a duplicate through a blind retry; a committed `requestId` is replayed from the metadata ledger;
+- strict mode creates no SiYuan data snapshots. It relies on target-state hashes, serial coordination, post-write readback, and a hash/ID-only idempotency ledger; notifications, sync, exports, and third-party tools that cannot be read back are explicitly marked as not strictly guaranteed;
 - MCP and CLI share the same core behavior, so switching entry points does not create a second permission model;
 - remote and Docker use cases go through the SiYuan HTTP API instead of assuming direct access to local workspace files.
+
+See [Strict Safe Writes](./docs/reference/write-safety.md) for the call protocol, error semantics, and current boundaries. Strict writes from the standalone CLI and stdio server are forwarded to the plugin-hosted HTTP server's single coordinator, so that HTTP service must remain enabled. Disabling the setting restores the legacy argument and direct-call behavior, while mutation responses explicitly state that the strict guarantee is absent.
 
 The official MCP bridge is a separate tool source. Forwarded calls execute with the current SiYuan administrator session or API Token and do not automatically inherit the notebook permissions or dangerous-action controls above. Before enabling or invoking them, ensure that the external agent, network environment, and downstream tool are trusted.
 
@@ -230,6 +250,7 @@ Do not include API tokens, secrets, private note content, or sensitive local pat
 - [Common Tasks](./docs/reference/common-tasks.md)
 - [Tool Reference](./docs/reference/index.md)
 - [Permissions](./docs/reference/permissions.md)
+- [Strict Safe Writes](./docs/reference/write-safety.md)
 - [Development Guide](./docs/development/index.md)
 - [中文 README](./README_zh_CN.md)
 

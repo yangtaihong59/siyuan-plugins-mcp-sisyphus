@@ -7,6 +7,7 @@ describe('system api wrappers', () => {
         const request = vi.fn().mockResolvedValueOnce('3.1.0');
         const client = {
             request,
+            requestRead: request,
         } as never;
 
         await expect(getVersion(client)).resolves.toBe('3.1.0');
@@ -17,6 +18,7 @@ describe('system api wrappers', () => {
         const request = vi.fn().mockResolvedValueOnce(1710000000000);
         const client = {
             request,
+            requestRead: request,
         } as never;
 
         await expect(getCurrentTime(client)).resolves.toBe(1710000000000);
@@ -28,6 +30,7 @@ describe('system api wrappers', () => {
         const request = vi.fn().mockResolvedValueOnce(response);
         const client = {
             request,
+            requestWrite: request,
         } as never;
 
         await expect(performSync(client)).resolves.toBe(response);

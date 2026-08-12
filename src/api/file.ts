@@ -19,7 +19,7 @@ export async function uploadAsset(
     const file = new File([fileContent as Uint8Array<ArrayBuffer>], fileName);
     formData.append('assetsDirPath', assetsDirPath);
     formData.append('file[]', file, fileName);
-    return client.requestFormData<{ errFiles: string[]; succMap: { [key: string]: string } }>('/api/asset/upload', formData);
+    return client.requestFormDataWrite<{ errFiles: string[]; succMap: { [key: string]: string } }>('/api/asset/upload', formData);
 }
 
 /**
@@ -32,7 +32,7 @@ export async function exportMdContent(
     const request: IReqExportMdContent = {
         id,
     };
-    return client.request<IResExportMdContent>('/api/export/exportMdContent', request);
+    return client.requestRead<IResExportMdContent>('/api/export/exportMdContent', request);
 }
 
 /**
@@ -47,27 +47,27 @@ export async function exportResources(
         paths,
         name,
     };
-    return client.request<IResExportResources>('/api/export/exportResources', request);
+    return client.requestRead<IResExportResources>('/api/export/exportResources', request);
 }
 
 export async function getUnusedAssets(client: SiYuanClient): Promise<unknown> {
-    return client.request('/api/asset/getUnusedAssets', {});
+    return client.requestRead('/api/asset/getUnusedAssets', {});
 }
 
 export async function getDocAssets(client: SiYuanClient, id: string): Promise<unknown> {
-    return client.request('/api/asset/getDocAssets', { id });
+    return client.requestRead('/api/asset/getDocAssets', { id });
 }
 
 export async function getDocImageAssets(client: SiYuanClient, id: string): Promise<unknown> {
-    return client.request('/api/asset/getDocImageAssets', { id });
+    return client.requestRead('/api/asset/getDocImageAssets', { id });
 }
 
 export async function getImageOCRText(client: SiYuanClient, path?: string): Promise<{ text: string }> {
-    return client.request<{ text: string }>('/api/asset/getImageOCRText', path ? { path } : {});
+    return client.requestRead<{ text: string }>('/api/asset/getImageOCRText', path ? { path } : {});
 }
 
 export async function removeUnusedAssets(client: SiYuanClient): Promise<unknown> {
-    return client.request('/api/asset/removeUnusedAssets', {});
+    return client.requestWrite('/api/asset/removeUnusedAssets', {});
 }
 
 export async function renameAsset(
@@ -75,14 +75,14 @@ export async function renameAsset(
     oldPath: string,
     newName: string,
 ): Promise<{ newPath?: string }> {
-    return client.request('/api/asset/renameAsset', { oldPath, newName });
+    return client.requestWrite('/api/asset/renameAsset', { oldPath, newName });
 }
 
 export async function deleteAsset(
     client: SiYuanClient,
     path: string,
 ): Promise<unknown> {
-    return client.request('/api/asset/deleteAsset', { path });
+    return client.requestWrite('/api/asset/removeUnusedAsset', { path });
 }
 
 export async function setImageAlpha(
@@ -90,5 +90,5 @@ export async function setImageAlpha(
     path: string,
     alpha: number,
 ): Promise<unknown> {
-    return client.request('/api/asset/setImageAlpha', { path, alpha });
+    return client.requestWrite('/api/asset/setImageAlpha', { path, alpha });
 }

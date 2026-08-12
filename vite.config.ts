@@ -21,6 +21,7 @@ const mcpAppHtmlPath = resolve(__dirname, mcpAppOutputDir, "index.html");
 const serverExternals = [
     "siyuan",
     "process",
+    "node:process",
     "path",
     "fs",
     "node:path",
@@ -162,6 +163,10 @@ function createRendererConfig() {
 function createServerConfig() {
     return {
         resolve: {
+            // The MCP SDK exposes separate browser/workerd/node shims. Vite's
+            // default `browser` condition otherwise wins while bundling the
+            // Node server and makes the stdio transport throw at startup.
+            conditions: ["node"],
             alias: {
                 "@": resolve(__dirname, "src"),
             },
@@ -230,8 +235,9 @@ function createServerConfig() {
                                 outDir: "./",
                                 outFileName: "package.zip",
                             }),
-                        ]),
+                    ]),
                     assertNoLocalRequire("mcp-server.cjs"),
+                    assertNodeMcpStdio("mcp-server.cjs"),
                 ],
                 output: {
                     inlineDynamicImports: true,
@@ -312,6 +318,7 @@ function createCliConfig() {
     return {
         publicDir: false as const,
         resolve: {
+            conditions: ["node"],
             alias: {
                 "@": resolve(__dirname, "src"),
             },
@@ -348,6 +355,19 @@ function createCliConfig() {
                     banner: "#!/usr/bin/env node",
                 },
             },
+        },
+    };
+}
+
+function assertNodeMcpStdio(entryFileName: string) {
+    const unsupportedMessage = "StdioServerTransport is not supported in this environment";
+    return {
+        name: `assert-node-mcp-stdio-${entryFileName}`,
+        generateBundle(_options: unknown, bundle: Record<string, any>) {
+            const entry = bundle[entryFileName];
+            if (entry?.type === "chunk" && entry.code.includes(unsupportedMessage)) {
+                this.error(`Browser MCP stdio shim leaked into ${entryFileName}; resolve the SDK with the node condition.`);
+            }
         },
     };
 }

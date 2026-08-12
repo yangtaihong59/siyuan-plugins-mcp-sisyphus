@@ -3,6 +3,8 @@ import { AGENT_MEMORY_VIRTUAL_PATH, isDangerousAction, TOOL_CATEGORIES, USER_RUL
 import type { PermissionManager } from './permissions';
 import type { ToolResult } from '@/tools/internal/shared';
 import type { OfficialMcpRuntime, OfficialMcpDiscoverySnapshot } from './official-mcp-bridge';
+import { ACTION_SCHEMA_BRANCHES_KEY } from '@/tools/internal/shared';
+import { PRECONDITION_FIELD, getActionSafetyPolicy } from './write-safety-policy';
 
 import {
     callAvTool,
@@ -155,7 +157,7 @@ export function listAllTools(config: ToolConfig, runtime?: OfficialMcpRuntime): 
     const tools = TOOL_CATEGORIES.flatMap((cat) => {
         const enabledDangerousAction = Object.entries(config[cat].actions)
             .some(([action, enabled]) => enabled && isDangerousAction(cat, action));
-        return TOOL_REGISTRY[cat].listTools(config[cat], runtime).map((tool) => ({
+        return listConfiguredToolsForCategory(cat, config, runtime).map((tool) => ({
             ...tool,
             title: tool.title ?? TOOL_TITLES[cat],
             outputSchema: tool.outputSchema ?? { ...GENERIC_TOOL_OUTPUT_SCHEMA },
@@ -180,4 +182,72 @@ export function listAllTools(config: ToolConfig, runtime?: OfficialMcpRuntime): 
             config.userRulesText.trim() ? USER_RULES_TOOL_DESCRIPTION_REMINDER : '',
         ].filter(Boolean).join('\n\n'),
     }));
+}
+
+export function listConfiguredToolsForCategory(
+    category: ToolCategory,
+    config: ToolConfig,
+    runtime?: OfficialMcpRuntime,
+): ToolDescriptor[] {
+    const descriptors = TOOL_REGISTRY[category].listTools(config[category], runtime);
+    if (!config.writeSafety.strictMode) return descriptors;
+    return descriptors.map((descriptor) => decorateStrictWriteSchema(category, descriptor));
+}
+
+function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescriptor): ToolDescriptor {
+    const inputSchema = { ...descriptor.inputSchema } as Record<string, any>;
+    const properties = { ...(inputSchema.properties ?? {}) };
+    properties.requestId = {
+        type: 'string',
+        pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+        description: 'Fresh UUIDv7. Required when executing any strict write; omit for validateOnly preflight.',
+    };
+    properties.validateOnly = {
+        type: 'boolean',
+        description: 'Preflight only. Returns a temporary in-memory hash credential and never executes the write.',
+    };
+    for (const field of Object.values(PRECONDITION_FIELD)) {
+        properties[field] = {
+            type: 'string',
+            pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
+            description: 'Temporary preflight credential (4-64 hex characters, optionally sha256:v1: prefixed). It must resolve to an active lease for this exact mutation scope.',
+        };
+    }
+    properties.expectedHash = {
+        type: 'string',
+        pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
+        description: 'Alias of expectedStateHash for content-oriented strict writes.',
+    };
+    inputSchema.properties = properties;
+
+    const originalBranches = descriptor.inputSchema[ACTION_SCHEMA_BRANCHES_KEY] as Array<Record<string, any>> | undefined;
+    if (originalBranches) {
+        const branches = originalBranches.map((branch) => {
+            const action = branch?.properties?.action?.const;
+            if (typeof action !== 'string' || action === 'help') return branch;
+            const policy = getActionSafetyPolicy(category, action);
+            if (policy.mode !== 'mutation') return branch;
+            const branchProperties = {
+                ...(branch.properties ?? {}),
+                requestId: properties.requestId,
+                validateOnly: properties.validateOnly,
+            };
+            if (policy.precondition !== 'none') {
+                const field = PRECONDITION_FIELD[policy.precondition];
+                branchProperties[field] = properties[field];
+                if (field === 'expectedStateHash') branchProperties.expectedHash = properties.expectedHash;
+            }
+            return { ...branch, properties: branchProperties };
+        });
+        Object.defineProperty(inputSchema, ACTION_SCHEMA_BRANCHES_KEY, {
+            value: branches,
+            enumerable: false,
+        });
+    }
+
+    return {
+        ...descriptor,
+        description: `${descriptor.description ?? ''}\n\nStrict safe writes are enabled. Run a mutation with validateOnly=true to obtain a temporary in-memory hash credential, then execute with a fresh requestId and that credential before its lease expires.`,
+        inputSchema,
+    };
 }

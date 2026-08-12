@@ -45,13 +45,15 @@
     }
 
     function buildPermItems(): ISettingItem[] {
-        const items: ISettingItem[] = [{
-            type: "checkbox",
-            key: "permissionDisplay__showInFileTree",
-            value: permissionDisplaySettings.showInFileTree,
-            title: getLabel("permission_tree_show_title", "在文件树显示 MCP 权限"),
-            description: buildPermissionTreeDescription(),
-        }];
+        const items: ISettingItem[] = [
+            {
+                type: "checkbox",
+                key: "permissionDisplay__showInFileTree",
+                value: permissionDisplaySettings.showInFileTree,
+                title: getLabel("permission_tree_show_title", "在文件树显示 MCP 权限"),
+                description: buildPermissionTreeDescription(),
+            },
+        ];
 
         if (notebooks.length === 0) {
             items.push({

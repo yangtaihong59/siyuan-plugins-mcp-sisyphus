@@ -834,7 +834,9 @@ describe('MCP Server Integration', () => {
         }
 
         it('omits successful uiRefresh metadata by default', async () => {
-            const metadataClient = await createClientWithStoredConfig({});
+            const metadataClient = await createClientWithStoredConfig({
+                writeSafety: { strictMode: false },
+            });
 
             const result = await metadataClient.callTool({
                 name: 'notebook',
@@ -851,6 +853,7 @@ describe('MCP Server Integration', () => {
         it('includes successful uiRefresh metadata when slim responses are disabled', async () => {
             const metadataClient = await createClientWithStoredConfig({
                 debug: { slimResponses: false },
+                writeSafety: { strictMode: false },
             });
 
             const result = await metadataClient.callTool({

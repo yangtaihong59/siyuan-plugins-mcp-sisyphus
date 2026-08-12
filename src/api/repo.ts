@@ -49,23 +49,23 @@ export interface RepoSnapshotFileContent {
 }
 
 export async function createSnapshot(client: SiYuanClient, memo = ''): Promise<unknown> {
-    return client.request('/api/repo/createSnapshot', { memo });
+    return client.requestWrite('/api/repo/createSnapshot', { memo });
 }
 
 export async function tagSnapshot(client: SiYuanClient, id: string, name = ''): Promise<unknown> {
-    return client.request('/api/repo/tagSnapshot', { id, name });
+    return client.requestWrite('/api/repo/tagSnapshot', { id, name });
 }
 
 export async function getRepoSnapshots(client: SiYuanClient, page = 1): Promise<RepoSnapshotsResult> {
-    return client.request<RepoSnapshotsResult>('/api/repo/getRepoSnapshots', { page });
+    return client.requestRead<RepoSnapshotsResult>('/api/repo/getRepoSnapshots', { page });
 }
 
 export async function getRepoTagSnapshots(client: SiYuanClient): Promise<{ snapshots: RepoSnapshot[] }> {
-    return client.request<{ snapshots: RepoSnapshot[] }>('/api/repo/getRepoTagSnapshots', {});
+    return client.requestRead<{ snapshots: RepoSnapshot[] }>('/api/repo/getRepoTagSnapshots', {});
 }
 
 export async function removeRepoTagSnapshot(client: SiYuanClient, tag: string): Promise<unknown> {
-    return client.request('/api/repo/removeRepoTagSnapshot', { tag });
+    return client.requestWrite('/api/repo/removeRepoTagSnapshot', { tag });
 }
 
 export async function diffRepoSnapshots(
@@ -73,13 +73,13 @@ export async function diffRepoSnapshots(
     left: string,
     right: string,
 ): Promise<RepoSnapshotDiffResult> {
-    return client.request<RepoSnapshotDiffResult>('/api/repo/diffRepoSnapshots', { left, right });
+    return client.requestRead<RepoSnapshotDiffResult>('/api/repo/diffRepoSnapshots', { left, right });
 }
 
 export async function openRepoSnapshotFile(client: SiYuanClient, id: string): Promise<RepoSnapshotFileContent> {
-    return client.request<RepoSnapshotFileContent>('/api/repo/openRepoSnapshotFile', { id });
+    return client.requestRead<RepoSnapshotFileContent>('/api/repo/openRepoSnapshotFile', { id });
 }
 
 export async function rollbackRepoSnapshotFile(client: SiYuanClient, id: string): Promise<unknown> {
-    return client.request('/api/repo/rollbackRepoSnapshotFile', { id });
+    return client.requestWrite('/api/repo/rollbackRepoSnapshotFile', { id });
 }

@@ -6,7 +6,7 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.3` upgrades the official MCP `extension` bridge to MCP SDK v2 with automatic protocol negotiation while preserving existing commands and flags. Readable flashcards now include permission-checked `front`, `back`, and review material in `list_cards` and `get_cards` output.
+> **Latest:** `v0.2.4` forwards strict mutations to the plugin-hosted HTTP coordinator. Agents may submit a short-lived hash lease starting at four hexadecimal characters, while the coordinator always compares the full SHA-256 before committing and preserves request idempotency across CLI, stdio, and HTTP.
 
 > **For AI models and coding agents:** before doing any SiYuan work with this CLI, run `siyuan-sisyphus skill install` first. The bundled skills provide the task-specific operating rules for safe search, reading, editing, export, database, tag, flashcard, timeline, and system workflows.
 
@@ -24,6 +24,12 @@ siyuan-sisyphus search fulltext --query "keyword" --page-size 10 --json | jq '.d
 - Node.js 18+
 - A running SiYuan instance reachable over HTTP (local or remote)
 - The SiYuan API token (`SiYuan > Settings > About > API token`)
+
+## Strict safe writes
+
+Strict safe writes are enabled by default in the plugin under Settings → MCP → Settings & Debug. Mutation commands first run the action with `validateOnly=true`, then submit a fresh UUIDv7 `requestId` and the returned `expected*Hash`. The returned value is a temporary in-memory lease credential, normally beginning with four hexadecimal characters; it is never used as a 16-bit state comparison because the HTTP coordinator resolves it to the leased full SHA-256 and compares that full hash with a fresh read before writing.
+
+Keep the plugin-hosted MCP HTTP server enabled while using strict CLI mutations. The CLI forwards these writes to that single coordinator so CLI, stdio, and HTTP do not create independent lease pools. Expired, consumed, or restart-invalidated leases require a new preflight. Turning strict writes off restores the legacy direct-call contract without hash concurrency checks, request idempotency, or post-write verification.
 
 ## Install
 

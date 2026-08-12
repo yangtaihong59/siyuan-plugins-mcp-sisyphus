@@ -89,6 +89,15 @@ export interface DebugToolConfig {
     slimResponses: boolean;
 }
 
+export interface WriteSafetyConfig {
+    /**
+     * Enforce optimistic concurrency and idempotency for every Sisyphus-owned
+     * mutation. This deliberately defaults to true when the field is absent
+     * or the persisted configuration cannot be read.
+     */
+    strictMode: boolean;
+}
+
 export type ToolConfig = {
     fs: CategoryToolConfig<FsAction>;
     notebook: CategoryToolConfig<NotebookAction>;
@@ -108,6 +117,7 @@ export type ToolConfig = {
     userRulesText: string;
     agentSiyuanMemoryText: string;
     agentSiyuanMemoryUpdatedAt: string;
+    writeSafety: WriteSafetyConfig;
     debug: DebugToolConfig;
 };
 
@@ -336,6 +346,9 @@ export function buildDefaultToolConfig(): ToolConfig {
         userRulesText: '创建文档/日记后主动设图标',
         agentSiyuanMemoryText: '',
         agentSiyuanMemoryUpdatedAt: '',
+        writeSafety: {
+            strictMode: true,
+        },
         debug: {
             includeUiRefreshMetadata: false,
             slimResponses: true,
@@ -430,6 +443,9 @@ function applyNestedConfig(config: ToolConfig, raw: Record<string, unknown>) {
     }
     if (typeof raw.agentSiyuanMemoryUpdatedAt === 'string') {
         config.agentSiyuanMemoryUpdatedAt = raw.agentSiyuanMemoryUpdatedAt;
+    }
+    if (isRecord(raw.writeSafety) && typeof raw.writeSafety.strictMode === 'boolean') {
+        config.writeSafety.strictMode = raw.writeSafety.strictMode;
     }
     if (isRecord(raw.debug)) {
         if (typeof raw.debug.includeUiRefreshMetadata === 'boolean') {

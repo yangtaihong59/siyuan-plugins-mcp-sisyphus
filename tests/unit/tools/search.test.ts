@@ -218,6 +218,85 @@ describe('search tool filtering', () => {
         expect(parseResult(result)).toEqual([{ path: 'assets/diagram.png' }]);
     });
 
+    it('defaults find_replace to plain text instead of sending an empty replacement scope', async () => {
+        const client = createMockClient({
+            request: async (endpoint: string, body: unknown) => {
+                if (endpoint === '/api/query/sql') {
+                    return [{ id: 'block-1', root_id: 'block-1', box: 'nb-1', path: '/doc.sy', type: 'p' }];
+                }
+                if (endpoint === '/api/block/getBlockInfo') return { id: 'block-1', rootID: 'doc-1' };
+                expect(endpoint).toBe('/api/search/findReplace');
+                expect(body).toMatchObject({
+                    k: 'old',
+                    r: 'new',
+                    ids: ['block-1'],
+                    replaceTypes: { text: true },
+                });
+                return null;
+            },
+        });
+        const permMgr = {
+            reload: vi.fn(async () => undefined),
+            canWrite: () => true,
+            canRead: () => true,
+            canDelete: () => true,
+            get: () => 'rwd',
+        };
+
+        const result = await callSearchTool(client, {
+            action: 'find_replace',
+            k: 'old',
+            r: 'new',
+            ids: ['block-1'],
+        }, buildDefaultToolConfig().search, permMgr as never);
+
+        expect(parseResult(result)).toMatchObject({
+            success: true,
+            replaced: true,
+            replaceTypes: { text: true },
+        });
+    });
+
+    it('expands a document find_replace scope to body block IDs', async () => {
+        let replacementBody: unknown;
+        const client = createMockClient({
+            request: async (endpoint: string, body: any) => {
+                if (endpoint === '/api/query/sql') {
+                    return [{ id: 'doc-1', root_id: 'doc-1', box: 'nb-1', path: '/doc.sy', type: 'd' }];
+                }
+                if (endpoint === '/api/block/getBlockInfo') return { id: 'doc-1', rootID: 'doc-1' };
+                if (endpoint === '/api/block/getChildBlocks') {
+                    if (body.id === 'doc-1') return [{ id: 'paragraph-1', type: 'p' }];
+                    return [];
+                }
+                if (endpoint === '/api/search/findReplace') {
+                    replacementBody = body;
+                    return null;
+                }
+                return null;
+            },
+        });
+        const permMgr = {
+            reload: vi.fn(async () => undefined),
+            canWrite: () => true,
+            canRead: () => true,
+            canDelete: () => true,
+            get: () => 'rwd',
+        };
+
+        await callSearchTool(client, {
+            action: 'find_replace',
+            k: 'old',
+            r: 'new',
+            ids: ['doc-1'],
+        }, buildDefaultToolConfig().search, permMgr as never);
+
+        expect(replacementBody).toMatchObject({
+            ids: ['paragraph-1'],
+            replaceTypes: { text: true },
+        });
+    });
+
     it('maps search_refs keyword alias to k while still requiring id', async () => {
         const client = createMockClient({
             request: async (endpoint: string, body: unknown) => {

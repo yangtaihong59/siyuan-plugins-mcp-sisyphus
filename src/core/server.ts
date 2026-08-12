@@ -6,6 +6,10 @@ import { buildServerInstructions } from './server-instructions';
 
 import { SiYuanClient } from '../api/client';
 import { buildDefaultToolConfig, isDangerousAction, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
+import { WriteSafetyCoordinator } from './write-safety-coordinator';
+import { getActionSafetyPolicy } from './write-safety-policy';
+import { callCliWriteCoordinator } from '../cli/write-coordinator';
+import type { CliWriteCoordinatorSettings } from '../cli/runtime';
 import { noopSchemaValidator } from './noops/noop-schema-validator';
 import { OfficialMcpBridge, type OfficialMcpRuntime } from './official-mcp-bridge';
 
@@ -104,9 +108,27 @@ function createInstructionClient(): SiYuanClient {
     return client;
 }
 
+const HTTP_SETTINGS_API_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpHttpSettings';
+
+async function loadRemoteWriteCoordinatorSettings(client: SiYuanClient): Promise<CliWriteCoordinatorSettings | undefined> {
+    try {
+        const raw = JSON.parse(await client.readFile(HTTP_SETTINGS_API_PATH)) as Record<string, unknown>;
+        if (raw.enabled === false) return undefined;
+        const hostValue = typeof raw.host === 'string' ? raw.host : '127.0.0.1';
+        const host = hostValue === '0.0.0.0' || hostValue === '::' ? '127.0.0.1' : hostValue;
+        const port = typeof raw.port === 'number' ? raw.port : 36806;
+        const scheme = raw.tlsEnabled === true ? 'https' : 'http';
+        const token = raw.authEnabled === true && typeof raw.token === 'string' ? raw.token : undefined;
+        return { url: `${scheme}://${host}:${port}/mcp`, token };
+    } catch {
+        return undefined;
+    }
+}
+
 export interface CreateSiYuanServerOptions {
     officialMcpFetch?: typeof fetch;
     runtime?: SiYuanServerRuntime;
+    transportMode?: 'http' | 'stdio';
 }
 
 export interface SiYuanServerRuntime {
@@ -116,6 +138,7 @@ export interface SiYuanServerRuntime {
     initialConfigLoad: ToolConfigLoadResult;
     officialMcpBridge: OfficialMcpBridge;
     permMgr: PermissionManager;
+    writeSafetyCoordinator: WriteSafetyCoordinator;
     getToolConfig(): Promise<ToolConfig>;
     close(): Promise<void>;
 }
@@ -140,6 +163,7 @@ export async function createSiYuanServerRuntime(
     const initialConfigLoad: ToolConfigLoadResult = await loadToolConfigFromApiFileWithStatus(instructionClient);
     const officialMcpBridge = new OfficialMcpBridge(client, { fetch: options.officialMcpFetch });
     const permMgr = new PermissionManager(fastClient);
+    const writeSafetyCoordinator = new WriteSafetyCoordinator(client);
     try {
         await permMgr.load();
     } catch {
@@ -153,6 +177,7 @@ export async function createSiYuanServerRuntime(
         initialConfigLoad,
         officialMcpBridge,
         permMgr,
+        writeSafetyCoordinator,
         getToolConfig,
         close: () => officialMcpBridge.close(),
     };
@@ -166,6 +191,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         initialConfigLoad,
         officialMcpBridge,
         permMgr,
+        writeSafetyCoordinator,
         getToolConfig,
     } = runtime;
     const initialConfig = initialConfigLoad.config;
@@ -378,10 +404,29 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             : category === 'extension'
                 ? true
                 : (config[category].actions as Record<string, boolean>)[action] === true;
+        if (action !== 'help' && !actionEnabled) {
+            const disabled = {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify({
+                        error: {
+                            type: 'action_disabled',
+                            message: `Action "${action}" is disabled for tool "${name}".`,
+                            hint: 'Enable the action in Settings -> Plugins -> SiYuan MCP sisyphus, or call listTools() again to inspect the currently enabled actions.',
+                        },
+                    }, null, 2),
+                }],
+                isError: true,
+            };
+            return server.projectCallToolResult(
+                withStructuredContent(disabled),
+                GENERIC_TOOL_OUTPUT_SCHEMA,
+            );
+        }
         const extensionTool = category === 'extension'
             ? officialMcpBridge.getTools().find((tool) => tool.name === action)
             : undefined;
-        const requiresConfirmation = actionEnabled && (
+        const requiresConfirmation = actionEnabled && args?.validateOnly !== true && (
             isDangerousAction(category as ToolCategory, action)
             || (category === 'extension' && action !== 'list' && action !== 'help' && extensionTool?.readOnlyHint !== true)
         );
@@ -446,6 +491,11 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             }
         }
 
+        const policy = getActionSafetyPolicy(category, action, args ?? {});
+        const transportMode = options.transportMode ?? parseTransportMode();
+        const routeToRemoteCoordinator = config.writeSafety.strictMode
+            && policy.mode === 'mutation'
+            && transportMode !== 'http';
         const result = await runToolCall(
             {
                 client,
@@ -458,9 +508,26 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                     : JSON.stringify({ name, arguments: args ?? {} }),
                 slimResponses: config.debug.slimResponses,
             },
-            () => appActionConfig
-                ? module.callTool(client, args, appActionConfig, permMgr, officialMcpRuntime)
-                : module.callTool(client, args, config[category], permMgr, officialMcpRuntime),
+            async () => {
+                if (routeToRemoteCoordinator) {
+                    return callCliWriteCoordinator(
+                        await loadRemoteWriteCoordinatorSettings(client),
+                        name,
+                        args ?? {},
+                    );
+                }
+                return writeSafetyCoordinator.run({
+                    client,
+                    permMgr,
+                    category,
+                    action,
+                    args: args ?? {},
+                    strictMode: config.writeSafety.strictMode,
+                    execute: (safeArgs) => appActionConfig
+                        ? module.callTool(client, safeArgs, appActionConfig, permMgr, officialMcpRuntime)
+                        : module.callTool(client, safeArgs, config[category], permMgr, officialMcpRuntime),
+                });
+            },
         );
         // The low-level v2 Server leaves cross-era result projection to the
         // handler. Our tools currently have text-only output and no advertised
@@ -545,7 +612,7 @@ export async function startMcpServer() {
                     ?.split(',')
                     .map((value) => value.trim())
                     .filter(Boolean),
-                serverFactory: () => createSiYuanServer({ runtime }),
+                serverFactory: () => createSiYuanServer({ runtime, transportMode: 'http' }),
                 dispose: () => runtime.close(),
                 tls,
             });

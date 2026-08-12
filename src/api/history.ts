@@ -28,7 +28,7 @@ export async function searchHistory(
         page?: number;
     } = {},
 ): Promise<HistorySearchResult> {
-    return client.request<HistorySearchResult>('/api/history/searchHistory', params);
+    return client.requestRead<HistorySearchResult>('/api/history/searchHistory', params);
 }
 
 export async function getHistoryItems(
@@ -40,7 +40,7 @@ export async function getHistoryItems(
         op?: string;
     },
 ): Promise<HistoryItemsResult> {
-    return client.request<HistoryItemsResult>('/api/history/getHistoryItems', params);
+    return client.requestRead<HistoryItemsResult>('/api/history/getHistoryItems', params);
 }
 
 export async function getDocHistoryContent(
@@ -49,7 +49,7 @@ export async function getDocHistoryContent(
     keyword = '',
     highlight = false,
 ): Promise<DocHistoryContent> {
-    return client.request<DocHistoryContent>('/api/history/getDocHistoryContent', {
+    return client.requestRead<DocHistoryContent>('/api/history/getDocHistoryContent', {
         historyPath,
         keyword,
         highlight,
@@ -61,5 +61,5 @@ export async function rollbackDocHistory(
     notebook: string,
     historyPath: string,
 ): Promise<{ box: string }> {
-    return client.request<{ box: string }>('/api/history/rollbackDocHistory', { notebook, historyPath });
+    return client.requestWrite<{ box: string }>('/api/history/rollbackDocHistory', { notebook, historyPath });
 }

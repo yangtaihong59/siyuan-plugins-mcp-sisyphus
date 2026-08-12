@@ -47,6 +47,7 @@ describe('setting tool config', () => {
         expect(config.userRulesText).toBe('创建文档/日记后主动设图标');
         expect(config.agentSiyuanMemoryText).toBe('');
         expect(config.agentSiyuanMemoryUpdatedAt).toBe('');
+        expect(config.writeSafety.strictMode).toBe(true);
         expect(config.debug.includeUiRefreshMetadata).toBe(false);
         expect(config.debug.slimResponses).toBe(true);
     });
@@ -295,6 +296,11 @@ describe('setting tool config', () => {
 
         expect(config.debug.includeUiRefreshMetadata).toBe(true);
         expect(config.debug.slimResponses).toBe(false);
+    });
+
+    it('keeps strict write safety enabled for old config and honors an explicit opt-out', () => {
+        expect(normalizeToolConfig({}).writeSafety.strictMode).toBe(true);
+        expect(normalizeToolConfig({ writeSafety: { strictMode: false } }).writeSafety.strictMode).toBe(false);
     });
 
     it('ignores legacy flat and category config formats', () => {
