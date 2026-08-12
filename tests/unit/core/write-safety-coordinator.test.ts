@@ -316,38 +316,80 @@ describe('write safety coordinator', () => {
         );
     });
 
-    it('preflights select options against a verified rw AV carrier without requiring rwd', async () => {
+    it.each([
+        'set_column_options',
+        'create_from_template',
+        'configure_two_way_relation',
+        'configure_rollup',
+        'set_relation',
+    ])('preflights dangerous AV action %s against a verified rw carrier without requiring rwd', async (action) => {
         const avID = '20260813000000-avopts01';
         const carrierBlockID = '20260813000001-carrier';
+        const destinationAvID = '20260813000002-avdest01';
+        const destinationBlockID = '20260813000003-destcar';
+        const sourceItemID = '20260813000004-sourcei';
+        const destinationItemID = '20260813000005-desti01';
+        const relationKeyID = '20260813000006-relkey1';
+        const rollupKeyID = '20260813000007-rollup1';
+        const destinationKeyID = '20260813000008-destkey';
+        const templateID = '20260813000009-templat';
         const client = {
             readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/av/getAttributeView') {
+                    if (body?.id === destinationAvID) {
+                        return { av: {
+                            id: destinationAvID,
+                            keyValues: [
+                                { key: { type: 'block' }, values: [{ blockID: destinationItemID, block: { id: '20260813000010-destdoc' } }] },
+                                { key: { id: '20260813000011-backkey', type: 'relation', relation: { avID, backKeyID: relationKeyID, isTwoWay: true } }, values: [] },
+                                { key: { id: destinationKeyID, type: 'text' }, values: [] },
+                            ],
+                            views: [{ id: '20260813000012-destview', itemIDs: [destinationItemID] }],
+                        } };
+                    }
                     return {
                         av: {
                             id: avID,
-                            keyValues: [{ key: { id: 'status', type: 'select', options: [] }, values: [] }],
-                            views: [],
+                            keyValues: [
+                                { key: { type: 'block' }, values: [{ blockID: sourceItemID, block: { id: '20260813000013-sourcedoc' } }] },
+                                { key: { id: 'status', type: 'select', options: [] }, values: [] },
+                                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID, backKeyID: '20260813000011-backkey', isTwoWay: true } }, values: [] },
+                                { key: { id: rollupKeyID, type: 'rollup' }, values: [] },
+                            ],
+                            newItemTemplates: [{ id: templateID, name: 'Fixture document', targetType: 'document', saveLocation: { boxID: 'nb-rw', pathTemplate: '/Fixture document' } }],
+                            views: [{ id: '20260813000014-sourceview', itemIDs: [sourceItemID] }],
                         },
                     };
                 }
                 if (endpoint === '/api/block/getBlockDOM') {
-                    return { id: body?.id, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                    const isDestination = body?.id === destinationBlockID;
+                    return { id: body?.id, dom: `<div data-type="NodeAttributeView" data-av-id="${isDestination ? destinationAvID : avID}"></div>` };
                 }
                 if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, box: 'nb-rw' };
+                if (endpoint === '/api/av/getMirrorDatabaseBlocks') return { refDefs: [{ refID: destinationBlockID }] };
+                if (endpoint === '/api/notebook/getNotebookConf') return { notebook: 'nb-rw', revision: 1 };
                 return [];
             }),
         } as never;
         const permMgr = createMockPermissionManager({ canWrite: (notebook) => notebook === 'nb-rw', canDelete: () => false });
         permMgr.getAll = vi.fn(() => ({ 'nb-rw': 'rw' }));
+        const actionArgs: Record<string, Record<string, unknown>> = {
+            set_column_options: { keyID: 'status', options: [] },
+            set_new_item_templates: { templates: [], defaultTemplateID: '' },
+            create_from_template: { templateID },
+            configure_two_way_relation: { keyID: relationKeyID, destinationAvID, destinationBlockID, backRelationKeyID: '20260813000011-backkey', sourceName: 'Source', destinationName: 'Destination' },
+            configure_rollup: { keyID: rollupKeyID, relationKeyID, destinationKeyID, calc: { operator: 'Count all' } },
+            set_relation: { itemID: sourceItemID, keyID: relationKeyID, relatedItemIDs: [destinationItemID] },
+        };
         const result = parseResult(await new WriteSafetyCoordinator(client).run({
             client,
             permMgr,
             category: 'av',
-            action: 'set_column_options',
+            action,
             args: {
-                action: 'set_column_options', avID, blockID: carrierBlockID, keyID: 'status', options: [], validateOnly: true,
+                action, avID, blockID: carrierBlockID, ...actionArgs[action], validateOnly: true,
             },
             strictMode: true,
             execute: vi.fn(),
@@ -357,6 +399,36 @@ describe('write safety coordinator', () => {
         expect(result.stateHash).toMatch(/^sha256:v1:/);
         expect(permMgr.canWrite).toHaveBeenCalledWith('nb-rw');
         expect(permMgr.canDelete).not.toHaveBeenCalled();
+    });
+
+    it('leases a newly added unconfigured relation key against the requested destination', async () => {
+        const fixture = createCrossObjectAvFixture();
+        const relationEntry = fixture.sourceAv.keyValues.find((entry: { key: { id?: string } }) => entry.key.id === fixture.ids.sourceKeyID);
+        delete relationEntry.key.relation;
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const result = parseResult(await coordinator.run({
+            client: fixture.client,
+            permMgr: fixture.permMgr,
+            category: 'av',
+            action: 'configure_two_way_relation',
+            args: {
+                action: 'configure_two_way_relation',
+                avID: fixture.ids.sourceAvID,
+                blockID: fixture.ids.sourceBlockID,
+                keyID: fixture.ids.sourceKeyID,
+                destinationAvID: fixture.ids.destinationAvID,
+                destinationBlockID: fixture.ids.destinationBlockID,
+                backRelationKeyID: '20260813000007-backkey',
+                sourceName: 'Source links',
+                destinationName: 'Destination links',
+                validateOnly: true,
+            },
+            strictMode: true,
+            execute: vi.fn(),
+        }));
+
+        expect(result).toMatchObject({ action: 'configure_two_way_relation', validateOnly: true, writeAttempted: false });
+        expect(result.stateHash).toMatch(/^sha256:v1:/);
     });
 
     it('observes timeline rollback changes through live document markdown', async () => {

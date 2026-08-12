@@ -1307,10 +1307,7 @@ function requiresDeletePermission(category: ToolCategory, action: string): boole
     // confirmation, yet they are not notebook deletion. Keep confirmation and
     // permission as separate concepts: W2 AV writes require rw/rwd, while
     // actual destructive actions retain the rwd gate.
-    return isDangerousAction(category, action) && !(category === 'av' && [
-        'set_column_options',
-        'duplicate_rows',
-    ].includes(action));
+    return isDangerousAction(category, action) && category !== 'av';
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -1529,9 +1526,13 @@ async function inspectHighRiskAvMutation(
     if (action === 'configure_two_way_relation') {
         const keyID = requiredAvActionId(args, 'keyID', action);
         const destinationAvID = requiredAvActionId(args, 'destinationAvID', action);
-        const sourceRelation = requireAvRelationKey(source, keyID, action);
-        if (sourceRelation.avID !== destinationAvID) {
-            throw safetyError('precondition_required', `${action}: source relation targets ${sourceRelation.avID}, not requested destination ${destinationAvID}. No write was attempted.`);
+        const sourceKey = avKeyValueEntries(source).map((entry) => entry.key).find((candidate) => stringField(candidate, ['id']) === keyID);
+        if (!sourceKey || stringField(sourceKey, ['type']) !== 'relation') {
+            throw safetyError('precondition_required', `${action}: keyID ${keyID} is not an existing relation key. No write was attempted.`);
+        }
+        const configuredDestinationAvID = stringField(asRecord(sourceKey.relation), ['avID']);
+        if (configuredDestinationAvID && configuredDestinationAvID !== destinationAvID) {
+            throw safetyError('precondition_required', `${action}: source relation targets ${configuredDestinationAvID}, not requested destination ${destinationAvID}. No write was attempted.`);
         }
         const explicitDestinationBlockID = optionalAvActionId(args, 'destinationBlockID');
         const destination = await inspectAvMutationDestination(client, permMgr, destinationAvID, explicitDestinationBlockID);
@@ -1542,6 +1543,7 @@ async function inspectHighRiskAvMutation(
                 twoWayRelation: {
                     keyID,
                     destinationAvID,
+                    ...(configuredDestinationAvID ? { configuredDestinationAvID } : {}),
                     backRelationKeyID: requiredAvActionId(args, 'backRelationKeyID', action),
                     destination,
                 },
