@@ -1,6 +1,7 @@
 export type ExtensionPackageType = 'plugin' | 'theme' | 'widget';
 
 export interface ExtensionPackageIssue {
+    code?: string;
     severity: 'error' | 'warning';
     field: string;
     message: string;
@@ -369,9 +370,19 @@ export function validateExplicitExtensionPackage(input: unknown): StaticPackageV
     if (parsed.type !== 'unknown') {
         const requiredFile = requiredFiles[parsed.type];
         if (!(requiredFile in parsed.files)) {
-            addIssue(issues, 'error', `package.files.${requiredFile}`, `${requiredFile} is required for a usable ${parsed.type} package.`);
+            issues.push({
+                code: 'required_entry_missing',
+                severity: 'error',
+                field: `package.files.${requiredFile}`,
+                message: `${requiredFile} is required for a usable ${parsed.type} package.`,
+            });
         } else if (!parsed.files[requiredFile].trim()) {
-            addIssue(issues, 'warning', `package.files.${requiredFile}`, `${requiredFile} is present but empty.`);
+            issues.push({
+                code: 'required_entry_blank',
+                severity: 'error',
+                field: `package.files.${requiredFile}`,
+                message: `${requiredFile} is required and must contain non-whitespace ${parsed.type} entry content.`,
+            });
         }
     }
 

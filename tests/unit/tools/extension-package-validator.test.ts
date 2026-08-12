@@ -118,6 +118,55 @@ describe('explicit extension package validator', () => {
         expect(widget.lifecycle.trustReview).toBe('required');
     });
 
+    it.each([
+        ['plugin', 'index.js'],
+        ['theme', 'theme.css'],
+        ['widget', 'index.html'],
+    ] as const)('rejects an empty or whitespace-only required %s entry %s', (type, entry) => {
+        for (const blankContent of ['', ' \n\t ']) {
+            const result = validateExplicitExtensionPackage({
+                package: {
+                    type,
+                    manifest: type === 'theme'
+                        ? { ...pluginManifest, name: `blank-${type}`, modes: ['light'] }
+                        : { ...pluginManifest, name: `blank-${type}` },
+                    files: { [entry]: blankContent },
+                },
+            });
+
+            expect(result.staticPackage).toBe('invalid');
+            expect(result.issues).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    code: 'required_entry_blank',
+                    severity: 'error',
+                    field: `package.files.${entry}`,
+                    message: expect.stringContaining('must contain non-whitespace'),
+                }),
+            ]));
+        }
+    });
+
+    it.each([
+        ['plugin', 'index.js', 'module.exports = class Example {};'],
+        ['theme', 'theme.css', ':root { color: black; }'],
+        ['widget', 'index.html', '<main>Example</main>'],
+    ] as const)('keeps a non-empty required %s entry %s statically valid', (type, entry, content) => {
+        const result = validateExplicitExtensionPackage({
+            package: {
+                type,
+                manifest: type === 'theme'
+                    ? { ...pluginManifest, name: `non-empty-${type}`, modes: ['light'] }
+                    : { ...pluginManifest, name: `non-empty-${type}` },
+                files: { [entry]: content },
+            },
+        });
+
+        expect(result.staticPackage).toBe('valid');
+        expect(result.issues).not.toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'required_entry_blank' }),
+        ]));
+    });
+
     it("uses SiYuan's alphanumeric plugin MCP qualification rule", () => {
         expect(sanitizeSiYuanPluginName('plugin-name 1')).toBe('plugin_name_1');
         expect(toPluginMcpToolName('plugin-name 1', 'read item')).toBe('plugin__plugin_name_1__read_item');
