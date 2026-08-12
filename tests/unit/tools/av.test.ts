@@ -1022,6 +1022,123 @@ describe('av tool', () => {
         });
     });
 
+    it('creates the first two-way relation cell from the v3.8 omitted-values raw shape', async () => {
+        const avApi = await import('@/api/av');
+        const sourceAvID = '20260813001009-iiiiiii';
+        const sourceBlockID = '20260813001010-jjjjjjj';
+        const sourceItemID = '20260813001001-bbbbbbb';
+        const destinationAvID = '20260813001005-fffffff';
+        const destinationItemID = '20260813001002-ccccccc';
+        const relationKeyID = '20260813001003-ddddddd';
+        const backKeyID = '20260813001004-eeeeeee';
+        const sourceBefore = {
+            id: sourceAvID,
+            keyValues: [
+                { key: { id: '20260813001011-blockkey', type: 'block' }, values: [{ blockID: sourceItemID, block: { id: 'source-doc' } }] },
+                // Go KeyValues.Values has `omitempty`; a configured relation
+                // with no cell values is emitted with no `values` property.
+                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID, isTwoWay: true, backKeyID } } },
+            ],
+        };
+        const destinationBefore = {
+            id: destinationAvID,
+            keyValues: [
+                { key: { id: '20260813001012-destblock', type: 'block' }, values: [{ blockID: destinationItemID, block: { id: 'destination-doc' } }] },
+                { key: { id: backKeyID, type: 'relation', relation: { avID: sourceAvID, isTwoWay: true, backKeyID: relationKeyID } } },
+            ],
+        };
+        const sourceAfter = {
+            ...sourceBefore,
+            keyValues: [sourceBefore.keyValues[0], {
+                key: sourceBefore.keyValues[1].key,
+                values: [{ blockID: sourceItemID, relation: { blockIDs: [destinationItemID], contents: null } }],
+            }],
+        };
+        const destinationAfter = {
+            ...destinationBefore,
+            keyValues: [destinationBefore.keyValues[0], {
+                key: destinationBefore.keyValues[1].key,
+                values: [{ blockID: destinationItemID, relation: { blockIDs: [sourceItemID], contents: null } }],
+            }],
+        };
+        let sourceReads = 0;
+        let destinationReads = 0;
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
+            if (id === sourceAvID) return { av: sourceReads++ < 2 ? sourceBefore : sourceAfter };
+            if (id === destinationAvID) return { av: destinationReads++ === 0 ? destinationBefore : destinationAfter };
+            throw new Error(`unexpected AV ${id}`);
+        });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
+            id === sourceAvID ? { refDefs: [{ refID: sourceBlockID }] }
+                : id === destinationAvID ? { refDefs: [{ refID: '20260813001013-kkkkkkk' }] }
+                    : { refDefs: [] }
+        ));
+        vi.mocked(avApi.setAttributeViewBlockAttr).mockResolvedValue({ value: {} });
+
+        const result = await callAvTool(client, {
+            action: 'set_relation',
+            avID: sourceAvID,
+            blockID: sourceBlockID,
+            itemID: sourceItemID,
+            keyID: relationKeyID,
+            relatedItemIDs: [destinationItemID],
+        }, enabledActions('set_relation'), permMgr);
+
+        expect(vi.mocked(avApi.setAttributeViewBlockAttr)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(avApi.setAttributeViewBlockAttr)).toHaveBeenCalledWith(client, {
+            avID: sourceAvID,
+            keyID: relationKeyID,
+            itemID: sourceItemID,
+            value: { type: 'relation', relation: { blockIDs: [destinationItemID], contents: null } },
+        });
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'set_relation',
+            relatedItemIDs: [destinationItemID],
+            reverseReadback: 'verified',
+        });
+    });
+
+    it('refuses a null relation value list even when the source AV item exists', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const sourceAvID = '20260813001109-iiiiiii';
+        const sourceBlockID = '20260813001110-jjjjjjj';
+        const sourceItemID = '20260813001101-bbbbbbb';
+        const relationKeyID = '20260813001103-ddddddd';
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: sourceAvID,
+                keyValues: [
+                    { key: { id: '20260813001111-blockkey', type: 'block' }, values: [{ blockID: sourceItemID, block: { id: 'source-doc' } }] },
+                    { key: { id: relationKeyID, type: 'relation', relation: { avID: '20260813001105-fffffff', isTwoWay: false } }, values: null },
+                ],
+            },
+        });
+        vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
+            id: sourceBlockID,
+            dom: `<div data-type="NodeAttributeView" data-av-id="${sourceAvID}" class="av"></div>`,
+        });
+
+        const result = await callAvTool(client, {
+            action: 'set_relation',
+            avID: sourceAvID,
+            blockID: sourceBlockID,
+            itemID: sourceItemID,
+            keyID: relationKeyID,
+            relatedItemIDs: [],
+        }, enabledActions('set_relation'), permMgr);
+
+        expect(vi.mocked(avApi.setAttributeViewBlockAttr)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: {
+                action: 'set_relation',
+                reason: 'relation_preflight_failed',
+                message: `set_relation preflight: keyID "${relationKeyID}" has no value list.`,
+            },
+        });
+    });
+
     it('does not dispatch set_relation when the complete two-way postimage already exists', async () => {
         const avApi = await import('@/api/av');
         const sourceAvID = '20260813000109-iiiiiii';

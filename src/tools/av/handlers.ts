@@ -189,7 +189,22 @@ function extractRelationCellItemIDs(
     itemID: string,
     context: string,
 ): string[] {
-    const matches = getAvKeyValue(definition, keyID, context).values.filter((value) => value.blockID === itemID);
+    const entry = getAvKeyEntry(definition, keyID, context);
+    if (entry.key.type !== 'relation') throw new Error(`${context}: keyID "${keyID}" is not a relation key.`);
+    if (entry.values === undefined) {
+        // KeyValues.Values is `omitempty` in SiYuan v3.8. A configured
+        // relation with no cells is therefore serialized as only `{ key }`.
+        // The native setAttributeViewBlockAttr endpoint creates the first cell
+        // for an existing AV item; accepting this exact shape is necessary for
+        // first writes, but never treats null/malformed lists or unknown rows
+        // as empty relation state.
+        if (!extractAvRowLookup(definition).rowIDs.has(itemID)) {
+            throw new Error(`${context}: relation keyID "${keyID}" has no value list for unknown AV itemID "${itemID}".`);
+        }
+        return [];
+    }
+    if (!Array.isArray(entry.values)) throw new Error(`${context}: keyID "${keyID}" has no value list.`);
+    const matches = (entry.values as Array<Record<string, unknown>>).filter((value) => value.blockID === itemID);
     if (matches.length > 1) throw new Error(`${context}: relation cell ${keyID}/${itemID} resolves more than once.`);
     if (matches.length === 0) return [];
     const relation = matches[0].relation;
