@@ -3175,9 +3175,22 @@ async function verifyRollupMetadata(
         throw new Error(`${context}: rollup key is missing native rollup metadata.`);
     }
     const rollup = key.rollup as Record<string, unknown>;
-    if (rollup.relationKeyID !== relationKeyID || rollup.keyID !== destinationKeyID || await hashCanonicalState(rollup.calc) !== await hashCanonicalState(calc)) {
+    if (rollup.relationKeyID !== relationKeyID || rollup.keyID !== destinationKeyID
+        || await hashCanonicalState(rollupCalcConfiguration(rollup.calc)) !== await hashCanonicalState(rollupCalcConfiguration(calc))) {
         throw new Error(`${context}: native rollup metadata did not match relationKeyID, destinationKeyID, and calc postimage.`);
     }
+}
+
+function rollupCalcConfiguration(value: unknown): unknown {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const calc = cloneJsonRecord(value as Record<string, unknown>);
+    // The official UI submits only the operator, while SiYuan v3.8's Go
+    // RollupCalc struct deterministically serializes its missing result as
+    // `result: null`. Normalize only that wire default. A non-null result or
+    // any other calc field remains part of strict comparison so an unexpected
+    // native shape cannot be certified as the requested configuration.
+    if (calc.result === null) delete calc.result;
+    return calc;
 }
 
 async function handleCreateFromTemplate({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {

@@ -1099,6 +1099,81 @@ describe('av tool', () => {
         });
     });
 
+    it('writes, clears, and rewrites a two-way relation across v3.8 omitted, empty, and list shapes', async () => {
+        const avApi = await import('@/api/av');
+        const sourceAvID = '20260813001209-iiiiiii';
+        const sourceBlockID = '20260813001210-jjjjjjj';
+        const sourceItemID = '20260813001201-bbbbbbb';
+        const destinationAvID = '20260813001205-fffffff';
+        const destinationItemID = '20260813001202-ccccccc';
+        const relationKeyID = '20260813001203-ddddddd';
+        const backKeyID = '20260813001204-eeeeeee';
+        const sourceBlockEntry = {
+            key: { id: '20260813001211-blockkey', type: 'block' },
+            values: [{ blockID: sourceItemID, block: { id: 'source-doc' } }],
+        };
+        const destinationBlockEntry = {
+            key: { id: '20260813001212-destkey', type: 'block' },
+            values: [{ blockID: destinationItemID, block: { id: 'destination-doc' } }],
+        };
+        const sourceRelationKey = { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID, isTwoWay: true, backKeyID } };
+        const destinationRelationKey = { id: backKeyID, type: 'relation', relation: { avID: sourceAvID, isTwoWay: true, backKeyID: relationKeyID } };
+        let source: Record<string, unknown> = { id: sourceAvID, keyValues: [sourceBlockEntry, { key: sourceRelationKey }] };
+        let destination: Record<string, unknown> = { id: destinationAvID, keyValues: [destinationBlockEntry, { key: destinationRelationKey }] };
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => ({
+            av: structuredClone(id === sourceAvID ? source : destination),
+        }));
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
+            id === sourceAvID ? { refDefs: [{ refID: sourceBlockID }] }
+                : id === destinationAvID ? { refDefs: [{ refID: '20260813001213-kkkkkkk' }] }
+                    : { refDefs: [] }
+        ));
+        vi.mocked(avApi.setAttributeViewBlockAttr).mockImplementation(async (_clientArg, payload) => {
+            const blockIDs = ((payload.value.relation as Record<string, unknown>).blockIDs as string[]);
+            source = {
+                id: sourceAvID,
+                keyValues: [sourceBlockEntry, {
+                    key: sourceRelationKey,
+                    values: [{ blockID: sourceItemID, relation: { blockIDs: [...blockIDs], contents: null } }],
+                }],
+            };
+            destination = {
+                id: destinationAvID,
+                keyValues: [destinationBlockEntry, {
+                    key: destinationRelationKey,
+                    values: [{
+                        blockID: destinationItemID,
+                        relation: { blockIDs: blockIDs.includes(destinationItemID) ? [sourceItemID] : [], contents: null },
+                    }],
+                }],
+            };
+            return { value: {} };
+        });
+
+        const transitions = [
+            { name: 'first write', relatedItemIDs: [destinationItemID], cleared: false },
+            { name: 'clear', relatedItemIDs: [], cleared: true },
+            { name: 'rewrite', relatedItemIDs: [destinationItemID], cleared: false },
+        ];
+        for (const transition of transitions) {
+            const result = await callAvTool(client, {
+                action: 'set_relation', avID: sourceAvID, blockID: sourceBlockID,
+                itemID: sourceItemID, keyID: relationKeyID, relatedItemIDs: transition.relatedItemIDs,
+            }, enabledActions('set_relation'), permMgr);
+            expect(JSON.parse(result.content[0].text), transition.name).toMatchObject({
+                success: true,
+                action: 'set_relation',
+                relatedItemIDs: transition.relatedItemIDs,
+                cleared: transition.cleared,
+                reverseReadback: 'verified',
+            });
+        }
+
+        expect(vi.mocked(avApi.setAttributeViewBlockAttr).mock.calls.map((call) => (
+            ((call[1].value.relation as Record<string, unknown>).blockIDs)
+        ))).toEqual([[destinationItemID], [], [destinationItemID]]);
+    });
+
     it('refuses a null relation value list even when the source AV item exists', async () => {
         const avApi = await import('@/api/av');
         const blockApi = await import('@/api/block');
@@ -1400,7 +1475,8 @@ describe('av tool', () => {
         const relationKeyID = '20260813000003-ddddddd';
         const rollupKeyID = '20260813000004-eeeeeee';
         const destinationKeyID = '20260813000006-ggggggg';
-        const calc = { operator: 'count', result: { type: 'number', number: { content: 0 } } };
+        const calc = { operator: 'Count all' };
+        const rawCalc = { operator: 'Count all', result: null };
         const sourceBefore = {
             id: sourceAvID,
             keyValues: [
@@ -1419,7 +1495,7 @@ describe('av tool', () => {
         const sourceAfter = {
             ...sourceBefore,
             keyValues: [sourceBefore.keyValues[0], sourceBefore.keyValues[1], {
-                key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc } }, values: [],
+                key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc: rawCalc } }, values: [],
             }],
         };
         let sourceReads = 0;
@@ -1453,7 +1529,7 @@ describe('av tool', () => {
         });
     });
 
-    it('returns a zero-dispatch no-op when the native rollup metadata already matches', async () => {
+    it('returns a zero-dispatch no-op for v3.8 result-null rollup readback', async () => {
         const avApi = await import('@/api/av');
         const blockApi = await import('@/api/block');
         const transactionApi = await import('@/api/transaction');
@@ -1464,13 +1540,13 @@ describe('av tool', () => {
         const relationKeyID = '20260813000003-ddddddd';
         const rollupKeyID = '20260813000004-eeeeeee';
         const destinationKeyID = '20260813000006-ggggggg';
-        const calc = { operator: 'count', result: { type: 'number', number: { content: 0 } } };
+        const calc = { operator: 'Count all' };
         const source = {
             id: sourceAvID,
             keyValues: [
                 { key: { type: 'block' }, values: [] },
                 { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID } }, values: [] },
-                { key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc } }, values: [] },
+                { key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc: { operator: 'Count all', result: null } } }, values: [] },
             ],
         };
         const destination = { id: destinationAvID, keyValues: [{ key: { type: 'block' }, values: [] }, { key: { id: destinationKeyID, type: 'number' }, values: [] }] };
@@ -1494,6 +1570,59 @@ describe('av tool', () => {
         expect(JSON.parse(result.content[0].text)).toMatchObject({
             success: true, action: 'configure_rollup', changed: false, status: 'already_applied',
         });
+    });
+
+    it.each([
+        ['different operator', { operator: 'Count values', result: null }],
+        ['non-null result', { operator: 'Count all', result: { type: 'number', number: { content: 1 } } }],
+    ])('does not treat %s rollup metadata as the requested configuration', async (_caseName, observedCalc) => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const sourceAvID = '20260813002009-iiiiiii';
+        const destinationAvID = '20260813002005-fffffff';
+        const sourceBlockID = '20260813002010-jjjjjjj';
+        const destinationBlockID = '20260813002011-kkkkkkk';
+        const relationKeyID = '20260813002003-ddddddd';
+        const rollupKeyID = '20260813002004-eeeeeee';
+        const destinationKeyID = '20260813002006-ggggggg';
+        const calc = { operator: 'Count all' };
+        const sourceBefore = {
+            id: sourceAvID,
+            keyValues: [
+                { key: { type: 'block' }, values: [] },
+                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID } }, values: [] },
+                { key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc: observedCalc } }, values: [] },
+            ],
+        };
+        const sourceAfter = {
+            ...sourceBefore,
+            keyValues: [sourceBefore.keyValues[0], sourceBefore.keyValues[1], {
+                key: { id: rollupKeyID, type: 'rollup', rollup: { relationKeyID, keyID: destinationKeyID, calc: { operator: 'Count all', result: null } } }, values: [],
+            }],
+        };
+        const destination = {
+            id: destinationAvID,
+            keyValues: [{ key: { type: 'block' }, values: [] }, { key: { id: destinationKeyID, type: 'text' }, values: [] }],
+        };
+        let sourceReads = 0;
+        vi.mocked(avApi.getAttributeView).mockImplementation(async (_clientArg, id) => {
+            if (id === sourceAvID) return { av: sourceReads++ === 0 ? sourceBefore : sourceAfter };
+            if (id === destinationAvID) return { av: destination };
+            throw new Error(`unexpected AV ${id}`);
+        });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
+            id === sourceAvID ? { refDefs: [{ refID: sourceBlockID }] }
+                : id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] }
+                    : { refDefs: [] }
+        ));
+
+        const result = await callAvTool(client, {
+            action: 'configure_rollup', avID: sourceAvID, blockID: sourceBlockID, keyID: rollupKeyID,
+            relationKeyID, destinationKeyID, calc,
+        }, enabledActions('configure_rollup'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ success: true, action: 'configure_rollup' });
     });
 
     it('does not certify matching native rollup metadata after a transaction response is lost', async () => {
