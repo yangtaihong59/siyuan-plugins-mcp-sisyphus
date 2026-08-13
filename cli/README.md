@@ -6,7 +6,7 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.5` adds native semantic search and safe sibling document reordering, fixes the bundled stdio transport, and expands the bundled import-migration, visual-assets, and system-safety Skills.
+> **Latest:** `v0.2.5` adds native semantic search and safe sibling document reordering, fixes the bundled stdio transport, and expands the bundled import-migration, visual-assets, and system-safety Skills. Thanks to [@adminclaw](https://github.com/adminclaw) for [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47) and [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49).
 
 > **For AI models and coding agents:** before doing any SiYuan work with this CLI, run `siyuan-sisyphus skill install` first. The bundled skills provide the task-specific operating rules for safe search, reading, editing, export, database, tag, flashcard, timeline, and system workflows.
 
