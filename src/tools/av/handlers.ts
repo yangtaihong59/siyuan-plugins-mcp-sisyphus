@@ -1173,16 +1173,29 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
     const responseObj = (response && typeof response === 'object' && !Array.isArray(response))
         ? response as Record<string, unknown>
         : {};
-    const rows = Array.isArray(responseObj.rows) ? responseObj.rows as unknown[] : [];
+    // SiYuan kernel nests the rendered view (columns/rows/rowCount) under `view`;
+    // fall back to flat top-level fields for older kernel response shapes.
+    const view = (responseObj.view && typeof responseObj.view === 'object' && !Array.isArray(responseObj.view))
+        ? responseObj.view as Record<string, unknown>
+        : undefined;
+    const rows = (
+        Array.isArray(view?.rows) ? view.rows
+            : Array.isArray(responseObj.rows) ? responseObj.rows
+                : []
+    ) as unknown[];
     const page = parsed.page ?? 1;
     const pageSize = parsed.pageSize ?? (rows.length || 1);
-    const kernelPageCount = typeof responseObj.pageCount === 'number'
-        ? responseObj.pageCount as number
-        : 1;
-    const total = typeof responseObj.rowCount === 'number'
-        ? responseObj.rowCount as number
-        : rows.length;
-    const table = buildAvTableView(responseObj, rows, total);
+    const total = typeof view?.rowCount === 'number'
+        ? view.rowCount as number
+        : typeof responseObj.rowCount === 'number'
+            ? responseObj.rowCount as number
+            : rows.length;
+    const kernelPageCount = typeof view?.pageCount === 'number'
+        ? view.pageCount as number
+        : typeof responseObj.pageCount === 'number'
+            ? responseObj.pageCount as number
+            : pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+    const table = buildAvTableView(view ?? responseObj, rows, total);
     const { rows: _ignoredRows, pageCount: _ignoredPageCount, rowCount: _ignoredRowCount, ...restResponse } = responseObj;
     void _ignoredRows;
     void _ignoredPageCount;

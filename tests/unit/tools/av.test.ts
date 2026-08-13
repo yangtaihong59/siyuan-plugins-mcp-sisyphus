@@ -128,7 +128,12 @@ describe('av tool', () => {
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
-            rows: [],
+            view: {
+                id: 'view-1',
+                columns: [],
+                rows: [],
+                rowCount: 0,
+            },
         });
         vi.mocked(avApi.getAttributeViewKeys).mockResolvedValue([{ id: 'k1', name: 'Title' }]);
         vi.mocked(avApi.getAttributeViewPrimaryKeyValues).mockResolvedValue({
@@ -2265,27 +2270,37 @@ describe('av tool', () => {
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
+            view: {
+                id: 'view-1',
+                columns: [],
+                rows: [],
+                rowCount: 0,
+            },
         });
     });
 
-    it('accepts avID alias and adds a lightweight table view when render rows are parseable', async () => {
+    it('accepts avID alias and reads rows/columns from the kernel nested view structure', async () => {
         const avApi = await import('@/api/av');
         vi.mocked(avApi.renderAttributeView).mockResolvedValue({
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
-            keyValues: [
-                { key: { id: 'col-title', name: 'Title', type: 'text' } },
-            ],
-            rows: [
-                {
-                    id: 'row-1',
-                    values: [
-                        { key: { id: 'col-title' }, content: 'Paper A' },
-                    ],
-                },
-            ],
-            rowCount: 1,
+            view: {
+                id: 'view-1',
+                name: '表格',
+                columns: [
+                    { id: 'col-title', name: 'Title', type: 'text', pin: false, width: '200px' },
+                ],
+                rows: [
+                    {
+                        id: 'row-1',
+                        cells: [
+                            { key: { id: 'col-title', name: 'Title', type: 'text' }, content: 'Paper A' },
+                        ],
+                    },
+                ],
+                rowCount: 1,
+            },
         });
 
         const result = await callAvTool(client, {
@@ -2299,11 +2314,59 @@ describe('av tool', () => {
         expect(parsed).toMatchObject({
             avID: 'av-1',
             id: 'av-1',
+            data: [
+                {
+                    id: 'row-1',
+                    cells: [{ key: { id: 'col-title', name: 'Title', type: 'text' }, content: 'Paper A' }],
+                },
+            ],
+            total: 1,
             table: {
                 columns: [{ id: 'col-title', name: 'Title', type: 'text' }],
                 rows: [{ id: 'row-1', cells: { 'col-title': 'Paper A' } }],
                 rowCount: 1,
             },
+            view: {
+                id: 'view-1',
+                name: '表格',
+                rows: [{ id: 'row-1', cells: [{ key: { id: 'col-title' }, content: 'Paper A' }] }],
+                rowCount: 1,
+            },
+        });
+    });
+
+    it('falls back to flat top-level rows when the kernel response has no nested view', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            rows: [
+                {
+                    id: 'row-1',
+                    values: [
+                        { key: { id: 'col-title' }, content: 'Paper A' },
+                    ],
+                },
+            ],
+            rowCount: 1,
+        });
+
+        const result = await callAvTool(client, {
+            action: 'render',
+            id: 'av-1',
+        }, enabledActions('render'), permMgr);
+
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).toMatchObject({
+            data: [
+                {
+                    id: 'row-1',
+                    values: [{ key: { id: 'col-title' }, content: 'Paper A' }],
+                },
+            ],
+            total: 1,
+            table: { rows: [{ id: 'row-1', cells: { 'col-title': 'Paper A' } }], rowCount: 1 },
         });
     });
 
