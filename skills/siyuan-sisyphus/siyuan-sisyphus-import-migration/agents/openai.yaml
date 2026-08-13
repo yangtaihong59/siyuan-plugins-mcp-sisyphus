@@ -1,0 +1,4 @@
+interface:
+  display_name: "SiYuan Import & Migration CLI"
+  short_description: "Stage and verify imports safely"
+  default_prompt: "Use $siyuan-sisyphus-import-migration to stage this import or migration with explicit mappings and layered verification."

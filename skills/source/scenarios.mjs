@@ -22,14 +22,23 @@ export const scenarios = [
 | Fulltext, SQL, backlinks, references, and replacement | {{skill search-query}} |
 | Attribute views, columns, rows, and cells | {{skill database}} |
 | Assets, extraction, and exports | {{skill file-export}} |
+| Staged Markdown/database import and migration | {{skill import-migration}} |
+| Semantic SVG and visual asset embedding | {{skill visual-assets}} |
 | Tags, decks, cards, and review | {{skill tag-flashcard}} |
 | Timeline nodes, snapshot comparison, and rollback | {{skill timeline}} |
 | Permissions, system information, and dangerous operations | {{skill system-safety}} |
+| Extension package trust, compatibility, and lifecycle verification | {{skill system-safety}} |
 | Rich Markdown, math, diagrams, and SiYuan markup | {{skill markup-guide}} |
 
 ## Tool choice
 
 Prefer \`fs\` for ordinary human-readable workspace paths. Use \`document\` or \`block\` for IDs, storage paths, metadata, or block-granular changes. Use \`av\` for real databases rather than Markdown tables. Use \`timeline\` for named snapshots, document diffs, and rollback. Low-complexity \`feedback\` and \`mascot\` actions need no separate scenario skill.
+
+The CLI, a raw MCP payload, and an Agent-generated call are invocation forms, not proof that Sisyphus strict-write handling ran. For a protected mutation, follow the selected runtime's current help and returned safety fields. The documented preflight, single-attempt transport, idempotency, and readback guarantees apply only when the call is routed through the active Sisyphus write coordinator with strict mode enabled. Do not infer kernel-level compare-and-swap or parity with native SiYuan and third-party calls.
+
+## Operation risk before routing
+
+Classify the requested operation before choosing a surface: **R** is read or discovery; **W1** is an additive or local write; **W2** changes structure, references, assets, or attribute-view data; **W3** affects notebooks, imports, sync, history, or workspace-wide state. Use the narrowest surface and confirmation appropriate to the tier. Treat an undocumented or uncertain operation as the higher-risk tier until current action help and returned policy fields establish otherwise. This is routing discipline, not a replacement for the current action schema or safety policy.
 
 {{call version}}
 {{call notebooks}}
@@ -40,8 +49,10 @@ Prefer \`fs\` for ordinary human-readable workspace paths. Use \`document\` or \
 
 - Read \`/AGENTS.md\` through \`fs\` before workspace-aware tasks when it exists.
 - A workspace path such as \`/Notebook/Folder/Doc\`, an hpath such as \`/Folder/Doc\`, and a storage path such as \`/20260712123000-abc123.sy\` are different values.
+- Resolve the exact target before mutating: map a human path or search candidate to the returned stable ID and retain its notebook, hpath, and storage path. Never derive an opaque ID or storage path from a title, and never treat a candidate list as the final target.
 - Read before writing; after a mutation, read the affected object again.
-- For document reads, continue with \`nextWindow\` or explicit \`blockStart\`/\`blockLimit\`/\`tokenBudget\`; for list and search results, use their page parameters.
+- Keep reads bounded and prove completeness: use \`nextWindow\` or explicit \`blockStart\`/\`blockLimit\`/\`tokenBudget\` for documents, and page parameters for lists and searches. Continue while another page/window is advertised, then reread the exact affected ID/path and compare the intended field or status.
+- If a write response is lost, or the result is \`outcome_unknown\` or \`readback_mismatch\`, stop and inspect the exact target. Do not resend with a new \`requestId\` merely because the acknowledgement was missing.
 - Missing results may be caused by notebook permissions or indexing delay.
 - Obtain explicit approval before deletes, moves, bulk replacement, permission changes, local upload/export, or sensitive workspace disclosure.
 `,
@@ -91,6 +102,8 @@ Use search-assisted discovery when the path is unknown:
 | Storage path | \`/20260712123000-abc123.sy\` | low-level rename, remove, or move |
 
 Never derive a storage path from a title. Resolve the document first and reuse the returned path. For \`fs.read\` and Markdown \`document.get_doc\`, treat \`hasNextWindow=true\` as incomplete data and continue with the returned \`nextWindow\`. For list and search results, continue with explicit \`page\` and \`pageSize\` values.
+
+Discovery identifies candidates; it does not authorize a write. Before changing one result, reread it by stable ID or resolved path and record the exact target. If a read is incomplete, continue the bounded window or page sequence instead of deciding from a truncated response.
 `,
         calls: {
             notebooks: call('notebook', 'list'),
@@ -115,6 +128,12 @@ Never derive a storage path from a title. Resolve the document first and reuse t
         shortDescription: 'Create and edit SiYuan note content',
         defaultPrompt: 'Use $NAME to make this SiYuan content change safely and verify it.',
         body: `Read the target first, choose the highest-level action that preserves intent, perform one bounded change, then read it again.
+
+## Protected writes and readback
+
+For a mutation covered by strict safe writes, call the same action and business arguments with \`validateOnly=true\`, use the returned precondition field, and submit one fresh UUIDv7 \`requestId\`. Never invent or recycle a hash credential. After the write, reread the exact stable ID or resolved path with enough bounded fields to prove the intended change and continue until the response is complete.
+
+If the connection fails after execution may have started, or the result says \`outcome_unknown\` or \`readback_mismatch\`, do not retry with a new request ID. Inspect the target and resolve the outcome first. A CLI command, raw MCP payload, or Agent-generated call is not by itself evidence that this coordinator path or its guarantees applied; use the current safety response and runtime help.
 
 ## Create documents
 
@@ -220,6 +239,8 @@ Keep these identifiers distinct: AV ID identifies the database; view ID identifi
 {{call cells}}
 
 Before writing cells, render the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Re-render after mutation. Read {{help av set_cells}} for the current cell schema.
+
+Treat a successful mutation response as provisional until the same view and affected rows/cells are read back. Keep the render and readback paginated, continue while more data is advertised, and compare the intended cell values by stable row and column IDs. A raw MCP or CLI success message does not establish that strict-write coordination or complete readback occurred.
 `,
         calls: {
             get: call('av', 'get', { id: '<av-id>' }),
@@ -258,6 +279,185 @@ Large uploads must stop and require explicit confirmation before retrying with t
             exportResources: call('file', 'export_resources', { paths: ['assets/file.png', 'assets/file.pdf'] }),
             assets: call('file', 'get_doc_assets', { id: '<doc-id>', assetType: 'image' }),
             ocr: call('file', 'get_image_ocr_text', { path: 'assets/image.png' }),
+        },
+    },
+    {
+        // This scenario coordinates existing actions; caller-owned parsing,
+        // IDs, paths, and business profiles must stay explicit because no
+        // native importer or generic callout repair action exists here.
+        id: 'import-migration',
+        cliName: 'siyuan-sisyphus-import-migration',
+        mcpName: 'siyuan-mcp-import-migration',
+        cliDescription: 'CLI-only staged playbook for Markdown and external database migration with explicit targets, mappings, bounded writes, and layered readback.',
+        mcpDescription: 'MCP staged playbook for Markdown and external database migration with explicit targets, mappings, bounded writes, and layered readback.',
+        title: 'SiYuan Import and Migration',
+        displayName: 'SiYuan Import & Migration',
+        shortDescription: 'Stage and verify imports safely',
+        defaultPrompt: 'Use $NAME to stage this import or migration with explicit mappings and layered verification.',
+        body: `Use this scenario for caller-preprocessed Markdown or external database/template migration. It does not parse arbitrary local files, promise NodeCallout conversion, read exact \.sy\ files, preserve source IDs, decrypt notebooks, or perform browser UI acceptance.
+
+## P0: freeze the contract
+
+Record source descriptor/hash, target notebook/path, scope, conflict policy, business-profile boundary, recoverable safety net, one-writer state, confirmation, and the three acceptance gates before W3 writes.
+
+{{call version}}
+{{call notebooks}}
+{{call permissions}}
+{{call conf}}
+{{call tree}}
+
+Stop on an ambiguous target, missing authorization or safety net, multiple writers, unresolved business rules, or a direct \.sy\/encrypted request. Titles, labels, search hits, and UI positions are discovery hints, never foreign keys.
+
+## P1: validate the external source
+
+The caller or a separately reviewed preprocessor supplies preprocessed Markdown, source hash, transform report, ordered image refs, stable wikilink map, and unresolved diagnostics. It removes YAML frontmatter and normalizes supported image/callout/list syntax without inventing IDs or silently dropping values.
+
+{{call stagedRead}}
+{{call sourceSearch}}
+{{call templates}}
+{{call template}}
+
+\`fs.read\` reads a SiYuan workspace path, not an arbitrary local file. Unsupported syntax, path escape, unmapped dot-prefixed image, or unresolved wikilink blocks apply until the caller supplies a policy.
+
+## P2: resolve identities and dependencies
+
+Resolve exact notebook, parent path, existing targets, and dependencies before writing. Persist one mapping-ledger row per source document/block/asset/AV/field/row/view/template with stable source key, actual target ID/path, status, normalization, and readback evidence.
+
+{{call lookup}}
+{{call create}}
+{{call lookupCreated}}
+{{call upload}}
+{{call av}}
+{{call avKeys}}
+
+Create missing documents only after approval. Generated target IDs are recorded; this action set cannot preserve source IDs or force remapping. On lost acknowledgement, perform one identity-fixed read and classify the outcome; never resend blindly.
+
+## P3: bounded writes
+
+Apply a reviewed manifest incrementally under one writer and dependency order. Prefer explicit \`document.create\`, additive \`block.append/insert\`, scoped \`block.update\`, and typed AV actions. Do not root-overwrite documents containing AV, mirrors, super blocks, HTML, media, or other complex native blocks without a separate contract.
+
+{{call append}}
+{{call insert}}
+{{call update}}
+{{call attrs}}
+{{call rows}}
+{{call cells}}
+
+Asset upload is an explicit approved local-file operation; use only the returned asset path. It is not a recursive importer. HTTP success remains provisional until exact readback.
+
+## P4: structural readback
+
+Read stable IDs and continue every advertised window/page before search or UI observations.
+
+{{call documentRead}}
+{{call kramdown}}
+{{call children}}
+{{call dom}}
+{{call attrsRead}}
+{{call assetsRead}}
+{{call avRead}}
+{{call avRender}}
+
+Check exact notebook/path, document/block identity, parent/sibling order, list containment, tables/images/references, typed AV values, and relation endpoints. Observe whether a callout is \`NodeCallout\` or \`NodeBlockquote\`; if conversion is needed, report the known gap. \`file.extract_doc\` and \`file.export_md\` supplement evidence but cannot prove exact \.sy\ or UI state.
+
+## P5: three independent gates
+
+1. Schema/data: mapping ledger, IDs/paths, blocks, AV definitions/keys/rows/typed cells/relation endpoints, templates, normalization, and unresolved items read back.
+2. Functional view/workflow: relevant AV filters/sorts/groups/layouts, relations/rollups, carrier bindings, and one bounded workflow are evidenced.
+3. User presentation: approved real UI observation confirms entry pages, visible fields/order/labels, device route, and absence of internal markers.
+
+Schema/data PASS never implies functional or presentation completion. Without live UI evidence, report presentation as unverified. Never hard-code FLO.W fields, exam labels, Chinese tags, personal notebooks, host paths, ports, tokens, source IDs, or secrets.`,
+        calls: {
+            version: call('system', 'get_version'),
+            notebooks: call('notebook', 'list'),
+            permissions: call('notebook', 'get_permissions'),
+            conf: call('system', 'conf', { mode: 'summary' }),
+            tree: call('fs', 'tree', { path: '<target-workspace-path>', maxDepth: 4 }),
+            stagedRead: call('fs', 'read', { path: '<staged-workspace-document>', blockStart: 0, blockLimit: 50, tokenBudget: 2000, includeBlockIds: true }),
+            sourceSearch: call('fs', 'search', { path: '<staged-workspace-root>', query: '<source-keyword>', page: 1, pageSize: 20 }),
+            templates: call('file', 'list_templates', { query: '<template-keyword>', page: 1, pageSize: 20 }),
+            template: call('file', 'read_template', { path: '<resolved-template-path>', offset: 0, limit: 8000 }),
+            lookup: call('document', 'lookup', { notebook: '<notebook-id>', hpath: '<target-parent-hpath>', include: ['id', 'path', 'hpath', 'docInfo'] }),
+            create: call('document', 'create', { notebook: '<notebook-id>', path: '<target-document-path>', markdown: '<preprocessed-markdown>' }),
+            lookupCreated: call('document', 'lookup', { id: '<returned-document-id>', include: ['id', 'path', 'hpath', 'docInfo'] }),
+            upload: call('file', 'upload_asset', { assetsDirPath: '<approved-assets-dir>', localFilePath: '<approved-staged-file>' }),
+            av: call('av', 'get', { id: '<av-id>', blockID: '<database-block-id>' }),
+            avKeys: call('av', 'get_attribute_view_keys', { id: '<av-id>' }),
+            append: call('block', 'append', { parentID: '<resolved-parent-id>', dataType: 'markdown', data: '<one-reviewed-block>' }),
+            insert: call('block', 'insert', { blocks: [{ previousID: '<resolved-previous-id>', dataType: 'markdown', data: '<one-reviewed-block>' }] }),
+            update: call('block', 'update', { items: [{ id: '<reviewed-leaf-block-id>', dataType: 'markdown', data: '<replacement-block-content>' }] }),
+            attrs: call('block', 'set_attrs', { id: '<reviewed-block-id>', attrs: { 'custom-source-key': '<stable-source-key>' } }),
+            rows: call('av', 'add_rows', { avID: '<av-id>', blockIDs: ['<bound-document-block-id>'], viewID: '<view-id>' }),
+            cells: call('av', 'set_cells', { avID: '<av-id>', cells: [{ rowID: '<row-item-id>', columnID: '<column-key-id>', valueType: 'text', text: '<typed-value>' }] }),
+            documentRead: call('document', 'get_doc', { id: '<returned-document-id>', mode: 'markdown', blockStart: 0, blockLimit: 50, tokenBudget: 2000, includeBlockIds: true }),
+            kramdown: call('block', 'get_kramdown', { id: '<written-block-id>' }),
+            children: call('block', 'get_children', { id: '<resolved-parent-id>', page: 1, pageSize: 200 }),
+            dom: call('block', 'dom', { id: '<written-block-id>' }),
+            attrsRead: call('block', 'get_attrs', { id: '<reviewed-block-id>' }),
+            assetsRead: call('file', 'get_doc_assets', { id: '<returned-document-id>', assetType: 'all' }),
+            avRead: call('av', 'get', { id: '<av-id>' }),
+            avRender: call('av', 'render', { id: '<av-id>', viewID: '<view-id>', page: 1, pageSize: 50 }),
+        },
+    },
+    {
+        // Existing actions can upload/embed assets and read structure back,
+        // but they cannot generate SVGs or certify browser/UI rendering. Keep
+        // those boundaries visible in the generated workflow.
+        id: 'visual-assets',
+        cliName: 'siyuan-sisyphus-visual-assets',
+        mcpName: 'siyuan-mcp-visual-assets',
+        cliDescription: 'CLI-only playbook for semantic SVG charts and figures, approved asset upload, and verified SiYuan block embedding.',
+        mcpDescription: 'MCP playbook for semantic SVG charts and figures, approved asset upload, and verified SiYuan block embedding.',
+        title: 'SiYuan Visual Assets',
+        displayName: 'SiYuan Visual Assets',
+        shortDescription: 'Create, upload, and embed visual assets safely',
+        defaultPrompt: 'Use $NAME to create or place this visual asset with semantic checks and strong readback.',
+        body: `Choose the narrowest route: data/config-driven SVG for statistical charts, semantic geometry for explanatory figures, and an existing uploaded asset when vector reconstruction is not appropriate. This scenario does not add a picture-generation tool, renderer, async runner, or platform-specific image utility.
+
+## Generate and review
+
+1. Read the source image or data and record chart type, series, categories, values, axes, units, grid lines, markers, title, legend, geometry, and unresolved readings. Do not invent unclear values.
+2. Reuse a matching deterministic config/builder shape for charts; for figures, decode structure first and choose semantic geometry. If a supported mathematical relation exists, declare and run a validation such as growth or sum; failed validation returns to data review.
+3. Check escaped text, viewBox containment, text bounds and collisions, line/text clearance, stable stroke width, angle/projection/occlusion constraints, and one unique \`data-chart-key\` matched to the config registry.
+4. Semantic correctness comes before pixel similarity. Pixel overlay is optional. A real SiYuan UI review is required for display claims: width, responsive behavior, readability, theme contrast, and embed rendering.
+
+Do not make bitmap tracing the default route. Use it only as constrained coordinate assistance; do not force-vectorize photos, maps, comics, or figures whose meaning is the typeface itself. If text, a list, table, or formula states the meaning clearly, prefer native content.
+
+## Upload and embed
+
+Resolve the exact notebook/document/block ID, parent-child relation, and insertion position before writing. A title, search hit, or UI position is not write authorization.
+
+{{call upload}}
+
+Asset upload reads a user-selected local file and requires explicit approval of both the source file and assets directory. Use the returned asset path as the only subsequent reference; never guess a timestamped filename or preserve a machine-specific path in the Skill.
+
+For an ordinary uploaded image, append one bounded Markdown image block. For inline SVG/HTML, keep all lines in one standalone block; use a complete \`NodeHTMLBlock\` DOM update only when an existing block is the exact target. A canonical visual block may be reused elsewhere with a query embed pointing to its stable block ID; do not duplicate the SVG body.
+
+{{call append}}
+{{call update}}
+
+## Structural readback
+
+After each write, read the exact affected ID before any search or UI conclusion:
+
+{{call kramdown}}
+{{call children}}
+{{call dom}}
+{{call assets}}
+{{call assetSearch}}
+
+Confirm block type, parent/sibling order, kramdown, DOM attributes, viewBox, escaped text, returned asset path, \`data-chart-key\`, canonical embed target, and image/HTML containment. \`get_doc_assets\` and \`search_assets\` find references or candidates; neither proves rendering. API success, file existence, SQL/index results, or a renderer invocation cannot replace structural readback or real SiYuan UI review.
+
+If a response is lost or the returned asset path is missing/non-unique, stop and inspect the exact target; do not retry an upload or append blindly. Classify geometry WARNs as repaired, justified exemption, or TODO; after repeated unsuccessful adjustments, stop and report instead of relaxing tolerances.`,
+        calls: {
+            upload: call('file', 'upload_asset', { assetsDirPath: '<approved-assets-dir>', localFilePath: '<selected-local-file>' }),
+            append: call('block', 'append', { parentID: '<resolved-parent-id>', dataType: 'markdown', data: '<one-block-markdown-or-inline-html-svg>' }),
+            update: call('block', 'update', { items: [{ id: '<existing-leaf-block-id>', dataType: 'dom', data: '<complete-node-html-block-dom>' }] }),
+            kramdown: call('block', 'get_kramdown', { id: '<written-block-id>' }),
+            children: call('block', 'get_children', { id: '<resolved-parent-id>', page: 1, pageSize: 200 }),
+            dom: call('block', 'dom', { id: '<written-block-id>' }),
+            assets: call('file', 'get_doc_assets', { id: '<resolved-document-id>', assetType: 'all' }),
+            assetSearch: call('search', 'search_assets', { query: '<asset-filename>', exts: ['svg', 'png'] }),
         },
     },
     {
@@ -372,8 +572,24 @@ Obtain explicit approval before notebook/document/block deletion or move, bulk r
 {{call conf}}
 {{call network}}
 {{call notify}}
+{{call extensionList}}
+
+## Extension trust and lifecycle verification
+
+Treat an extension package as executable third-party code. Keep these checks separate; passing one does not prove the next one:
+
+1. **Static package check**: inspect the package metadata and required files, exact \`minAppVersion\`, \`backends\`, \`kernels\`, and \`frontends\` values, then review the source, entrypoint, handlers, and cleanup paths. A package validator can catch malformed or incompatible files, but it cannot prove that SiYuan loaded the package.
+2. **Actual loading**: inspect the current runtime inventory and the user-visible enabled state. A package being present, discoverable, or statically valid is not evidence that its \`onload\` or kernel entrypoint ran.
+3. **Registration and unregistration**: for an approved live check, verify the lifecycle-owned surface after enablement (for example a frontend Agent action or plugin MCP tool), then disable/unload it and verify the same name is gone. Confirm that DOM nodes, listeners, timers, RPC methods, and MCP tools are cleaned up; the official {{help extension list}} bridge only reports tools exposed by SiYuan's \`/mcp\` registry and is not a substitute for frontend UI evidence.
+4. **Reload and functional readback**: use the supported reload path, then repeat discovery and one harmless surface-specific interaction. Check that the new behavior works once, old registrations are absent, and no duplicate handlers remain. Do not treat a refreshed tool list as proof that a plugin UI or desktop-only code path works.
+
+Browser-desktop verification covers browser-compatible surfaces and ordinary web UI only. SiYuan desktop-app verification is required for desktop-only surfaces such as Electron/desktop-window or backend/kernel behavior; a desktop pass does not prove browser compatibility. Use the exact manifest frontend values (\`desktop\`, \`desktop-window\`, \`browser-desktop\`, or \`browser-mobile\`) and validate each declared surface separately. Enabling, disabling, reloading, or invoking an untrusted package is a live side effect and requires explicit user approval; this scenario guidance does not authorize it.
 
 If an action or field is rejected, inspect {{help * *}} instead of guessing. Search results can lag recent writes; direct ID/path reads do not depend on indexing.
+
+## Runtime and write guarantees
+
+CLI execution is an explicit command, but that consent does not prove strict safe writes. Raw MCP payloads and Agent-generated calls likewise do not establish which coordinator or confirmation path handled them. Check the active runtime help and returned fields such as \`writeSafetyGuaranteed\` before relying on preflight, idempotency, or readback guarantees. If execution may have started and the response is lost, do not blindly resend; reread the exact target. Direct kernel, native, third-party, notification, sync, feedback, and local export effects remain outside Sisyphus strict-write guarantees.
 
 {{runtime system}}
 `,
@@ -384,6 +600,7 @@ If an action or field is rejected, inspect {{help * *}} instead of guessing. Sea
             conf: call('system', 'conf', { mode: 'summary' }),
             network: call('system', 'network'),
             notify: call('system', 'notify', { msg: 'Task complete', level: 'info', timeout: 5000 }),
+            extensionList: call('extension', 'list', { refresh: false }),
         },
         runtime: {
             cli: `## CLI setup

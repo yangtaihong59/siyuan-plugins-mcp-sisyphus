@@ -1,0 +1,4 @@
+interface:
+  display_name: "SiYuan Visual Assets MCP"
+  short_description: "Create, upload, and embed visual assets safely"
+  default_prompt: "Use $siyuan-mcp-visual-assets to create or place this visual asset with semantic checks and strong readback."
