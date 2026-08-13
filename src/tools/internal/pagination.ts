@@ -17,9 +17,13 @@ export function applyTruncation<T>(
     };
 }
 
+export function computePageCount(total: number, pageSize: number): number {
+    return Math.max(1, Math.ceil(total / pageSize));
+}
+
 export function paginate<T>(items: T[], page: number, pageSize: number): PaginationResult<T> {
     const total = items.length;
-    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const pageCount = computePageCount(total, pageSize);
     const normalizedPage = Math.min(page, pageCount);
     const start = (normalizedPage - 1) * pageSize;
     const paged = items.slice(start, start + pageSize);
