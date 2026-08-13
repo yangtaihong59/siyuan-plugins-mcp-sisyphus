@@ -128,7 +128,13 @@ describe('av tool', () => {
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
-            rows: [],
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [],
+                rows: [],
+                rowCount: 0,
+            },
         });
         vi.mocked(avApi.getAttributeViewKeys).mockResolvedValue([{ id: 'k1', name: 'Title' }]);
         vi.mocked(avApi.getAttributeViewPrimaryKeyValues).mockResolvedValue({
@@ -2258,34 +2264,48 @@ describe('av tool', () => {
             data: [],
             total: 0,
             page: 2,
-            pageSize: 1,
+            pageSize: 50,
             pageCount: 1,
             hasNextPage: false,
             avID: 'av-1',
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [],
+                rows: [],
+                rowCount: 0,
+            },
         });
     });
 
-    it('accepts avID alias and adds a lightweight table view when render rows are parseable', async () => {
+    it('accepts avID alias and reads rows/columns from the kernel nested view structure', async () => {
         const avApi = await import('@/api/av');
         vi.mocked(avApi.renderAttributeView).mockResolvedValue({
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
-            keyValues: [
-                { key: { id: 'col-title', name: 'Title', type: 'text' } },
-            ],
-            rows: [
-                {
-                    id: 'row-1',
-                    values: [
-                        { key: { id: 'col-title' }, content: 'Paper A' },
-                    ],
-                },
-            ],
-            rowCount: 1,
+            view: {
+                id: 'view-1',
+                name: '表格',
+                pageSize: 50,
+                columns: [
+                    { id: 'col-title', name: 'Title', type: 'text', pin: false, width: '200px', align: 0 },
+                    { id: 'col-done', name: '完成', type: 'checkbox', pin: false, width: '100px', align: 0 },
+                ],
+                rows: [
+                    {
+                        id: 'row-1',
+                        cells: [
+                            { id: 'val-1', value: { id: 'val-1', keyID: 'col-title', blockID: 'row-1', type: 0, text: { content: 'Paper A' } }, valueType: 0 },
+                            { id: 'val-2', value: { id: 'val-2', keyID: 'col-done', blockID: 'row-1', type: 10, checkbox: { checked: true } }, valueType: 10 },
+                        ],
+                    },
+                ],
+                rowCount: 1,
+            },
         });
 
         const result = await callAvTool(client, {
@@ -2299,10 +2319,156 @@ describe('av tool', () => {
         expect(parsed).toMatchObject({
             avID: 'av-1',
             id: 'av-1',
+            data: [{ id: 'row-1', cells: { 'col-title': 'Paper A', 'col-done': true } }],
+            total: 1,
+            pageSize: 50,
             table: {
-                columns: [{ id: 'col-title', name: 'Title', type: 'text' }],
-                rows: [{ id: 'row-1', cells: { 'col-title': 'Paper A' } }],
+                columns: [
+                    { id: 'col-title', name: 'Title', type: 'text' },
+                    { id: 'col-done', name: '完成', type: 'checkbox' },
+                ],
+                rows: [{ id: 'row-1', cells: { 'col-title': 'Paper A', 'col-done': true } }],
                 rowCount: 1,
+            },
+            view: {
+                id: 'view-1',
+                name: '表格',
+                pageSize: 50,
+                rows: [{
+                    id: 'row-1',
+                    cells: [
+                        { id: 'val-1', value: { keyID: 'col-title', blockID: 'row-1', text: { content: 'Paper A' } } },
+                        { id: 'val-2', value: { keyID: 'col-done', blockID: 'row-1', checkbox: { checked: true } } },
+                    ],
+                }],
+                rowCount: 1,
+            },
+        });
+    });
+
+    it('computes pagination from kernel rowCount and the effective page size', async () => {
+        const avApi = await import('@/api/av');
+        const view = {
+            id: 'view-1',
+            pageSize: 50,
+            columns: [{ id: 'col-title', name: 'Title', type: 'text' }],
+            rows: Array.from({ length: 20 }, (_, i) => ({
+                id: `row-${i + 1}`,
+                cells: [{ id: `val-${i + 1}`, value: { keyID: 'col-title', blockID: `row-${i + 1}`, text: { content: `Item ${i + 1}` } }, valueType: 0 }],
+            })),
+            rowCount: 120,
+        };
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({ id: 'av-1', viewID: 'view-1', viewType: 'table', view });
+
+        const result = await callAvTool(client, {
+            action: 'render',
+            id: 'av-1',
+            page: 3,
+        }, enabledActions('render'), permMgr);
+
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.data).toHaveLength(20);
+        expect(parsed.data[0]).toMatchObject({ id: 'row-1', cells: { 'col-title': 'Item 1' } });
+        expect(parsed.data[19]).toMatchObject({ id: 'row-20', cells: { 'col-title': 'Item 20' } });
+        expect(parsed).toMatchObject({
+            total: 120,
+            page: 3,
+            pageSize: 50,
+            pageCount: 3,
+            hasNextPage: false,
+        });
+    });
+
+    it('normalizes pageSize=-1 to the view default page size', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [],
+                rows: [],
+                rowCount: 120,
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'render',
+            id: 'av-1',
+            pageSize: -1,
+        }, enabledActions('render'), permMgr);
+
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).toMatchObject({
+            data: [],
+            total: 120,
+            page: 1,
+            pageSize: 50,
+            pageCount: 3,
+            hasNextPage: true,
+        });
+    });
+
+    it('aggregates rows from group views when the kernel groups rows', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                name: '分组表格',
+                pageSize: 50,
+                columns: [{ id: 'col-title', name: 'Title', type: 'text' }],
+                rows: [],
+                rowCount: 3,
+                groups: [
+                    {
+                        id: 'grp-1',
+                        name: 'A 组',
+                        pageSize: 50,
+                        rows: [
+                            { id: 'grow-1', cells: [{ id: 'gv-1', value: { keyID: 'col-title', blockID: 'grow-1', text: { content: 'Alpha' } }, valueType: 0 }] },
+                            { id: 'grow-2', cells: [{ id: 'gv-2', value: { keyID: 'col-title', blockID: 'grow-2', text: { content: 'Beta' } }, valueType: 0 }] },
+                        ],
+                        rowCount: 2,
+                    },
+                    {
+                        id: 'grp-2',
+                        name: 'B 组',
+                        pageSize: 50,
+                        rows: [
+                            { id: 'grow-3', cells: [{ id: 'gv-3', value: { keyID: 'col-title', blockID: 'grow-3', text: { content: 'Gamma' } }, valueType: 0 }] },
+                        ],
+                        rowCount: 1,
+                    },
+                ],
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'render',
+            id: 'av-1',
+        }, enabledActions('render'), permMgr);
+
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.data).toHaveLength(3);
+        expect(parsed.data[0]).toMatchObject({ id: 'grow-1', cells: { 'col-title': 'Alpha' } });
+        expect(parsed.data[2]).toMatchObject({ id: 'grow-3', cells: { 'col-title': 'Gamma' } });
+        expect(parsed).toMatchObject({
+            total: 3,
+            pageSize: 50,
+            pageCount: 1,
+            hasNextPage: false,
+            table: {
+                rows: [
+                    { id: 'grow-1', cells: { 'col-title': 'Alpha' } },
+                    { id: 'grow-2', cells: { 'col-title': 'Beta' } },
+                    { id: 'grow-3', cells: { 'col-title': 'Gamma' } },
+                ],
+                rowCount: 3,
             },
         });
     });
@@ -2341,8 +2507,13 @@ describe('av tool', () => {
             id: 'av-new',
             viewID: 'view-new',
             viewType: 'table',
-            columns: [{ name: '主键' }, { name: '单选' }],
-            rows: [],
+            view: {
+                id: 'view-new',
+                pageSize: 50,
+                columns: [{ name: '主键' }, { name: '单选' }],
+                rows: [],
+                rowCount: 0,
+            },
         });
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async () => {
             const blockID = vi.mocked(transactionApi.performTransactions).mock.calls[0]?.[1]?.[0]?.doOperations?.[0]?.id;
@@ -2390,14 +2561,20 @@ describe('av tool', () => {
             data: [],
             total: 0,
             page: 1,
-            pageSize: 1,
+            pageSize: 50,
             pageCount: 1,
             hasNextPage: false,
             avID: 'av-new',
             id: 'av-new',
             viewID: 'view-new',
             viewType: 'table',
-            columns: [{ name: '主键' }, { name: '单选' }],
+            view: {
+                id: 'view-new',
+                pageSize: 50,
+                columns: [{ name: '主键' }, { name: '单选' }],
+                rows: [],
+                rowCount: 0,
+            },
             generatedAvID: false,
             materialized: true,
             blockID: insertedBlockID,
@@ -2416,8 +2593,13 @@ describe('av tool', () => {
             id: payload.id,
             viewID: 'view-new',
             viewType: 'table',
-            columns: [{ name: '主键' }, { name: '单选' }],
-            rows: [],
+            view: {
+                id: 'view-new',
+                pageSize: 50,
+                columns: [{ name: '主键' }, { name: '单选' }],
+                rows: [],
+                rowCount: 0,
+            },
         }));
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async () => {
             const blockID = vi.mocked(transactionApi.performTransactions).mock.calls[0]?.[1]?.[0]?.doOperations?.[0]?.id;
@@ -2454,7 +2636,13 @@ describe('av tool', () => {
             blockID: insertedBlockID,
             parentID: 'target-doc',
             databaseBlockRegistrationVerified: true,
-            columns: [{ name: '主键' }, { name: '单选' }],
+            view: {
+                id: 'view-new',
+                pageSize: 50,
+                columns: [{ name: '主键' }, { name: '单选' }],
+                rows: [],
+                rowCount: 0,
+            },
         });
     });
 
@@ -2469,7 +2657,13 @@ describe('av tool', () => {
             id: 'av-missing',
             viewID: 'view-new',
             viewType: 'table',
-            rows: [],
+            view: {
+                id: 'view-new',
+                pageSize: 50,
+                columns: [],
+                rows: [],
+                rowCount: 0,
+            },
         });
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async () => {
             const blockID = vi.mocked(transactionApi.performTransactions).mock.calls[0]?.[1]?.[0]?.doOperations?.[0]?.id;
@@ -2514,7 +2708,13 @@ describe('av tool', () => {
                 id: 'av-stuck',
                 viewID: 'view-new',
                 viewType: 'table',
-                rows: [],
+                view: {
+                    id: 'view-new',
+                    pageSize: 50,
+                    columns: [],
+                    rows: [],
+                    rowCount: 0,
+                },
             });
             vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
             vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
