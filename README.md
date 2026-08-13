@@ -23,7 +23,7 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.2` — Adds native semantic search, an embedding-model and index-management settings page, and safe sibling document reordering. It also fixes the bundled stdio transport and expands the import-migration, visual-assets, and system-safety Skills. Thanks to [@adminclaw](https://github.com/adminclaw) for [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47) and [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49). CLI is now `v0.2.5`.
+> **Latest:** `v0.6.3` — Adds native semantic search, an embedding-model and index-management settings page, and safe sibling document reordering. It also fixes the bundled stdio transport and expands the import-migration, visual-assets, and system-safety Skills. Thanks to [@adminclaw](https://github.com/adminclaw) for [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47) and [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49). CLI is now `v0.2.5`.
 
 ## Project Direction Update
 
