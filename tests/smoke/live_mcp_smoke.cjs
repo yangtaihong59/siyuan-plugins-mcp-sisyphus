@@ -296,7 +296,7 @@ async function assertDefaultToolList() {
         assert.match(descriptions.file, /Additional actions: render, export_resources, list_unused_assets, get_image_ocr_text, remove_unused_assets, rename_asset, delete_asset/);
         assert.match(descriptions.file, /confirmLargeFile/);
         assert.match(descriptions.file, /Read siyuan:\/\/help\/action\/file\/\{action\} for details/);
-        assert.match(descriptions.search, /fulltext, query_sql, get_backlinks/);
+        assert.match(descriptions.search, /fulltext, semantic, query_sql, get_backlinks/);
         assert.match(descriptions.search, /Additional actions: search_refs, find_replace, search_assets, fulltext_asset_content, list_invalid_refs/);
         assert.match(descriptions.search, /read-only/i);
         assert.match(descriptions.tag, /Common actions: list, rename/);

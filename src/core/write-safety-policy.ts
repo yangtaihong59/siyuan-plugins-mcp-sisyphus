@@ -69,7 +69,7 @@ export const ACTION_SAFETY_POLICIES: {
         extract_doc: external(),
     },
     search: {
-        fulltext: read(), query_sql: read(), get_backlinks: read(), search_refs: read(), search_assets: read(),
+        fulltext: read(), semantic: read(), query_sql: read(), get_backlinks: read(), search_refs: read(), search_assets: read(),
         fulltext_asset_content: read(), list_invalid_refs: read(), find_replace: mutation('manifest'),
     },
     tag: { list: read(), rename: mutation('manifest'), remove: mutation('manifest') },

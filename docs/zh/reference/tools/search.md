@@ -1,6 +1,6 @@
 # search 工具
 
-这个工具覆盖全文搜索、反链、SQL 只读查询、资源搜索，以及受控查找替换。
+这个工具覆盖全文搜索、语义搜索、反链、SQL 只读查询、资源搜索，以及受控查找替换。
 
 适用场景：你需要跨工作区查找内容，或查询索引内容。
 
@@ -13,7 +13,7 @@
 
 | 分组 | 动作 |
 |------|---------|
-| 文本搜索 | `fulltext`, `search_refs` |
+| 文本搜索 | `fulltext`, `semantic`, `search_refs` |
 | 图谱 / 引用关系 | `get_backlinks`, `list_invalid_refs` |
 | SQL / 资源 | `query_sql`, `search_assets`, `fulltext_asset_content` |
 | 修改类 | `find_replace` |
@@ -24,6 +24,8 @@
 - `query_sql` 是只读操作，只接受 `SELECT` 语句；请自行添加 `LIMIT`。
 - 搜索结果会在适用时按笔记本权限过滤。
 - 全文搜索可能略滞后于刚写入的内容，因为索引是最终一致的。
+- `semantic` 要求思源 3.7.0+、已启用嵌入模型并完成原生嵌入索引；加密笔记本不会进入该索引。
+- 插件的“嵌入模型”设置页在思源 3.7.0–3.7.1 可编辑原生配置；连接测试、索引统计、重建和失败项重试要求思源 3.7.2+。
 
 ## 示例
 
@@ -40,6 +42,14 @@ MCP：
 
 ```json
 {
+  "action": "semantic",
+  "query": "与弹性分布式系统相关的想法",
+  "typeShortcodes": ["h", "p"]
+}
+```
+
+```json
+{
   "action": "query_sql",
   "sql": "SELECT id, content, type FROM blocks LIMIT 10"
 }
@@ -49,6 +59,7 @@ CLI：
 
 ```bash
 siyuan search fulltext --query "meeting notes" --method-name keyword --sort-by relevance
+siyuan search semantic --query "与弹性分布式系统相关的想法" --type-shortcodes-json '["h","p"]'
 siyuan search query-sql --sql "SELECT id, content, type FROM blocks LIMIT 10"
 ```
 
@@ -61,6 +72,7 @@ siyuan search query-sql --sql "SELECT id, content, type FROM blocks LIMIT 10"
 ## 动作列表
 
 - `fulltext`
+- `semantic`
 - `query_sql`
 - `get_backlinks`
 - `search_refs`

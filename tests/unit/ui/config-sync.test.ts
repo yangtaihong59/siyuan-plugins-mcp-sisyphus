@@ -131,7 +131,7 @@ describe('setting and mcp config stay behaviorally aligned', () => {
         const tabsSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config-tabs.ts'), 'utf8');
 
         expect(tabsSource).toContain('description: string;');
-        expect(rootSource.match(/description: getLabel\("settings[A-Za-z]+Desc"/g)).toHaveLength(9);
+        expect(rootSource.match(/description: getLabel\("settings[A-Za-z]+Desc"/g)).toHaveLength(10);
         expect(rootSource).toContain('<aside class="config__sidebar">');
         expect(rootSource).toContain('<nav class="config__navigation"');
         expect(rootSource).toContain('class="config__nav-item"');
@@ -139,6 +139,26 @@ describe('setting and mcp config stay behaviorally aligned', () => {
         expect(rootSource).toContain('<header class="config__page-header">');
         expect(rootSource).toContain('overflow-x: auto;');
         expect(rootSource).not.toContain('.b3-list-item__text {\n            display: none');
+    });
+
+    it('keeps embedding settings on a native-AI-only page without plugin persistence', () => {
+        const rootSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config.svelte'), 'utf8');
+        const panelSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/EmbeddingPanel.svelte'), 'utf8');
+
+        expect(rootSource).toContain('{ id: EMBEDDING_GROUP_KEY');
+        expect(rootSource).toContain('<EmbeddingPanel display={focusGroup === EMBEDDING_GROUP_KEY}');
+        expect(panelSource).toContain('type="password"');
+        expect(panelSource).toContain('/api/system/getConf');
+        expect(panelSource).toContain('/api/setting/setAI');
+        expect(panelSource).toContain('/api/ai/testEmbeddingModel');
+        expect(panelSource).toContain('/api/ai/embeddingStat');
+        expect(panelSource).toContain('/api/ai/reindexEmbedding');
+        expect(panelSource).toContain('/api/ai/retryFailedEmbedding');
+        expect(panelSource).toContain('window.setInterval(() => void refreshStats(), 3000)');
+        expect(panelSource).toContain('window.clearInterval(statsTimer)');
+        expect(panelSource).not.toContain('plugin.saveData');
+        expect(panelSource).not.toContain('savePersisted');
+        expect(panelSource).not.toContain('console.');
     });
 
     it('keeps the settings pages on one shared visual system', () => {

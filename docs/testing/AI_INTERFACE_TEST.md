@@ -258,7 +258,7 @@ AI 在正式执行前必须先确认本轮模式：
 | `notebook` | `list`、`create`、`rename`、`get_conf`、`get_child_docs`、`set_open_state`、`get_permissions`、`set_permission`、`remove` | `set_icon`、`set_conf` | 仅对本轮测试笔记本改权限 |
 | `document` | `create`、`lookup`、`get_child_docs`、`list_tree`、`search_docs`、`get_doc`、`remove` | `get_child_blocks`、`duplicate`、`set_attr` | `move`、`create_daily_note` |
 | `block` | `append`、`prepend`、`insert`、`update`、`get_children`、`get_kramdown`、`get_attrs`、`set_attrs`、`info`、`word_count`、`breadcrumb`、`dom`、`delete` | `insert.blocks`、`update.items`、`recent_updated`、`transfer_references`、`add_to_daily_note`、`docs_info` | `move`、`set_fold_state` |
-| `search` / `tag` | `fulltext`、`query_sql`、`get_backlinks`、`tag.list(keyword)` | `search_refs`、`search_assets`、`fulltext_asset_content`、`fulltext_asset_content(assetId)`、`tag.rename` | `find_replace`、`tag.remove` |
+| `search` / `tag` | `fulltext`、`query_sql`、`get_backlinks`、`tag.list(keyword)` | `semantic`（思源 3.7.0+ 且需已配置嵌入模型与索引）、`search_refs`、`search_assets`、`fulltext_asset_content`、`fulltext_asset_content(assetId)`、`tag.rename` | `find_replace`、`tag.remove` |
 | `file` | `render(engine="sprig")`、`export_md`、`get_doc_assets` | `list_templates`、`read_template`、`create_template`、`update_template`、`save_doc_as_template`、`render(engine="template")`、`get_image_ocr_text` | `delete_template`、`upload_asset`、`export_resources`、`remove_unused_assets`、`delete_asset` |
 | `flashcard` | `get_decks`、`list_cards`、`get_cards` | `create_card(mode="full")`、`create_card(mode="attach")`、`review_card`、`review_card(skip=true)`；`review_card.reviewedCards` 参数校验 | `remove_card` |
 | `mascot` | `get_balance` | `shop` | `buy` |

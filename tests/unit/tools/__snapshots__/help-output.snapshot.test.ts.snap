@@ -4233,7 +4233,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4263,7 +4263,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4290,7 +4290,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4316,7 +4316,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4343,7 +4343,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4367,7 +4367,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4392,7 +4392,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4418,7 +4418,7 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
           "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
           "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-          "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
           "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
@@ -4433,15 +4433,44 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
         ],
         "tool": "search",
       },
+      "semantic": {
+        "action": "semantic",
+        "example": {
+          "action": "semantic",
+          "query": "search keyword",
+        },
+        "fullDocResource": "siyuan://help/action/search/semantic",
+        "guidance": [
+          "All search actions are read-only except find_replace, which modifies content and requires explicit user confirmation.",
+          "search(action="query_sql") only accepts SELECT statements; mutation queries will be rejected, and returned rows are filtered by notebook permission.",
+          "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
+          "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
+          "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
+          "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
+          "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
+          "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
+          "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
+        ],
+        "hint": "Searches SiYuan’s native embedding index by meaning. Requires SiYuan 3.7.0+ and an enabled, indexed embedding model. Supports paths, types/typeShortcodes, subTypes, page, and pageSize; encrypted notebooks are not included in the native embedding index.",
+        "requiredFields": [
+          "query",
+        ],
+        "requiresConfirmation": false,
+        "shapes": [
+          "query",
+        ],
+        "tool": "search",
+      },
     },
     "description": "🔍 Grouped search and query operations. Use the "action" field to select the operation.
 
-Common actions: fulltext, query_sql, get_backlinks. Required fields: fulltext: query; query_sql: no additional fields; get_backlinks: id.
+Common actions: fulltext, semantic, query_sql, get_backlinks. Required fields: fulltext: query; semantic: query; query_sql: no additional fields; get_backlinks: id.
 
 Additional actions: search_refs, find_replace, search_assets, fulltext_asset_content, list_invalid_refs. Read siyuan://help/action/search/{action} for details, or call action="help" if resources are unavailable.
 
 Parameter contract per action (fields outside the action's optional list should not be sent):
 search.fulltext: required [query] | optional [method, methodName, types, typeShortcodes, paths, groupBy, orderBy, sortBy, page, pageSize, parentId, hasTags, stripHtml]
+search.semantic: required [query] | optional [paths, types, typeShortcodes, subTypes, page, pageSize]
 search.query_sql: required [] | optional [stmt, sql]
 search.get_backlinks: required [id] | optional [keyword, refTreeID, scopeRootId, mode]
 search.search_refs: required [id] | optional [rootID, k, beforeLen, isSquareBrackets, isDatabase, reqId]
@@ -4461,6 +4490,7 @@ All search actions are read-only except find_replace, which modifies content and
         "query_sql": "Execute a SELECT statement. Common tables: blocks, spans, assets. Prefer sql over stmt when prompting an AI. Always use LIMIT to control result size. MCP returns data plus truncation and permission-filtering metadata when applicable.",
         "search_assets": "Searches asset filenames. Prefer query over k when prompting an AI. If you need OCR or indexed inner-text matches, use fulltext_asset_content instead.",
         "search_refs": "Returns block-level reference contexts for the target id. Use this when you need the surrounding block content, not just the document-level backlink list. beforeLen controls how much leading context is included in each hit.",
+        "semantic": "Searches SiYuan’s native embedding index by meaning. Requires SiYuan 3.7.0+ and an enabled, indexed embedding model. Supports paths, types/typeShortcodes, subTypes, page, and pageSize; encrypted notebooks are not included in the native embedding index.",
       },
       "actions": {
         "find_replace": {
@@ -4494,6 +4524,10 @@ All search actions are read-only except find_replace, which modifies content and
           "hint": "Returns block-level reference contexts for the target id. Use this when you need the surrounding block content, not just the document-level backlink list. beforeLen controls how much leading context is included in each hit.",
           "requiresConfirmation": false,
         },
+        "semantic": {
+          "hint": "Searches SiYuan’s native embedding index by meaning. Requires SiYuan 3.7.0+ and an enabled, indexed embedding model. Supports paths, types/typeShortcodes, subTypes, page, and pageSize; encrypted notebooks are not included in the native embedding index.",
+          "requiresConfirmation": false,
+        },
       },
       "advancedActions": [
         "search_refs",
@@ -4504,6 +4538,7 @@ All search actions are read-only except find_replace, which modifies content and
       ],
       "commonActions": [
         "fulltext",
+        "semantic",
         "query_sql",
         "get_backlinks",
       ],
@@ -4514,7 +4549,7 @@ All search actions are read-only except find_replace, which modifies content and
         "When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.",
         "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
         "In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.",
-        "Use search(action="fulltext") for natural language searches; use search(action="query_sql") for structured queries.",
+        "Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.",
         "search(action="fulltext") types field auto-expands shortcodes: {"h": true, "p": true} is equivalent to {"heading": true, "paragraph": true}. Shortcodes: d/h/p/l/i/b/c/m/t/s/html/embed/av. Prefer semantic aliases such as methodName/sortBy over numeric method/orderBy.",
         "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
         "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",

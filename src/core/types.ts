@@ -1038,6 +1038,17 @@ export const SearchFulltextSchema = z.object({
     stripHtml: z.boolean().optional().describe("Legacy toggle. plainContent is now returned by default; set this when you want to emphasize plain-text-safe downstream parsing while keeping highlighted HTML content."),
 });
 
+export const SearchSemanticSchema = z.object({
+    action: z.literal("semantic"),
+    query: z.string().min(1).describe("Natural-language semantic search query"),
+    paths: z.array(z.string()).optional().describe("Restrict search to notebook IDs or notebook/storage paths"),
+    types: z.record(z.string(), z.boolean()).optional().describe("Block type filter. Accepts full names or shortcodes."),
+    typeShortcodes: z.array(z.string()).optional().describe("Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types."),
+    subTypes: z.record(z.string(), z.boolean()).optional().describe("Optional SiYuan block subtype filter"),
+    page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
+    pageSize: z.number().int().min(1).max(128).optional().describe("Results per page, default 32, max 128"),
+});
+
 export const SearchQuerySqlSchema = z.object({
     action: z.literal("query_sql"),
     stmt: z.string().optional().describe("SQL SELECT statement to execute against the blocks/spans/assets tables; returned rows are permission-filtered"),

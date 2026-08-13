@@ -358,6 +358,15 @@ interface IReqFullTextSearchBlock {
     pageSize?: number;
 }
 
+interface IReqSemanticSearchBlock {
+    query: string;
+    paths?: string[];
+    types?: Record<string, boolean>;
+    subTypes?: Record<string, boolean>;
+    page?: number;
+    pageSize?: number;
+}
+
 interface IResFullTextSearchBlock {
     blocks: unknown[];
     matchedBlockCount: number;
@@ -535,6 +544,7 @@ export type {
     IReqFoldBlock,
     IReqForwardProxy,
     IReqFullTextSearchBlock,
+    IReqSemanticSearchBlock,
     IReqGetBacklinkDoc,
     IReqGetBackmentionDoc,
     IReqGetBlockKramdown,

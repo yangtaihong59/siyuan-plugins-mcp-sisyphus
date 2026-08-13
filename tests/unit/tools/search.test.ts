@@ -64,6 +64,119 @@ describe('search SQL read-only guard', () => {
 });
 
 describe('search tool filtering', () => {
+    it('routes semantic search through the native embedding endpoint with normalized filters', async () => {
+        const request = vi.fn(async (endpoint: string, body: unknown) => {
+            if (endpoint === '/api/system/version') return '3.8.0';
+            if (endpoint === '/api/notebook/lsNotebooks') {
+                return { notebooks: [{ id: 'allowed', name: 'Research', icon: '', sort: 0, closed: false }] };
+            }
+            expect(endpoint).toBe('/api/search/semanticSearchBlock');
+            expect(body).toEqual({
+                query: 'fault tolerant knowledge systems',
+                paths: ['allowed'],
+                types: { heading: true, paragraph: true },
+                subTypes: { h2: true },
+                page: 2,
+                pageSize: 16,
+            });
+            return {
+                blocks: [
+                    { id: 'keep', box: 'allowed', rootID: 'doc-1', path: '/doc-1.sy', content: 'relevant' },
+                    { id: 'drop', box: 'blocked', rootID: 'doc-2', path: '/doc-2.sy', content: 'secret' },
+                ],
+                matchedBlockCount: 2,
+                matchedRootCount: 2,
+                pageCount: 3,
+            };
+        });
+        const client = createMockClient({ request });
+        const permMgr = {
+            reload: vi.fn(async () => undefined),
+            canWrite: () => true,
+            canRead: (notebook: string) => notebook !== 'blocked',
+            canDelete: () => true,
+            get: () => 'rwd',
+        };
+
+        const result = await callSearchTool(client, {
+            action: 'semantic',
+            query: 'fault tolerant knowledge systems',
+            paths: ['allowed'],
+            typeShortcodes: ['h', 'p'],
+            subTypes: { h2: true },
+            page: 2,
+            pageSize: 16,
+        }, buildDefaultToolConfig().search, permMgr as never);
+
+        const parsed = parseResult(result);
+        expect(parsed.data).toHaveLength(1);
+        expect(parsed.data[0]).toMatchObject({ id: 'keep', notebookName: 'Research' });
+        expect(parsed.partial).toBe(true);
+        expect(parsed.filteredOutCount).toBe(1);
+        expect(parsed.kernelMatchedBlockCount).toBe(2);
+        expect(parsed.page).toBe(2);
+    });
+
+    it('returns a structured version error before calling semantic search on old SiYuan', async () => {
+        const request = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/system/version') return '3.6.4';
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const client = createMockClient({ request });
+        const permMgr = { canRead: () => true };
+
+        const result = await callSearchTool(client, {
+            action: 'semantic',
+            query: 'meaning',
+        }, buildDefaultToolConfig().search, permMgr as never);
+
+        const parsed = parseResult(result);
+        expect(parsed.error.code).toBe('unsupported_siyuan_version');
+        expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    it('adds an actionable warning when the semantic index returns no matches', async () => {
+        const request = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/system/version') return '3.8.0';
+            if (endpoint === '/api/search/semanticSearchBlock') {
+                return { blocks: [], matchedBlockCount: 0, matchedRootCount: 0, pageCount: 0 };
+            }
+            return { notebooks: [] };
+        });
+        const result = await callSearchTool(createMockClient({ request }), {
+            action: 'semantic',
+            query: 'missing concept',
+        }, buildDefaultToolConfig().search, { canRead: () => true } as never);
+
+        expect(parseResult(result).warning).toMatch(/embedding model is enabled/i);
+        expect(parseResult(result).warning).toMatch(/encrypted/i);
+    });
+
+    it('validates semantic pagination before reaching the kernel', async () => {
+        const request = vi.fn();
+        const result = await callSearchTool(createMockClient({ request }), {
+            action: 'semantic',
+            query: 'meaning',
+            pageSize: 129,
+        }, buildDefaultToolConfig().search, { canRead: () => true } as never);
+
+        expect(parseResult(result).error.message).toContain('Invalid arguments');
+        expect(request).not.toHaveBeenCalled();
+    });
+
+    it('surfaces semantic endpoint failures through the normal structured error path', async () => {
+        const request = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/system/version') return '3.8.0';
+            throw new Error('embedding service unavailable');
+        });
+        const result = await callSearchTool(createMockClient({ request }), {
+            action: 'semantic',
+            query: 'meaning',
+        }, buildDefaultToolConfig().search, { canRead: () => true } as never);
+
+        expect(parseResult(result).error.message).toContain('embedding service unavailable');
+    });
+
     it('filters fulltext search results by notebook permission and preserves plainContent', () => {
         const permMgr = {
             canRead(notebookId: string) {
@@ -131,9 +244,24 @@ describe('search tool filtering', () => {
         const [tool] = listSearchTools(config.search);
         const actionDescription = tool.inputSchema.properties.action.description;
         expect(actionDescription).toContain('search_refs');
+        expect(actionDescription).toContain('semantic');
         expect(actionDescription).toContain('find_replace');
         expect(actionDescription).toContain('search_assets');
         expect(actionDescription).toContain('list_invalid_refs');
+    });
+
+    it('publishes the semantic action contract without fulltext-only sort controls', () => {
+        const [tool] = listSearchTools(buildDefaultToolConfig().search);
+        const semanticSchema = tool.inputSchema['x-sisyphus-actionSchemas']
+            .find((schema: any) => schema.properties?.action?.const === 'semantic');
+
+        expect(semanticSchema.required).toEqual(expect.arrayContaining(['action', 'query']));
+        expect(semanticSchema.properties.pageSize.maximum).toBe(128);
+        expect(semanticSchema.properties).toHaveProperty('typeShortcodes');
+        expect(semanticSchema.properties).toHaveProperty('subTypes');
+        expect(semanticSchema.properties).not.toHaveProperty('method');
+        expect(semanticSchema.properties).not.toHaveProperty('orderBy');
+        expect(semanticSchema.properties).not.toHaveProperty('groupBy');
     });
 
     it('publishes fulltext types as a boolean object map', () => {

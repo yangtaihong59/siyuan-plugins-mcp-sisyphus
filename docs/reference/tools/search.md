@@ -1,6 +1,6 @@
 # search
 
-This tool covers full-text search, backlinks, SQL reads, asset search, and controlled find-replace operations.
+This tool covers full-text and semantic search, backlinks, SQL reads, asset search, and controlled find-replace operations.
 
 When to read this page: you need to find content across the workspace or query indexed content.
 
@@ -13,7 +13,7 @@ Related pages:
 
 | Group | Actions |
 |------|---------|
-| Text search | `fulltext`, `search_refs` |
+| Text search | `fulltext`, `semantic`, `search_refs` |
 | Graph / relation | `get_backlinks`, `list_invalid_refs` |
 | SQL / asset | `query_sql`, `search_assets`, `fulltext_asset_content` |
 | Mutating | `find_replace` |
@@ -24,6 +24,8 @@ Related pages:
 - `query_sql` is read-only and only accepts `SELECT` statements; add `LIMIT` yourself.
 - Search results are filtered by notebook permissions where applicable.
 - Full-text search can lag briefly behind recent writes because indexing is eventually consistent.
+- `semantic` requires SiYuan 3.7.0+, an enabled embedding model, and a completed native embedding index. Encrypted notebooks are not included in that index.
+- The plugin's **Embedding Model** settings page can edit the native configuration on SiYuan 3.7.0–3.7.1. Connection testing, index statistics, rebuild, and failed-item retry require SiYuan 3.7.2+.
 
 ## Examples
 
@@ -40,6 +42,14 @@ MCP:
 
 ```json
 {
+  "action": "semantic",
+  "query": "ideas related to resilient distributed systems",
+  "typeShortcodes": ["h", "p"]
+}
+```
+
+```json
+{
   "action": "query_sql",
   "sql": "SELECT id, content, type FROM blocks LIMIT 10"
 }
@@ -49,6 +59,7 @@ CLI:
 
 ```bash
 siyuan search fulltext --query "meeting notes" --method-name keyword --sort-by relevance
+siyuan search semantic --query "ideas related to resilient distributed systems" --type-shortcodes-json '["h","p"]'
 siyuan search query-sql --sql "SELECT id, content, type FROM blocks LIMIT 10"
 ```
 
@@ -61,6 +72,7 @@ Notes for AI callers:
 ## Action List
 
 - `fulltext`
+- `semantic`
 - `query_sql`
 - `get_backlinks`
 - `search_refs`

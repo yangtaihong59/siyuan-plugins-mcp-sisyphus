@@ -10,6 +10,7 @@ export type ErrorCode =
     | 'document_not_found'
     | 'av_not_found'
     | 'permission_denied'
+    | 'unsupported_siyuan_version'
     | 'kernel_unreachable';
 
 export interface ErrorTranslation {
@@ -24,6 +25,11 @@ interface ErrorRule {
 }
 
 const ERROR_RULES: ErrorRule[] = [
+    {
+        code: 'unsupported_siyuan_version',
+        patterns: [/SiYuan version .* does not support semantic search/i],
+        hint: 'Upgrade SiYuan to version 3.7.0 or newer before using search(action="semantic").',
+    },
     {
         code: 'block_not_found',
         patterns: [
