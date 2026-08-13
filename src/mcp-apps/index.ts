@@ -13,11 +13,15 @@ interface ReviewTrace {
     elapsedMs: number;
 }
 
+const previewMode = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get('preview')
+    : null;
+
 const root = document.querySelector<HTMLElement>('#app')!;
 const app = new App(
     { name: 'SiYuan Sisyphus Apps', version: '1.0.0' },
     {},
-    { autoResize: true, strict: true },
+    { autoResize: !previewMode, strict: true },
 );
 
 let lastToolInput: JsonObject = {};
@@ -25,7 +29,6 @@ let busy = false;
 let notice = '';
 let noticeError = false;
 let pendingConfirmation = '';
-const previewMode = import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'flashcard';
 
 const flashcardState = {
     cards: [] as JsonObject[],
@@ -92,8 +95,15 @@ root.addEventListener('submit', (event) => {
 });
 
 renderLoading('正在连接 MCP Host…');
-if (previewMode) loadFlashcardPreview();
+if (previewMode) loadPreview(previewMode);
 else void connectApp();
+
+function loadPreview(mode: string) {
+    if (mode === 'flashcard') loadFlashcardPreview();
+    else if (mode === 'timeline') loadTimelinePreview();
+    else if (mode === 'shop') loadShopPreview();
+    else renderError(`未知预览：${mode}`);
+}
 
 function loadFlashcardPreview() {
     flashcardState.selectionReason = '优先选择了遗忘次数较多的组合导航卡，并搭配一张基础概念卡。';
@@ -121,7 +131,62 @@ function loadFlashcardPreview() {
             },
         },
     ];
+    flashcardState.revealed = true;
+    flashcardState.appActions = new Set(['review_card']);
     renderFlashcards();
+}
+
+function loadTimelinePreview() {
+    timelineState.documentId = '20260810123456-sisyphus';
+    timelineState.appActions = new Set(['list_nodes', 'compare_node', 'rollback_document', 'rollback_block']);
+    timelineState.comparison = {
+        documentId: timelineState.documentId,
+        node: {
+            tag: 'sisyphus-timeline/research-baseline',
+            name: '实验基线',
+            scope: 'document',
+            created: Date.UTC(2026, 7, 10, 4, 30),
+        },
+        stats: { addedLines: 5, removedLines: 3 },
+        changes: [
+            {
+                status: 'modified',
+                changeKey: 'block-method',
+                old: { markdown: '组合导航采用 15 维误差状态模型。' },
+                current: { markdown: '组合导航采用 18 维误差状态模型，并补充杆臂误差。' },
+                rollbackable: true,
+            },
+            {
+                status: 'added',
+                changeKey: 'block-result',
+                current: { markdown: '实验结果：水平定位误差降低 23.6%。' },
+                rollbackable: true,
+            },
+            {
+                status: 'removed',
+                changeKey: 'block-todo',
+                old: { markdown: 'TODO：补充静态对准实验。' },
+                rollbackable: true,
+            },
+        ],
+    };
+    renderTimeline();
+}
+
+function loadShopPreview() {
+    shopState.balance = 42;
+    shopState.totalEarned = 128;
+    shopState.appActions = new Set(['buy']);
+    shopState.items = [
+        { id: 'fish', label: '小鱼干', type: 'food', emoji: '🐟', cost: 3 },
+        { id: 'cake', label: '草莓蛋糕', type: 'food', emoji: '🍰', cost: 6 },
+        { id: 'yarn', label: '毛线球', type: 'toy', emoji: '🧶', cost: 8 },
+        { id: 'box', label: '纸箱', type: 'toy', emoji: '📦', cost: 10 },
+        { id: 'flower', label: '小花', type: 'gift', emoji: '🌼', cost: 12 },
+        { id: 'crown', label: '猫猫皇冠', type: 'gift', emoji: '👑', cost: 20 },
+    ];
+    shopState.pendingItems = [shopState.items[0]];
+    renderShop();
 }
 
 async function connectApp() {
@@ -203,7 +268,9 @@ async function callTool(name: 'flashcard_review_app_action' | 'timeline_app_acti
     notice = '';
     renderBusyState();
     try {
-        const result = await app.callServerTool({ name, arguments: args });
+        const result = previewMode
+            ? simulatePreviewToolCall(name, args)
+            : await callServerToolSafely(name, args);
         if (isToolError(result)) {
             throw new Error(toolErrorMessage(result));
         }
@@ -218,6 +285,100 @@ async function callTool(name: 'flashcard_review_app_action' | 'timeline_app_acti
         busy = false;
         renderBusyState();
     }
+}
+
+async function callServerToolSafely(
+    name: 'flashcard_review_app_action' | 'timeline_app_action' | 'mascot_shop_app_action',
+    args: JsonObject,
+) {
+    const action = String(args.action ?? '');
+    if (!isAppMutation(action)) return app.callServerTool({ name, arguments: args });
+
+    // validateOnly is guaranteed never to mutate, including when strict mode
+    // is disabled. That lets one App bundle work with both server modes.
+    const preflight = await app.callServerTool({
+        name,
+        arguments: { ...args, validateOnly: true },
+    });
+    if (isToolError(preflight)) {
+        if (toolErrorCode(preflight) === 'strict_mode_disabled') {
+            return app.callServerTool({ name, arguments: args });
+        }
+        return preflight;
+    }
+
+    const payload = resultPayload(preflight);
+    const preconditionField = typeof payload?.preconditionField === 'string'
+        ? payload.preconditionField
+        : undefined;
+    const hashFieldByPrecondition: Record<string, string> = {
+        expectedStateHash: 'stateHash',
+        expectedStructureHash: 'structureHash',
+        expectedValueHash: 'valueHash',
+        expectedManifestHash: 'manifestHash',
+        expectedSourceHash: 'sourceHash',
+    };
+    const hashField = preconditionField ? hashFieldByPrecondition[preconditionField] : undefined;
+    const currentHash = hashField && typeof payload?.[hashField] === 'string'
+        ? payload[hashField]
+        : undefined;
+    if (preconditionField && !currentHash) {
+        throw new Error(`安全预检没有返回 ${hashField ?? '状态 Hash'}。`);
+    }
+    return app.callServerTool({
+        name,
+        arguments: {
+            ...args,
+            requestId: createUuidV7(),
+            ...(preconditionField && currentHash ? { [preconditionField]: currentHash } : {}),
+        },
+    });
+}
+
+function simulatePreviewToolCall(
+    _name: 'flashcard_review_app_action' | 'timeline_app_action' | 'mascot_shop_app_action',
+    args: JsonObject,
+) {
+    const action = String(args.action ?? '');
+    if (action === 'buy') {
+        const item = shopState.items.find((candidate) => candidate.id === args.item_id);
+        const cost = Number(item?.cost ?? 0);
+        shopState.balance = Math.max(0, Number(shopState.balance ?? 0) - cost);
+        return previewResult({ action, success: true, balance: shopState.balance, item_id: args.item_id });
+    }
+    if (action === 'review_card') return previewResult({ action, success: true, cardID: args.cardID, rating: args.rating });
+    if (action === 'create_node') {
+        notice = `已创建时间线节点“${String(args.name ?? '')}”。`;
+        noticeError = false;
+        return previewResult({ action, success: true });
+    }
+    if (action === 'delete_node' || action.startsWith('rollback_')) {
+        notice = action === 'delete_node' ? '节点标签已删除，历史快照仍保留。' : '回滚完成。';
+        noticeError = false;
+        return previewResult({ action, success: true });
+    }
+    return previewResult({ action, success: true });
+}
+
+function previewResult(payload: JsonObject) {
+    return {
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        structuredContent: payload,
+    };
+}
+
+function createUuidV7() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    let timestamp = Date.now();
+    for (let index = 5; index >= 0; index -= 1) {
+        bytes[index] = timestamp & 0xff;
+        timestamp = Math.floor(timestamp / 256);
+    }
+    bytes[6] = 0x70 | (bytes[6] & 0x0f);
+    bytes[8] = 0x80 | (bytes[8] & 0x3f);
+    const hex = [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function confirmTimelineAction(key: string, message: string) {
@@ -791,6 +952,12 @@ function toolErrorMessage(result: unknown) {
     return String(error?.message ?? payload?.message ?? payload?.value ?? '工具调用失败。');
 }
 
+function toolErrorCode(result: unknown) {
+    const payload = resultPayload(result);
+    const error = isObject(payload?.error) ? payload.error : undefined;
+    return String(error?.code ?? '');
+}
+
 function ratingButton(rating: number, label: string, english: string) {
     return `<button data-action="flash-rating" data-rating="${rating}" ${flashcardState.revealed && flashcardState.appActions.has('review_card') ? '' : 'disabled'}><strong>${label}</strong><span>${english}</span></button>`;
 }
@@ -855,6 +1022,17 @@ function isTimelineAction(action: string) {
 
 function isMascotAction(action: string) {
     return ['get_balance', 'shop', 'buy'].includes(action);
+}
+
+function isAppMutation(action: string) {
+    return [
+        'review_card',
+        'create_node',
+        'delete_node',
+        'rollback_document',
+        'rollback_block',
+        'buy',
+    ].includes(action);
 }
 
 function isObject(value: unknown): value is JsonObject {

@@ -24,7 +24,7 @@ export async function performTransactions(
         session?: string;
     } = {},
 ): Promise<unknown> {
-    return client.request('/api/transactions', {
+    return client.requestWrite('/api/transactions', {
         transactions,
         reqId: options.reqId ?? Date.now(),
         app: options.app ?? '',

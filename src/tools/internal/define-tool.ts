@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import type { SiYuanClient } from '../../api/client';
+import { SiYuanClient } from '../../api/client';
 import { normalizeActionAlias } from '../../core/action-aliases';
 import { normalizeToolArguments } from '../../core/argument-aliases';
 import type { CategoryToolConfig, ToolCategory } from '../../core/config';
@@ -84,6 +84,7 @@ export function defineTool<Action extends string>(options: DefineToolOptions<Act
         },
 
         async callTool(client, args, config, permMgr) {
+            installRequestSemanticsCompatibility(client);
             const rawArgs = args ?? {};
             const rawAction = typeof rawArgs.action === 'string' ? rawArgs.action : undefined;
             const normalizedAction = rawAction ? normalizeActionAlias(name, rawAction) : undefined;
@@ -125,4 +126,32 @@ export function defineTool<Action extends string>(options: DefineToolOptions<Act
             }
         },
     };
+}
+
+/**
+ * Older embedders and the existing test doubles expose only request(). Keep
+ * them source-compatible while production SiYuanClient uses explicit read /
+ * write semantics. The fallback is conservative: the legacy request method
+ * now has single-attempt write semantics in production.
+ */
+function installRequestSemanticsCompatibility(client: SiYuanClient): void {
+    const compatible = client as SiYuanClient & {
+        requestRead?: SiYuanClient['requestRead'];
+        requestWrite?: SiYuanClient['requestWrite'];
+        requestFormDataRead?: SiYuanClient['requestFormDataRead'];
+        requestFormDataWrite?: SiYuanClient['requestFormDataWrite'];
+    };
+    const legacyDouble = !(client instanceof SiYuanClient);
+    if ((legacyDouble || typeof compatible.requestRead !== 'function') && typeof compatible.request === 'function') {
+        compatible.requestRead = compatible.request.bind(compatible);
+    }
+    if ((legacyDouble || typeof compatible.requestWrite !== 'function') && typeof compatible.request === 'function') {
+        compatible.requestWrite = compatible.request.bind(compatible);
+    }
+    if ((legacyDouble || typeof compatible.requestFormDataRead !== 'function') && typeof compatible.requestFormData === 'function') {
+        compatible.requestFormDataRead = compatible.requestFormData.bind(compatible);
+    }
+    if ((legacyDouble || typeof compatible.requestFormDataWrite !== 'function') && typeof compatible.requestFormData === 'function') {
+        compatible.requestFormDataWrite = compatible.requestFormData.bind(compatible);
+    }
 }

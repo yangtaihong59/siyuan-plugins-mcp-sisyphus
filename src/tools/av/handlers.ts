@@ -763,7 +763,7 @@ async function filterAvSearchResultsByPermission(
 }
 
 async function listAllAttributeViewIDs(client: SiYuanClient): Promise<string[]> {
-    const entries = await client.request<Array<{ isDir?: boolean; name?: string }>>('/api/file/readDir', { path: ATTRIBUTE_VIEW_DIR });
+    const entries = await client.requestRead<Array<{ isDir?: boolean; name?: string }>>('/api/file/readDir', { path: ATTRIBUTE_VIEW_DIR });
     return (Array.isArray(entries) ? entries : [])
         .filter((entry) => !entry?.isDir && typeof entry?.name === 'string' && entry.name.endsWith('.json'))
         .map((entry) => entry.name!.slice(0, -5))

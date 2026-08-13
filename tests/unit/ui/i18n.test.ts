@@ -45,6 +45,11 @@ describe('settings i18n', () => {
         }
     });
 
+    it('labels the combined settings and debug page consistently', () => {
+        expect(readI18n('zh_CN').debugGroupTitle).toBe('设置与调试');
+        expect(readI18n('en_US').debugGroupTitle).toBe('Settings & Debug');
+    });
+
     it('keeps the settings changelog aligned with the current plugin version', () => {
         const version = readPackageVersion();
 

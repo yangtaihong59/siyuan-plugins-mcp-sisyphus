@@ -4,9 +4,8 @@ import { getBacklinkDoc, getBackmentionDoc, querySQL } from '@/api/search';
 
 describe('search api wrappers', () => {
     it('preserves null backlink payloads so MCP fallback can run', async () => {
-        const client = {
-            request: vi.fn().mockResolvedValueOnce(null),
-        } as any;
+        const request = vi.fn().mockResolvedValueOnce(null);
+        const client = { request, requestRead: request } as any;
 
         await expect(getBacklinkDoc(client, 'target-id')).resolves.toBeNull();
         expect(client.request).toHaveBeenCalledWith('/api/ref/getBacklinkDoc', {
@@ -17,9 +16,8 @@ describe('search api wrappers', () => {
     });
 
     it('preserves null backmention payloads so MCP fallback can run', async () => {
-        const client = {
-            request: vi.fn().mockResolvedValueOnce(null),
-        } as any;
+        const request = vi.fn().mockResolvedValueOnce(null);
+        const client = { request, requestRead: request } as any;
 
         await expect(getBackmentionDoc(client, 'target-id')).resolves.toBeNull();
         expect(client.request).toHaveBeenCalledWith('/api/ref/getBackmentionDoc', {
@@ -30,9 +28,8 @@ describe('search api wrappers', () => {
     });
 
     it('normalizes null SQL payloads to an empty list', async () => {
-        const client = {
-            request: vi.fn().mockResolvedValueOnce(null),
-        } as any;
+        const request = vi.fn().mockResolvedValueOnce(null);
+        const client = { request, requestRead: request } as any;
 
         await expect(querySQL(client, 'SELECT 1')).resolves.toEqual([]);
         expect(client.request).toHaveBeenCalledWith('/api/query/sql', {

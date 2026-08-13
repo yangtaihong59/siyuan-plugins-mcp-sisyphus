@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：**`v0.6.0` — 升级 MCP SDK v2，支持 MCP 2026-07-28 协商、协议级 elicitation、结构化 Tool 元数据，并默认通过 HTTP 与 stdio 发布 Skills-over-MCP；新增闪卡复习、文档时间线和猫猫商店 MCP Apps，同时更新分析面板与猫猫交互。CLI 提升至 `v0.2.3`。
+> **最新版本：**`v0.6.1` — 为内置变更操作加入严格安全写入：Agent 可提交最少 4 位的临时哈希租约凭据，但正式提交始终校验完整 SHA-256。“设置与调试”中的开关默认开启，并同步完善 HTTP、stdio、CLI、时间线回退与 MCP App 预览链路。CLI 提升至 `v0.2.4`。
 
 ## 项目方向调整
 
@@ -108,6 +108,21 @@ v0.6.0 为能够协商 `io.modelcontextprotocol/ui` 的客户端新增了三个�
 | 闪卡复习 | `flashcard_review_session` | Agent 从一份固定且经过权限检查的到期候选快照中选择 1–20 张卡；用户逐张显示答案并选择重来 / 困难 / 良好 / 简单，不会提前在聊天中泄露后续卡片。完成后还可以让 Agent 讲解本轮内容。 |
 | 文档时间线 | `timeline_app` | 浏览和创建命名节点，对比历史快照与当前文档，查看紧凑的块级 Diff，并回退整篇文档或受支持的单个块。传入 `documentId` 才会打开目标文档的时间线；省略时会明确进入“仅全局”视图，只能看到全局节点。回退使用原位置二次点击确认，按钮不会因提示出现而离开鼠标位置。 |
 | 猫猫商店 | `mascot_shop_app` | 浏览像素风自动售货机，把商品放入取货口，并在真正取走时完成购买；购买成功后，桌面猫猫会同步展示商品和爱心动画。 |
+
+<p align="center">
+  <img src="./assets/mcp-apps/flashcard-review.jpg" alt="MCP App 闪卡复习界面：显示题目、参考答案与四档评分" width="880">
+</p>
+<p align="center"><em>闪卡复习：Agent 负责选卡，用户显示答案并完成四档自评。</em></p>
+
+<p align="center">
+  <img src="./assets/mcp-apps/document-timeline.jpg" alt="MCP App 文档时间线界面：历史节点与当前文档的块级差异" width="880">
+</p>
+<p align="center"><em>文档时间线：在一个紧凑 Diff 中检查新增、删除和修改，并按需恢复。</em></p>
+
+<p align="center">
+  <img src="./assets/mcp-apps/mascot-shop.jpg" alt="MCP App 猫猫商店界面：像素风自动售货机、余额和取货口" width="880">
+</p>
+<p align="center"><em>猫猫商店：选择商品后从取货口领取，购买结果会同步给桌面猫猫。</em></p>
 
 三个 App 采用刻意分离的交互模型：
 
@@ -205,8 +220,13 @@ Sisyphus 自有工具的默认设计是让用户明确控制 AI 的操作范围�
 
 - 每个笔记本都可以设为只读、可写、可删除，或完全隐藏；
 - 删除、移动、替换、上传资源等危险动作会被单独处理；
+- “设置 → MCP → 设置与调试”中的“严格安全写入”默认开启：修改型 action 必须先以 `validateOnly=true` 获取当前状态哈希，再携带新的 UUIDv7 `requestId` 和对应 `expected*Hash` 提交；
+- 写请求在网络层只发送一次，超时或断线后返回 `outcome_unknown`，不会用一次盲目重试冒险制造重复写入；同一 `requestId` 的已提交请求会从元数据账本返回重放结果；
+- 严格模式不创建思源数据快照。它使用目标状态哈希、串行协调、提交后读回和仅含哈希/ID 的幂等账本；通知、同步、导出和第三方 Tool 等不可读回的外部副作用会明确标记为“不提供严格保证”；
 - MCP 与 CLI 共用核心行为，切换入口不会产生第二套权限模型；
 - 远程和 Docker 场景通过思源 HTTP API 操作，不假设可以直接读写本地工作空间文件。
+
+完整调用协议、错误语义和当前边界见[严格安全写入](./docs/zh/reference/write-safety.md)。独立 CLI 与 stdio 严格写入会转交插件内置 HTTP 服务中的唯一协调器；因此严格模式下必须保持该 HTTP 服务开启。关闭开关会恢复旧参数和直接调用行为，但写响应会明确标记为非严格保证。
 
 官方 MCP 桥接属于另一条工具来源。转发调用使用当前思源管理员会话或 API Token 的权限，不会自动继承上述笔记本权限和危险 action 控制。启用或调用前，请确认外部 Agent、网络环境和下游 Tool 都值得信任。
 
@@ -234,6 +254,7 @@ Sisyphus 自有工具的默认设计是让用户明确控制 AI 的操作范围�
 - [常见任务](./docs/zh/reference/common-tasks.md)
 - [工具参考](./docs/zh/reference/index.md)
 - [权限模型](./docs/zh/reference/permissions.md)
+- [严格安全写入](./docs/zh/reference/write-safety.md)
 - [开发文档](./docs/zh/development/index.md)
 - [English README](./README.md)
 

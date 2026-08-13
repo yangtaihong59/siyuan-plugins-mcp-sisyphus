@@ -128,7 +128,9 @@ describe('extension server integration', () => {
                     arguments: { action: 'inner_action' },
                 },
             });
-            expect((result.content[0] as { text: string }).text).toContain('"action":"inner_action"');
+            expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({
+                forwarded: { action: 'inner_action' },
+            });
         } finally {
             await client.close();
         }
@@ -178,7 +180,9 @@ describe('extension server integration', () => {
                     arguments: { action: 'read', id: 'doc-id' },
                 },
             });
-            expect((result.content[0] as { text: string }).text).toContain('"id":"doc-id"');
+            expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({
+                forwarded: { action: 'read', id: 'doc-id' },
+            });
         } finally {
             await client.close();
         }

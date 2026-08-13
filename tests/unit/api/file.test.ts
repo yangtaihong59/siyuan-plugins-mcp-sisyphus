@@ -17,6 +17,7 @@ describe('file api wrappers', () => {
         });
         const client = {
             requestFormData,
+            requestFormDataWrite: requestFormData,
         } as never;
 
         const result = await uploadAsset(client, '/assets/', new Uint8Array([65, 66, 67]), 'demo.txt');
@@ -38,6 +39,7 @@ describe('file api wrappers', () => {
         const requestFormData = vi.fn().mockRejectedValueOnce(new Error('Request timeout after 5000ms'));
         const client = {
             requestFormData,
+            requestFormDataWrite: requestFormData,
         } as never;
 
         await expect(uploadAsset(client, '/assets/', new Uint8Array([1]), 'demo.txt')).rejects.toThrow('Request timeout');
@@ -47,6 +49,7 @@ describe('file api wrappers', () => {
         const requestFormData = vi.fn().mockRejectedValueOnce(new Error('HTTP error: 413 Payload Too Large'));
         const client = {
             requestFormData,
+            requestFormDataWrite: requestFormData,
         } as never;
 
         await expect(uploadAsset(client, '/assets/', new Uint8Array([1]), 'demo.txt')).rejects.toThrow('HTTP error: 413');
@@ -56,6 +59,7 @@ describe('file api wrappers', () => {
         const request = vi.fn().mockResolvedValueOnce({ path: '/temp/export.zip' });
         const client = {
             request,
+            requestRead: request,
         } as never;
 
         await expect(exportResources(client, ['/data/assets/demo.txt'], 'bundle.zip')).resolves.toEqual({
@@ -73,6 +77,7 @@ describe('file api wrappers', () => {
             .mockResolvedValueOnce(['assets/cover.png']);
         const client = {
             request,
+            requestRead: request,
         } as never;
 
         await expect(getDocAssets(client, 'doc-1')).resolves.toEqual(['assets/manual.pdf']);
@@ -88,6 +93,7 @@ describe('file api wrappers', () => {
             .mockResolvedValueOnce({ ok: true });
         const client = {
             request,
+            requestWrite: request,
         } as never;
 
         await expect(renameAsset(client, '/assets/demo.txt', 'renamed.txt')).resolves.toEqual({
@@ -99,7 +105,7 @@ describe('file api wrappers', () => {
             oldPath: '/assets/demo.txt',
             newName: 'renamed.txt',
         });
-        expect(request).toHaveBeenNthCalledWith(2, '/api/asset/deleteAsset', {
+        expect(request).toHaveBeenNthCalledWith(2, '/api/asset/removeUnusedAsset', {
             path: '/assets/demo.txt',
         });
     });

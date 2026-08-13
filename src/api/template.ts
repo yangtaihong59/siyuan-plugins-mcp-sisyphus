@@ -151,7 +151,7 @@ export async function searchTemplates(
     query = '',
 ): Promise<IResSearchTemplates> {
     const request: IReqSearchTemplates = { k: query };
-    const result = await client.request<IResSearchTemplates>('/api/search/searchTemplate', request);
+    const result = await client.requestRead<IResSearchTemplates>('/api/search/searchTemplate', request);
     return {
         templates: Array.isArray(result?.templates) ? result.templates : [],
         k: typeof result?.k === 'string' ? result.k : query,
@@ -195,7 +195,7 @@ export async function renderTemplate(
         path,
         ...(preview !== undefined ? { preview } : {}),
     };
-    return client.request<IResGetTemplates>('/api/template/render', request);
+    return client.requestRead<IResGetTemplates>('/api/template/render', request);
 }
 
 /**
@@ -208,7 +208,7 @@ export async function renderSprig(
     const request: IReqRenderSprig = {
         template,
     };
-    return client.request<string>('/api/template/renderSprig', request);
+    return client.requestRead<string>('/api/template/renderSprig', request);
 }
 
 /**
@@ -242,7 +242,7 @@ export async function deleteTemplate(
 ): Promise<TemplatePathResult> {
     const resolved = await resolveTemplate(client, path);
     try {
-        await client.request<null>('/api/search/removeTemplate', { path: resolved.path });
+        await client.requestWrite<null>('/api/search/removeTemplate', { path: resolved.path });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw createTemplateError(`Failed to delete template [${resolved.relativePath}]: ${message}`, 'template_delete_failed');
@@ -269,7 +269,7 @@ export async function saveDocAsTemplate(
         overwrite,
     };
     try {
-        await client.request<null>('/api/template/docSaveAsTemplate', request);
+        await client.requestWrite<null>('/api/template/docSaveAsTemplate', request);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (/SiYuan API error:\s*1\b/.test(message)) {

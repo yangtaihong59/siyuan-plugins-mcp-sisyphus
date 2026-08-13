@@ -16,7 +16,7 @@ describe('template api wrappers', () => {
             k: 'report',
             templates: [{ path: '/workspace/data/templates/report.md', content: 'report' }],
         });
-        const client = { request } as never;
+        const client = { request, requestRead: request } as never;
 
         await expect(searchTemplates(client, 'report')).resolves.toEqual({
             k: 'report',
@@ -27,7 +27,7 @@ describe('template api wrappers', () => {
 
     it('requests template render by id and path', async () => {
         const request = vi.fn().mockResolvedValueOnce({ path: '/templates/note.md', content: 'rendered html' });
-        const client = { request } as never;
+        const client = { request, requestRead: request } as never;
 
         await expect(renderTemplate(client, 'tpl-id', '/templates/note.md', true)).resolves.toEqual({
             path: '/templates/note.md',
@@ -42,7 +42,7 @@ describe('template api wrappers', () => {
 
     it('requests sprig template render', async () => {
         const request = vi.fn().mockResolvedValueOnce('sprig output');
-        const client = { request } as never;
+        const client = { request, requestRead: request } as never;
 
         await expect(renderSprig(client, 'Hello {{ .Name }}')).resolves.toBe('sprig output');
         expect(request).toHaveBeenCalledWith('/api/template/renderSprig', {
@@ -102,7 +102,7 @@ describe('template api wrappers', () => {
             }
             throw new Error(`Unexpected endpoint ${endpoint}`);
         });
-        const client = { request } as never;
+        const client = { request, requestRead: request, requestWrite: request } as never;
 
         await expect(deleteTemplate(client, 'reports/monthly.md')).resolves.toEqual({
             path: '/workspace/data/templates/reports/monthly.md',
@@ -113,7 +113,7 @@ describe('template api wrappers', () => {
 
     it('saves a document as a root template and strips a .md suffix', async () => {
         const request = vi.fn().mockResolvedValueOnce(null);
-        const client = { request } as never;
+        const client = { request, requestWrite: request } as never;
 
         await expect(saveDocAsTemplate(client, 'doc-1', 'meeting-note.md', true)).resolves.toEqual({
             id: 'doc-1',

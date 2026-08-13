@@ -44,7 +44,7 @@ export interface FlashcardDeck {
 }
 
 export async function getRiffDecks(client: SiYuanClient): Promise<unknown> {
-    return client.request('/api/riff/getRiffDecks', {});
+    return client.requestRead('/api/riff/getRiffDecks', {});
 }
 
 export async function getRiffDueCards(
@@ -52,7 +52,7 @@ export async function getRiffDueCards(
     deckID?: string,
     reviewedCards?: Array<{ cardID: string; [key: string]: unknown }>,
 ): Promise<FlashcardListResult> {
-    return client.request<FlashcardListResult>('/api/riff/getRiffDueCards', {
+    return client.requestRead<FlashcardListResult>('/api/riff/getRiffDueCards', {
         deckID: deckID ?? '',
         ...(reviewedCards !== undefined ? { reviewedCards } : {}),
     });
@@ -63,7 +63,7 @@ export async function getNotebookRiffDueCards(
     notebook: string,
     reviewedCards?: Array<{ cardID: string; [key: string]: unknown }>,
 ): Promise<FlashcardListResult> {
-    return client.request<FlashcardListResult>('/api/riff/getNotebookRiffDueCards', {
+    return client.requestRead<FlashcardListResult>('/api/riff/getNotebookRiffDueCards', {
         notebook,
         ...(reviewedCards !== undefined ? { reviewedCards } : {}),
     });
@@ -74,7 +74,7 @@ export async function getTreeRiffDueCards(
     rootID: string,
     reviewedCards?: Array<{ cardID: string; [key: string]: unknown }>,
 ): Promise<FlashcardListResult> {
-    return client.request<FlashcardListResult>('/api/riff/getTreeRiffDueCards', {
+    return client.requestRead<FlashcardListResult>('/api/riff/getTreeRiffDueCards', {
         rootID,
         ...(reviewedCards !== undefined ? { reviewedCards } : {}),
     });
@@ -87,7 +87,7 @@ export async function reviewRiffCard(
     rating: number,
     reviewedCards?: Array<{ cardID: string; [key: string]: unknown }>,
 ): Promise<unknown> {
-    return client.request('/api/riff/reviewRiffCard', {
+    return client.requestWrite('/api/riff/reviewRiffCard', {
         deckID,
         cardID,
         rating,
@@ -100,7 +100,7 @@ export async function skipReviewRiffCard(
     deckID: string,
     cardID: string,
 ): Promise<unknown> {
-    return client.request('/api/riff/skipReviewRiffCard', { deckID, cardID });
+    return client.requestWrite('/api/riff/skipReviewRiffCard', { deckID, cardID });
 }
 
 export async function addRiffCards(
@@ -108,7 +108,7 @@ export async function addRiffCards(
     deckID: string,
     blockIDs: string[],
 ): Promise<unknown> {
-    return client.request('/api/riff/addRiffCards', { deckID, blockIDs });
+    return client.requestWrite('/api/riff/addRiffCards', { deckID, blockIDs });
 }
 
 export async function removeRiffCards(
@@ -116,7 +116,7 @@ export async function removeRiffCards(
     deckID: string,
     blockIDs: string[],
 ): Promise<unknown> {
-    return client.request('/api/riff/removeRiffCards', { deckID, blockIDs });
+    return client.requestWrite('/api/riff/removeRiffCards', { deckID, blockIDs });
 }
 
 export async function getRiffCards(
@@ -125,7 +125,7 @@ export async function getRiffCards(
     page: number,
     pageSize?: number,
 ): Promise<FlashcardGetCardsResult> {
-    return client.request<FlashcardGetCardsResult>('/api/riff/getRiffCards', {
+    return client.requestRead<FlashcardGetCardsResult>('/api/riff/getRiffCards', {
         id: deckID,
         page,
         ...(pageSize !== undefined ? { pageSize } : {}),
@@ -136,5 +136,5 @@ export async function getRiffCardsByBlockIDs(
     client: SiYuanClient,
     blockIDs: string[],
 ): Promise<{ blocks?: Flashcard[] }> {
-    return client.request<{ blocks?: Flashcard[] }>('/api/riff/getRiffCardsByBlockIDs', { blockIDs });
+    return client.requestRead<{ blocks?: Flashcard[] }>('/api/riff/getRiffCardsByBlockIDs', { blockIDs });
 }

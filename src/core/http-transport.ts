@@ -40,7 +40,7 @@ interface SessionEntry {
     transport: NodeStreamableHTTPServerTransport;
 }
 
-export type ServerFactory = () => Promise<Server>;
+export type ServerFactory = (options: { transportMode: 'http' }) => Promise<Server>;
 
 const PARENT_WATCH_INTERVAL_MS = 2000;
 const SOCKET_DRAIN_TIMEOUT_MS = 1000;
@@ -80,14 +80,14 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpM
     const isTls = Boolean(opts.tls);
     const createServer = opts.serverFactory ?? (async () => {
         const { createSiYuanServer } = await import('./server');
-        return createSiYuanServer();
+        return createSiYuanServer({ transportMode: 'http' });
     });
     const defaultOriginHostnames = ['localhost', '127.0.0.1', '[::1]'];
     if (opts.host !== '0.0.0.0' && opts.host !== '::' && !defaultOriginHostnames.includes(opts.host)) {
         defaultOriginHostnames.push(opts.host);
     }
     const validateOrigin = originValidation(opts.allowedOriginHostnames ?? defaultOriginHostnames);
-    const modernHandler = createMcpHandler(() => createServer(), {
+    const modernHandler = createMcpHandler(() => createServer({ transportMode: 'http' }), {
         legacy: 'reject',
         onerror: (error) => {
             console.error('[MCP][HTTP][modern] handler error:', error.message);
@@ -153,7 +153,7 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpM
                     sessionIdGenerator: () => randomUUID(),
                     retryInterval: 5000,
                 });
-                const server = await createServer();
+                const server = await createServer({ transportMode: 'http' });
                 await server.connect(transport);
 
                 transport.onclose = () => {

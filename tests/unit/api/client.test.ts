@@ -151,6 +151,38 @@ describe('SiYuanClient', () => {
         });
     });
 
+    describe('explicit request semantics', () => {
+        it('retries reads after a transient 500 response', async () => {
+            mockFetch
+                .mockResolvedValueOnce({
+                    ok: false,
+                    status: 500,
+                    statusText: 'Internal Server Error',
+                    arrayBuffer: async () => new ArrayBuffer(0),
+                } as Response)
+                .mockResolvedValueOnce({
+                    ok: true,
+                    text: async () => JSON.stringify({ code: 0, msg: 'success', data: { ok: true } }),
+                } as Response);
+
+            await expect(client.requestRead('/api/query/sql')).resolves.toEqual({ ok: true });
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+        });
+
+        it('sends writes exactly once and reports an unknown outcome on 500', async () => {
+            mockFetch.mockResolvedValue({
+                ok: false,
+                status: 500,
+                statusText: 'Internal Server Error',
+                arrayBuffer: async () => new ArrayBuffer(0),
+            } as Response);
+
+            await expect(client.requestWrite('/api/block/updateBlock', { id: 'block-1' }))
+                .rejects.toMatchObject({ code: 'outcome_unknown' });
+            expect(mockFetch).toHaveBeenCalledTimes(1);
+        });
+    });
+
     describe('readFile', () => {
         it('should read file content successfully', async () => {
             const fileContent = 'file content here';

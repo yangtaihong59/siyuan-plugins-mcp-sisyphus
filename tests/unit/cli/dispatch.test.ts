@@ -57,7 +57,9 @@ describe('cli/dispatch', () => {
         Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: false });
         process.stdin.setRawMode = vi.fn();
         vi.spyOn(pluginCheck, 'ensureRequiredPluginInstalled').mockResolvedValue(undefined);
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue('');
+        const legacyConfig = buildDefaultToolConfig();
+        legacyConfig.writeSafety.strictMode = false;
+        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(legacyConfig));
         vi.spyOn(PermissionManager.prototype, 'load').mockResolvedValue(undefined);
         delete process.env.SIYUAN_MCP_TRANSPORT;
         delete process.env.SIYUAN_API_URL;
@@ -424,6 +426,7 @@ describe('cli/dispatch', () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();
         config.mascot.enabled = false;
+        config.writeSafety.strictMode = false;
         vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValueOnce(JSON.stringify(config));
         const callToolSpy = vi.spyOn(TOOL_REGISTRY.mascot, 'callTool');
 
@@ -447,6 +450,7 @@ describe('cli/dispatch', () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();
         config.mascot.actions.buy = false;
+        config.writeSafety.strictMode = false;
         vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValueOnce(JSON.stringify(config));
 
         const code = await runDispatch({

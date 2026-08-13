@@ -61,7 +61,7 @@ async function getBlockType(client: SiYuanClient, id: string): Promise<string | 
     }
 
     try {
-        const rows = await client.request<unknown[]>('/api/query/sql', {
+        const rows = await client.requestRead<unknown[]>('/api/query/sql', {
             stmt: `SELECT type FROM blocks WHERE id = '${String(id).replace(/\0/g, '').replace(/'/g, "''")}' LIMIT 1`,
         });
         const first = Array.isArray(rows) ? rows[0] : undefined;

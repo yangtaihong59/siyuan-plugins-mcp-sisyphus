@@ -17,12 +17,14 @@ const SUCCESS_KEEP_KEYS = new Set([
     'newLabel',
     'path',
     'paths',
+    'newPath',
     'from',
     'to',
     'fromID',
     'toID',
     'fromIDs',
     'toIDs',
+    'newName',
     'notebook',
     'permission',
     'avID',
@@ -30,11 +32,15 @@ const SUCCESS_KEEP_KEYS = new Set([
     'keyID',
     'columnID',
     'rowID',
+    'rows',
+    'succMap',
+    'errFiles',
     'srcIDs',
     'count',
     'changed',
     'editsApplied',
     'replacements',
+    'replaced',
     'created',
     'updated',
     'removed',
@@ -45,7 +51,22 @@ const SUCCESS_KEEP_KEYS = new Set([
     'warning',
     'skippedComplexBlocks',
     'recommendedTools',
+    // Never hide whether a successful mutation went through the strict
+    // coordinator when response slimming is enabled.
+    'safety',
 ]);
+
+const SAFETY_TOP_LEVEL_KEYS = [
+    'requestId',
+    'writeSafetyMode',
+    'writeSafetyGuaranteed',
+    'writeAttempted',
+    'writeExecuted',
+    'replayed',
+    'transactionState',
+    'previousHash',
+    'resultHash',
+] as const;
 
 const TOP_LEVEL_DROP_KEYS = new Set([
     'action',
@@ -129,6 +150,15 @@ function slimError(error: Record<string, unknown>): Record<string, unknown> {
         'validActions',
         'validTopics',
         'topic',
+        'expectedField',
+        'expectedHash',
+        'currentHash',
+        'revalidateRequired',
+        'minimumRequiredLength',
+        'requestId',
+        'ledgerState',
+        'resultHash',
+        'cause',
     ]);
     return Object.fromEntries(Object.entries(error).filter(([key]) => allowed.has(key)));
 }
@@ -200,7 +230,12 @@ function slimSuccessObject(payload: Record<string, unknown>, ctx: SlimContext): 
 
 function slimObject(payload: Record<string, unknown>, ctx: SlimContext): Record<string, unknown> {
     if (isRecord(payload.error)) {
-        return { error: slimError(payload.error) };
+        const next: Record<string, unknown> = { error: slimError(payload.error) };
+        if (isRecord(payload.safety)) next.safety = payload.safety;
+        for (const key of SAFETY_TOP_LEVEL_KEYS) {
+            if (payload[key] !== undefined) next[key] = payload[key];
+        }
+        return next;
     }
 
     if (payload.success === true) {

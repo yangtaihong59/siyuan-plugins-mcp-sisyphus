@@ -10,8 +10,11 @@ import * as tagApi from '@/api/tag';
 import { performTransactions } from '@/api/transaction';
 
 function createClient() {
+    const request = vi.fn(async () => null);
     return {
-        request: vi.fn(async () => null),
+        request,
+        requestRead: request,
+        requestWrite: request,
     } as any;
 }
 

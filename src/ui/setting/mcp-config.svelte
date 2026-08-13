@@ -71,7 +71,7 @@
     const PUPPY_GROUP_LABEL = "Mascot Display";
     const PERM_GROUP_LABEL = "Permissions";
     const ANALYTICS_GROUP_LABEL = "Usage Stats";
-    const DEBUG_GROUP_LABEL = "Debug";
+    const DEBUG_GROUP_LABEL = "Settings & Debug";
     const FEEDBACK_GROUP_LABEL = "Feedback";
     const MCP_APPS_GROUP_LABEL = "MCP Apps";
 
@@ -113,7 +113,7 @@
         { id: MCP_APPS_GROUP_KEY, label: mcpAppsGroupLabel, description: getLabel("settingsMcpAppsDesc", "Control interactive MCP Apps and the actions performed manually inside them."), iconSvg: ICON_SVGS.layout },
         { id: PUPPY_GROUP_KEY, label: puppyGroupLabel, description: getLabel("settingsMascotDesc", "Adjust the on-screen mascot behavior and preview its appearance."), iconSvg: ICON_SVGS.paw },
         { id: ANALYTICS_GROUP_KEY, label: analyticsGroupLabel, description: getLabel("settingsAnalyticsDesc", "Review local usage patterns, activity trends, and tool statistics."), iconSvg: ICON_SVGS.barChart },
-        { id: DEBUG_GROUP_KEY, label: debugGroupLabel, description: getLabel("settingsDebugDesc", "Manage advanced diagnostics and developer-oriented display options."), iconSvg: ICON_SVGS.bug },
+        { id: DEBUG_GROUP_KEY, label: debugGroupLabel, description: getLabel("settingsDebugDesc", "Manage safe-write behavior, runtime settings, diagnostics, and developer-oriented display options."), iconSvg: ICON_SVGS.bug },
         { id: USER_RULES_GROUP_KEY, label: userRulesGroupLabel, description: getLabel("settingsRulesDesc", "Add durable instructions and workspace memory for connected agents."), iconSvg: ICON_SVGS.compass },
         { id: FEEDBACK_GROUP_KEY, label: feedbackGroupLabel, description: getLabel("settingsFeedbackDesc", "Send problems, suggestions, or product experience directly to the developer."), iconSvg: ICON_SVGS.message },
     ] satisfies TabItem[];
@@ -360,6 +360,38 @@
                 showInFileTree: Boolean(value),
             };
             await persistPermissionDisplaySettings();
+            return;
+        }
+
+        if (key === "writeSafety__strictMode") {
+            const strictMode = Boolean(value);
+            if (!strictMode && !window.confirm(getLabel(
+                "write_safety_disable_confirm",
+                "关闭严格安全写入后，旧写入调用将不再获得 Hash 并发校验、请求幂等和写后验证保护。确定继续吗？",
+            ))) {
+                config = { ...config };
+                return;
+            }
+            config = {
+                ...config,
+                writeSafety: { ...config.writeSafety, strictMode },
+            };
+            await persistConfig();
+            try {
+                const restarted = await plugin?.refreshHttpServerAfterInstructionConfigChange?.();
+                showMessage(getLabel(
+                    restarted ? "write_safety_restarted" : "write_safety_saved_reconnect",
+                    restarted
+                        ? "写入安全模式已保存，MCP HTTP 服务已重启。请刷新或重新连接客户端以获取新 Schema。"
+                        : "写入安全模式已保存。请刷新或重新连接 MCP 客户端以获取新 Schema。",
+                ));
+            } catch (error) {
+                console.error("[MCP] refresh after write safety change failed:", error);
+                showMessage(getLabel(
+                    "write_safety_refresh_failed",
+                    "写入安全模式已保存，但 MCP HTTP 服务重启失败。请手动重启并重新连接客户端。",
+                ));
+            }
             return;
         }
 

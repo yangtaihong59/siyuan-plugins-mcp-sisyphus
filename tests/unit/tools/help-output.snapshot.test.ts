@@ -75,6 +75,7 @@ function createAllEnabledConfig(): ToolConfig {
         userRulesText: '',
         agentSiyuanMemoryText: '',
         agentSiyuanMemoryUpdatedAt: '',
+        writeSafety: { strictMode: true },
         debug: {
             includeUiRefreshMetadata: false,
             slimResponses: true,

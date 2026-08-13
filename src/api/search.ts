@@ -15,18 +15,18 @@ export async function fullTextSearchBlock(
     client: SiYuanClient,
     params: IReqFullTextSearchBlock,
 ): Promise<IResFullTextSearchBlock> {
-    return client.request<IResFullTextSearchBlock>('/api/search/fullTextSearchBlock', params);
+    return client.requestRead<IResFullTextSearchBlock>('/api/search/fullTextSearchBlock', params);
 }
 
 export async function querySQL(client: SiYuanClient, stmt: string): Promise<unknown[]> {
     const request: IReqQuerySQL = { stmt };
-    const result = await client.request<unknown[] | null>('/api/query/sql', request);
+    const result = await client.requestRead<unknown[] | null>('/api/query/sql', request);
     return Array.isArray(result) ? result : [];
 }
 
 export async function searchTag(client: SiYuanClient, k: string): Promise<IResSearchTag> {
     const request: IReqSearchTag = { k };
-    return client.request<IResSearchTag>('/api/search/searchTag', request);
+    return client.requestRead<IResSearchTag>('/api/search/searchTag', request);
 }
 
 export async function getBacklinkDoc(
@@ -36,7 +36,7 @@ export async function getBacklinkDoc(
     refTreeID?: string,
 ): Promise<IResGetBacklinkDoc | null> {
     const request: IReqGetBacklinkDoc = { defID, keyword, refTreeID };
-    return client.request<IResGetBacklinkDoc | null>('/api/ref/getBacklinkDoc', request);
+    return client.requestRead<IResGetBacklinkDoc | null>('/api/ref/getBacklinkDoc', request);
 }
 
 export async function getBackmentionDoc(
@@ -46,7 +46,7 @@ export async function getBackmentionDoc(
     refTreeID?: string,
 ): Promise<IResGetBackmentionDoc | null> {
     const request: IReqGetBackmentionDoc = { defID, keyword, refTreeID };
-    return client.request<IResGetBackmentionDoc | null>('/api/ref/getBackmentionDoc', request);
+    return client.requestRead<IResGetBackmentionDoc | null>('/api/ref/getBackmentionDoc', request);
 }
 
 export async function searchRefBlock(
@@ -61,7 +61,7 @@ export async function searchRefBlock(
         reqId?: string;
     },
 ): Promise<unknown> {
-    return client.request('/api/search/searchRefBlock', {
+    return client.requestRead('/api/search/searchRefBlock', {
         reqId: params.reqId,
         id: params.id,
         rootID: params.rootID ?? '',
@@ -86,7 +86,7 @@ export async function findReplace(
         replaceTypes?: Record<string, boolean>;
     },
 ): Promise<null> {
-    return client.request<null>('/api/search/findReplace', params);
+    return client.requestWrite<null>('/api/search/findReplace', params);
 }
 
 export async function searchAsset(
@@ -94,7 +94,7 @@ export async function searchAsset(
     k: string,
     exts?: string[],
 ): Promise<unknown> {
-    return client.request('/api/search/searchAsset', { k, exts });
+    return client.requestRead('/api/search/searchAsset', { k, exts });
 }
 
 export async function getAssetContent(
@@ -103,7 +103,7 @@ export async function getAssetContent(
     query: string,
     queryMethod = 0,
 ): Promise<unknown> {
-    return client.request('/api/search/getAssetContent', { id, query, queryMethod });
+    return client.requestRead('/api/search/getAssetContent', { id, query, queryMethod });
 }
 
 export async function fullTextSearchAssetContent(
@@ -117,7 +117,7 @@ export async function fullTextSearchAssetContent(
         pageSize?: number;
     },
 ): Promise<unknown> {
-    return client.request('/api/search/fullTextSearchAssetContent', params);
+    return client.requestRead('/api/search/fullTextSearchAssetContent', params);
 }
 
 export async function listInvalidBlockRefs(
@@ -125,5 +125,5 @@ export async function listInvalidBlockRefs(
     page?: number,
     pageSize?: number,
 ): Promise<unknown> {
-    return client.request('/api/search/listInvalidBlockRefs', { page, pageSize });
+    return client.requestRead('/api/search/listInvalidBlockRefs', { page, pageSize });
 }

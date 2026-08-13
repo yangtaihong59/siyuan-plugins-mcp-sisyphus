@@ -39,7 +39,7 @@ export async function insertBlock(
             previousID,
             parentID,
         };
-    return client.request<IResInsertBlock>('/api/block/insertBlock', request);
+    return client.requestWrite<IResInsertBlock>('/api/block/insertBlock', request);
 }
 
 /**
@@ -56,7 +56,7 @@ export async function prependBlock(
         data,
         parentID,
     };
-    return client.request<IResInsertBlock>('/api/block/prependBlock', request);
+    return client.requestWrite<IResInsertBlock>('/api/block/prependBlock', request);
 }
 
 /**
@@ -73,7 +73,7 @@ export async function appendBlock(
         data,
         parentID,
     };
-    return client.request<IResInsertBlock>('/api/block/appendBlock', request);
+    return client.requestWrite<IResInsertBlock>('/api/block/appendBlock', request);
 }
 
 /**
@@ -90,7 +90,7 @@ export async function updateBlock(
         data,
         id,
     };
-    return client.request<IResInsertBlock>('/api/block/updateBlock', request);
+    return client.requestWrite<IResInsertBlock>('/api/block/updateBlock', request);
 }
 
 /**
@@ -98,7 +98,7 @@ export async function updateBlock(
  */
 export async function deleteBlock(client: SiYuanClient, id: string): Promise<IResInsertBlock> {
     const request: IReqDeleteBlock = { id };
-    return client.request<IResInsertBlock>('/api/block/deleteBlock', request);
+    return client.requestWrite<IResInsertBlock>('/api/block/deleteBlock', request);
 }
 
 /**
@@ -115,7 +115,7 @@ export async function moveBlock(
         previousID,
         parentID,
     };
-    return client.request<IResInsertBlock>('/api/block/moveBlock', request);
+    return client.requestWrite<IResInsertBlock>('/api/block/moveBlock', request);
 }
 
 /**
@@ -123,7 +123,7 @@ export async function moveBlock(
  */
 export async function foldBlock(client: SiYuanClient, id: string): Promise<null> {
     const request: IReqFoldBlock = { id };
-    return client.request<null>('/api/block/foldBlock', request);
+    return client.requestWrite<null>('/api/block/foldBlock', request);
 }
 
 /**
@@ -131,7 +131,7 @@ export async function foldBlock(client: SiYuanClient, id: string): Promise<null>
  */
 export async function unfoldBlock(client: SiYuanClient, id: string): Promise<null> {
     const request: IReqUnfoldBlock = { id };
-    return client.request<null>('/api/block/unfoldBlock', request);
+    return client.requestWrite<null>('/api/block/unfoldBlock', request);
 }
 
 /**
@@ -139,7 +139,7 @@ export async function unfoldBlock(client: SiYuanClient, id: string): Promise<nul
  */
 export async function getBlockKramdown(client: SiYuanClient, id: string): Promise<IResGetBlockKramdown> {
     const request: IReqGetBlockKramdown = { id };
-    return client.request<IResGetBlockKramdown>('/api/block/getBlockKramdown', request);
+    return client.requestRead<IResGetBlockKramdown>('/api/block/getBlockKramdown', request);
 }
 
 /**
@@ -150,7 +150,7 @@ export async function getBlockKramdowns(
     ids: string[],
     mode: 'md' | 'textmark' = 'md',
 ): Promise<Record<string, string>> {
-    return client.request<Record<string, string>>('/api/block/getBlockKramdowns', { ids, mode });
+    return client.requestRead<Record<string, string>>('/api/block/getBlockKramdowns', { ids, mode });
 }
 
 /**
@@ -158,7 +158,7 @@ export async function getBlockKramdowns(
  */
 export async function getChildBlocks(client: SiYuanClient, id: string): Promise<IResGetChildBlock[]> {
     const request: IReqGetChildBlocks = { id };
-    return client.request<IResGetChildBlock[]>('/api/block/getChildBlocks', request);
+    return client.requestRead<IResGetChildBlock[]>('/api/block/getChildBlocks', request);
 }
 
 /**
@@ -166,7 +166,7 @@ export async function getChildBlocks(client: SiYuanClient, id: string): Promise<
  */
 export async function getDocInfo(client: SiYuanClient, id: string): Promise<IResGetDocInfo> {
     const request: IReqGetDocInfo = { id };
-    return client.request<IResGetDocInfo>('/api/block/getDocInfo', request);
+    return client.requestRead<IResGetDocInfo>('/api/block/getDocInfo', request);
 }
 
 /**
@@ -183,15 +183,15 @@ export async function transferBlockRef(
         toID,
         refIDs,
     };
-    return client.request<null>('/api/block/transferBlockRef', request);
+    return client.requestWrite<null>('/api/block/transferBlockRef', request);
 }
 
 export async function checkBlockExist(client: SiYuanClient, id: string): Promise<boolean> {
-    return client.request<boolean>('/api/block/checkBlockExist', { id });
+    return client.requestRead<boolean>('/api/block/checkBlockExist', { id });
 }
 
 export async function getBlockInfo(client: SiYuanClient, id: string): Promise<unknown> {
-    return client.request('/api/block/getBlockInfo', { id });
+    return client.requestRead('/api/block/getBlockInfo', { id });
 }
 
 export async function getBlockBreadcrumb(
@@ -199,19 +199,19 @@ export async function getBlockBreadcrumb(
     id: string,
     excludeTypes?: string[],
 ): Promise<unknown> {
-    return client.request('/api/block/getBlockBreadcrumb', { id, excludeTypes });
+    return client.requestRead('/api/block/getBlockBreadcrumb', { id, excludeTypes });
 }
 
 export async function getBlockDOM(client: SiYuanClient, id: string): Promise<{ id: string; dom: string }> {
-    return client.request<{ id: string; dom: string }>('/api/block/getBlockDOM', { id });
+    return client.requestRead<{ id: string; dom: string }>('/api/block/getBlockDOM', { id });
 }
 
 export async function getRecentUpdatedBlocks(client: SiYuanClient): Promise<unknown> {
-    return client.request('/api/block/getRecentUpdatedBlocks', {});
+    return client.requestRead('/api/block/getRecentUpdatedBlocks', {});
 }
 
 export async function getBlocksWordCount(client: SiYuanClient, ids: string[]): Promise<unknown> {
-    return client.request('/api/block/getBlocksWordCount', { ids });
+    return client.requestRead('/api/block/getBlocksWordCount', { ids });
 }
 
 export async function batchInsertBlock(
@@ -224,7 +224,7 @@ export async function batchInsertBlock(
         parentID?: string;
     }>,
 ): Promise<unknown> {
-    return client.request('/api/block/batchInsertBlock', { blocks });
+    return client.requestWrite('/api/block/batchInsertBlock', { blocks });
 }
 
 export async function batchUpdateBlock(
@@ -235,7 +235,7 @@ export async function batchUpdateBlock(
         data: string;
     }>,
 ): Promise<unknown> {
-    return client.request('/api/block/batchUpdateBlock', { blocks });
+    return client.requestWrite('/api/block/batchUpdateBlock', { blocks });
 }
 
 export async function appendDailyNoteBlock(
@@ -244,7 +244,7 @@ export async function appendDailyNoteBlock(
     dataType: DataType,
     data: string,
 ): Promise<unknown> {
-    return client.request('/api/block/appendDailyNoteBlock', { notebook, dataType, data });
+    return client.requestWrite('/api/block/appendDailyNoteBlock', { notebook, dataType, data });
 }
 
 export async function prependDailyNoteBlock(
@@ -253,7 +253,7 @@ export async function prependDailyNoteBlock(
     dataType: DataType,
     data: string,
 ): Promise<unknown> {
-    return client.request('/api/block/prependDailyNoteBlock', { notebook, dataType, data });
+    return client.requestWrite('/api/block/prependDailyNoteBlock', { notebook, dataType, data });
 }
 
 export async function getDocsInfo(
@@ -262,7 +262,7 @@ export async function getDocsInfo(
     refCount = false,
     av = false,
 ): Promise<unknown> {
-    return client.request('/api/block/getDocsInfo', { ids, refCount, av });
+    return client.requestRead('/api/block/getDocsInfo', { ids, refCount, av });
 }
 
 // --- Merged from attribute.ts ---
@@ -288,7 +288,7 @@ export async function setBlockAttrs(
         id,
         attrs,
     };
-    return client.request<null>('/api/attr/setBlockAttrs', request);
+    return client.requestWrite<null>('/api/attr/setBlockAttrs', request);
 }
 
 /**
@@ -296,5 +296,5 @@ export async function setBlockAttrs(
  */
 export async function getBlockAttrs(client: SiYuanClient, id: string): Promise<Record<string, string>> {
     const request: IReqGetBlockAttrs = { id };
-    return client.request<Record<string, string>>('/api/attr/getBlockAttrs', request);
+    return client.requestRead<Record<string, string>>('/api/attr/getBlockAttrs', request);
 }

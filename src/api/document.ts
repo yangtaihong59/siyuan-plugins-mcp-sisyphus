@@ -27,7 +27,7 @@ export async function createDoc(
     path: string,
     markdown: string
 ): Promise<string> {
-    return client.request<string>('/api/filetree/createDocWithMd', {
+    return client.requestWrite<string>('/api/filetree/createDocWithMd', {
         notebook,
         path,
         markdown,
@@ -43,7 +43,7 @@ export async function renameDoc(
     path: string,
     title: string
 ): Promise<null> {
-    return client.request<null>('/api/filetree/renameDoc', {
+    return client.requestWrite<null>('/api/filetree/renameDoc', {
         notebook,
         path,
         title,
@@ -58,7 +58,7 @@ export async function renameDocByID(
     id: string,
     title: string
 ): Promise<null> {
-    return client.request<null>('/api/filetree/renameDocByID', {
+    return client.requestWrite<null>('/api/filetree/renameDocByID', {
         id,
         title,
     } as IReqRenameDocByID);
@@ -72,7 +72,7 @@ export async function removeDoc(
     notebook: string,
     path: string
 ): Promise<null> {
-    return client.request<null>('/api/filetree/removeDoc', {
+    return client.requestWrite<null>('/api/filetree/removeDoc', {
         notebook,
         path,
     } as IReqRemoveDoc);
@@ -85,7 +85,7 @@ export async function removeDocByID(
     client: SiYuanClient,
     id: string
 ): Promise<null> {
-    return client.request<null>('/api/filetree/removeDocByID', {
+    return client.requestWrite<null>('/api/filetree/removeDocByID', {
         id,
     } as IReqRemoveDocByID);
 }
@@ -99,7 +99,7 @@ export async function moveDocs(
     toNotebook: string,
     toPath: string
 ): Promise<null> {
-    return client.request<null>('/api/filetree/moveDocs', {
+    return client.requestWrite<null>('/api/filetree/moveDocs', {
         fromPaths,
         toNotebook,
         toPath,
@@ -114,7 +114,7 @@ export async function moveDocsByID(
     fromIDs: string[],
     toID: string
 ): Promise<null> {
-    return client.request<null>('/api/filetree/moveDocsByID', {
+    return client.requestWrite<null>('/api/filetree/moveDocsByID', {
         fromIDs,
         toID,
     } as IReqMoveDocsByID);
@@ -128,7 +128,7 @@ export async function getHPathByPath(
     notebook: string,
     path: string
 ): Promise<string> {
-    return client.request<string>('/api/filetree/getHPathByPath', {
+    return client.requestRead<string>('/api/filetree/getHPathByPath', {
         notebook,
         path,
     } as IReqGetHPathByPath);
@@ -141,7 +141,7 @@ export async function getHPathByID(
     client: SiYuanClient,
     id: string
 ): Promise<string> {
-    return client.request<string>('/api/filetree/getHPathByID', {
+    return client.requestRead<string>('/api/filetree/getHPathByID', {
         id,
     } as IReqGetHPathByID);
 }
@@ -153,7 +153,7 @@ export async function getPathByID(
     client: SiYuanClient,
     id: string
 ): Promise<IResGetPathByID> {
-    return client.request<IResGetPathByID>('/api/filetree/getPathByID', {
+    return client.requestRead<IResGetPathByID>('/api/filetree/getPathByID', {
         id,
     } as IReqGetPathByID);
 }
@@ -166,7 +166,7 @@ export async function getIDsByHPath(
     path: string,
     notebook: string
 ): Promise<string[]> {
-    return client.request<string[]>('/api/filetree/getIDsByHPath', {
+    return client.requestRead<string[]>('/api/filetree/getIDsByHPath', {
         path,
         notebook,
     } as IReqGetIDsByHPath);
@@ -180,7 +180,7 @@ export async function listDocsByPath(
     notebook: string,
     path: string,
 ): Promise<IResListDocsByPath> {
-    return client.request<IResListDocsByPath>('/api/filetree/listDocsByPath', {
+    return client.requestRead<IResListDocsByPath>('/api/filetree/listDocsByPath', {
         notebook,
         path,
     } as IReqListDocsByPath);
@@ -191,7 +191,7 @@ export async function listDocTree(
     notebook: string,
     path: string,
 ): Promise<unknown> {
-    return client.request('/api/filetree/listDocTree', { notebook, path });
+    return client.requestRead('/api/filetree/listDocTree', { notebook, path });
 }
 
 export async function searchDocs(
@@ -200,7 +200,7 @@ export async function searchDocs(
     flashcard?: boolean,
     excludeIDs?: string[],
 ): Promise<unknown> {
-    return client.request('/api/filetree/searchDocs', {
+    return client.requestRead('/api/filetree/searchDocs', {
         k: keyword,
         flashcard,
         excludeIDs,
@@ -213,7 +213,7 @@ export async function getDoc(
     mode?: number,
     size?: number,
 ): Promise<unknown> {
-    return client.request('/api/filetree/getDoc', {
+    return client.requestRead('/api/filetree/getDoc', {
         id,
         mode,
         size,
@@ -226,7 +226,7 @@ export async function getDocOutline(
     preview = false,
     notebook?: string,
 ): Promise<IResDocOutlinePath[]> {
-    return client.request<IResDocOutlinePath[]>('/api/outline/getDocOutline', {
+    return client.requestRead<IResDocOutlinePath[]>('/api/outline/getDocOutline', {
         id,
         preview,
         ...(notebook ? { notebook } : {}),
@@ -238,7 +238,7 @@ export async function createDailyNote(
     notebook: string,
     app?: string,
 ): Promise<{ id: string }> {
-    return client.request<{ id: string }>('/api/filetree/createDailyNote', {
+    return client.requestWrite<{ id: string }>('/api/filetree/createDailyNote', {
         notebook,
         app,
     });
@@ -248,14 +248,14 @@ export async function duplicateDoc(
     client: SiYuanClient,
     id: string,
 ): Promise<{ id: string; notebook: string; path: string; hPath?: string }> {
-    return client.request('/api/filetree/duplicateDoc', { id });
+    return client.requestWrite('/api/filetree/duplicateDoc', { id });
 }
 
 export async function removeDocs(
     client: SiYuanClient,
     paths: string[],
 ): Promise<null> {
-    return client.request('/api/filetree/removeDocs', { paths });
+    return client.requestWrite('/api/filetree/removeDocs', { paths });
 }
 
 export async function createEmptyDoc(
@@ -266,7 +266,7 @@ export async function createEmptyDoc(
     md = '',
     sorts?: string[],
 ): Promise<{ id: string }> {
-    return client.request('/api/filetree/createDoc', { notebook, path, title, md, sorts });
+    return client.requestWrite('/api/filetree/createDoc', { notebook, path, title, md, sorts });
 }
 
 export async function headingToDoc(
@@ -276,7 +276,7 @@ export async function headingToDoc(
     targetPath?: string,
     previousPath?: string,
 ): Promise<null> {
-    return client.request('/api/filetree/heading2Doc', {
+    return client.requestWrite('/api/filetree/heading2Doc', {
         srcHeadingID,
         targetNoteBook: targetNotebook,
         targetPath,
@@ -290,5 +290,5 @@ export async function docToHeading(
     targetID: string,
     after = false,
 ): Promise<{ srcTreeBox: string; srcTreePath: string }> {
-    return client.request('/api/filetree/doc2Heading', { srcID, targetID, after });
+    return client.requestWrite('/api/filetree/doc2Heading', { srcID, targetID, after });
 }
