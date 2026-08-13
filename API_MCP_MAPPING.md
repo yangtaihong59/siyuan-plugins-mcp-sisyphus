@@ -107,6 +107,7 @@
 | `rename` | `POST /api/filetree/renameDoc` / `POST /api/filetree/renameDocByID` | `src/api/document.ts` | 支持路径模式和 ID 模式 |
 | `remove` | `POST /api/filetree/removeDoc` / `POST /api/filetree/removeDocByID` | `src/api/document.ts` | 需要确认 |
 | `move` | `POST /api/filetree/moveDocs` / `POST /api/filetree/moveDocsByID` | `src/api/document.ts` | 需要确认 |
+| `reorder` | `POST /api/filetree/listDocsByPath` + `POST /api/filetree/changeSort` + `POST /api/notebook/setNotebookConf` | `src/api/document.ts` | 完整重排可见直属子文档，并将 `sortMode` 设为 `6`；`fs.reorder` 共用该实现 |
 | `lookup` | `POST /api/filetree/getPathByID` / `POST /api/filetree/getHPathByID` / `POST /api/filetree/getHPathByPath` / `POST /api/filetree/getIDsByHPath` | `src/api/document.ts` | 解析 ID、存储路径、人类可读路径和文档信息 |
 | `get_child_blocks` | `POST /api/block/getChildBlocks` | `src/api/block.ts` | 使用解析后的根文档 ID |
 | `get_child_docs` | `POST /api/filetree/listDocsByPath` | `src/api/document.ts` | 使用解析后的笔记本 + 存储路径 |
@@ -137,6 +138,7 @@
 - `document(action="rename", notebook + path)`
 - `document(action="remove", notebook + path)`
 - `document(action="move", fromPaths + toNotebook + toPath)`
+- `document(action="reorder", parentID + orderedIDs)`（ID 入口，内部解析直属子文档存储路径）
 - `document(action="lookup", notebook + path)`
 - `document(action="list_tree", notebook + path)`
 

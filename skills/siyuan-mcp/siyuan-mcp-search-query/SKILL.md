@@ -1,6 +1,6 @@
 ---
 name: siyuan-mcp-search-query
-description: MCP playbook for finding and querying SiYuan content. Use for fulltext, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.
+description: MCP playbook for finding and querying SiYuan content. Use for fulltext, semantic search, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.
 ---
 
 # Search and Query SiYuan with MCP
@@ -9,6 +9,9 @@ Search to identify candidates, read the target by ID or path, and only then edit
 
 ```text
 search(action="fulltext", query="keyword", page=1, pageSize=20)
+```
+```text
+search(action="semantic", query="concept or meaning", typeShortcodes=["h","p"], page=1, pageSize=20)
 ```
 ```text
 search(action="fulltext", query="keyword", parentId="<doc-id>", typeShortcodes=["h","p"])

@@ -1,6 +1,7 @@
 import type { SiYuanClient } from '../../api/client';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
+import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import * as transactionApi from '../../api/transaction';
 import type { DocumentAction } from '../../core/config';
@@ -17,6 +18,7 @@ import {
     DocumentHeadingToDocSchema,
     DocumentListTreeSchema,
     DocumentMoveSchema,
+    DocumentReorderSchema,
     DocumentLookupSchema,
     DocumentRemoveSchema,
     DocumentRenameSchema,
@@ -41,6 +43,7 @@ import { stripRedundantTitleHeading } from '../internal/kramdown-safe';
 import { readDocumentBlockWindow } from '../internal/document-kramdown';
 import { createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs } from '../internal/markdown-input';
+import { applyDocumentReorder, readDocumentReorderState } from '../internal/helpers/document-reorder';
 
 type DocumentActionHandler = ToolActionHandler;
 
@@ -576,6 +579,42 @@ const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) =
     }), [{ type: 'reloadFiletree' }]);
 };
 
+const handleReorder: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = DocumentReorderSchema.parse(rawArgs);
+    const notebooks = await notebookApi.listNotebooks(client);
+    const notebook = notebooks.notebooks.find((item) => item.id === parsed.parentID);
+    let targetNotebook: string;
+    let parentPath: string;
+
+    if (notebook) {
+        targetNotebook = notebook.id;
+        parentPath = '/';
+        const denied = await ensurePermissionForNotebook(permMgr, targetNotebook, 'write');
+        if (denied) return denied;
+    } else {
+        const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+        if (denied) return denied;
+        if (context.documentId !== parsed.parentID) {
+            throw new Error(`parentID must identify a notebook or document root, got content block "${parsed.parentID}".`);
+        }
+        targetNotebook = context.notebook;
+        parentPath = context.path;
+    }
+
+    const state = await readDocumentReorderState(client, targetNotebook, parsed.parentID, parentPath);
+    const result = await applyDocumentReorder(client, state, parsed.orderedIDs);
+    return applyUiRefresh(client, createJsonResult({
+        success: true,
+        parentID: parsed.parentID,
+        notebook: targetNotebook,
+        changed: result.changed,
+        orderChanged: result.orderChanged,
+        sortModeChanged: result.sortModeChanged,
+        previousOrder: result.previousOrder,
+        order: result.order,
+    }), [{ type: 'reloadFiletree' }]);
+};
+
 const handleGetChildBlocks: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentGetChildBlocksSchema.parse(rawArgs);
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
@@ -823,6 +862,7 @@ export const DOCUMENT_ACTION_HANDLERS: Record<DocumentAction, DocumentActionHand
     rename: handleRename,
     remove: handleRemove,
     move: handleMove,
+    reorder: handleReorder,
     get_child_blocks: handleGetChildBlocks,
     get_child_docs: handleGetChildDocs,
     set_attr: handleSetAttr,

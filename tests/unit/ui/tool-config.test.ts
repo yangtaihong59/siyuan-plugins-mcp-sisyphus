@@ -18,6 +18,7 @@ describe('setting tool config', () => {
         expect(config.file.uploadLargeFileThresholdMB).toBe(10);
         expect(config.av.actions.get).toBe(true);
         expect(config.av.actions.set_cells).toBe(true);
+        expect(config.search.actions.semantic).toBe(true);
         expect(config.flashcard.actions.list_cards).toBe(true);
         expect(config.flashcard.actions.create_card).toBe(true);
         expect(config.flashcard.actions.remove_card).toBe(true);
@@ -50,6 +51,23 @@ describe('setting tool config', () => {
         expect(config.writeSafety.strictMode).toBe(true);
         expect(config.debug.includeUiRefreshMetadata).toBe(false);
         expect(config.debug.slimResponses).toBe(true);
+    });
+
+    it('enables semantic search when migrating an older nested search config', () => {
+        const config = normalizeToolConfig({
+            search: {
+                enabled: true,
+                actions: {
+                    fulltext: true,
+                    query_sql: false,
+                },
+            },
+        });
+
+        expect(config.search.enabled).toBe(true);
+        expect(config.search.actions.fulltext).toBe(true);
+        expect(config.search.actions.query_sql).toBe(false);
+        expect(config.search.actions.semantic).toBe(true);
     });
 
     it('keeps nested file config action toggles and upload threshold together', () => {

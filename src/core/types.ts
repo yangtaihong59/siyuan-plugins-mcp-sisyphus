@@ -6,6 +6,7 @@ import type { NotebookConf } from "../types/shared";
 const NotebookConfSchema: z.ZodType<Partial<NotebookConf>> = z.object({
     name: z.string().optional(),
     closed: z.boolean().optional(),
+    sortMode: z.number().int().optional(),
     refCreateSavePath: z.string().optional(),
     createDocNameTemplate: z.string().optional(),
     dailyNoteSavePath: z.string().optional(),
@@ -143,6 +144,12 @@ export const FsMvSchema = z.object({
     action: z.literal("mv"),
     from: z.string().describe("Human-readable source document path"),
     to: z.string().describe("Human-readable destination document path"),
+});
+
+export const FsReorderSchema = z.object({
+    action: z.literal("reorder"),
+    path: z.string().describe("Human-readable notebook or parent document path"),
+    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document paths"),
 });
 
 export const FsSearchSchema = z.object({
@@ -305,6 +312,12 @@ export const DocumentRemoveSchema = z.object({
 export const DocumentMoveSchema = z.object({
     action: z.literal("move"),
 }).and(DocumentMoveReferenceSchema);
+
+export const DocumentReorderSchema = z.object({
+    action: z.literal("reorder"),
+    parentID: z.string().describe("Notebook ID or parent document ID"),
+    orderedIDs: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document IDs"),
+});
 
 export const DocumentGetChildBlocksSchema = z.object({
     action: z.literal("get_child_blocks"),
@@ -1023,6 +1036,17 @@ export const SearchFulltextSchema = z.object({
     parentId: z.string().optional().describe("Post-filter results to blocks whose root_id or parent_id matches this ID, scoping search within a document subtree."),
     hasTags: z.boolean().optional().describe("When true, only return blocks that have tags. When false, only return blocks without tags."),
     stripHtml: z.boolean().optional().describe("Legacy toggle. plainContent is now returned by default; set this when you want to emphasize plain-text-safe downstream parsing while keeping highlighted HTML content."),
+});
+
+export const SearchSemanticSchema = z.object({
+    action: z.literal("semantic"),
+    query: z.string().min(1).describe("Natural-language semantic search query"),
+    paths: z.array(z.string()).optional().describe("Restrict search to notebook IDs or notebook/storage paths"),
+    types: z.record(z.string(), z.boolean()).optional().describe("Block type filter. Accepts full names or shortcodes."),
+    typeShortcodes: z.array(z.string()).optional().describe("Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types."),
+    subTypes: z.record(z.string(), z.boolean()).optional().describe("Optional SiYuan block subtype filter"),
+    page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
+    pageSize: z.number().int().min(1).max(128).optional().describe("Results per page, default 32, max 128"),
 });
 
 export const SearchQuerySqlSchema = z.object({

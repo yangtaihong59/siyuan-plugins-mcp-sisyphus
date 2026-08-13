@@ -23,6 +23,7 @@ export const ICON_SVGS: Record<string, string> = {
     folder: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`,
     paperclip: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>`,
     search: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`,
+    brain: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M9.5 3A3.5 3.5 0 0 0 6 6.5v.18A3.5 3.5 0 0 0 4.5 13v.5A3.5 3.5 0 0 0 8 17h.5v1.5a2.5 2.5 0 0 0 5 0V5.5A2.5 2.5 0 0 0 11 3H9.5zm5 2.5v13a2.5 2.5 0 0 0 5 0V17h.5a3.5 3.5 0 0 0 3.5-3.5V13A3.5 3.5 0 0 0 22 6.68V6.5A3.5 3.5 0 0 0 18.5 3H17a2.5 2.5 0 0 0-2.5 2.5z" transform="translate(-2) scale(.92)"/></svg>`,
     tagIcon: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>`,
     monitor: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h3l-1 1v2h12v-2l-1-1h3c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z"/></svg>`,
     layers: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/></svg>`,
@@ -54,6 +55,7 @@ export const HTTP_GROUP_KEY = "Connection Config";
 export const PERM_GROUP_KEY = "Permissions";
 export const TOOL_GROUP_KEY = "Tool Settings";
 export const MCP_APPS_GROUP_KEY = "MCP Apps";
+export const EMBEDDING_GROUP_KEY = "Embedding Model";
 export const PUPPY_GROUP_KEY = "Mascot Display";
 export const ANALYTICS_GROUP_KEY = "analyticsGroupTitle";
 export const DEBUG_GROUP_KEY = "debugGroupTitle";

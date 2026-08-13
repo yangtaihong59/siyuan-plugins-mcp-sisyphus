@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
-import { DocumentMoveSchema } from '@/core/types';
+import { DocumentMoveSchema, DocumentReorderSchema } from '@/core/types';
 import { callDocumentTool, DOCUMENT_VARIANTS, listDocumentTools } from '@/tools/document';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
@@ -241,6 +241,106 @@ describe('document.move schema', () => {
         expect(payload.error.validActions).toContain('create');
         expect(payload.error.validActions).toContain('help');
         expect(payload.error.validActions).not.toContain('not_exist_action');
+    });
+});
+
+describe('document.reorder', () => {
+    function createPermMgr(level: 'rwd' | 'rw' | 'r' = 'rw') {
+        return {
+            reload: vi.fn(async () => undefined),
+            canRead: vi.fn(() => level !== 'r'),
+            canWrite: vi.fn(() => level === 'rw' || level === 'rwd'),
+            canDelete: vi.fn(() => level === 'rwd'),
+            get: vi.fn(() => level),
+        } as never;
+    }
+
+    function createNestedReorderClient(initialOrder = ['doc-a', 'doc-b', 'doc-c'], initialSortMode = 1) {
+        const documents = [
+            { id: 'doc-a', path: '/parent/doc-a.sy', hPath: '/Parent/A', name: 'A.sy', sort: 10 },
+            { id: 'doc-b', path: '/parent/doc-b.sy', hPath: '/Parent/B', name: 'B.sy', sort: 20 },
+            { id: 'doc-c', path: '/parent/doc-c.sy', hPath: '/Parent/C', name: 'C.sy', sort: 30 },
+        ];
+        let order = [...initialOrder];
+        let sortMode = initialSortMode;
+        const request = vi.fn(async (endpoint: string, body?: Record<string, any>) => {
+            if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'nb-1', name: 'Notebook', closed: false }] };
+            if (endpoint === '/api/query/sql') {
+                return [{ id: 'parent-doc', root_id: 'parent-doc', box: 'nb-1', path: '/parent.sy', hpath: '/Parent', content: 'Parent', type: 'd' }];
+            }
+            if (endpoint === '/api/notebook/getNotebookConf') return { box: 'nb-1', name: 'Notebook', conf: { sortMode } };
+            if (endpoint === '/api/filetree/listDocsByPath') return { box: 'nb-1', files: order.map((id) => documents.find((item) => item.id === id)) };
+            if (endpoint === '/api/filetree/changeSort') {
+                order = body?.paths.map((path: string) => documents.find((item) => item.path === path)?.id);
+                return null;
+            }
+            if (endpoint === '/api/notebook/setNotebookConf') {
+                sortMode = body?.conf.sortMode;
+                return null;
+            }
+            if (endpoint.startsWith('/api/ui/')) return null;
+            throw new Error(`Unexpected endpoint: ${endpoint}`);
+        });
+        return { client: createMockClient({ request }), request, getOrder: () => order, getSortMode: () => sortMode };
+    }
+
+    it('publishes the ID entry schema and rejects an empty permutation', () => {
+        const variant = DOCUMENT_VARIANTS.find((item) => item.action === 'reorder');
+        expect(variant?.schema.required).toEqual(['action', 'parentID', 'orderedIDs']);
+        expect(variant?.schema.properties?.orderedIDs?.type).toBe('array');
+        expect(DocumentReorderSchema.safeParse({ action: 'reorder', parentID: 'parent-doc', orderedIDs: [] }).success).toBe(false);
+    });
+
+    it('reorders nested child documents by ID and enables custom sorting', async () => {
+        const { client, request, getOrder, getSortMode } = createNestedReorderClient();
+        const result = await callDocumentTool(client, {
+            action: 'reorder', parentID: 'parent-doc', orderedIDs: ['doc-c', 'doc-a', 'doc-b'],
+        }, buildDefaultToolConfig().document, createPermMgr());
+
+        expect(parseResult(result)).toMatchObject({
+            success: true,
+            parentID: 'parent-doc',
+            notebook: 'nb-1',
+            changed: true,
+            orderChanged: true,
+            sortModeChanged: true,
+            previousOrder: ['doc-a', 'doc-b', 'doc-c'],
+            order: ['doc-c', 'doc-a', 'doc-b'],
+        });
+        expect(getOrder()).toEqual(['doc-c', 'doc-a', 'doc-b']);
+        expect(getSortMode()).toBe(6);
+        expect(request).toHaveBeenCalledWith('/api/filetree/listDocsByPath', {
+            notebook: 'nb-1', path: '/parent.sy', sort: 6, maxListCount: 0, showHidden: false, ignoreMaxListHint: true,
+        });
+        expect(request).toHaveBeenCalledWith('/api/filetree/changeSort', {
+            notebook: 'nb-1', paths: ['/parent/doc-c.sy', '/parent/doc-a.sy', '/parent/doc-b.sy'],
+        });
+    });
+
+    it.each([
+        [['doc-a', 'doc-a', 'doc-c'], 'duplicates'],
+        [['doc-a', 'doc-b'], 'missing'],
+        [['doc-a', 'doc-b', 'doc-c', 'outside-parent'], 'unexpected'],
+    ])('rejects duplicate, missing, and cross-parent IDs (%s)', async (orderedIDs, detail) => {
+        const { client, request } = createNestedReorderClient();
+        const result = await callDocumentTool(client, {
+            action: 'reorder', parentID: 'parent-doc', orderedIDs,
+        }, buildDefaultToolConfig().document, createPermMgr());
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain(detail);
+        expect(request).not.toHaveBeenCalledWith('/api/filetree/changeSort', expect.anything());
+    });
+
+    it('denies reorder when the parent notebook is read-only', async () => {
+        const { client, request } = createNestedReorderClient();
+        const result = await callDocumentTool(client, {
+            action: 'reorder', parentID: 'parent-doc', orderedIDs: ['doc-a', 'doc-b', 'doc-c'],
+        }, buildDefaultToolConfig().document, createPermMgr('r'));
+
+        expect(result.isError).toBe(true);
+        expect(parseResult(result).error).toMatchObject({ type: 'permission_denied', required_permission: 'write' });
+        expect(request).not.toHaveBeenCalledWith('/api/filetree/changeSort', expect.anything());
     });
 });
 

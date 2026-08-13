@@ -1,6 +1,7 @@
 import { SiYuanClient } from './client';
 import type {
     IReqFullTextSearchBlock,
+    IReqSemanticSearchBlock,
     IReqGetBacklinkDoc,
     IReqGetBackmentionDoc,
     IReqQuerySQL,
@@ -16,6 +17,13 @@ export async function fullTextSearchBlock(
     params: IReqFullTextSearchBlock,
 ): Promise<IResFullTextSearchBlock> {
     return client.requestRead<IResFullTextSearchBlock>('/api/search/fullTextSearchBlock', params);
+}
+
+export async function semanticSearchBlock(
+    client: SiYuanClient,
+    params: IReqSemanticSearchBlock,
+): Promise<IResFullTextSearchBlock> {
+    return client.requestRead<IResFullTextSearchBlock>('/api/search/semanticSearchBlock', params);
 }
 
 export async function querySQL(client: SiYuanClient, stmt: string): Promise<unknown[]> {

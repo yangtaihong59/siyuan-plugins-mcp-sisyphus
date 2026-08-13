@@ -1862,4 +1862,96 @@ describe('fs tool', () => {
         });
         expect(client.request).not.toHaveBeenCalledWith('/api/filetree/moveDocsByID', expect.anything());
     });
+
+    function createReorderClient(initialOrder = ['doc-a', 'doc-b', 'doc-c'], initialSortMode = 2) {
+        const documents = [
+            { id: 'doc-a', path: '/doc-a.sy', hPath: '/A', name: 'A.sy', sort: 10 },
+            { id: 'doc-b', path: '/doc-b.sy', hPath: '/B', name: 'B.sy', sort: 20 },
+            { id: 'doc-c', path: '/doc-c.sy', hPath: '/C', name: 'C.sy', sort: 30 },
+        ];
+        let order = [...initialOrder];
+        let sortMode = initialSortMode;
+        const request = vi.fn(async (endpoint: string, body?: Record<string, any>) => {
+            if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'nb-1', name: 'Notebook', closed: false }] };
+            if (endpoint === '/api/notebook/getNotebookConf') return { box: 'nb-1', name: 'Notebook', conf: { sortMode } };
+            if (endpoint === '/api/filetree/listDocsByPath') {
+                return { box: 'nb-1', files: order.map((id) => documents.find((item) => item.id === id)) };
+            }
+            if (endpoint === '/api/filetree/changeSort') {
+                order = body?.paths.map((path: string) => documents.find((item) => item.path === path)?.id);
+                return null;
+            }
+            if (endpoint === '/api/notebook/setNotebookConf') {
+                sortMode = body?.conf.sortMode;
+                return null;
+            }
+            if (endpoint.startsWith('/api/ui/')) return null;
+            throw new Error(`Unexpected endpoint: ${endpoint}`);
+        });
+        return { client: createMockClient({ request }), request, getOrder: () => order, getSortMode: () => sortMode };
+    }
+
+    it('reorders every visible child by human-readable path and enables custom sorting', async () => {
+        const { client, request, getOrder, getSortMode } = createReorderClient();
+        const result = await callFsTool(client, {
+            action: 'reorder',
+            path: '/Notebook',
+            orderedPaths: ['/Notebook/C', '/Notebook/A', '/Notebook/B'],
+        }, fsConfig(), createPermMgr('rw'));
+        const parsed = parseResult(result);
+
+        expect(parsed).toMatchObject({
+            success: true,
+            path: '/Notebook',
+            changed: true,
+            orderChanged: true,
+            sortModeChanged: true,
+            previousOrder: ['/Notebook/A', '/Notebook/B', '/Notebook/C'],
+            order: ['/Notebook/C', '/Notebook/A', '/Notebook/B'],
+        });
+        expect(getOrder()).toEqual(['doc-c', 'doc-a', 'doc-b']);
+        expect(getSortMode()).toBe(6);
+        expect(request).toHaveBeenCalledWith('/api/filetree/listDocsByPath', {
+            notebook: 'nb-1', path: '/', sort: 6, maxListCount: 0, showHidden: false, ignoreMaxListHint: true,
+        });
+        expect(request).toHaveBeenCalledWith('/api/filetree/changeSort', { notebook: 'nb-1', paths: ['/doc-c.sy', '/doc-a.sy', '/doc-b.sy'] });
+        expect(request).toHaveBeenCalledWith('/api/notebook/setNotebookConf', { notebook: 'nb-1', conf: { sortMode: 6 } });
+    });
+
+    it('returns changed=false when order and custom sort mode already match', async () => {
+        const { client, request } = createReorderClient(['doc-c', 'doc-a', 'doc-b'], 6);
+        const result = await callFsTool(client, {
+            action: 'reorder',
+            path: '/Notebook',
+            orderedPaths: ['/Notebook/C', '/Notebook/A', '/Notebook/B'],
+        }, fsConfig(), createPermMgr('rw'));
+
+        expect(parseResult(result)).toMatchObject({ changed: false, orderChanged: false, sortModeChanged: false });
+        expect(request).not.toHaveBeenCalledWith('/api/filetree/changeSort', expect.anything());
+        expect(request).not.toHaveBeenCalledWith('/api/notebook/setNotebookConf', expect.anything());
+    });
+
+    it.each([
+        [['/Notebook/A', '/Notebook/A', '/Notebook/C'], 'duplicates'],
+        [['/Notebook/A', '/Notebook/B'], 'missing'],
+        [['/Notebook/A', '/Notebook/B', '/Notebook/C', '/Notebook/Elsewhere'], 'unexpected'],
+    ])('rejects an incomplete or invalid path permutation (%s)', async (orderedPaths, detail) => {
+        const { client, request } = createReorderClient();
+        const result = await callFsTool(client, { action: 'reorder', path: '/Notebook', orderedPaths }, fsConfig(), createPermMgr('rw'));
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain(detail);
+        expect(request).not.toHaveBeenCalledWith('/api/filetree/changeSort', expect.anything());
+    });
+
+    it('denies reorder when the notebook is read-only', async () => {
+        const { client, request } = createReorderClient();
+        const result = await callFsTool(client, {
+            action: 'reorder', path: '/Notebook', orderedPaths: ['/Notebook/A', '/Notebook/B', '/Notebook/C'],
+        }, fsConfig(), createPermMgr('r'));
+
+        expect(result.isError).toBe(true);
+        expect(parseResult(result).error).toMatchObject({ type: 'permission_denied', required_permission: 'write' });
+        expect(request).not.toHaveBeenCalledWith('/api/filetree/changeSort', expect.anything());
+    });
 });

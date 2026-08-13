@@ -67,6 +67,7 @@
                 { key: "replace", title: "Replace Text", description: "Apply exact old/new text replacement edits inside one Markdown document." },
                 { key: "rm", title: "Remove Document", description: "Delete a document by human-readable path." },
                 { key: "mv", title: "Move Document", description: "Move or rename a document by human-readable paths." },
+                { key: "reorder", title: "Reorder Documents", description: "Apply a complete manual order to all visible direct child documents." },
                 { key: "search", title: "Search Path", description: "Search Markdown lines under a human-readable path." },
             ],
         },
@@ -99,6 +100,7 @@
                 { key: "rename", title: "Rename Document", description: "Rename a document by ID or storage path." },
                 { key: "remove", title: "Remove Document", description: "Remove a document by ID or storage path." },
                 { key: "move", title: "Move Documents", description: "Move multiple documents by ID or storage path." },
+                { key: "reorder", title: "Reorder Documents", description: "Apply a complete manual order to all visible direct child document IDs." },
                 { key: "lookup", title: "Lookup Document Reference", description: "Look up document IDs, storage paths, human-readable paths, and metadata." },
                 { key: "get_child_blocks", title: "Get Child Blocks", description: "Get direct child blocks by document ID." },
                 { key: "get_child_docs", title: "Get Child Documents", description: "Get direct child documents by document ID." },
@@ -194,6 +196,7 @@
             iconSvg: ICON_SVGS.search,
             actions: [
                 { key: "fulltext", title: "Full-text Search", description: "Search blocks across the workspace." },
+                { key: "semantic", title: "Semantic Search", description: "Search embedded workspace blocks by semantic similarity." },
                 { key: "query_sql", title: "Query SQL", description: "Run read-only SQL queries against SiYuan data." },
                 { key: "get_backlinks", title: "Get Backlinks", description: "Get backlinks or backmentions for a block or document." },
                 { key: "search_refs", title: "Search References", description: "Search references to a block or document." },

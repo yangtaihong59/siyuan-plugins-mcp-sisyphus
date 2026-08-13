@@ -179,8 +179,8 @@ Before rename, move, delete, or broad replacement, resolve the exact target, sho
         id: 'search-query',
         cliName: 'siyuan-sisyphus-search-query',
         mcpName: 'siyuan-mcp-search-query',
-        cliDescription: 'CLI-only playbook for finding and querying SiYuan content with siyuan-sisyphus. Use for fulltext, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.',
-        mcpDescription: 'MCP playbook for finding and querying SiYuan content. Use for fulltext, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.',
+        cliDescription: 'CLI-only playbook for finding and querying SiYuan content with siyuan-sisyphus. Use for fulltext, semantic search, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.',
+        mcpDescription: 'MCP playbook for finding and querying SiYuan content. Use for fulltext, semantic search, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.',
         title: 'Search and Query SiYuan',
         displayName: 'SiYuan Search & Query',
         shortDescription: 'Search and query SiYuan knowledge',
@@ -188,6 +188,7 @@ Before rename, move, delete, or broad replacement, resolve the exact target, sho
         body: `Search to identify candidates, read the target by ID or path, and only then edit. Use explicit pagination for repeatable results.
 
 {{call fulltext}}
+{{call semantic}}
 {{call scoped}}
 {{call sql}}
 {{call backlinks}}
@@ -206,6 +207,7 @@ Read the changed blocks again. Recent writes can take time to enter the search i
 `,
         calls: {
             fulltext: call('search', 'fulltext', { query: 'keyword', page: 1, pageSize: 20 }),
+            semantic: call('search', 'semantic', { query: 'concept or meaning', typeShortcodes: ['h', 'p'], page: 1, pageSize: 20 }),
             scoped: call('search', 'fulltext', { query: 'keyword', parentId: '<doc-id>', typeShortcodes: ['h', 'p'] }),
             sql: call('search', 'query_sql', { stmt: "SELECT id, hpath, content FROM blocks WHERE type = 'p' ORDER BY updated DESC LIMIT 10" }),
             backlinks: call('search', 'get_backlinks', { id: '<block-or-doc-id>', mode: 'both' }),

@@ -84,6 +84,7 @@ interface Notebook {
 interface NotebookConf {
     name: string;
     closed: boolean;
+    sortMode?: number;
     refCreateSavePath: string;
     createDocNameTemplate: string;
     dailyNoteSavePath: string;
@@ -195,6 +196,10 @@ interface IResGetPathByID {
 interface IReqListDocsByPath {
     notebook: string;
     path: string;
+    sort?: number;
+    maxListCount?: number;
+    showHidden?: boolean;
+    ignoreMaxListHint?: boolean;
 }
 
 interface IResListDoc {
@@ -349,6 +354,15 @@ interface IReqFullTextSearchBlock {
     paths?: string[];
     groupBy?: number;
     orderBy?: number;
+    page?: number;
+    pageSize?: number;
+}
+
+interface IReqSemanticSearchBlock {
+    query: string;
+    paths?: string[];
+    types?: Record<string, boolean>;
+    subTypes?: Record<string, boolean>;
     page?: number;
     pageSize?: number;
 }
@@ -530,6 +544,7 @@ export type {
     IReqFoldBlock,
     IReqForwardProxy,
     IReqFullTextSearchBlock,
+    IReqSemanticSearchBlock,
     IReqGetBacklinkDoc,
     IReqGetBackmentionDoc,
     IReqGetBlockKramdown,

@@ -12,6 +12,7 @@ import {
     SearchListInvalidRefsSchema,
     SearchQuerySqlSchema,
     SearchRefsSchema,
+    SearchSemanticSchema,
 } from '../../core/types';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
@@ -28,6 +29,7 @@ export const SEARCH_TOOL_NAME = 'search';
 
 export const SEARCH_VARIANTS: ActionVariant<SearchAction>[] = [
     createZodActionVariant('fulltext', SearchFulltextSchema, 'Full-text search across all blocks.'),
+    createZodActionVariant('semantic', SearchSemanticSchema, 'Semantic search across embedded workspace blocks.'),
     createZodActionVariant('query_sql', SearchQuerySqlSchema, 'Execute a read-only SQL query against the database.'),
     createZodActionVariant('get_backlinks', SearchGetBacklinksSchema, 'Find documents/blocks that link to or mention the given block.'),
     createZodActionVariant('search_refs', SearchRefsSchema, 'Search blocks that reference a given block or document.'),

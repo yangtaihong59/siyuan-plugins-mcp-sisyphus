@@ -20,11 +20,14 @@ import {
     SearchListInvalidRefsSchema,
     SearchQuerySqlSchema,
     SearchRefsSchema,
+    SearchSemanticSchema,
 } from '../../core/types';
+import { isSiYuanVersionAtLeast } from '../../shared/siyuan-version';
 import { ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveNotebookForPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { enrichItemsWithNotebookNames } from '../internal/helpers/notebook-names';
 import { listDocumentBlocksInTreeOrder } from '../internal/document-kramdown';
+import { getCachedSiYuanVersion } from '../internal/siyuan-version';
 import { applyTruncation, createErrorResult, createJsonResult, createPaginatedResult, type ToolResult, type TruncationMeta } from '../internal/shared';
 import {
     createPartialMetadata,
@@ -38,6 +41,7 @@ import { assertReadOnlySql, getBacklinkDocWithFallback, getBackmentionDocWithFal
 const SEARCH_TOOL_NAME = 'search';
 
 type SearchFulltextArgs = ReturnType<(typeof SearchFulltextSchema)['parse']>;
+type SearchSemanticArgs = ReturnType<(typeof SearchSemanticSchema)['parse']>;
 type SearchFulltextAssetContentArgs = ReturnType<(typeof SearchFulltextAssetContentSchema)['parse']>;
 type SearchFindReplaceArgs = ReturnType<(typeof SearchFindReplaceSchema)['parse']>;
 type SearchMethodArgs = {
@@ -86,6 +90,13 @@ function resolveFulltextTypes(parsed: SearchFulltextArgs): Record<string, boolea
     return resolvedTypes as Record<string, boolean> | undefined;
 }
 
+function resolveSemanticTypes(parsed: SearchSemanticArgs): Record<string, boolean> | undefined {
+    const resolved = parsed.types ? resolveTypeRecord(parsed.types) : {};
+    const expanded = parsed.typeShortcodes ? expandTypeShortcodes(parsed.typeShortcodes) : {};
+    const merged = { ...resolved, ...expanded };
+    return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function resolveFulltextRequestPageSize(parsed: SearchFulltextArgs): number | undefined {
     return parsed.parentId
         ? Math.min((parsed.pageSize ?? 32) * 3, 128)
@@ -122,9 +133,10 @@ function resolveSearchMethodMeta(parsed: SearchMethodArgs): { method?: number; m
 
 function createFulltextPaginatedResult(
     normalizedObj: Record<string, unknown>,
-    parsed: SearchFulltextArgs,
+    parsed: Pick<SearchFulltextArgs, 'page' | 'pageSize' | 'parentId' | 'hasTags'>,
     kernelMeta: { matchedBlockCount?: number; matchedRootCount?: number; pageCount?: number },
     resolvedArgs?: Record<string, unknown>,
+    emptyWarning?: string,
 ): ToolResult {
     const blocks = Array.isArray(normalizedObj.blocks)
         ? normalizedObj.blocks as unknown[]
@@ -170,6 +182,7 @@ function createFulltextPaginatedResult(
         ...(parsed.parentId && returnedTotal === 0 ? {
             warning: 'No matching blocks were found in the requested document subtree. If the content was just created or updated, SiYuan full-text indexing may still be catching up; retry shortly.',
         } : {}),
+        ...(!parsed.parentId && returnedTotal === 0 && emptyWarning ? { warning: emptyWarning } : {}),
         ...(resolvedArgs ? { resolvedArgs } : {}),
     });
 }
@@ -288,6 +301,40 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
                 ? (result as unknown as Record<string, unknown>).pageCount as number
                 : undefined,
         }, resolvedArgs);
+    },
+    semantic: async ({ client, permMgr, rawArgs }) => {
+        const parsed = SearchSemanticSchema.parse(rawArgs);
+        const version = await getCachedSiYuanVersion(client);
+        if (!isSiYuanVersionAtLeast(version, '3.7.0')) {
+            return createErrorResult(
+                new Error(`SiYuan version ${version} does not support semantic search; version 3.7.0 or newer is required.`),
+                { tool: SEARCH_TOOL_NAME, action: 'semantic', rawArgs },
+            );
+        }
+
+        const result = await searchApi.semanticSearchBlock(client, {
+            query: parsed.query,
+            paths: parsed.paths,
+            types: resolveSemanticTypes(parsed),
+            subTypes: parsed.subTypes,
+            page: parsed.page,
+            pageSize: parsed.pageSize,
+        });
+        const filtered = filterFullTextSearchResultByPermission(result, permMgr);
+        const filteredObj = filtered as unknown as Record<string, unknown>;
+        const normalizedObj: Record<string, unknown> = {
+            ...filteredObj,
+            blocks: normalizeReferencedBlocks(Array.isArray(filteredObj.blocks) ? filteredObj.blocks : []),
+        };
+        if (Array.isArray(normalizedObj.blocks)) {
+            normalizedObj.blocks = await enrichItemsWithNotebookNames(client, normalizedObj.blocks);
+        }
+
+        return createFulltextPaginatedResult(normalizedObj, parsed, {
+            matchedBlockCount: typeof result.matchedBlockCount === 'number' ? result.matchedBlockCount : undefined,
+            matchedRootCount: typeof result.matchedRootCount === 'number' ? result.matchedRootCount : undefined,
+            pageCount: typeof result.pageCount === 'number' ? result.pageCount : undefined,
+        }, undefined, 'No semantic matches were returned. Verify that the embedding model is enabled, the embedding index has finished, and the selected notebooks are not encrypted.');
     },
     query_sql: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchQuerySqlSchema.parse(rawArgs);

@@ -43,6 +43,7 @@
     import TelemetryPanel from "./mcp-config/TelemetryPanel.svelte";
     import ToolCategoriesPanel from "./mcp-config/ToolCategoriesPanel.svelte";
     import McpAppsPanel from "./mcp-config/McpAppsPanel.svelte";
+    import EmbeddingPanel from "./mcp-config/EmbeddingPanel.svelte";
     import UserRulesPanel from "./mcp-config/UserRulesPanel.svelte";
     import {
         discoverOfficialTools,
@@ -54,6 +55,7 @@
         PERM_GROUP_KEY,
         TOOL_GROUP_KEY,
         MCP_APPS_GROUP_KEY,
+        EMBEDDING_GROUP_KEY,
         PUPPY_GROUP_KEY,
         ANALYTICS_GROUP_KEY,
         DEBUG_GROUP_KEY,
@@ -74,6 +76,7 @@
     const DEBUG_GROUP_LABEL = "Settings & Debug";
     const FEEDBACK_GROUP_LABEL = "Feedback";
     const MCP_APPS_GROUP_LABEL = "MCP Apps";
+    const EMBEDDING_GROUP_LABEL = "Embedding Model";
 
     let config: ToolConfig = buildDefaultToolConfig();
     let httpSettings: HttpServerSettings = buildDefaultHttpServerSettings();
@@ -106,10 +109,12 @@
 
     $: toolGroupLabel = getLabel(TOOL_GROUP_KEY, TOOL_GROUP_KEY);
     $: mcpAppsGroupLabel = getLabel(MCP_APPS_GROUP_KEY, MCP_APPS_GROUP_LABEL);
+    $: embeddingGroupLabel = getLabel("embeddingGroupTitle", EMBEDDING_GROUP_LABEL);
     $: tabItems = [
         { id: HTTP_GROUP_KEY, label: httpGroupLabel, description: getLabel("settingsConnectionDesc", "Connect MCP clients or use the standalone CLI, then inspect the current service status."), iconSvg: ICON_SVGS.globe },
         { id: PERM_GROUP_KEY, label: permGroupLabel, description: getLabel("settingsPermissionsDesc", "Control which notebooks MCP clients can read, edit, or delete."), iconSvg: ICON_SVGS.lock },
         { id: TOOL_GROUP_KEY, label: toolGroupLabel, description: getLabel("settingsToolsDesc", "Choose the grouped tools and actions exposed to connected agents."), iconSvg: ICON_SVGS.folder },
+        { id: EMBEDDING_GROUP_KEY, label: embeddingGroupLabel, description: getLabel("settingsEmbeddingDesc", "Configure SiYuan's native embedding model and manage the semantic-search index."), iconSvg: ICON_SVGS.brain },
         { id: MCP_APPS_GROUP_KEY, label: mcpAppsGroupLabel, description: getLabel("settingsMcpAppsDesc", "Control interactive MCP Apps and the actions performed manually inside them."), iconSvg: ICON_SVGS.layout },
         { id: PUPPY_GROUP_KEY, label: puppyGroupLabel, description: getLabel("settingsMascotDesc", "Adjust the on-screen mascot behavior and preview its appearance."), iconSvg: ICON_SVGS.paw },
         { id: ANALYTICS_GROUP_KEY, label: analyticsGroupLabel, description: getLabel("settingsAnalyticsDesc", "Review local usage patterns, activity trends, and tool statistics."), iconSvg: ICON_SVGS.barChart },
@@ -640,6 +645,7 @@
                     {extensionDiscovery}
                     onRefreshExtensionTools={refreshExtensionTools}
                 />
+                <EmbeddingPanel display={focusGroup === EMBEDDING_GROUP_KEY} {getLabel} />
                 <McpAppsPanel display={focusGroup === MCP_APPS_GROUP_KEY} {config} {getLabel} {onChanged} />
                 <PuppyPanel group={puppyGroupLabel} display={focusGroup === PUPPY_GROUP_KEY} {puppySettings} {getLabel} {onChanged} />
                 <TelemetryPanel

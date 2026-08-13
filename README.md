@@ -23,7 +23,7 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.1` — Adds strict safe writes for built-in mutations, using short-lived hash leases that begin at four hexadecimal characters while always validating the full SHA-256 before committing. The setting is enabled by default under Settings & Debug, and HTTP, stdio, CLI, timeline rollback, and MCP App preview paths were refreshed and verified. CLI is now `v0.2.4`.
+> **Latest:** `v0.6.2` — Adds native semantic search, an embedding-model and index-management settings page, and safe sibling document reordering. It also fixes the bundled stdio transport and expands the import-migration, visual-assets, and system-safety Skills from PR #47 and PR #49. CLI is now `v0.2.5`.
 
 ## Project Direction Update
 

@@ -31,8 +31,8 @@
 
 ### `structure` 前置条件
 
-- `fs.mv`
-- `document.move`、`document.heading_to_doc`、`document.doc_to_heading`
+- `fs.mv`、`fs.reorder`
+- `document.move`、`document.reorder`、`document.heading_to_doc`、`document.doc_to_heading`
 - `block.move`
 
 ### `manifest` 前置条件

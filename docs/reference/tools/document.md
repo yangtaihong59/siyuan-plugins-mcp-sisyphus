@@ -15,7 +15,7 @@ Related pages:
 |------|---------|
 | Create and read | `create`, `lookup`, `get_doc`, `get_outline` |
 | Tree navigation | `get_child_blocks`, `get_child_docs`, `list_tree`, `search_docs` |
-| Metadata and mutations | `rename`, `move`, `remove`, `set_attr`, `duplicate` |
+| Metadata and mutations | `rename`, `move`, `reorder`, `remove`, `set_attr`, `duplicate` |
 | Daily note / conversion | `create_daily_note`, `heading_to_doc`, `doc_to_heading` |
 
 ## Parameters and Semantics
@@ -24,6 +24,7 @@ Related pages:
 - `lookup` resolves by `id`, storage `path`, or human-readable `hpath` / `hPath`; use `include` to request `id`, `ids`, `path`, `hpath`, or `docInfo`.
 - The returned `idPath` includes available `id` / `ids`. When several documents share the same hpath, `include: ["ids"]` returns all matching IDs; the tool includes a SQL fallback.
 - `rename`, `remove`, and `move` often need a storage path if you are not using document IDs.
+- `reorder` takes a notebook or parent-document `parentID` plus `orderedIDs`. The array must contain every visible direct child document ID exactly once. It enables custom notebook sorting (`sortMode: 6`) and does not move, rename, or edit any document.
 - `get_child_docs` requires a document `id`; it does not accept `notebook + path`.
 - `list_tree` uses `notebook + path`, and `path` is a storage path such as `/` or `/20240318112233-abc123.sy`, not a human-readable path.
 - If bulk `remove` hits SiYuan's short `indexing` window, retry by deleting one document at a time with `notebook + storage path`.
@@ -70,6 +71,7 @@ CLI:
 ```bash
 siyuan document create --notebook <notebook-id> --path "/Inbox/Weekly Note" --markdown "Weekly report body"
 siyuan document lookup --id <doc-id> --include path
+siyuan document reorder --parent-id <notebook-or-parent-doc-id> --ordered-ids-json '["<doc-id-1>","<doc-id-2>"]'
 ```
 
 ## Action List
@@ -79,6 +81,7 @@ siyuan document lookup --id <doc-id> --include path
 - `rename`
 - `remove`
 - `move`
+- `reorder`
 - `get_child_blocks`
 - `get_child_docs`
 - `set_attr`

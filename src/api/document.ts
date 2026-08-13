@@ -179,11 +179,22 @@ export async function listDocsByPath(
     client: SiYuanClient,
     notebook: string,
     path: string,
+    options: Omit<IReqListDocsByPath, 'notebook' | 'path'> = {},
 ): Promise<IResListDocsByPath> {
     return client.requestRead<IResListDocsByPath>('/api/filetree/listDocsByPath', {
         notebook,
         path,
+        ...options,
     } as IReqListDocsByPath);
+}
+
+/** Apply a complete manual order to sibling document storage paths. */
+export async function changeFileTreeSort(
+    client: SiYuanClient,
+    notebook: string,
+    paths: string[],
+): Promise<null> {
+    return client.requestWrite<null>('/api/filetree/changeSort', { notebook, paths });
 }
 
 export async function listDocTree(

@@ -7,6 +7,7 @@ import { normalizeMarkdownContent } from '../../core/normalize';
 import {
     FsLsSchema,
     FsMvSchema,
+    FsReorderSchema,
     FsReplaceSchema,
     FsReadSchema,
     FsRmSchema,
@@ -23,6 +24,11 @@ import {
     type FsDocumentPath,
     type FsScopePath,
 } from '../internal/helpers/fs-path';
+import {
+    applyDocumentReorder,
+    readDocumentReorderState,
+    resolveFsReorderOrder,
+} from '../internal/helpers/document-reorder';
 import { applyExactReplaceEdits } from '../internal/replace';
 import { createJsonResult, createPaginatedResult, type ToolResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';
@@ -804,6 +810,37 @@ const handleMv: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     ]);
 };
 
+const handleReorder: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = FsReorderSchema.parse(rawArgs);
+    assertNotVirtualRootFileDescendant(parsed.path);
+    if (getVirtualRootFilePath(parsed.path)) {
+        throw new Error('fs.reorder requires a notebook or parent document path, not a virtual file.');
+    }
+    const scope = await resolveFsScopePath(client, permMgr, parsed.path, 'write');
+    if (scope.type === 'root') {
+        throw new Error('fs.reorder cannot reorder notebook roots. Provide /<notebook name> or a parent document path.');
+    }
+    const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'write');
+    if (denied) return denied;
+
+    const parentID = scope.type === 'document' ? scope.id : scope.notebook;
+    const state = await readDocumentReorderState(client, scope.notebook, parentID, scope.storagePath);
+    const { currentPaths, orderedPaths, orderedIDs } = resolveFsReorderOrder(state, scope.notebookName, parsed.orderedPaths);
+    const result = await applyDocumentReorder(client, state, orderedIDs);
+    const previousPaths = result.previousOrder.map((id) => currentPaths[state.children.findIndex((child) => child.id === id)]);
+    return applyUiRefresh(client, createJsonResult({
+        success: true,
+        path: scope.canonicalPath,
+        parentID,
+        notebook: scope.notebook,
+        changed: result.changed,
+        orderChanged: result.orderChanged,
+        sortModeChanged: result.sortModeChanged,
+        previousOrder: previousPaths,
+        order: orderedPaths,
+    }), [{ type: 'reloadFiletree' }]);
+};
+
 const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FsSearchSchema.parse(rawArgs);
     assertNotVirtualRootFileDescendant(parsed.path);
@@ -916,5 +953,6 @@ export const FS_ACTION_HANDLERS: Record<FsAction, FsActionHandler> = {
     replace: handleReplace,
     rm: handleRm,
     mv: handleMv,
+    reorder: handleReorder,
     search: handleSearch,
 };

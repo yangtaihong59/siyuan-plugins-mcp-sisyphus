@@ -51,7 +51,7 @@ describe('core/resources', () => {
         }));
         expect(overview?.text).toContain('# SiYuan MCP Tool Overview');
         expect(overview?.text).toContain('Use `fs` first for basic path-style notebook and document operations');
-        expect(overview?.text).toContain('fs(action="ls"|"tree"|"read"|"write"|"replace"|"search"|"rm"|"mv")');
+        expect(overview?.text).toContain('fs(action="ls"|"tree"|"read"|"write"|"replace"|"search"|"rm"|"mv"|"reorder")');
         expect(readHelpResource('siyuan://help/changelog')?.text).toContain('AI upgrade review workflow');
         expect(action?.text).toContain('# notebook(action="create")');
         expect(action?.text).toContain('## Valid shapes');

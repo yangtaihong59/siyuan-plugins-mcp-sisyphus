@@ -24,6 +24,8 @@ describe('settings i18n', () => {
             'settingsConnectionDesc',
             'settingsPermissionsDesc',
             'settingsToolsDesc',
+            'embeddingGroupTitle',
+            'settingsEmbeddingDesc',
             'settingsMascotDesc',
             'settingsAnalyticsDesc',
             'settingsDebugDesc',
@@ -40,6 +42,36 @@ describe('settings i18n', () => {
         for (const locale of ['en_US', 'zh_CN']) {
             const i18n = readI18n(locale);
             for (const key of shellKeys) {
+                expect(i18n[key], `${locale} ${key}`).toEqual(expect.any(String));
+            }
+        }
+    });
+
+    it('covers embedding configuration, testing, and index management copy', () => {
+        const keys = [
+            'embedding_unsupported_title',
+            'embedding_management_unsupported_desc',
+            'embedding_enabled',
+            'embedding_base_url',
+            'embedding_api_key',
+            'embedding_model_name',
+            'embedding_dimensions',
+            'embedding_timeout',
+            'embedding_save',
+            'embedding_save_test',
+            'embedding_reindex_required',
+            'embedding_indexed',
+            'embedding_pending',
+            'embedding_failed',
+            'embedding_ignored_length',
+            'embedding_ignored_config',
+            'embedding_rebuild_confirm',
+            'embedding_retry_failed_items',
+        ];
+
+        for (const locale of ['en_US', 'zh_CN']) {
+            const i18n = readI18n(locale);
+            for (const key of keys) {
                 expect(i18n[key], `${locale} ${key}`).toEqual(expect.any(String));
             }
         }

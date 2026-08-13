@@ -112,7 +112,7 @@ function renderToolOverview(): string {
         '',
         '## More help',
         '',
-        '- Basic path operations: prefer `fs(action="ls"|"tree"|"read"|"write"|"replace"|"search"|"rm"|"mv")` with human-readable paths before using lower-level document/block/search tools.',
+        '- Basic path operations: prefer `fs(action="ls"|"tree"|"read"|"write"|"replace"|"search"|"rm"|"mv"|"reorder")` with human-readable paths before using lower-level document/block/search tools.',
         '- Tag creation: write tags into block markdown as `#tag#` so `tag(action="list")` can discover them.',
         '- Flashcards: prefer `flashcard(action="create_card")` to turn existing blocks into real flashcards; it writes `custom-riff-decks` and registers the riff card together.',
         '- Review flow: use `flashcard(action="list_cards")` plus `review_card` / `review_card(skip=true)` for scheduled flashcard study.',

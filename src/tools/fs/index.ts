@@ -6,6 +6,7 @@ import {
     FsActionSchema,
     FsLsSchema,
     FsMvSchema,
+    FsReorderSchema,
     FsReplaceSchema,
     FsReadSchema,
     FsRmSchema,
@@ -27,6 +28,7 @@ export const FS_VARIANTS: ActionVariant<FsAction>[] = [
     createZodActionVariant('replace', FsReplaceSchema, 'Apply exact old/new text replacement edits inside matched non-complex Markdown block DOM without rebuilding the document.'),
     createZodActionVariant('rm', FsRmSchema, 'Delete a document by human-readable path.'),
     createZodActionVariant('mv', FsMvSchema, 'Move or rename a document by human-readable paths.'),
+    createZodActionVariant('reorder', FsReorderSchema, 'Apply a complete manual order to all visible direct child documents and enable custom sorting.'),
     createZodActionVariant('search', FsSearchSchema, 'Search Markdown lines under a human-readable path.'),
 ];
 

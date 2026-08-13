@@ -1,6 +1,6 @@
 ---
 name: siyuan-sisyphus-search-query
-description: CLI-only playbook for finding and querying SiYuan content with siyuan-sisyphus. Use for fulltext, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.
+description: CLI-only playbook for finding and querying SiYuan content with siyuan-sisyphus. Use for fulltext, semantic search, read-only SQL, backlinks, references, assets, dynamic query blocks, and safe find-replace.
 ---
 
 # Search and Query SiYuan with the CLI
@@ -9,6 +9,9 @@ Search to identify candidates, read the target by ID or path, and only then edit
 
 ```bash
 siyuan-sisyphus search fulltext --query 'keyword' --page '1' --page-size '20' --json
+```
+```bash
+siyuan-sisyphus search semantic --query 'concept or meaning' --type-shortcodes-json '["h","p"]' --page '1' --page-size '20' --json
 ```
 ```bash
 siyuan-sisyphus search fulltext --query 'keyword' --parent-id '<doc-id>' --type-shortcodes-json '["h","p"]' --json

@@ -166,7 +166,6 @@ function createServerConfig() {
             // The MCP SDK exposes separate browser/workerd/node shims. Vite's
             // default `browser` condition otherwise wins while bundling the
             // Node server and makes the stdio transport throw at startup.
-            conditions: ["node"],
             alias: {
                 "@": resolve(__dirname, "src"),
             },

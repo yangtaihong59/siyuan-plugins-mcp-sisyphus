@@ -51,6 +51,7 @@ If active hashes in the same operation scope share four digits, a new preflight 
 ## Correctness properties
 
 - State is canonicalized with stable object-key ordering and preserved array ordering, then hashed with versioned SHA-256.
+- `fs.reorder` and `document.reorder` use a structure precondition covering the parent, notebook configuration, and every visible direct child's ID, storage path, sort value, and current order. A concurrent create, delete, move, or reorder invalidates the lease; commit readback requires the exact requested order under custom sorting mode.
 - The Agent submits a short credential, but correctness always compares two complete SHA-256 digests; the prefix is never compared directly to live state.
 - The plugin HTTP server owns one process-wide serial write coordinator. CLI and stdio strict writes forward to that coordinator instead of creating independent write paths.
 - Write HTTP requests are attempted once; read requests may still retry transient failures.
