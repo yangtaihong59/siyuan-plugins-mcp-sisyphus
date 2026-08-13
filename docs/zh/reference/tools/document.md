@@ -15,7 +15,7 @@
 |------|---------|
 | 创建与读取 | `create`, `lookup`, `get_doc`, `get_outline` |
 | 树结构查询 | `get_child_blocks`, `get_child_docs`, `list_tree`, `search_docs` |
-| 元数据与修改 | `rename`, `move`, `remove`, `set_attr`, `duplicate` |
+| 元数据与修改 | `rename`, `move`, `reorder`, `remove`, `set_attr`, `duplicate` |
 | 日记 / 转换 | `create_daily_note`, `heading_to_doc`, `doc_to_heading` |
 
 ## 参数与语义
@@ -24,6 +24,7 @@
 - `lookup` 可按 `id`、存储 `path`、人类可读 `hpath` / `hPath` 查找；用 `include` 请求 `id`、`ids`、`path`、`hpath` 或 `docInfo`。
 - `lookup` 返回的 `idPath` 会包含可用的 `id` / `ids`。当同一 hpath 有多个同名文档时，`include: ["ids"]` 会返回全部匹配 ID；内部已包含 SQL 兜底。
 - `rename`、`remove`、`move` 在非 ID 模式下通常需要存储路径。
+- `reorder` 接收笔记本或父文档 `parentID` 与 `orderedIDs`。数组必须把全部可见直属子文档 ID 各包含一次。它会启用笔记本自定义排序（`sortMode: 6`），但不会移动、重命名或修改文档正文。
 - `get_child_docs` 必须传文档 `id`，不接受 `notebook + path`。
 - `list_tree` 使用 `notebook + path`，其中 `path` 是 `/` 或 `/20240318112233-abc123.sy` 这类存储路径，不是人类可读路径。
 - 如果批量 `remove` 遇到思源短暂的 `indexing` 窗口，请改用 `notebook + storage path` 逐个删除并重试。
@@ -70,6 +71,7 @@ CLI：
 ```bash
 siyuan document create --notebook <notebook-id> --path "/Inbox/Weekly Note" --markdown "周报正文"
 siyuan document lookup --id <doc-id> --include path
+siyuan document reorder --parent-id <笔记本或父文档ID> --ordered-ids-json '["<文档ID-1>","<文档ID-2>"]'
 ```
 
 ## 动作列表
@@ -79,6 +81,7 @@ siyuan document lookup --id <doc-id> --include path
 - `rename`
 - `remove`
 - `move`
+- `reorder`
 - `get_child_blocks`
 - `get_child_docs`
 - `set_attr`

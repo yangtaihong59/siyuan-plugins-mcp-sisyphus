@@ -6,6 +6,7 @@ import type { NotebookConf } from "../types/shared";
 const NotebookConfSchema: z.ZodType<Partial<NotebookConf>> = z.object({
     name: z.string().optional(),
     closed: z.boolean().optional(),
+    sortMode: z.number().int().optional(),
     refCreateSavePath: z.string().optional(),
     createDocNameTemplate: z.string().optional(),
     dailyNoteSavePath: z.string().optional(),
@@ -143,6 +144,12 @@ export const FsMvSchema = z.object({
     action: z.literal("mv"),
     from: z.string().describe("Human-readable source document path"),
     to: z.string().describe("Human-readable destination document path"),
+});
+
+export const FsReorderSchema = z.object({
+    action: z.literal("reorder"),
+    path: z.string().describe("Human-readable notebook or parent document path"),
+    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document paths"),
 });
 
 export const FsSearchSchema = z.object({
@@ -305,6 +312,12 @@ export const DocumentRemoveSchema = z.object({
 export const DocumentMoveSchema = z.object({
     action: z.literal("move"),
 }).and(DocumentMoveReferenceSchema);
+
+export const DocumentReorderSchema = z.object({
+    action: z.literal("reorder"),
+    parentID: z.string().describe("Notebook ID or parent document ID"),
+    orderedIDs: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document IDs"),
+});
 
 export const DocumentGetChildBlocksSchema = z.object({
     action: z.literal("get_child_blocks"),

@@ -11,6 +11,12 @@ import {
     readDocumentEditableMarkdown,
 } from '../tools/internal/document-kramdown';
 import {
+    assertExactOrder,
+    readDocumentReorderState,
+    resolveFsReorderOrder,
+} from '../tools/internal/helpers/document-reorder';
+import { resolveFsScopePath } from '../tools/internal/helpers/fs-path';
+import {
     AGENT_MEMORY_VIRTUAL_PATH,
     isDangerousAction,
     USER_RULES_VIRTUAL_PATH,
@@ -263,7 +269,7 @@ export class WriteSafetyCoordinator {
                 : policy.precondition === 'source'
                 ? await probeUploadedResult(client, result, before!)
                 : await probePostWriteState(client, permMgr, category, action, postWriteArgs, policy, before);
-            await verifyPostWriteSemanticState(client, category, action, args);
+            await verifyPostWriteSemanticState(client, permMgr, category, action, args);
         } catch (error) {
             await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, error);
             if (activeLease) this.preflightLeases.consume(activeLease);
@@ -475,14 +481,18 @@ async function probeCurrentState(
         };
     }
 
-    const targetIds = collectTargetSelectors(args);
+    let targetIds = collectTargetSelectors(args);
     const state: Record<string, unknown> = {
         category,
         action,
         selectors: collectStateSelectors(args),
     };
 
-    if (category === 'fs') {
+    if ((category === 'fs' || category === 'document') && action === 'reorder') {
+        const reorder = await probeDocumentReorderState(client, permMgr, category, args);
+        state.reorder = reorder.state;
+        targetIds = reorder.targetIds;
+    } else if (category === 'fs') {
         await appendHumanPathState(client, args, state);
     } else if (category === 'mascot') {
         state.mascot = await readPuppyStats(client);
@@ -570,6 +580,62 @@ async function probeCurrentState(
         hash: hashWriteState(state),
         targetIds,
         summary: { targetCount: targetIds.length },
+    };
+}
+
+async function probeDocumentReorderState(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    category: 'fs' | 'document',
+    args: Record<string, unknown>,
+): Promise<{ state: Record<string, unknown>; targetIds: string[] }> {
+    if (category === 'fs') {
+        const path = typeof args.path === 'string' ? args.path : '';
+        const orderedPaths = Array.isArray(args.orderedPaths)
+            ? args.orderedPaths.filter((value): value is string => typeof value === 'string')
+            : [];
+        const scope = await resolveFsScopePath(client, permMgr, path, 'write');
+        if (scope.type === 'root') {
+            throw safetyError('invalid_arguments', 'fs.reorder requires a notebook or parent document path.');
+        }
+        const parentID = scope.type === 'document' ? scope.id : scope.notebook;
+        const current = await readDocumentReorderState(client, scope.notebook, parentID, scope.storagePath);
+        const resolved = resolveFsReorderOrder(current, scope.notebookName, orderedPaths);
+        return {
+            state: {
+                ...current,
+                requestedPaths: resolved.orderedPaths,
+                requestedIDs: resolved.orderedIDs,
+            },
+            targetIds: [...new Set([scope.notebook, parentID, ...current.children.map((child) => child.id)])].sort(),
+        };
+    }
+
+    const parentID = typeof args.parentID === 'string' ? args.parentID : '';
+    const orderedIDs = Array.isArray(args.orderedIDs)
+        ? args.orderedIDs.filter((value): value is string => typeof value === 'string')
+        : [];
+    const listed = await client.requestRead<{ notebooks?: Array<{ id?: string }> }>('/api/notebook/lsNotebooks');
+    const isNotebook = (listed?.notebooks ?? []).some((item) => item.id === parentID);
+    let notebook: string;
+    let parentPath: string;
+    if (isNotebook) {
+        notebook = parentID;
+        parentPath = '/';
+    } else {
+        const pathInfo = await client.requestRead<{ notebook?: string; box?: string; path?: string }>('/api/filetree/getPathByID', { id: parentID });
+        notebook = pathInfo.notebook || pathInfo.box || '';
+        parentPath = pathInfo.path || '';
+        const resolvedID = parentPath.split('/').filter(Boolean).at(-1)?.replace(/\.sy$/i, '');
+        if (!notebook || !parentPath || resolvedID !== parentID) {
+            throw safetyError('invalid_arguments', `parentID must identify a notebook or document root, got "${parentID}".`);
+        }
+    }
+    const current = await readDocumentReorderState(client, notebook, parentID, parentPath);
+    assertExactOrder(current.children.map((child) => child.id), orderedIDs, 'orderedIDs');
+    return {
+        state: { ...current, requestedIDs: orderedIDs },
+        targetIds: [...new Set([notebook, parentID, ...current.children.map((child) => child.id)])].sort(),
     };
 }
 
@@ -795,10 +861,27 @@ function canonicalizeKramdownIal(value: string): string {
 
 async function verifyPostWriteSemanticState(
     client: SiYuanClient,
+    permMgr: PermissionManager,
     category: ToolCategory,
     action: string,
     args: Record<string, unknown>,
 ): Promise<void> {
+    if ((category === 'fs' || category === 'document') && action === 'reorder') {
+        const { state } = await probeDocumentReorderState(client, permMgr, category, args);
+        const currentIDs = Array.isArray(state.children)
+            ? state.children
+                .filter((child): child is Record<string, unknown> => isRecord(child))
+                .map((child) => child.id)
+                .filter((id): id is string => typeof id === 'string')
+            : [];
+        const requestedIDs = Array.isArray(state.requestedIDs)
+            ? state.requestedIDs.filter((id): id is string => typeof id === 'string')
+            : [];
+        if (state.sortMode !== 6 || currentIDs.length !== requestedIDs.length || currentIDs.some((id, index) => id !== requestedIDs[index])) {
+            throw safetyError('readback_mismatch', 'The document tree did not retain the requested complete order in custom sorting mode.');
+        }
+        return;
+    }
     if (category !== 'search' || action !== 'find_replace') return;
     const method = typeof args.method === 'number' ? args.method : undefined;
     const methodName = typeof args.methodName === 'string' ? args.methodName : undefined;

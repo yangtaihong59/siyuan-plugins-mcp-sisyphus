@@ -9,6 +9,8 @@ const schema = {
         item_id: { type: 'string' },
         blockIDs: { type: 'array', items: { type: 'string' } },
         srcIDs: { type: 'array', items: { type: 'string' } },
+        orderedPaths: { type: 'array', items: { type: 'string' } },
+        orderedIDs: { type: 'array', items: { type: 'string' } },
         checked: { type: 'boolean' },
         assets: {
             type: 'array',
@@ -107,6 +109,15 @@ describe('cli/flag-mapper', () => {
         const { args } = mapFlagsToArgs(['--block-ids-json', '["block-a","block-b"]'], schema);
 
         expect(args).toEqual({ blockIDs: ['block-a', 'block-b'] });
+    });
+
+    it('maps reorder JSON arrays for both fs paths and document IDs', () => {
+        expect(mapFlagsToArgs([
+            '--ordered-paths-json', '["/Ideas/A","/Ideas/B"]',
+        ], schema).args).toEqual({ orderedPaths: ['/Ideas/A', '/Ideas/B'] });
+        expect(mapFlagsToArgs([
+            '--ordered-ids-json', '["doc-a","doc-b"]',
+        ], schema).args).toEqual({ orderedIDs: ['doc-a', 'doc-b'] });
     });
 
     it('lets JSON sidecars override plain array flags', () => {

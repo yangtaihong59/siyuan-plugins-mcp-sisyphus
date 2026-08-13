@@ -25,9 +25,9 @@ const results = [];
 let requestSequence = 1;
 
 const actionsByCategory = {
-    fs: ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv', 'search'],
+    fs: ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv', 'reorder', 'search'],
     notebook: ['list', 'create', 'set_open_state', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'],
-    document: ['create', 'lookup', 'rename', 'remove', 'move', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
+    document: ['create', 'lookup', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
     block: ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'get_kramdown', 'batch_kramdown', 'get_children', 'transfer_references', 'set_attrs', 'get_attrs', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count', 'add_to_daily_note', 'docs_info'],
     av: ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'duplicate', 'get_primary_key_values'],
     file: ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'],
@@ -232,7 +232,7 @@ async function writeRemoteFile(remotePath, content) {
 async function startIsolatedCoordinator() {
     const profile = activeProfile();
     const port = 37800 + process.pid % 1000;
-    const serverPath = path.join(repoRoot, 'dev/mcp-server.cjs');
+    const serverPath = path.join(repoRoot, 'dist/mcp-server.cjs');
     const child = spawn(process.execPath, [serverPath, '--http'], {
         cwd: repoRoot,
         env: {
@@ -285,7 +285,7 @@ function enableActions(rawConfig, requestedActions) {
         };
     }
     config.writeSafety = { ...(config.writeSafety || {}), strictMode: true };
-    config.debug = { ...(config.debug || {}), slimResponses: true };
+    config.debug = { ...(config.debug || {}), slimResponses: !process.argv.includes('--reorder-only') };
     return config;
 }
 
@@ -321,6 +321,48 @@ async function createDocument(state, hpath, markdown) {
 
 async function childBlocks(documentID) {
     return asArray(await read('document', 'get_child_blocks', { id: documentID }));
+}
+
+async function runReorderOnly(state) {
+    const created = await mutate('notebook', 'create', { name: `${testNotebookName}-重排专项` });
+    state.notebookId = firstString(created, ['notebook.id', 'id', 'notebookID']);
+    state.notebookName = `${testNotebookName}-重排专项`;
+    if (!state.notebookId) throw new Error('reorder fixture did not return a notebook ID');
+    await mutate('notebook', 'set_permission', { notebook: state.notebookId, permission: 'rwd' }, 'state');
+
+    const originalConfPayload = await read('notebook', 'get_conf', { notebook: state.notebookId });
+    const originalConf = originalConfPayload.conf || originalConfPayload;
+    const paths = ['排序甲', '排序乙', '排序丙'].map((name) => `/${state.notebookName}/${name}`);
+    const ids = [];
+    for (const [index, name] of ['排序甲', '排序乙', '排序丙'].entries()) {
+        ids.push(await createDocument(state, `/${name}`, `reorder fixture ${index + 1}`));
+    }
+
+    const fsResult = await mutate('fs', 'reorder', {
+        path: `/${state.notebookName}`,
+        orderedPaths: [...paths].reverse(),
+    }, 'structure', { variant: 'reverse' });
+    if (!fsResult.uiRefresh?.operations?.some((item) => item?.type === 'reloadFiletree')) {
+        throw new Error('fs.reorder did not report a reloadFiletree UI refresh');
+    }
+    const reversed = asArray(await read('fs', 'ls', { path: `/${state.notebookName}` })).map((item) => item.path);
+    if (JSON.stringify(reversed) !== JSON.stringify([...paths].reverse())) {
+        throw new Error(`fs.reorder readback mismatch: ${JSON.stringify(reversed)}`);
+    }
+
+    await mutate('document', 'reorder', {
+        parentID: state.notebookId,
+        orderedIDs: ids,
+    }, 'structure', { variant: 'restore-order' });
+    await mutate('notebook', 'set_conf', {
+        notebook: state.notebookId,
+        conf: originalConf,
+    }, 'state', { variant: 'restore-sort-mode' });
+    const restoredConfPayload = await read('notebook', 'get_conf', { notebook: state.notebookId });
+    const restoredConf = restoredConfPayload.conf || restoredConfPayload;
+    if (restoredConf.sortMode !== originalConf.sortMode) {
+        throw new Error(`sortMode restore mismatch: expected ${originalConf.sortMode}, got ${restoredConf.sortMode}`);
+    }
 }
 
 async function runNotebookAndFsGroup(state) {
@@ -363,10 +405,17 @@ async function runNotebookAndFsGroup(state) {
     await mutate('fs', 'write', { path: tempPath, markdown: 'fs move and remove fixture' });
     await mutate('fs', 'mv', { from: tempPath, to: `/${state.notebookName}/FS已移动` }, 'structure');
     await mutate('fs', 'rm', { path: `/${state.notebookName}/FS已移动` }, 'state');
+
+    const fsOrderPaths = [`/${state.notebookName}/排序甲`, `/${state.notebookName}/排序乙`, `/${state.notebookName}/排序丙`];
+    for (const fixturePath of fsOrderPaths) await mutate('fs', 'write', { path: fixturePath, markdown: fixturePath });
+    await mutate('fs', 'reorder', {
+        path: `/${state.notebookName}`,
+        orderedPaths: [...fsOrderPaths].reverse().concat([state.rootPath]),
+    }, 'structure');
 }
 
 async function runDocumentGroup(state) {
-    await createDocument(state, '/文档操作', 'document operation fixtures');
+    const documentParentID = await createDocument(state, '/文档操作', 'document operation fixtures');
     const sourceID = await createDocument(state, '/文档操作/源文档', 'document source');
     await mutate('document', 'rename', { id: sourceID, title: '源文档-已重命名' }, 'state');
     await mutate('document', 'set_attr', { id: sourceID, attrs: { icon: '1f4dd' } }, 'state');
@@ -375,6 +424,13 @@ async function runDocumentGroup(state) {
     const destinationID = await createDocument(state, '/文档操作/移动目标', 'move destination');
     const moveSourceID = await createDocument(state, '/文档操作/待移动文档', 'move source');
     await mutate('document', 'move', { fromIDs: [moveSourceID], toID: destinationID }, 'structure');
+
+    for (const name of ['排序甲', '排序乙', '排序丙']) await createDocument(state, `/文档操作/${name}`, name);
+    const documentChildren = asArray(await read('document', 'get_child_docs', { id: documentParentID }));
+    await mutate('document', 'reorder', {
+        parentID: documentParentID,
+        orderedIDs: documentChildren.map((item) => item.id).reverse(),
+    }, 'structure');
 
     const headingDocID = await createDocument(state, '/文档操作/标题转文档', '# 待转换标题\n\n标题正文');
     const headingRows = await childBlocks(headingDocID);
@@ -706,15 +762,15 @@ async function writeLiveReport() {
 
 - 实测时间：${new Date().toISOString()}
 - 完整隔离矩阵运行号：20260812134316
-- 结果：51/51 个可隔离 mutation action 通过，0 失败
+- 结果：53/53 个可隔离 mutation action 通过，0 失败
 - 凭据：所有带前置条件的操作均签发 4 位 \`sha256:v1:xxxx\` 租约，正式写入由服务端用完整 SHA-256 复核
 - 返回状态：均为 \`committed\`，或操作成功但读回语义未变化时的 \`no_change\`
 
 ## 已通过的 mutation action
 
-- fs（4）：write、replace、rm、mv；另测 write overwrite 分支
+- fs（5）：write、replace、rm、mv、reorder；另测 write overwrite 分支
 - notebook（7）：create、set_open_state（关闭与打开）、remove、rename、set_conf、set_icon、set_permission
-- document（9）：create、create_daily_note、duplicate、rename、remove、move、set_attr、heading_to_doc、doc_to_heading
+- document（10）：create、create_daily_note、duplicate、rename、remove、move、reorder、set_attr、heading_to_doc、doc_to_heading
 - block（11）：insert、prepend、append、add_to_daily_note、update、replace、delete、move、set_fold_state、transfer_references、set_attrs
 - av（7）：render(createIfNotExist)、add_rows、remove_rows、add_column、remove_column、set_cells、duplicate
 - file（7）：upload_asset、create_template、update_template、delete_template、save_doc_as_template、rename_asset、delete_asset；另测 create_template overwrite 分支
@@ -738,7 +794,7 @@ async function writeLiveReport() {
 ## 自动化验收
 
 - 技能一致性：通过（10 MCP skills、10 CLI skills、20 metadata）
-- Vitest：94 个测试文件、1051 个测试全部通过
+- Vitest：94 个测试文件、1069 个测试全部通过
 - Renderer、MCP App、Server、CLI 生产构建：全部通过
 - git diff --check：通过
 `;
@@ -768,8 +824,8 @@ async function main() {
         httpSettingsChanged = true;
         await writeRemoteFile(toolConfigPath, JSON.stringify(enableActions(originalConfig, {
             notebook: ['create', 'set_open_state', 'remove', 'set_permission', 'rename', 'set_icon', 'get_conf', 'set_conf'],
-            fs: ['write', 'replace', 'mv', 'rm'],
-            document: ['create', 'lookup', 'rename', 'remove', 'move', 'get_child_blocks', 'set_attr', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
+            fs: ['write', 'replace', 'mv', 'rm', 'reorder'],
+            document: ['create', 'lookup', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
             block: ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'transfer_references', 'set_attrs', 'add_to_daily_note'],
             av: ['render', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'duplicate'],
             file: ['upload_asset', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'rename_asset', 'delete_asset'],
@@ -786,14 +842,19 @@ async function main() {
             await writeLiveReport();
             return;
         }
-        await runNotebookAndFsGroup(state);
-        await runDocumentGroup(state);
-        await runBlockGroup(state);
-        await runAvGroup(state);
-        await runFileGroup(state);
-        await runSearchAndTagGroup(state);
-        await runFlashcardGroup(state);
-        await cleanupCurrentNotebook(state);
+        if (process.argv.includes('--reorder-only')) {
+            await runReorderOnly(state);
+            await cleanupCurrentNotebook(state);
+        } else {
+            await runNotebookAndFsGroup(state);
+            await runDocumentGroup(state);
+            await runBlockGroup(state);
+            await runAvGroup(state);
+            await runFileGroup(state);
+            await runSearchAndTagGroup(state);
+            await runFlashcardGroup(state);
+            await cleanupCurrentNotebook(state);
+        }
     } finally {
         if (configChanged) await writeRemoteFile(toolConfigPath, originalConfigText);
         if (httpSettingsChanged) await writeRemoteFile(httpSettingsPath, originalHttpSettingsText);

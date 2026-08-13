@@ -73,10 +73,13 @@ function createContractClient() {
 
             if (endpoint === '/api/filetree/createDocWithMd') return 'doc-1';
             if (endpoint === '/api/filetree/getPathByID') return { notebook: 'nb-1', path: '/doc-1.sy' };
-            if (endpoint === '/api/filetree/getHPathByID') return '/Doc 1';
+            if (endpoint === '/api/filetree/getHPathByID') return body?.id === 'child-2' ? '/Doc 2' : '/Doc 1';
             if (endpoint === '/api/filetree/getHPathByPath') return '/Doc 1';
             if (endpoint === '/api/filetree/getIDsByHPath') return body?.path === '/New Doc' ? [] : ['doc-1'];
-            if (endpoint === '/api/filetree/listDocsByPath') return { box: 'nb-1', files: [{ id: 'child-1', box: 'nb-1', path: '/child.sy', name: 'Child.sy' }] };
+            if (endpoint === '/api/filetree/listDocsByPath') return { box: 'nb-1', files: [
+                { id: 'child-1', box: 'nb-1', path: '/child-1.sy', name: 'Doc 1.sy', sort: 10 },
+                { id: 'child-2', box: 'nb-1', path: '/child-2.sy', name: 'Doc 2.sy', sort: 20 },
+            ] };
             if (endpoint === '/api/filetree/listDocTree') return { tree: [{ id: 'doc-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/filetree/searchDocs') return { docs: [{ id: 'doc-1', box: 'nb-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/filetree/getDoc') return { content: '<p>Doc</p>' };
@@ -194,6 +197,7 @@ describe('tool action contract coverage', () => {
             { action: 'replace', args: { action: 'replace', path: '/Notebook/Doc 1', edit: { old: 'content', new: 'updated' } }, expectedEndpoint: '/api/block/getBlockKramdown' },
             { action: 'rm', args: { action: 'rm', path: '/Notebook/Doc 1' }, expectedEndpoint: '/api/filetree/removeDocByID' },
             { action: 'mv', args: { action: 'mv', from: '/Notebook/Doc 1', to: '/Notebook/Renamed' }, expectedEndpoint: '/api/filetree/moveDocsByID' },
+            { action: 'reorder', args: { action: 'reorder', path: '/Notebook', orderedPaths: ['/Notebook/Doc 2', '/Notebook/Doc 1'] }, expectedEndpoint: '/api/filetree/changeSort' },
             { action: 'search', args: { action: 'search', path: '/Notebook/Doc 1', query: 'markdown' }, expectedEndpoint: '/api/export/exportMdContent' },
         ]);
     });
@@ -221,6 +225,7 @@ describe('tool action contract coverage', () => {
             { action: 'rename', args: { action: 'rename', id: 'doc-1', title: 'Renamed' }, expectedEndpoint: '/api/filetree/renameDocByID' },
             { action: 'remove', args: { action: 'remove', id: 'doc-1' }, expectedEndpoint: '/api/filetree/removeDocByID' },
             { action: 'move', args: { action: 'move', fromIDs: ['doc-1'], toID: 'doc-parent' }, expectedEndpoint: '/api/filetree/moveDocsByID' },
+            { action: 'reorder', args: { action: 'reorder', parentID: 'nb-1', orderedIDs: ['child-2', 'child-1'] }, expectedEndpoint: '/api/filetree/changeSort' },
             { action: 'get_child_blocks', args: { action: 'get_child_blocks', id: 'doc-1' }, expectedEndpoint: '/api/block/getChildBlocks' },
             { action: 'get_child_docs', args: { action: 'get_child_docs', id: 'doc-1' }, expectedEndpoint: '/api/filetree/listDocsByPath' },
             { action: 'set_attr', args: { action: 'set_attr', id: 'doc-1', attrs: { icon: '1f4d4' } }, expectedEndpoint: '/api/transactions' },

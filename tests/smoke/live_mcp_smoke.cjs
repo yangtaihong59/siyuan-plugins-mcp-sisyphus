@@ -268,14 +268,14 @@ async function assertDefaultToolList() {
 
         const descriptions = Object.fromEntries(tools.map((tool) => [tool.name, tool.description]));
         assert.match(descriptions.fs, /Common actions: ls, tree, read, write, replace, search/);
-        assert.match(descriptions.fs, /Additional actions: rm, mv/);
+        assert.match(descriptions.fs, /Additional actions: rm, mv, reorder/);
         assert.match(descriptions.notebook, /Common actions: list, create, set_open_state, rename, get_conf, get_child_docs/);
         assert.match(descriptions.notebook, /Additional actions: set_conf, set_icon, get_permissions/);
         assert.match(descriptions.notebook, /Common actions:/);
         assert.match(descriptions.notebook, /Additional actions:/);
         assert.match(descriptions.notebook, /get_permissions/);
         assert.match(descriptions.document, /Common actions: create, lookup, rename, get_child_blocks, get_child_docs, search_docs, get_doc, get_outline/);
-        assert.match(descriptions.document, /Additional actions: move, set_attr, list_tree, create_daily_note, duplicate, heading_to_doc, doc_to_heading/);
+        assert.match(descriptions.document, /Additional actions: move, reorder, set_attr, list_tree, create_daily_note, duplicate, heading_to_doc, doc_to_heading/);
         assert.match(descriptions.document, /Common actions: .*get_doc/);
         assert.match(descriptions.document, /Additional actions: .*list_tree/);
         assert.match(descriptions.document, /document\.rename: required \[title\] \| optional \[id, notebook, path\]/);

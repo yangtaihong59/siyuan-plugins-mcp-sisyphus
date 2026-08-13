@@ -25,6 +25,7 @@ type Notebook = {
 type NotebookConf = {
     name: string;
     closed: boolean;
+    sortMode?: number;
     refCreateSavePath: string;
     createDocNameTemplate: string;
     dailyNoteSavePath: string;

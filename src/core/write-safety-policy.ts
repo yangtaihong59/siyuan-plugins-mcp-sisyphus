@@ -32,7 +32,8 @@ export const ACTION_SAFETY_POLICIES: {
 } = {
     fs: {
         ls: read(), tree: read(), read: read(), search: read(),
-        write: mutation('state'), replace: mutation('manifest'), rm: mutation('state'), mv: mutation('structure'),
+        write: mutation('state'), replace: mutation('manifest'), rm: mutation('state'),
+        mv: mutation('structure'), reorder: mutation('structure'),
     },
     notebook: {
         list: read(), get_conf: read(), get_permissions: read(), get_child_docs: read(),
@@ -43,7 +44,7 @@ export const ACTION_SAFETY_POLICIES: {
         lookup: read(), get_child_blocks: read(), get_child_docs: read(), list_tree: read(), search_docs: read(),
         get_doc: read(), get_outline: read(),
         create: mutation(), create_daily_note: mutation(), duplicate: mutation('state'), rename: mutation('state'),
-        remove: mutation('state'), move: mutation('structure'), set_attr: mutation('state'),
+        remove: mutation('state'), move: mutation('structure'), reorder: mutation('structure'), set_attr: mutation('state'),
         heading_to_doc: mutation('structure'), doc_to_heading: mutation('structure'),
     },
     block: {

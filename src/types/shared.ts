@@ -7,6 +7,7 @@ export interface SiYuanResponse<T = unknown> {
 export interface NotebookConf {
     name: string;
     closed: boolean;
+    sortMode?: number;
     refCreateSavePath: string;
     createDocNameTemplate: string;
     dailyNoteSavePath: string;

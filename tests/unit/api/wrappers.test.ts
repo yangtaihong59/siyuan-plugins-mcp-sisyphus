@@ -116,6 +116,8 @@ describe('api wrapper payloads', () => {
         await documentApi.renameDocByID(client, 'doc-1', 'Renamed');
         await documentApi.moveDocs(client, ['/a.sy'], 'nb-2', '/target');
         await documentApi.moveDocsByID(client, ['doc-1'], 'parent');
+        await documentApi.listDocsByPath(client, 'nb-1', '/', { sort: 6, maxListCount: 0, showHidden: false, ignoreMaxListHint: true });
+        await documentApi.changeFileTreeSort(client, 'nb-1', ['/b.sy', '/a.sy']);
         await documentApi.searchDocs(client, 'query', true, ['skip']);
         await documentApi.createEmptyDoc(client, 'nb-1', '/Parent', 'Title', 'md', ['Title']);
         await documentApi.headingToDoc(client, 'heading-1', 'nb-1', '/target', '/prev.sy');
@@ -127,6 +129,8 @@ describe('api wrapper payloads', () => {
             ['/api/filetree/renameDocByID', { id: 'doc-1', title: 'Renamed' }],
             ['/api/filetree/moveDocs', { fromPaths: ['/a.sy'], toNotebook: 'nb-2', toPath: '/target' }],
             ['/api/filetree/moveDocsByID', { fromIDs: ['doc-1'], toID: 'parent' }],
+            ['/api/filetree/listDocsByPath', { notebook: 'nb-1', path: '/', sort: 6, maxListCount: 0, showHidden: false, ignoreMaxListHint: true }],
+            ['/api/filetree/changeSort', { notebook: 'nb-1', paths: ['/b.sy', '/a.sy'] }],
             ['/api/filetree/searchDocs', { k: 'query', flashcard: true, excludeIDs: ['skip'] }],
             ['/api/filetree/createDoc', { notebook: 'nb-1', path: '/Parent', title: 'Title', md: 'md', sorts: ['Title'] }],
             ['/api/filetree/heading2Doc', { srcHeadingID: 'heading-1', targetNoteBook: 'nb-1', targetPath: '/target', previousPath: '/prev.sy' }],

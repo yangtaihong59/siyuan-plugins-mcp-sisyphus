@@ -84,6 +84,7 @@ interface Notebook {
 interface NotebookConf {
     name: string;
     closed: boolean;
+    sortMode?: number;
     refCreateSavePath: string;
     createDocNameTemplate: string;
     dailyNoteSavePath: string;
@@ -195,6 +196,10 @@ interface IResGetPathByID {
 interface IReqListDocsByPath {
     notebook: string;
     path: string;
+    sort?: number;
+    maxListCount?: number;
+    showHidden?: boolean;
+    ignoreMaxListHint?: boolean;
 }
 
 interface IResListDoc {

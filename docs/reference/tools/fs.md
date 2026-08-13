@@ -16,6 +16,7 @@ Path shape:
 | `tree` | List a compact recursive document tree |
 | `read` | Read a document as Markdown |
 | `write` | Create a document, or replace its body with `overwrite=true` |
+| `reorder` | Apply a complete manual order to all visible direct child documents |
 | `search` | Search Markdown lines under a document or folder path |
 
 ## AI-Editable Markdown View
@@ -65,5 +66,21 @@ Path shape:
 ```json
 { "action": "search", "path": "/Inbox/Meetings", "query": "budget", "caseSensitive": false }
 ```
+
+Manual ordering uses a complete permutation, not a partial move. List the parent first, then pass every visible direct child path exactly once. The action switches the notebook to custom sorting (`sortMode: 6`). Hidden documents are neither required nor reordered.
+
+```json
+{
+  "action": "reorder",
+  "path": "/Ideas",
+  "orderedPaths": [
+    "/Ideas/Know Yourself",
+    "/Ideas/Understand the World",
+    "/Ideas/Principles for Action"
+  ]
+}
+```
+
+CLI: `siyuan fs reorder --path "/Ideas" --ordered-paths-json '["/Ideas/Know Yourself","/Ideas/Understand the World","/Ideas/Principles for Action"]'`
 
 When `fs.read` reports complex blocks or the task needs SiYuan-specific block layout, metadata, SQL, backlinks, assets, or database operations, switch to `document`, `block`, `search`, `file`, or `av`.

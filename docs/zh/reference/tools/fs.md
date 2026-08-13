@@ -16,6 +16,7 @@
 | `tree` | 列出精简递归文档树 |
 | `read` | 读取文档 Markdown |
 | `write` | 创建文档，或用 `overwrite=true` 替换正文 |
+| `reorder` | 完整重排全部可见直属子文档 |
 | `search` | 在文档或目录路径下搜索 Markdown 行 |
 
 ## AI 可编辑 Markdown 视图
@@ -65,5 +66,21 @@
 ```json
 { "action": "search", "path": "/Inbox/会议记录", "query": "预算", "caseSensitive": false }
 ```
+
+手动排序采用完整排列，不是局部移动。请先列出父级，再把每个可见直属子文档路径各传一次。该动作会将笔记本切换为自定义排序（`sortMode: 6`）；隐藏文档无需传入，也不会被重排。
+
+```json
+{
+  "action": "reorder",
+  "path": "/思想沉淀",
+  "orderedPaths": [
+    "/思想沉淀/认识自己",
+    "/思想沉淀/理解世界",
+    "/思想沉淀/行动原则"
+  ]
+}
+```
+
+CLI：`siyuan fs reorder --path "/思想沉淀" --ordered-paths-json '["/思想沉淀/认识自己","/思想沉淀/理解世界","/思想沉淀/行动原则"]'`
 
 当 `fs.read` 提示存在复杂块，或任务需要块级排版、元数据、SQL、反链、资源文件或数据库操作时，切换到 `document`、`block`、`search`、`file` 或 `av` 等高级工具。
