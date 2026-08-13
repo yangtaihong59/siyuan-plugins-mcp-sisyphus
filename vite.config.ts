@@ -170,8 +170,30 @@ function createServerConfig() {
             alias: {
                 "@": resolve(__dirname, "src"),
             },
+            conditions: ["node", "default"],
         },
-        plugins: [mcpAppHtmlModule()],
+        plugins: [
+            mcpAppHtmlModule(),
+            {
+                name: "mcp-shims-node-resolve",
+                enforce: "pre" as const,
+                resolveId(source) {
+                    if (source === "@modelcontextprotocol/server/_shims") {
+                        return { id: "\0virtual:mcp-shims-node", moduleSideEffects: false };
+                    }
+                    return null;
+                },
+                load(id) {
+                    if (id !== "\0virtual:mcp-shims-node") return null;
+                    return [
+                        'import process from "node:process";',
+                        'import { AjvJsonSchemaValidator } from "@modelcontextprotocol/server/validators/ajv";',
+                        "export { process };",
+                        "export const DefaultJsonSchemaValidator = AjvJsonSchemaValidator;",
+                    ].join("\n");
+                },
+            },
+        ],
         define: {
             "process.env.DEV_MODE": JSON.stringify(isDev),
             "process.env.NODE_ENV": JSON.stringify(env.NODE_ENV),

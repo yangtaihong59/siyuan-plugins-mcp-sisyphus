@@ -21,6 +21,7 @@ import {
 } from '@/core/mcp-apps';
 import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText } from '@/core/server';
 import { AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER, USER_RULES_TOOL_DESCRIPTION_REMINDER } from '@/core/tool-registry';
+import { scenarios } from '../../skills/source/scenarios.mjs';
 
 const jsonResponse = (payload: unknown): Response => ({
     ok: true,
@@ -783,7 +784,7 @@ describe('MCP Server Integration', () => {
     describe('Scenario prompts', () => {
         it('lists prompts and returns embedded skill guidance with an optional task', async () => {
             const { prompts } = await client.listPrompts();
-            expect(prompts).toHaveLength(10);
+            expect(prompts).toHaveLength(scenarios.length);
             expect(prompts).toContainEqual(expect.objectContaining({
                 name: 'siyuan_create_edit',
                 arguments: [expect.objectContaining({ name: 'task', required: false })],
