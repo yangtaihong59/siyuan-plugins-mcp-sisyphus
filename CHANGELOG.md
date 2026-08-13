@@ -6,7 +6,9 @@
 
 - 新增 `search(action="semantic")`，复用思源原生嵌入索引，并在设置页提供模型配置、连接测试、索引进度、重建与失败重试
 - 新增 `document.reorder` 与 `fs.reorder`，支持按同级文档完整顺序安全调整文件树排序
-- 修复 Vite 打包导致 stdio transport 不可用的问题；补充导入迁移、视觉资源与系统安全 Skills，感谢 PR #47 与 PR #49 的贡献
+- 修复 Vite 打包导致 stdio transport 不可用的问题；补充导入迁移、视觉资源与系统安全 Skills
+- **感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47)**，贡献 stdio transport 打包修复
+- **感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49)**，贡献安全操作、扩展生命周期、导入迁移与视觉资源 Skills 指引
 - CLI 包同步提升至 v0.2.5
 
 ## v0.6.1 - 2026-08-12
