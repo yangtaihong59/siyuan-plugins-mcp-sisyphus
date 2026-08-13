@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：**`v0.6.2` — 新增思源原生语义搜索、嵌入模型与索引管理设置页，以及安全的同级文档排序；同时修复 stdio transport 打包问题，并扩展导入迁移、视觉资源与系统安全 Skills。感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47)，感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49)。CLI 提升至 `v0.2.5`。
+> **最新版本：**`v0.6.3` — 新增思源原生语义搜索、嵌入模型与索引管理设置页，以及安全的同级文档排序；同时修复 stdio transport 打包问题，并扩展导入迁移、视觉资源与系统安全 Skills。感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47)，感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49)。CLI 提升至 `v0.2.5`。
 
 ## 项目方向调整
 
