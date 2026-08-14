@@ -110,6 +110,39 @@ describe('cli/dispatch', () => {
         io.restore();
     });
 
+    it('validates explicit extension content from CLI JSON without discovering the official registry', async () => {
+        const io = captureStdIO();
+        const refresh = vi.spyOn(OfficialMcpBridge.prototype, 'refresh');
+        const callToolSpy = vi.spyOn(TOOL_REGISTRY.extension, 'callTool').mockResolvedValue(okResult());
+
+        const code = await runDispatch({
+            command: 'dispatch',
+            tool: 'extension',
+            action: 'validate_package',
+            rest: ['--package-json', JSON.stringify({
+                type: 'theme',
+                manifest: { name: 'example-theme', version: '1.0.0' },
+                files: { 'theme.css': ':root { color: black; }' },
+            })],
+            json: true,
+            debug: false,
+        } as ParsedArgs);
+
+        expect(code).toBe(0);
+        expect(refresh).not.toHaveBeenCalled();
+        expect(callToolSpy).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                action: 'validate_package',
+                package: expect.objectContaining({ type: 'theme' }),
+            }),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+        );
+        io.restore();
+    });
+
     it('dispatches a native official tool when includeNativeTools is enabled', async () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();

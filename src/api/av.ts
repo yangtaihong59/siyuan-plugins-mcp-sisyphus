@@ -8,6 +8,26 @@ export interface AttributeViewCellValue {
     [key: string]: unknown;
 }
 
+export interface CreateAttributeViewItemPayload {
+    avID: string;
+    /** Materialized NodeAttributeView block. This is not an AV row item ID. */
+    blockID: string;
+    viewID?: string;
+    templateID: string;
+    previousID?: string;
+    groupID?: string;
+}
+
+export interface CreateAttributeViewItemResult {
+    /** The new AV row identity. Use this with AV cell/relation operations. */
+    itemID: string;
+    /** The bound document/block identity, which is distinct from itemID. */
+    blockID: string;
+    content: string;
+    isDetached: boolean;
+    warnings?: string[];
+}
+
 export async function getAttributeView(client: SiYuanClient, id: string): Promise<{ av: unknown }> {
     return client.requestRead<{ av: unknown }>('/api/av/getAttributeView', { id });
 }
@@ -42,6 +62,30 @@ export async function getAttributeViewFilterSort(
     });
 }
 
+/** Replace one carrier-selected view's complete filter array. */
+export async function setAttributeViewFilters(
+    client: SiYuanClient,
+    payload: { avID: string; blockID: string; data: Array<Record<string, unknown>> },
+): Promise<null> {
+    return client.requestWrite<null>('/api/av/setAttrViewFilters', payload);
+}
+
+/** Replace one carrier-selected view's complete sort array. */
+export async function setAttributeViewSorts(
+    client: SiYuanClient,
+    payload: { avID: string; blockID: string; data: Array<{ column: string; order: 'ASC' | 'DESC' }> },
+): Promise<null> {
+    return client.requestWrite<null>('/api/av/setAttrViewSorts', payload);
+}
+
+/** Set or clear grouping on one carrier-selected view. */
+export async function setAttributeViewGroup(
+    client: SiYuanClient,
+    payload: { avID: string; blockID: string; group: Record<string, unknown> },
+): Promise<null> {
+    return client.requestWrite<null>('/api/av/setAttrViewGroup', payload);
+}
+
 export async function searchAttributeView(
     client: SiYuanClient,
     keyword: string,
@@ -63,6 +107,21 @@ export async function addAttributeViewBlocks(
     },
 ): Promise<null> {
     return client.requestWrite<null>('/api/av/addAttributeViewBlocks', payload);
+}
+
+/**
+ * Create one AV item through SiYuan's native new-item-template API.
+ *
+ * This is intentionally separate from addAttributeViewBlocks: the native
+ * endpoint can create a document, apply a content template, and materialize
+ * template field defaults. Callers must keep the returned row itemID separate
+ * from the returned bound blockID.
+ */
+export async function createAttributeViewItem(
+    client: SiYuanClient,
+    payload: CreateAttributeViewItemPayload,
+): Promise<CreateAttributeViewItemResult> {
+    return client.requestWrite<CreateAttributeViewItemResult>('/api/av/createAttributeViewItem', payload);
 }
 
 export async function removeAttributeViewBlocks(

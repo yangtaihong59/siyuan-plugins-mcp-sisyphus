@@ -14,7 +14,7 @@ src/
 ├── core/                     # MCP Server core
 │   ├── server.ts             # MCP Server creation & handler registration
 │   ├── http-transport.ts     # HTTP/S MCP transport layer
-│   ├── tool-registry.ts      # Registry of 14 aggregated tools, including dynamic extension actions
+│   ├── tool-registry.ts      # Registry of aggregated tools, including dynamic extension actions
 │   ├── tool-lifecycle.ts     # Tool call AOP wrapper (analytics/telemetry/puppy)
 │   ├── permissions.ts        # Notebook-level 4-tier permission management
 │   ├── config.ts             # ToolConfig schema / defaults / migration
@@ -32,7 +32,7 @@ src/
 │   ├── normalize.ts          # Request parameter normalization
 │   └── noops/                # Explicit no-op schema validator for SDK v2
 │       └── noop-schema-validator.ts
-├── tools/                    # 14 aggregated tool implementations
+├── tools/                    # Aggregated tool implementations
 │   ├── index.ts              # Barrel export: re-exports all tool modules
 │   ├── internal/             # Shared infrastructure for the tool layer
 │   │   ├── types.ts          # Shared types for the tool layer
@@ -157,7 +157,7 @@ src/
 
 ## 2. MCP Server: `src/core/server.ts`
 
-**Responsibility**: Create MCP `Server` instance, register 5 handlers, manage transport modes (stdio / HTTP), load config & permissions.
+**Responsibility**: Create MCP `Server` instance, register 7 handlers, manage transport modes (stdio / HTTP), load config & permissions. When the Skills extension is enabled, two additional conditional handlers are registered.
 
 **Key functions**:
 
@@ -167,7 +167,7 @@ src/
 | `startMcpServer()` | Process entry. Parse transport mode, start stdio or HTTP server |
 | `getToolConfig()` | Debounced ToolConfig hot-loading, in-flight deduplication |
 
-**5 registered handlers**:
+**7 always-registered handlers**:
 
 | Handler | Protocol Schema | Behavior |
 |---------|-----------------|----------|
@@ -175,7 +175,11 @@ src/
 | `ListResourcesRequestSchema` | Static resource list | `listHelpResources()` |
 | `ListResourceTemplatesRequestSchema` | Resource templates | `listHelpResourceTemplates()` (`siyuan://help/action/{tool}/{action}`) |
 | `ReadResourceRequestSchema` | Read resource | `readHelpResource(uri)` → static content or dynamic action help |
+| `PromptsListRequestSchema` | Prompt list | `listMcpPrompts()` |
+| `PromptsGetRequestSchema` | Prompt lookup | `getMcpPrompt(name, task)` |
 | `CallToolRequestSchema` | Call tool | Parse name + action → `resolveCategory()` → check enabled → `runToolCall()` → `TOOL_REGISTRY[category].callTool()` |
+
+With `SIYUAN_MCP_SKILLS_EXTENSION` enabled (the default), `skills/list` and `skills/get` add two conditional Skills-extension handlers.
 
 **Dependencies**: `http-transport.ts`, `tool-registry.ts`, `tool-lifecycle.ts`, `permissions.ts`, `config.ts`, `resources.ts`, `server-instructions.ts`
 
@@ -183,7 +187,7 @@ src/
 
 ## 3. Tool Registry: `src/core/tool-registry.ts`
 
-**Responsibility**: Maintain the `TOOL_REGISTRY` mapping table, converging 13 categories into the `ToolModule` interface. Category modules are registered at compile time; `extension` discovers its action set during the optional prepare phase.
+**Responsibility**: Maintain the `TOOL_REGISTRY` mapping table, converging the categories declared by `TOOL_CATEGORIES` into the `ToolModule` interface. Category modules are registered at compile time; `extension` discovers its action set during the optional prepare phase.
 
 **Key interface**:
 
@@ -200,7 +204,7 @@ interface ToolModule {
 
 | Export | Description |
 |--------|-------------|
-| `TOOL_REGISTRY: Record<ToolCategory, ToolModule>` | Compile-time mapping of 14 aggregated categories |
+| `TOOL_REGISTRY: Record<ToolCategory, ToolModule>` | Compile-time mapping of the aggregated categories declared by `TOOL_CATEGORIES` |
 | `prepareAllTools(config, runtime)` | Run optional discovery/prepare hooks before dynamic validation or listing |
 | `listAllTools(config, runtime)` | Flatten and aggregate all enabled tool descriptors |
 | `resolveCategory(name)` | Reverse lookup category from tool name (e.g. `"notebook"`) |
@@ -291,7 +295,7 @@ runToolCall(ctx, handler)
 type ToolConfig = {
     notebook:  { enabled: boolean, actions: { list: boolean, create: boolean, ... } };
     document:  { enabled: boolean, actions: { ... } };
-    // ... 13 categories total
+    // ... categories declared by TOOL_CATEGORIES
     file:      { enabled: boolean, actions: { ... }, uploadLargeFileThresholdMB: number };
     // ...
     userRulesText: string;  // User custom rules text
@@ -468,7 +472,7 @@ All business modules export **pure functions** taking `client: SiYuanClient` as 
 
 ### `tool-config.ts` — Schema Definition
 
-Defines 13 `ToolCategory` entries, each with `enabled` + `actions` + extra fields (e.g. `file`'s `uploadLargeFileThresholdMB`, or `extension`'s `includeNativeTools` and `blockedTools`).
+Defines the `ToolCategory` entries in `TOOL_CATEGORIES`, each with `enabled` + `actions` + extra fields (e.g. `file`'s `uploadLargeFileThresholdMB`, or `extension`'s `includeNativeTools` and `blockedTools`).
 
 ### `tool-config-storage.ts` — Persistence Layer
 
@@ -490,7 +494,7 @@ All `load*` functions perform defensive `normalize*` conversion.
 | Component | Responsibility |
 |-----------|---------------|
 | `HttpServerPanel` | HTTP/HTTPS toggle, host/port/token/TLS, client config snippet generation, real-time status & logs |
-| `ToolCategoriesPanel` | 9 tool category checkboxes + Notebook permission matrix (`none/r/rw/rwd`) |
+| `ToolCategoriesPanel` | Tool category checkboxes + Notebook permission matrix (`none/r/rw/rwd`) |
 | `PuppyPanel` | Mascot toggle + visibility/bubble/click hint/test mode |
 | `TelemetryPanel` | Telemetry toggle/interval/endpoint; local analytics dashboard (total calls, tokens, error rate, Top Actions, Daily Trend) |
 | `UserRulesPanel` | User custom rules text area |
@@ -504,7 +508,7 @@ All `load*` functions perform defensive `normalize*` conversion.
 | Component/File | Responsibility |
 |----------------|---------------|
 | `ToolPuppy.svelte` | **Core container**. Manages state machine (idle/reading/writing/deleting/moving/dangerous/success/error), polls event files, drag logic, idle animation scheduling |
-| `PuppyAwakeSVG.svelte` | Awake pixel cat SVG (52×52). Body, tail, paws, multiple eye expressions, 9 tool icons + action markers, wage card balance display |
+| `PuppyAwakeSVG.svelte` | Awake pixel cat SVG (52×52). Body, tail, paws, multiple eye expressions, 8 tool icons + action markers, wage card balance display |
 | `PuppySleepingSVG.svelte` | Sleep state overlay: floating "zZz" animation |
 | `PuppyBubble.svelte` | Bubble & effects layer: text bubbles, wage card bubbles, heart bursts (`❤`), feeding props |
 | `PuppyResultOverlay.svelte` | Result/danger state SVG overlay: red X, exclamation mark, error badge |

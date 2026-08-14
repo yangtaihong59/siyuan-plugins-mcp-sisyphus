@@ -103,6 +103,7 @@ function createContractClient() {
                 return [];
             }
             if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, rootID: 'doc-1' };
+            if (endpoint === '/api/block/getDocInfo') return { id: body?.id, rootID: body?.id, name: 'Doc 1' };
             if (endpoint === '/api/block/getBlockBreadcrumb') return [{ id: 'doc-1', name: 'Doc' }];
             if (endpoint === '/api/block/getBlockDOM') return { id: body?.id as string, dom: '<p>content</p>' };
             if (endpoint === '/api/block/getRecentUpdatedBlocks') return [{ id: 'block-1', rootID: 'doc-1', box: 'nb-1', path: '/doc-1.sy', type: 'p' }];
@@ -128,6 +129,7 @@ function createContractClient() {
             if (endpoint === '/api/export/exportResources') return { path: '/temp/export.zip' };
             if (endpoint === '/api/asset/getUnusedAssets') return ['assets/unused.png'];
             if (endpoint === '/api/asset/getDocAssets') return ['assets/doc.png'];
+            if (endpoint === '/api/asset/getDocImageAssets') return ['assets/doc.png'];
             if (endpoint === '/api/asset/getImageOCRText') return { text: 'ocr text' };
             if (endpoint === '/api/asset/removeUnusedAssets') return { removed: 1 };
             if (endpoint === '/api/asset/renameAsset') return { newPath: 'assets/new.png' };
@@ -223,6 +225,7 @@ describe('tool action contract coverage', () => {
         await runContracts('document', DOCUMENT_VARIANTS, callDocumentTool as ToolCaller, [
             { action: 'create', args: { action: 'create', notebook: 'nb-1', path: '/Doc', markdown: 'hello' }, expectedEndpoint: '/api/filetree/createDocWithMd' },
             { action: 'lookup', args: { action: 'lookup', id: 'doc-1' }, expectedEndpoint: '/api/filetree/getPathByID' },
+            { action: 'ensure_link_targets', args: { action: 'ensure_link_targets', notebook: 'nb-1', parentId: 'doc-1', mode: 'resolve', targets: [{ key: 'parent', id: 'doc-1' }] }, expectedEndpoint: '/api/filetree/listDocsByPath' },
             { action: 'rename', args: { action: 'rename', id: 'doc-1', title: 'Renamed' }, expectedEndpoint: '/api/filetree/renameDocByID' },
             { action: 'remove', args: { action: 'remove', id: 'doc-1' }, expectedEndpoint: '/api/filetree/removeDocByID' },
             { action: 'move', args: { action: 'move', fromIDs: ['doc-1'], toID: 'doc-parent' }, expectedEndpoint: '/api/filetree/moveDocsByID' },
@@ -292,9 +295,11 @@ describe('tool action contract coverage', () => {
             { action: 'save_doc_as_template', args: { action: 'save_doc_as_template', id: 'doc-1', name: 'demo', overwrite: true }, expectedEndpoint: '/api/template/docSaveAsTemplate' },
             { action: 'render', args: { action: 'render', engine: 'template', id: 'doc-1', path: '/templates/demo.action' }, expectedEndpoint: '/api/template/render' },
             { action: 'export_md', args: { action: 'export_md', id: 'doc-1' }, expectedEndpoint: '/api/export/exportMdContent' },
+            { action: 'export_markdown_snapshot', args: { action: 'export_markdown_snapshot', notebookID: 'nb-1', documentIDs: ['doc-1'] }, expectedEndpoint: '/api/export/exportMdContent' },
             { action: 'export_resources', args: { action: 'export_resources', paths: ['assets/demo.png'] }, expectedEndpoint: '/api/export/exportResources' },
             { action: 'list_unused_assets', args: { action: 'list_unused_assets' }, expectedEndpoint: '/api/asset/getUnusedAssets' },
             { action: 'get_doc_assets', args: { action: 'get_doc_assets', id: 'doc-1' }, expectedEndpoint: '/api/asset/getDocAssets' },
+            { action: 'audit_image_refs', args: { action: 'audit_image_refs', id: 'doc-1', expectedRefs: ['assets/doc.png'] }, expectedEndpoint: '/api/asset/getDocImageAssets' },
             { action: 'get_image_ocr_text', args: { action: 'get_image_ocr_text', path: 'assets/demo.png' }, expectedEndpoint: '/api/asset/getImageOCRText' },
             { action: 'remove_unused_assets', args: { action: 'remove_unused_assets' }, expectedEndpoint: '/api/asset/removeUnusedAssets' },
             { action: 'rename_asset', args: { action: 'rename_asset', oldPath: 'assets/old.png', newName: 'new.png' }, expectedEndpoint: '/api/asset/renameAsset' },

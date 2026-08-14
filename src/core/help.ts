@@ -51,6 +51,7 @@ export const DOCUMENT_GUIDANCE: string[] = [
     'For document(action="lookup"), path means a storage path such as /20240318112233-abc123.sy; use hpath/hPath for human-readable paths such as /Inbox/Weekly Note.',
     'Other document actions that use notebook + path expect storage paths returned by document(action="lookup").',
     'If document(action="create") reports a duplicate-name error, verify the intended child with document(action="lookup", notebook=..., hpath="/Folder/Parent/New Child", include=["id","path","hpath"]) or document(action="get_child_docs", id=<parent-doc-id>). New create results may take a short indexing delay before lookup/search sees them.',
+    'document(action="ensure_link_targets") is the bounded import-link provisioner: scope it with notebook + parentId, reuse only explicit child document IDs, and use create only for explicit new titles. It never guesses an existing target from a title; same-title children are unresolved and require an ID decision.',
     'A safe path-based workflow is lookup -> rename/remove/move.',
     'document(action="reorder") applies a complete manual order to every visible direct child under parentID and switches the notebook to custom sorting. Read the current child documents first and include each child ID exactly once.',
     'document(action="get_child_blocks") and document(action="get_child_docs") return direct children for a document ID.',
@@ -79,9 +80,15 @@ export const AV_GUIDANCE: string[] = [
     'Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.',
     'Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").',
     'For cell writes, rowID must be the database row item ID stored in each AV value\'s blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.',
+    'av(action="set_column_options") replaces a select or multi-select key\'s complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.',
+    'av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.',
     'AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.',
     'av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.',
     'av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.',
+    'For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.',
+    'These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.',
+    'set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.',
+    'add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.',
 ];
 
 export const FILE_GUIDANCE: string[] = [
@@ -98,6 +105,7 @@ export const FILE_GUIDANCE: string[] = [
     'file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.',
     'file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.',
     'file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.',
+    'file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan\'s read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.',
 ];
 
 export const TAG_GUIDANCE: string[] = [
@@ -140,6 +148,8 @@ export const EXTENSION_GUIDANCE: string[] = [
     'extension bridges tools from the official SiYuan /mcp endpoint and requires SiYuan 3.7.0 or newer.',
     'Plugin tools are exposed by default. Native SiYuan tools are exposed only when extension.includeNativeTools is enabled; external source="mcp" tools remain excluded.',
     'Use extension(action="list", refresh=true) to refresh discovery. While includeNativeTools is disabled, the response contains counts only; enable it to inspect tool names, sources, schemas, read-only declarations, and blocked state.',
+    'Use extension(action="validate_package") only with explicit metadata and relative package-file text. It never accepts a host path, scans a directory, installs/enables/trusts a package, or proves runtime loading.',
+    'Use extension(action="diagnose_plugin_mcp") after a separately authorized lifecycle operation to refresh and read back Source="plugin" registry entries. It does not trigger reload/disable or invoke a plugin tool; registry absence does not prove cleanup completed.',
     'Call a discovered tool with extension(action="<official tool name>", arguments={...}). Downstream parameters must stay inside arguments, including a downstream action field.',
     'Tools without readOnlyHint=true may mutate data or trigger side effects and require explicit user confirmation before calling.',
     'Forwarded official MCP tool calls are never retried. A transport error after dispatch means execution status is unknown and must be checked before retrying.',
@@ -184,6 +194,7 @@ export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
 export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     create: 'Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.',
     lookup: 'Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths.',
+    ensure_link_targets: 'Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with a fresh UUIDv7 requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.',
     rename: 'Use either id + title or notebook + path + title.',
     remove: 'Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + storage path.',
     move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.',
@@ -228,9 +239,22 @@ export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     remove_rows: 'Use avID + srcIDs to remove rows from the AV. Optional blockID pins a specific registered database block when you need explicit block-view context.',
     add_column: 'Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.',
     remove_column: 'Use avID + keyID, and optionally blockID to target a specific registered database block. removeRelationDest only matters for relation columns.',
-    set_cells: 'Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[].',
+    set_cells: 'Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell.',
+    set_column_options: 'Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.',
+    duplicate_rows: 'Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.',
     duplicate: 'Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.',
     get_primary_key_values: 'Returns the AV name plus primary-key rows, with optional keyword/page/pageSize filtering.',
+    add_view: 'Provide avID + exact NodeAttributeView blockID + a new stable viewID + table/gallery/kanban + name. First run validateOnly=true. It does not use render; kanban requires an existing select key to avoid an implicit schema write.',
+    set_filters: 'Provide avID + exact carrier blockID + its current viewID + the complete typed recursive filter tree. [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.',
+    set_sorts: 'Provide avID + exact carrier blockID + its current viewID + the complete [{column, order}] array. [] clears all sorts; partial patch input is rejected by contract. First run validateOnly=true.',
+    set_group: 'Provide avID + exact carrier blockID + its current viewID + group. field="" clears grouping; numeric range method requires range. First run validateOnly=true.',
+    set_column_visibility: 'Provide avID + exact carrier blockID + its current viewID + keyID + hidden. keyID must exist in that view layout. First run validateOnly=true.',
+    set_column_order: 'Provide avID + exact carrier blockID + its current viewID + every current keyID exactly once in desired order. Partial lists are refused. First run validateOnly=true.',
+    set_new_item_templates: 'Dangerous complete replacement of ordered native new-item templates. Pass every template and defaultTemplateID, not a patch. MCP captures a canonical complete-template preimage, validates each key and select/mSelect option against the raw AV, performs one native transaction, and verifies order, default, and all remaining template fields through getAttributeView. Missing options are rejected rather than added or silently pruned.',
+    create_from_template: 'Dangerous native creation using an existing template. itemID in the result is the AV row identity; blockID is the separate bound block/document identity. MCP preflights all default fields and relation targets, then reads every requested default back. Document templates require an explicit saveLocation so the target notebook can be authorized; inherited global document location is intentionally not guessed.',
+    configure_two_way_relation: 'Dangerous schema operation for an existing relation key. Pass source and destination AV identities plus a stable reverse-key ID. MCP verifies both writable database carriers, uses the native updateAttrViewColRelation transaction, and reads both directions back. It refuses to retarget an existing relation that would mutate an unpreflighted third AV.',
+    configure_rollup: 'Dangerous schema operation for an existing rollup key. Pass its existing relation key, destination key, and the native RollupCalc object exactly as SiYuan defines it. MCP does not invent calculation aliases. SiYuan may remove filters that reference the reconfigured rollup key.',
+    set_relation: 'Dangerous complete replacement of one relation cell. blockID is the verified source database carrier; itemID and relatedItemIDs are AV row item IDs, never bound document block IDs. An empty relatedItemIDs array clears the relation. MCP authorizes destination writes and verifies source plus two-way reverse cells without retrying an unknown response.',
 };
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
@@ -243,7 +267,9 @@ export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
     save_doc_as_template: 'Use id + name to save a document as a root-level template through SiYuan’s docSaveAsTemplate API. Slashes are rejected; pass overwrite=true to replace an existing root template.',
     render: 'Use engine="template" with id + path for a workspace template; that engine uses .action{...} delimiters and exposes limited document fields such as id/title/name/alias. Set preview=true for SiYuan preview DOM. Use engine="sprig" with inline template for {{...}} syntax; Sprig has functions but no document context.',
     export_resources: 'Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.',
+    export_markdown_snapshot: 'Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.',
     get_doc_assets: 'Use a document ID to list assets directly referenced by the current document tree after read-permission checks. This does not expand query embed blocks; when the user needs to inspect the full document content and assets, guide them to file(action="extract_doc") instead. Use assetType="image" to return only direct image assets.',
+    audit_image_refs: 'Use id + expectedRefs from source or preprocessed Markdown. The action reads only SiYuan\'s direct image asset references over HTTP and returns expectedRefs, actualRefs, missingRefs, extraRefs, counts, and ok. Matching is a multiset by basename: each occurrence is preserved and consumed once, so duplicates and same-basename paths are not silently merged. It ignores SiYuan timestamp/id suffixes; it does not read local files or repair imports.',
     get_image_ocr_text: 'Use an asset path to read stored OCR text. If path is omitted, SiYuan returns an empty text payload.',
     extract_doc: 'Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.',
 };
@@ -572,6 +598,31 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         list: [{
             title: 'Refresh official MCP tool discovery',
             mcp: { action: 'list', refresh: true },
+        }],
+        validate_package: [{
+            title: 'Validate explicit plugin package content',
+            mcp: {
+                action: 'validate_package',
+                package: {
+                    type: 'plugin',
+                    manifest: {
+                        name: 'example-plugin',
+                        version: '1.0.0',
+                        displayName: { default: 'Example Plugin' },
+                        description: { default: 'Example package' },
+                    },
+                    files: { 'index.js': 'module.exports = class Example {}; ' },
+                },
+            },
+        }],
+        diagnose_plugin_mcp: [{
+            title: 'Read back plugin MCP registration',
+            mcp: {
+                action: 'diagnose_plugin_mcp',
+                pluginName: 'example-plugin',
+                expectedToolNames: ['echo'],
+                expectedState: 'present',
+            },
         }],
     },
     mascot: {},

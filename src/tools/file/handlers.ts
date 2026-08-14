@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { SiYuanClient } from '../../api/client';
 import * as fileApi from '../../api/file';
 import * as templateApi from '../../api/template';
+import * as documentApi from '../../api/document';
 import { normalizeMarkdownContent } from '../../core/normalize';
 import type { FileAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
@@ -11,9 +12,11 @@ import {
     FileDeleteTemplateSchema,
     FileDeleteAssetSchema,
     FileExportMdSchema,
+    FileExportMarkdownSnapshotSchema,
     FileExportResourcesSchema,
     FileExtractDocSchema,
     FileGetDocAssetsSchema,
+    FileAuditImageRefsSchema,
     FileGetImageOCRTextSchema,
     FileListTemplatesSchema,
     FileListUnusedAssetsSchema,
@@ -25,9 +28,23 @@ import {
     FileUpdateTemplateSchema,
     FileUploadAssetSchema,
 } from '../../core/types';
-import { ensurePermissionForDocumentId } from '../internal/context';
+import { ensurePermissionForDocumentId, ensurePermissionForNotebook } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult, createPaginatedResult, paginate, type ToolResult } from '../internal/shared';
+import { auditImageReferences } from '../internal/image-reference-audit';
+import {
+    canonicalMetadata,
+    compareSnapshotText,
+    decodeSnapshotCursor,
+    encodeSnapshotCursor,
+    flattenDocumentTree,
+    hashSnapshotContent,
+    hashSnapshotMetadata,
+    planSnapshotPaths,
+    type SnapshotDocumentCandidate,
+    type SnapshotDocumentRecord,
+    type SnapshotErrorRecord,
+} from '../../shared/markdown-snapshot';
 
 export const FILE_TOOL_NAME = 'file';
 export const DEFAULT_LARGE_UPLOAD_THRESHOLD_MB = 10;
@@ -392,6 +409,158 @@ const handleExportMd: ToolActionHandler = async ({ client, permMgr, rawArgs }) =
     return createJsonResult(result);
 };
 
+const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = FileExportMarkdownSnapshotSchema.parse(rawArgs);
+    const deniedNotebook = await ensurePermissionForNotebook(permMgr, parsed.notebookID, 'read');
+    if (deniedNotebook) return deniedNotebook;
+
+    const roots = parsed.roots ? [...new Set(parsed.roots)].sort(compareSnapshotText) : undefined;
+    const documentIDs = parsed.documentIDs ? [...new Set(parsed.documentIDs)].sort(compareSnapshotText) : undefined;
+    const scope = {
+        notebookID: parsed.notebookID,
+        ...(roots ? { roots } : { documentIDs: documentIDs! }),
+    };
+    const scopeHash = await hashSnapshotMetadata(scope);
+    const cursor = parsed.cursor ? decodeSnapshotCursor(parsed.cursor) : undefined;
+    const offset = cursor?.offset ?? 0;
+    const limit = parsed.limit ?? 20;
+
+    const candidates: SnapshotDocumentCandidate[] = documentIDs
+        ? documentIDs.map((id) => ({ id }))
+        : [];
+    const byID = new Map<string, SnapshotDocumentCandidate>();
+    const errors: SnapshotErrorRecord[] = [];
+    if (roots) {
+        // Keep successful roots exportable when one root is stale or inaccessible;
+        // callers can retry only the structured failed root instead of losing a
+        // whole page to an aggregate Promise rejection.
+        const rootResults = await Promise.all(roots.map(async (root) => {
+            try {
+                return { root, tree: await documentApi.listDocTree(client, parsed.notebookID, root) };
+            } catch (error) {
+                return {
+                    root,
+                    error: {
+                        code: 'enumeration_failed',
+                        message: error instanceof Error ? error.message : String(error),
+                        path: root,
+                        retryable: true,
+                    } satisfies SnapshotErrorRecord,
+                };
+            }
+        }));
+        for (const result of rootResults) {
+            if ('error' in result) {
+                errors.push(result.error);
+            } else {
+                candidates.push(...flattenDocumentTree(result.tree));
+            }
+        }
+    }
+    for (const candidate of candidates) {
+        if (!candidate.id) continue;
+        if (!byID.has(candidate.id)) byID.set(candidate.id, candidate);
+    }
+
+    const records: SnapshotDocumentRecord[] = [];
+    for (const candidate of byID.values()) {
+        try {
+            const resolved = await ensurePermissionForDocumentId(client, permMgr, candidate.id, 'read');
+            if (resolved.denied) {
+                errors.push({ code: 'permission_denied', message: `Read permission denied for document ${candidate.id}.`, documentID: candidate.id });
+                continue;
+            }
+            const documentID = resolved.context.documentId;
+            if (resolved.context.notebook !== parsed.notebookID) {
+                throw new Error(`Document ${candidate.id} does not belong to notebook ${parsed.notebookID}.`);
+            }
+            const storagePath = resolved.context.path || candidate.path;
+            const hPath = candidate.hPath || resolved.context.hPath || await documentApi.getHPathByID(client, documentID);
+            if (!storagePath || !hPath) throw new Error('Document path metadata is unavailable.');
+            const metadata = canonicalMetadata(parsed.notebookID, {
+                id: documentID,
+                path: storagePath,
+                hPath,
+                name: resolved.context.name || candidate.name,
+            });
+            records.push({
+                id: metadata.id,
+                title: metadata.title,
+                hPath: metadata.hPath,
+                storagePath: metadata.storagePath,
+                metadata,
+                metadataHash: await hashSnapshotMetadata(metadata),
+            });
+        } catch (error) {
+            errors.push({
+                code: 'document_metadata_unavailable',
+                message: error instanceof Error ? error.message : String(error),
+                documentID: candidate.id,
+                retryable: true,
+            });
+        }
+    }
+
+    records.sort((left, right) => compareSnapshotText(left.hPath, right.hPath) || compareSnapshotText(left.id, right.id));
+    const inventoryHash = await hashSnapshotMetadata(records.map((record) => record.metadata));
+    if (cursor && (cursor.scopeHash !== scopeHash || (cursor.inventoryHash && cursor.inventoryHash !== inventoryHash))) {
+        throw new Error('export_markdown_snapshot cursor does not match the current notebook inventory; restart from the first page.');
+    }
+    const conflicts = planSnapshotPaths(records);
+    for (const record of records) {
+        for (const error of record.errors ?? []) {
+            if (!errors.includes(error)) errors.push(error);
+        }
+    }
+    const pageRecords = records.slice(offset, offset + limit);
+    for (const record of pageRecords) {
+        try {
+            const result = normalizeMarkdownContent(await fileApi.exportMdContent(client, record.id));
+            if (result.hPath !== record.hPath) {
+                throw new Error(`Export hPath mismatch: ${result.hPath ?? '<missing>'} != ${record.hPath}`);
+            }
+            if (typeof result.content !== 'string') throw new Error('Export returned no Markdown content.');
+            record.content = result.content;
+            record.contentHash = await hashSnapshotContent(result.content);
+        } catch (error) {
+            const itemError: SnapshotErrorRecord = {
+                code: 'export_failed',
+                message: error instanceof Error ? error.message : String(error),
+                documentID: record.id,
+                path: record.relativePath,
+                retryable: true,
+            };
+            record.errors = [...(record.errors ?? []), itemError];
+            errors.push(itemError);
+        }
+    }
+
+    const nextOffset = offset + pageRecords.length;
+    return createJsonResult({
+        kind: 'siyuan-markdown-snapshot-page',
+        schemaVersion: '1.0.0',
+        status: errors.length > 0 || pageRecords.some((record) => record.errors?.length) ? 'partial' : 'complete',
+        source: {
+            notebookID: parsed.notebookID,
+            inventorySurface: parsed.documentIDs ? 'documentIDs' : 'document.list_tree',
+            exportSurface: 'file.export_md',
+            ...(scope.roots ? { roots: scope.roots } : { documentIDs: scope.documentIDs }),
+        },
+        scope: { ...scope, scopeHash },
+        page: {
+            offset,
+            limit,
+            total: records.length,
+            hasNext: nextOffset < records.length,
+            ...(nextOffset < records.length ? { nextCursor: encodeSnapshotCursor(scopeHash, inventoryHash, nextOffset) } : {}),
+        },
+        inventoryHash,
+        documents: pageRecords,
+        conflicts,
+        errors,
+    });
+};
+
 const handleExportResources: ToolActionHandler = async ({ client, rawArgs }) => {
     const parsed = FileExportResourcesSchema.parse(rawArgs);
     const normalizedPaths = normalizeResourcePaths(parsed.paths);
@@ -442,6 +611,18 @@ const handleGetDocAssets: ToolActionHandler = async ({ client, permMgr, rawArgs 
         assetType: parsed.assetType ?? 'all',
         assets,
         count: Array.isArray(assets) ? assets.length : undefined,
+    });
+};
+
+const handleAuditImageRefs: ToolActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = FileAuditImageRefsSchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    if (denied) return denied;
+    const actualRefs = await fileApi.getDocImageAssets(client, parsed.id);
+    return createJsonResult({
+        id: parsed.id,
+        ...auditImageReferences(parsed.expectedRefs, Array.isArray(actualRefs) ? actualRefs : []),
+        comparison: 'multiset basename; each occurrence is matched once, and SiYuan timestamp/id suffixes are ignored for matching',
     });
 };
 
@@ -556,9 +737,11 @@ export function createFileActionHandlers(thresholdMB: number, largeUploadThresho
         save_doc_as_template: handleSaveDocAsTemplate,
         render: handleRender,
         export_md: handleExportMd,
+        export_markdown_snapshot: handleExportMarkdownSnapshot,
         export_resources: handleExportResources,
         list_unused_assets: handleListUnusedAssets,
         get_doc_assets: handleGetDocAssets,
+        audit_image_refs: handleAuditImageRefs,
         get_image_ocr_text: handleGetImageOCRText,
         remove_unused_assets: handleRemoveUnusedAssets,
         rename_asset: handleRenameAsset,

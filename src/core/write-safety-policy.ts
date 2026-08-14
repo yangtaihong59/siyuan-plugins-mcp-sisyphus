@@ -43,7 +43,7 @@ export const ACTION_SAFETY_POLICIES: {
     document: {
         lookup: read(), get_child_blocks: read(), get_child_docs: read(), list_tree: read(), search_docs: read(),
         get_doc: read(), get_outline: read(),
-        create: mutation(), create_daily_note: mutation(), duplicate: mutation('state'), rename: mutation('state'),
+        create: mutation(), ensure_link_targets: mutation('structure'), create_daily_note: mutation(), duplicate: mutation('state'), rename: mutation('state'),
         remove: mutation('state'), move: mutation('structure'), reorder: mutation('structure'), set_attr: mutation('state'),
         heading_to_doc: mutation('structure'), doc_to_heading: mutation('structure'),
     },
@@ -58,11 +58,19 @@ export const ACTION_SAFETY_POLICIES: {
         get: read(), render: mutation(), get_attribute_view_keys: read(), get_attribute_view_filter_sort: read(),
         search: read(), get_primary_key_values: read(),
         add_rows: mutation(), remove_rows: mutation('manifest'), add_column: mutation('state'),
-        remove_column: mutation('state'), set_cells: mutation('manifest'), duplicate: mutation('state'),
+        remove_column: mutation('state'), set_cells: mutation('manifest'),
+        set_column_options: mutation('state'), duplicate_rows: mutation('manifest'), duplicate: mutation('state'),
+        // View configuration is a W2 mutation even though it does not edit
+        // rows. A stale carrier can otherwise make the kernel fall back to a
+        // different view, so every action requires the strict state lease.
+        add_view: mutation('state'), set_filters: mutation('state'), set_sorts: mutation('state'),
+        set_group: mutation('state'), set_column_visibility: mutation('state'), set_column_order: mutation('state'),
+        set_new_item_templates: mutation('state'), create_from_template: mutation('state'),
+        configure_two_way_relation: mutation('state'), configure_rollup: mutation('state'), set_relation: mutation('state'),
     },
     file: {
-        list_templates: read(), read_template: read(), render: read(), export_md: read(), list_unused_assets: read(),
-        get_doc_assets: read(), get_image_ocr_text: read(),
+        list_templates: read(), read_template: read(), render: read(), export_md: read(), export_markdown_snapshot: read(), list_unused_assets: read(),
+        get_doc_assets: read(), audit_image_refs: read(), get_image_ocr_text: read(),
         upload_asset: mutation('source'), create_template: mutation('state'), update_template: mutation('state'),
         delete_template: mutation('state'), save_doc_as_template: mutation('state'), export_resources: external(),
         remove_unused_assets: mutation('manifest'), rename_asset: mutation('state'), delete_asset: mutation('state'),
@@ -85,7 +93,7 @@ export const ACTION_SAFETY_POLICIES: {
         list_cards: read(), get_decks: read(), get_cards: read(), review_card: mutation('state'),
         create_card: mutation(), remove_card: mutation('state'),
     },
-    extension: { list: read() },
+    extension: { list: read(), validate_package: read(), diagnose_plugin_mcp: read() },
     mascot: { get_balance: read(), shop: read(), buy: mutation('state') },
     feedback: { submit: external() },
 };
@@ -103,7 +111,14 @@ export function getActionSafetyPolicy(
     action: string,
     args: Record<string, unknown> = {},
 ): ActionSafetyPolicy {
-    if (category === 'extension' && action !== 'list' && action !== 'help') return external();
+    // Dynamic official-MCP actions are external and may have unknown effects.
+    // The named Sisyphus diagnostics above are local/read-only exceptions and
+    // must remain declared in ACTION_SAFETY_POLICIES as the action set grows.
+    if (category === 'extension'
+        && action !== 'list'
+        && action !== 'validate_package'
+        && action !== 'diagnose_plugin_mcp'
+        && action !== 'help') return external();
     const policy = (ACTION_SAFETY_POLICIES[category] as Record<string, ActionSafetyPolicy>)[action];
     if (!policy) return read();
 
@@ -120,7 +135,38 @@ export function getActionSafetyPolicy(
     if (category === 'av' && action === 'render') {
         return args.createIfNotExist === true ? mutation() : read();
     }
+    // Existing-target resolution never changes SiYuan state: both resolve and
+    // reuse require only read permission and return the exact supplied IDs.
+    // Creation alone freezes the parent child list under a structural lease.
+    // That credential catches a same-title collision or concurrent child
+    // creation between preflight and the final dispatch.
+    if (category === 'document' && action === 'ensure_link_targets') {
+        return args.dryRun === true || args.mode === 'resolve' || args.mode === 'reuse'
+            ? read()
+            : mutation('structure');
+    }
     return policy;
+}
+
+/**
+ * Return every safety policy reachable by an action's schema branch.
+ *
+ * A few actions switch between read and mutation based on arguments. The
+ * registry uses this helper to advertise the union of fields required by all
+ * runtime paths, keeping schema decoration and dispatch on one policy source.
+ */
+export function getPossibleActionSafetyPolicies(category: ToolCategory, action: string): ActionSafetyPolicy[] {
+    const policies = [getActionSafetyPolicy(category, action)];
+    if (category === 'fs' && action === 'write') {
+        policies.push(getActionSafetyPolicy(category, action, { overwrite: true }));
+    }
+    if (category === 'file' && action === 'create_template') {
+        policies.push(getActionSafetyPolicy(category, action, { overwrite: true }));
+    }
+    if (category === 'av' && action === 'render') {
+        policies.push(getActionSafetyPolicy(category, action, { createIfNotExist: true }));
+    }
+    return policies;
 }
 
 export function assertActionSafetyPoliciesComplete(): void {

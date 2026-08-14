@@ -15,6 +15,11 @@ vi.mock('@/api/file', () => ({
     deleteAsset: vi.fn(),
 }));
 
+vi.mock('@/api/document', () => ({
+    listDocTree: vi.fn(),
+    getHPathByID: vi.fn(),
+}));
+
 vi.mock('@/api/template', () => ({
     normalizeTemplatePath: vi.fn((input: string) => {
         const normalized = input.replace(/\\/g, '/');
@@ -40,8 +45,15 @@ vi.mock('@/api/template', () => ({
 
 vi.mock('@/tools/internal/context', () => ({
 
-    ensurePermissionForDocumentId: vi.fn(async () => ({
-        context: { documentId: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy' },
+    ensurePermissionForNotebook: vi.fn(async () => null),
+    ensurePermissionForDocumentId: vi.fn(async (_client: unknown, _permMgr: unknown, id: string) => ({
+        context: {
+            documentId: id,
+            notebook: 'nb-1',
+            path: `/${id}.sy`,
+            hPath: id.startsWith('same-') ? '/Same' : id === 'doc-2' ? '/Doc 2' : id === 'doc-1' ? '/My Document' : '/My Document',
+            name: id.startsWith('same-') ? 'Same' : id === 'doc-2' ? 'Doc 2' : 'My Document',
+        },
         denied: null,
     })),
 }));
@@ -71,10 +83,10 @@ describe('file tool asset actions', () => {
         vi.mocked(templateApi.renderTemplate).mockReset();
         vi.mocked(templateApi.renderSprig).mockReset();
 
-        vi.mocked(fileApi.exportMdContent).mockResolvedValue({
-            content: '![image](assets/cover.png)\n\nSome text\n',
-            hPath: '/My Document',
-        });
+        vi.mocked(fileApi.exportMdContent).mockImplementation(async (_client, id) => ({
+            content: String(id).startsWith('2026') ? '![image](assets/cover.png)\n\nSome text\n' : `# ${id}\n`,
+            hPath: id.startsWith('same-') ? '/Same' : id === 'doc-2' ? '/Doc 2' : '/My Document',
+        }));
         vi.mocked(fileApi.exportResources).mockResolvedValue({ path: '/temp/export.zip' });
         vi.mocked(fileApi.getUnusedAssets).mockResolvedValue(['assets/orphan.png']);
         vi.mocked(fileApi.getDocAssets).mockResolvedValue(['assets/manual.pdf', 'assets/cover.png']);
@@ -107,6 +119,64 @@ describe('file tool asset actions', () => {
             content: '<div>rendered</div>',
         });
         vi.mocked(templateApi.renderSprig).mockResolvedValue('sprig');
+
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockReset();
+        vi.mocked(documentApi.getHPathByID).mockReset();
+    });
+
+    it('exports a deterministic paginated remote-safe Markdown snapshot from explicit document IDs', async () => {
+        const result = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            documentIDs: ['doc-2', 'doc-1'],
+            limit: 1,
+        }, config.file, {} as never);
+
+        const payload = parseResult(result);
+        expect(payload).toMatchObject({
+            kind: 'siyuan-markdown-snapshot-page',
+            status: 'complete',
+            page: { offset: 0, limit: 1, total: 2, hasNext: true },
+            documents: [expect.objectContaining({
+                id: 'doc-2',
+                content: '# doc-2\n',
+                relativePath: 'Doc 2.md',
+                contentHash: expect.stringMatching(/^sha256:v1:/),
+                metadataHash: expect.stringMatching(/^sha256:v1:/),
+            })],
+        });
+        expect((payload as any).page.nextCursor).toEqual(expect.any(String));
+
+        const next = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            documentIDs: ['doc-2', 'doc-1'],
+            cursor: (payload as any).page.nextCursor,
+            limit: 1,
+        }, config.file, {} as never);
+        expect(parseResult(next)).toMatchObject({ page: { offset: 1, hasNext: false } });
+    });
+
+    it('enumerates roots through the document tree and records path conflicts without writing files', async () => {
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockResolvedValueOnce({ tree: [
+            { id: 'same-1', name: 'Same', hPath: '/Same', path: '/same-1.sy', children: [] },
+            { id: 'same-2', name: 'Same', hPath: '/Same', path: '/same-2.sy', children: [] },
+        ] });
+        const result = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/'],
+        }, config.file, {} as never);
+        const payload = parseResult(result) as any;
+        expect(payload.conflicts).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'relative_path_collision', documentIDs: ['same-1', 'same-2'] }),
+        ]));
+        expect(payload.documents.map((item: any) => item.relativePath)).toEqual([
+            'Same [same-1].md',
+            'Same [same-2].md',
+        ]);
     });
 
     it('exposes asset management actions in the grouped schema', () => {
@@ -122,6 +192,7 @@ describe('file tool asset actions', () => {
         expect(actionDescription).toContain('save_doc_as_template');
         expect(actionDescription).toContain('list_unused_assets');
         expect(actionDescription).toContain('get_doc_assets');
+        expect(actionDescription).toContain('audit_image_refs');
         expect(actionDescription).toContain('get_image_ocr_text');
         expect(actionDescription).toContain('remove_unused_assets');
         expect(actionDescription).toContain('rename_asset');
@@ -446,6 +517,33 @@ describe('file tool asset actions', () => {
             assetType: 'image',
             assets: ['assets/cover.png'],
             count: 1,
+        });
+    });
+
+    it('audits expected image references without reading or repairing local files', async () => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getDocImageAssets).mockResolvedValueOnce([
+            'assets/cover-20260813120000-abcdefg.png',
+            'assets/extra.png',
+        ]);
+
+        const result = await callFileTool(client, {
+            action: 'audit_image_refs',
+            id: 'doc-1',
+            expectedRefs: ['assets/cover.png', 'assets/missing.png'],
+        }, config.file, {} as never);
+
+        expect(fileApi.getDocImageAssets).toHaveBeenCalledWith(client, 'doc-1');
+        expect(parseResult(result)).toEqual({
+            id: 'doc-1',
+            expectedRefs: ['assets/cover.png', 'assets/missing.png'],
+            actualRefs: ['assets/cover-20260813120000-abcdefg.png', 'assets/extra.png'],
+            missingRefs: ['assets/missing.png'],
+            extraRefs: ['assets/extra.png'],
+            expectedCount: 2,
+            actualCount: 2,
+            ok: false,
+            comparison: 'multiset basename; each occurrence is matched once, and SiYuan timestamp/id suffixes are ignored for matching',
         });
     });
 
