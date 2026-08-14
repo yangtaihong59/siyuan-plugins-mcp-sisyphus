@@ -13,7 +13,7 @@ Related pages:
 
 | Group | Actions |
 |------|---------|
-| Create and read | `create`, `lookup`, `get_doc`, `get_outline` |
+| Create and read | `create`, `lookup`, `ensure_link_targets`, `get_doc`, `get_outline` |
 | Tree navigation | `get_child_blocks`, `get_child_docs`, `list_tree`, `search_docs` |
 | Metadata and mutations | `rename`, `move`, `reorder`, `remove`, `set_attr`, `duplicate` |
 | Daily note / conversion | `create_daily_note`, `heading_to_doc`, `doc_to_heading` |
@@ -22,6 +22,8 @@ Related pages:
 
 - `create` takes either a human-readable `path`, or `parentPath` + `title`; omit `markdown` to create an empty document. Prefer `path` for child documents. The `parentPath` + `title` mode accepts either a human-readable parent path or a storage path ending in `.sy` returned by `lookup`.
 - `lookup` resolves by `id`, storage `path`, or human-readable `hpath` / `hPath`; use `include` to request `id`, `ids`, `path`, `hpath`, or `docInfo`.
+- `ensure_link_targets` provisions a reusable import link map inside one exact scope: `notebook` + direct-parent `parentId`. `resolve` and `reuse` accept only explicit direct-child document IDs. `create` accepts explicit new titles, but never treats a matching existing title as identity: it reports `same_title_child_requires_explicit_id` in `unresolved` instead. Every resolved or created output includes exact `id`, notebook, storage `path`, and `hPath` readback.
+- `ensure_link_targets(dryRun=true)` is valid only for `mode="create"`; it inspects and reports `wouldCreate` without mutation. `resolve` and `reuse` are read-only discovery operations. A real `create` follows the normal two-call contract: preflight with `validateOnly=true`, then exactly one request with a fresh UUIDv7 `requestId` and returned `expectedStructureHash`. Do not retry after an unknown transport outcome: inspect or reuse the original request ID. The action never automatically removes documents it created.
 - The returned `idPath` includes available `id` / `ids`. When several documents share the same hpath, `include: ["ids"]` returns all matching IDs; the tool includes a SQL fallback.
 - `rename`, `remove`, and `move` often need a storage path if you are not using document IDs.
 - `reorder` takes a notebook or parent-document `parentID` plus `orderedIDs`. The array must contain every visible direct child document ID exactly once. It enables custom notebook sorting (`sortMode: 6`) and does not move, rename, or edit any document.
@@ -44,6 +46,7 @@ Related pages:
 
 - `remove` and `move` require explicit confirmation.
 - Always resolve document path type before mutating by path.
+- Never use a title search result as a link target. Re-run `ensure_link_targets` in `resolve` or `reuse` mode with the exact ID returned by an earlier successful result.
 
 ## Examples
 
@@ -66,18 +69,32 @@ MCP:
 }
 ```
 
+```json
+{
+  "action": "ensure_link_targets",
+  "notebook": "<notebook-id>",
+  "parentId": "<parent-document-id>",
+  "mode": "reuse",
+  "targets": [{ "key": "source-index", "id": "<direct-child-document-id>" }]
+}
+```
+
+For a new target, call the same action first with `mode: "create"` and `validateOnly: true`, then commit exactly once using the returned `expectedStructureHash`, a fresh UUIDv7 `requestId`, and an explicit title target. A same-title child is an unresolved result, not an implicit reuse.
+
 CLI:
 
 ```bash
 siyuan document create --notebook <notebook-id> --path "/Inbox/Weekly Note" --markdown "Weekly report body"
 siyuan document lookup --id <doc-id> --include path
 siyuan document reorder --parent-id <notebook-or-parent-doc-id> --ordered-ids-json '["<doc-id-1>","<doc-id-2>"]'
+siyuan document ensure_link_targets --notebook <notebook-id> --parent-id <parent-document-id> --mode reuse --targets-json '[{"key":"source-index","id":"<direct-child-document-id>"}]'
 ```
 
 ## Action List
 
 - `create`
 - `lookup`
+- `ensure_link_targets`
 - `rename`
 - `remove`
 - `move`

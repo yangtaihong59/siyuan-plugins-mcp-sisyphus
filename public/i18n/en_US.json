@@ -410,6 +410,8 @@
     "desc_document_action_resolve": "Resolve document IDs, storage paths, hierarchical paths, and optional document info.",
     "document_action_lookup": "Lookup Document Reference",
     "desc_document_action_lookup": "Look up document IDs, storage paths, human-readable paths, and metadata.",
+    "document_action_ensure_link_targets": "Ensure Link Targets",
+    "desc_document_action_ensure_link_targets": "Resolve or reuse explicit direct-child document IDs, or create explicitly named missing child targets with exact readback.",
     "document_action_get_child_blocks": "Get Child Blocks",
     "desc_document_action_get_child_blocks": "Get direct child blocks by document ID.",
     "document_action_get_child_docs": "Get Child Documents",

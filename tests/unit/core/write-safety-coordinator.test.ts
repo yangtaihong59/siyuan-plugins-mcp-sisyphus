@@ -18,6 +18,122 @@ function success(payload: Record<string, unknown>) {
 }
 
 describe('write safety coordinator', () => {
+    it('preflights an explicit link-target scope, rejects a changed child list, commits once, and replays the request ID', async () => {
+        const parentId = '20260813020101-parent01';
+        const existingId = '20260813020102-child001';
+        const createdId = '20260813020103-child002';
+        let children = [{ id: existingId, name: 'Existing target', path: `/${parentId}/${existingId}.sy`, hPath: '/Imports/Existing target' }];
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                const id = body?.id as string | undefined;
+                if (endpoint === '/api/filetree/getPathByID') {
+                    if (id === parentId) return { notebook: 'nb-1', path: `/${parentId}.sy` };
+                    if (id === existingId) return { notebook: 'nb-1', path: `/${parentId}/${existingId}.sy` };
+                    if (id === createdId) return { notebook: 'nb-1', path: `/${parentId}/${createdId}.sy` };
+                }
+                if (endpoint === '/api/filetree/getHPathByID') {
+                    if (id === parentId) return '/Imports';
+                    if (id === existingId) return '/Imports/Existing target';
+                    if (id === createdId) return '/Imports/New target';
+                }
+                if (endpoint === '/api/block/getDocInfo') {
+                    if (id === parentId) return { id, rootID: id, name: 'Imports' };
+                    if (id === existingId) return { id, rootID: id, name: 'Existing target' };
+                    if (id === createdId) return { id, rootID: id, name: 'New target' };
+                }
+                if (endpoint === '/api/filetree/listDocsByPath') {
+                    return { box: 'nb-1', path: `/${parentId}.sy`, files: children.map((child) => ({ ...child, box: 'nb-1' })) };
+                }
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'ensure_link_targets',
+            notebook: 'nb-1',
+            parentId,
+            mode: 'create',
+            targets: [{ key: 'new', title: 'New target' }],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        expect(preflight.preconditionField).toBe('expectedStructureHash');
+        expect(preflight.structureHash).toMatch(/^sha256:v1:/);
+
+        // A new sibling changes the full authority scope, so the create is
+        // stopped before dispatch rather than deciding by a title search.
+        children = [...children, { id: '20260813020104-child003', name: 'Concurrent target', path: `/${parentId}/20260813020104-child003.sy`, hPath: '/Imports/Concurrent target' }];
+        const blocked = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId: uuidV7(Date.now(), '000000000041'), expectedStructureHash: preflight.structureHash },
+            strictMode: true, execute: vi.fn(),
+        }));
+        expect(blocked.error.code).toBe('state_changed');
+
+        const fresh = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            children = [...children, { id: createdId, name: 'New target', path: `/${parentId}/${createdId}.sy`, hPath: '/Imports/New target' }];
+            return success({
+                success: true,
+                created: 1,
+                linkMap: { new: { id: createdId, notebook: 'nb-1', path: `/${parentId}/${createdId}.sy`, hPath: '/Imports/New target' } },
+            });
+        });
+        const requestId = uuidV7(Date.now(), '000000000042');
+        const committed = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            strictMode: true, execute,
+        }));
+        expect(committed.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true });
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const replayed = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            strictMode: true, execute,
+        }));
+        expect(replayed.replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const unknownArgs = {
+            ...args,
+            targets: [{ key: 'unknown', title: 'Unknown target' }],
+        };
+        const unknownPreflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const uncertainExecute = vi.fn(async () => { throw new Error('connection dropped after create dispatch'); });
+        const unknownRequestId = uuidV7(Date.now(), '000000000043');
+        const unknown = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            strictMode: true, execute: uncertainExecute,
+        }));
+        expect(unknown).toMatchObject({
+            transactionState: 'unknown',
+            error: { code: 'outcome_unknown' },
+        });
+
+        const unknownReplay = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            strictMode: true, execute: uncertainExecute,
+        }));
+        expect(unknownReplay.error.code).toBe('outcome_unknown');
+        expect(uncertainExecute).toHaveBeenCalledTimes(1);
+    });
+
     it('observes timeline rollback changes through live document markdown', async () => {
         const documentID = '20260812000000-timeline';
         const blockID = '20260812000001-timeline';

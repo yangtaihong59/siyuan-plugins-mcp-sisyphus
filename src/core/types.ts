@@ -284,6 +284,69 @@ export const DocumentLookupSchema = z.object({
     }
 });
 
+const DocumentLinkTargetSchema = z.object({
+    key: z.string().trim().min(1).max(256).describe('Stable caller key used in the returned link map. It is not resolved as a document title.'),
+    id: z.string().trim().min(1).optional().describe('Explicit existing document ID. Required for mode="resolve" and mode="reuse".'),
+    title: z.string().trim().min(1).max(256).optional().describe('Explicit title for a new direct child document. Allowed only for mode="create" and never used to adopt an existing document.'),
+}).superRefine((value, ctx) => {
+    if (value.id && value.title) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Each link target must provide either id or title, not both.',
+        });
+    }
+    if (value.title && /[\\/]/.test(value.title)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['title'],
+            message: 'Link-target titles must be one direct child name and cannot contain / or \\.',
+        });
+    }
+});
+
+/**
+ * This contract intentionally has no title lookup branch. A caller first
+ * resolves a concrete parent ID, then either supplies exact existing target
+ * IDs or explicitly asks to create named children. Matching a duplicate title
+ * only fails closed; it never turns into an implicit reuse decision.
+ */
+export const DocumentEnsureLinkTargetsSchema = z.object({
+    action: z.literal('ensure_link_targets'),
+    notebook: z.string().trim().min(1).describe('Explicit notebook ID that must own the parent document and every returned target.'),
+    parentId: z.string().trim().min(1).describe('Explicit parent document ID. Only direct child documents of this resolved parent are in scope.'),
+    mode: z.enum(['resolve', 'reuse', 'create']).describe('resolve/reuse accept exact existing IDs without title fallback; create accepts explicit new titles and refuses to adopt same-title children.'),
+    targets: z.array(DocumentLinkTargetSchema).min(1).max(100).describe('Explicit link targets. keys must be unique; IDs are identities, while titles are only new-document names.'),
+    markdown: z.string().optional().describe('Optional Markdown body for every target created by mode="create". Existing targets are never edited.'),
+    dryRun: z.boolean().optional().describe('Plan and inspect the explicit scope without creating documents. For strict creation preflight, use validateOnly=true instead.'),
+}).superRefine((value, ctx) => {
+    const keys = new Set<string>();
+    const titles = new Set<string>();
+    for (const [index, target] of value.targets.entries()) {
+        if (keys.has(target.key)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'key'], message: 'Link-target keys must be unique.' });
+        }
+        keys.add(target.key);
+        if (value.mode === 'create' && !target.title) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'title'], message: 'mode="create" requires an explicit title for every target.' });
+        }
+        if (value.mode === 'create' && target.title) {
+            if (titles.has(target.title)) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'title'], message: 'mode="create" target titles must be unique within one request.' });
+            }
+            titles.add(target.title);
+        }
+        if (value.mode !== 'create' && !target.id) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'id'], message: `mode="${value.mode}" requires an explicit existing document ID for every target.` });
+        }
+    }
+    if (value.mode !== 'create' && value.markdown !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['markdown'], message: 'markdown is only valid for mode="create"; resolve/reuse never edit targets.' });
+    }
+    if (value.dryRun === true && value.mode !== 'create') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['dryRun'], message: 'dryRun is only valid for mode="create"; resolve and reuse are already read-only.' });
+    }
+});
+
 export const DocumentRenameSchema = z.object({
     action: z.literal("rename"),
     title: z.string().describe("New document title"),

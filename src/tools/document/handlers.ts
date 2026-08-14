@@ -8,6 +8,7 @@ import type { DocumentAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
 import {
     DocumentCreateSchema,
+    DocumentEnsureLinkTargetsSchema,
     DocumentCreateDailyNoteSchema,
     DocumentDocToHeadingSchema,
     DocumentDuplicateSchema,
@@ -25,6 +26,15 @@ import {
     DocumentSearchDocsSchema,
     DocumentSetAttrSchema,
 } from '../../core/types';
+import {
+    findScopedLinkTarget,
+    linkTargetError,
+    readLinkTargetDocumentIdentity,
+    readLinkTargetScope,
+    scopedLinkTargetTitleExists,
+    type LinkTargetDocumentIdentity,
+    type LinkTargetScope,
+} from '../../core/document-link-targets';
 import {
     ensurePermissionForDocumentId,
     ensurePermissionForNotebook,
@@ -460,6 +470,175 @@ const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     return createJsonResult(createLookupPathResult(result));
 };
 
+interface LinkTargetResult {
+    key: string;
+    disposition: 'created' | 'resolved' | 'reused';
+    id: string;
+    notebook: string;
+    path: string;
+    hPath: string;
+    title?: string;
+}
+
+interface UnresolvedLinkTarget {
+    key: string;
+    id?: string;
+    title?: string;
+    reason: string;
+}
+
+function toLinkTargetResult(
+    key: string,
+    disposition: LinkTargetResult['disposition'],
+    identity: LinkTargetDocumentIdentity,
+): LinkTargetResult {
+    return {
+        key,
+        disposition,
+        id: identity.id,
+        notebook: identity.notebook,
+        path: identity.path,
+        hPath: identity.hPath,
+        ...(identity.name ? { title: identity.name } : {}),
+    };
+}
+
+function serializeLinkTargetScope(scope: LinkTargetScope): Record<string, unknown> {
+    return {
+        notebook: scope.parent.notebook,
+        parentId: scope.parent.id,
+        parentPath: scope.parent.path,
+        parentHPath: scope.parent.hPath,
+    };
+}
+
+async function readCreatedLinkTarget(
+    client: SiYuanClient,
+    notebook: string,
+    parentId: string,
+    createdId: string,
+): Promise<LinkTargetDocumentIdentity> {
+    let lastError: unknown;
+    // Creation can return before the file-tree index exposes HPath. This is
+    // a bounded readback wait only: after the first create call we never send
+    // that write again, because a response loss must not make a duplicate.
+    for (const delay of [0, 80, 160, 320, 640]) {
+        if (delay > 0) await sleep(delay);
+        try {
+            const identity = await readLinkTargetDocumentIdentity(client, createdId, notebook);
+            const currentScope = await readLinkTargetScope(client, { notebook, parentId });
+            if (!findScopedLinkTarget(currentScope, createdId)) {
+                throw linkTargetError(
+                    'created_target_outside_scope',
+                    `Created target ${createdId} did not read back as a direct child of explicit parent ${parentId}.`,
+                );
+            }
+            return identity;
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw linkTargetError(
+        'created_target_readback_failed',
+        `Created link target ${createdId} could not be confirmed by exact ID/path/HPath and parent-child readback. Do not retry creation automatically: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    );
+}
+
+/**
+ * Provision a link map without title discovery. `resolve` and `reuse` both
+ * require IDs from a previous exact readback; their separate dispositions let
+ * import callers preserve whether they merely verified a map or intentionally
+ * reused it. `create` accepts names only for new direct children and fails
+ * closed when the current scope already has that name.
+ */
+const handleEnsureLinkTargets: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = DocumentEnsureLinkTargetsSchema.parse(rawArgs);
+    // dryRun performs the same bounded reads but deliberately never reaches
+    // createDoc, so requiring write permission here would falsely make a
+    // no-mutation inspection unavailable to read-only import callers.
+    const required = parsed.mode === 'create' && parsed.dryRun !== true ? 'write' : 'read';
+    const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, required);
+    if (denied) return denied;
+
+    const scope = await readLinkTargetScope(client, {
+        notebook: parsed.notebook,
+        parentId: parsed.parentId,
+    });
+    const created: LinkTargetResult[] = [];
+    const resolved: LinkTargetResult[] = [];
+    const reused: LinkTargetResult[] = [];
+    const unresolved: UnresolvedLinkTarget[] = [];
+    const wouldCreate: Array<{ key: string; title: string }> = [];
+
+    if (parsed.mode !== 'create') {
+        const disposition = parsed.mode === 'resolve' ? 'resolved' : 'reused';
+        for (const target of parsed.targets) {
+            const scoped = findScopedLinkTarget(scope, target.id!);
+            if (!scoped) {
+                unresolved.push({
+                    key: target.key,
+                    id: target.id,
+                    reason: 'target_not_direct_child_of_explicit_parent',
+                });
+                continue;
+            }
+            const identity = await readLinkTargetDocumentIdentity(client, scoped.id, parsed.notebook);
+            const result = toLinkTargetResult(target.key, disposition, identity);
+            if (parsed.mode === 'resolve') resolved.push(result);
+            else reused.push(result);
+        }
+    } else {
+        for (const target of parsed.targets) {
+            const title = target.title!;
+            if (scopedLinkTargetTitleExists(scope, title)) {
+                unresolved.push({
+                    key: target.key,
+                    title,
+                    reason: 'same_title_child_requires_explicit_id',
+                });
+                continue;
+            }
+            if (parsed.dryRun === true) {
+                wouldCreate.push({ key: target.key, title });
+                continue;
+            }
+            const createdId = await documentApi.createDoc(
+                client,
+                parsed.notebook,
+                `${scope.parent.hPath.replace(/\/+$/, '')}/${title}`,
+                parsed.markdown ?? '',
+            );
+            const identity = await readCreatedLinkTarget(client, parsed.notebook, parsed.parentId, createdId);
+            created.push(toLinkTargetResult(target.key, 'created', identity));
+        }
+    }
+
+    const linkMap = Object.fromEntries(
+        [...created, ...resolved, ...reused].map((target) => [target.key, {
+            id: target.id,
+            notebook: target.notebook,
+            path: target.path,
+            hPath: target.hPath,
+        }]),
+    );
+    return applyUiRefresh(client, createJsonResult({
+        success: unresolved.length === 0,
+        mode: parsed.mode,
+        dryRun: parsed.dryRun === true,
+        scope: serializeLinkTargetScope(scope),
+        created,
+        resolved,
+        reused,
+        unresolved,
+        ...(wouldCreate.length > 0 ? { wouldCreate } : {}),
+        linkMap,
+        createdCount: created.length,
+        resolvedCount: resolved.length,
+        reusedCount: reused.length,
+        unresolvedCount: unresolved.length,
+    }), created.length > 0 ? [{ type: 'reloadFiletree' }] : []);
+};
+
 const handleRename: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentRenameSchema.parse(rawArgs);
     if (parsed.id) {
@@ -859,6 +1038,7 @@ const handleDocToHeading: DocumentActionHandler = async ({ client, permMgr, rawA
 export const DOCUMENT_ACTION_HANDLERS: Record<DocumentAction, DocumentActionHandler> = {
     create: handleCreate,
     lookup: handleLookup,
+    ensure_link_targets: handleEnsureLinkTargets,
     rename: handleRename,
     remove: handleRemove,
     move: handleMove,

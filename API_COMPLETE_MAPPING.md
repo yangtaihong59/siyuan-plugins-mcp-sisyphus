@@ -4,7 +4,7 @@
 - **SiYuan API 总数**: 459 个端点
 - **MCP Tools**: 10 个
 - **已覆盖 API**: 119 个端点
-- **已覆盖 MCP Actions**: 117 个
+- **已覆盖 MCP Actions**: 118 个
 - **未覆盖 API**: 340 个端点
 - **整体覆盖率**: 25.9%
 
@@ -37,7 +37,7 @@
 | 19 | POST | `/api/block/getBlocksWordCount` | getBlocksWordCount | 块获取s字数统计 | block.word_count | ✅ 已覆盖 |
 | 20 | POST | `/api/block/getContentWordCount` | getContentWordCount | 块获取Content字数统计 | - | ❌ 未覆盖 |
 | 21 | POST | `/api/block/getRecentUpdatedBlocks` | getRecentUpdatedBlocks | 块获取RecentUpdatedBlocks | block.recent_updated | ✅ 已覆盖 |
-| 22 | POST | `/api/block/getDocInfo` | getDocInfo | 块获取Doc信息 | block.doc_info | ✅ 已覆盖 |
+| 22 | POST | `/api/block/getDocInfo` | getDocInfo | 块获取Doc信息 | block.doc_info<br>document.ensure_link_targets | ✅ 已覆盖 |
 | 23 | POST | `/api/block/getDocsInfo` | getDocsInfo | 块获取Docs信息 | block.docs_info | ✅ 已覆盖 |
 | 24 | POST | `/api/block/checkBlockExist` | checkBlockExist | 块检查Exist | block.exists | ✅ 已覆盖 |
 | 25 | POST | `/api/block/getUnfoldedParentID` | getUnfoldedParentID | 块获取UnfoldedParentID | - | ❌ 未覆盖 |
@@ -179,12 +179,12 @@
 | 序号 | 方法 | API 路径 | 处理函数 | 功能描述 | MCP 映射 | 状态 |
 |------|------|----------|----------|----------|----------|------|
 | 1 | POST | `/api/filetree/searchDocs` | searchDocs | 文档树搜索s | document.search_docs | ✅ 已覆盖 |
-| 2 | POST | `/api/filetree/listDocsByPath` | listDocsByPath | 文档树列出sBy路径 | notebook.get_child_docs<br>document.get_child_docs | ✅ 已覆盖 |
+| 2 | POST | `/api/filetree/listDocsByPath` | listDocsByPath | 文档树列出sBy路径 | notebook.get_child_docs<br>document.get_child_docs<br>document.ensure_link_targets | ✅ 已覆盖 |
 | 3 | POST | `/api/filetree/getDoc` | getDoc | 文档树获取 | document.get_doc | ✅ 已覆盖 |
 | 4 | POST | `/api/filetree/getDocCreateSavePath` | getDocCreateSavePath | 文档树获取CreateSave路径 | - | ❌ 未覆盖 |
 | 5 | POST | `/api/filetree/getRefCreateSavePath` | getRefCreateSavePath | 文档树获取引用CreateSave路径 | - | ❌ 未覆盖 |
 | 6 | POST | `/api/filetree/changeSort` | changeSort | 文档树changeSort | - | ❌ 未覆盖 |
-| 7 | POST | `/api/filetree/createDocWithMd` | createDocWithMd | 文档树创建WithMd | document.create | ✅ 已覆盖 |
+| 7 | POST | `/api/filetree/createDocWithMd` | createDocWithMd | 文档树创建WithMd | document.create<br>document.ensure_link_targets | ✅ 已覆盖 |
 | 8 | POST | `/api/filetree/createDailyNote` | createDailyNote | 文档树创建DailyNote | document.create_daily_note | ✅ 已覆盖 |
 | 9 | POST | `/api/filetree/createDoc` | createDoc | 文档树创建 | document.create | ✅ 已覆盖 |
 | 10 | POST | `/api/filetree/renameDoc` | renameDoc | 文档树重命名 | document.rename | ✅ 已覆盖 |
@@ -197,8 +197,8 @@
 | 17 | POST | `/api/filetree/duplicateDoc` | duplicateDoc | 文档树复制 | document.duplicate | ✅ 已覆盖 |
 | 18 | POST | `/api/filetree/getHPathByPath` | getHPathByPath | 文档树获取H路径By路径 | document.resolve | ✅ 已覆盖 |
 | 19 | POST | `/api/filetree/getHPathsByPaths` | getHPathsByPaths | 文档树获取H路径sBy路径s | - | ❌ 未覆盖 |
-| 20 | POST | `/api/filetree/getHPathByID` | getHPathByID | 文档树获取H路径ByID | document.resolve | ✅ 已覆盖 |
-| 21 | POST | `/api/filetree/getPathByID` | getPathByID | 文档树获取路径ByID | document.resolve | ✅ 已覆盖 |
+| 20 | POST | `/api/filetree/getHPathByID` | getHPathByID | 文档树获取H路径ByID | document.resolve<br>document.ensure_link_targets | ✅ 已覆盖 |
+| 21 | POST | `/api/filetree/getPathByID` | getPathByID | 文档树获取路径ByID | document.resolve<br>document.ensure_link_targets | ✅ 已覆盖 |
 | 22 | POST | `/api/filetree/getFullHPathByID` | getFullHPathByID | 文档树获取FullH路径ByID | - | ❌ 未覆盖 |
 | 23 | POST | `/api/filetree/getIDsByHPath` | getIDsByHPath | 文档树获取ID列表ByH路径 | document.resolve | ✅ 已覆盖 |
 | 24 | POST | `/api/filetree/doc2Heading` | doc2Heading | 文档树doc2Heading | document.doc_to_heading | ✅ 已覆盖 |

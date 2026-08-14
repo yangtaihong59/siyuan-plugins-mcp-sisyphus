@@ -398,6 +398,8 @@
     "desc_document_action_resolve": "解析文档 ID、存储路径、层级路径和可选文档信息。",
     "document_action_lookup": "查找文档引用",
     "desc_document_action_lookup": "查找文档 ID、存储路径、可读路径和元数据。",
+    "document_action_ensure_link_targets": "确保链接目标",
+    "desc_document_action_ensure_link_targets": "解析或复用明确的直属子文档 ID，或创建明确命名的缺失子目标并做精确读回。",
     "document_action_get_child_blocks": "获取子块",
     "desc_document_action_get_child_blocks": "通过文档 ID 获取直属子块。",
     "document_action_get_child_docs": "获取子文档",

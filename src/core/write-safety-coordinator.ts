@@ -4,6 +4,7 @@ import type { SiYuanClient } from '../api/client';
 import { WriteOutcomeUnknownError } from '../api/client';
 import { normalizeTemplatePath, readTemplateSource } from '../api/template';
 import { readPuppyStats } from './puppy-state';
+import { readLinkTargetScope } from './document-link-targets';
 import type { PermissionManager } from './permissions';
 import type { ToolResult } from '../tools/internal/shared';
 import {
@@ -377,6 +378,11 @@ function derivePostWriteProbeArgs(
     if (category === 'document' && action === 'duplicate' && payload && typeof payload.id === 'string') {
         return { ...args, id: payload.id };
     }
+    if (category === 'document' && action === 'ensure_link_targets' && payload && isRecord(payload.linkMap)) {
+        const resolvedTargetIds = Object.values(payload.linkMap)
+            .flatMap((value) => isRecord(value) && typeof value.id === 'string' ? [value.id] : []);
+        return { ...args, resolvedTargetIds };
+    }
     if (category === 'av' && action === 'duplicate' && payload && typeof payload.avID === 'string') {
         return {
             ...args,
@@ -560,6 +566,28 @@ async function probeCurrentState(
         await appendBlockRows(client, args, state);
     } else if (category === 'system') {
         state.system = await client.requestRead('/api/system/getConf', {});
+    } else if (category === 'document' && action === 'ensure_link_targets') {
+        const notebook = typeof args.notebook === 'string' ? args.notebook : '';
+        const parentId = typeof args.parentId === 'string' ? args.parentId : '';
+        if (!notebook || !parentId) {
+            throw safetyError('precondition_required', 'document.ensure_link_targets requires explicit notebook and parentId scope.');
+        }
+        const scope = await readLinkTargetScope(client, { notebook, parentId });
+        const declaredTargetIds = Array.isArray(args.targets)
+            ? args.targets.flatMap((target) => isRecord(target) && typeof target.id === 'string' ? [target.id] : [])
+            : [];
+        const resolvedTargetIds = Array.isArray(args.resolvedTargetIds)
+            ? args.resolvedTargetIds.filter((id): id is string => typeof id === 'string')
+            : [];
+        state.documentLinkTargetScope = {
+            notebookID: notebook,
+            parent: scope.parent,
+            // Creation must freeze the complete direct-child list, not a
+            // title search result, so same-title collisions and concurrent
+            // child creation invalidate the preflight structure credential.
+            children: scope.children,
+            declaredTargetIds: [...new Set([...declaredTargetIds, ...resolvedTargetIds])].sort(),
+        };
     } else {
         await appendBlockRows(client, args, state);
     }
@@ -948,6 +976,15 @@ function collectTargetSelectors(args: Record<string, unknown>): string[] {
         if (typeof value === 'string' && value.trim()) values.add(value.trim());
         if (Array.isArray(value)) {
             for (const item of value) if (typeof item === 'string' && item.trim()) values.add(item.trim());
+        }
+    }
+    if (typeof args.parentId === 'string' && args.parentId.trim()) values.add(args.parentId.trim());
+    if (Array.isArray(args.resolvedTargetIds)) {
+        for (const id of args.resolvedTargetIds) if (typeof id === 'string' && id.trim()) values.add(id.trim());
+    }
+    if (Array.isArray(args.targets)) {
+        for (const target of args.targets) {
+            if (isRecord(target) && typeof target.id === 'string' && target.id.trim()) values.add(target.id.trim());
         }
     }
     return [...values].sort();
