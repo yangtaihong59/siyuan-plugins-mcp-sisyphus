@@ -20,6 +20,20 @@
 
 `get_doc_assets` 是直接引用资源查看动作，只返回当前文档树直接引用的资源，不会展开查询嵌入块。需要查看完整文档内容和资源时，应使用 `extract_doc`。
 
+## 导出边界
+
+`export_md` 和 `export_resources` 是读取/导出动作，不是恢复动作。调用前先解析具体目标：`export_md` 使用文档 ID，`export_resources` 则要逐一核对每个工作区相对路径。多个文档或资源可能同名时，标题、搜索结果或凭记忆写出的路径都不够作为目标依据。
+
+- `export_md` 会把文档 Markdown 返回在工具结果中。它不会创建 repo/history 快照，也不会写本地文件。因此这是内存中的导出，内容可能经由调用者离开思源进程；只有确实需要这个外部副作用时才另行保存。
+- `export_resources` 打包显式提供的工作区路径。`assets/example.png` 这类常见资源写法会在调用内核前规范化为 `/data/assets/example.png`。返回的是文件级 ZIP，不是语义级文档备份；它本身不能恢复块 ID、引用、属性视图状态或文档树关系。
+- 不传 `outputPath` 时，`export_resources` 返回内核临时导出路径。传入 `outputPath` 后，handler 会读取这个 ZIP 并写入本地文件系统，这是外部副作用，需要明确确认。执行前要解析并复核目标位置，不能因为源操作是只读就把目标路径当成无害。
+
+按意图选择最窄的导出：文字检查用 `export_md`，选定工作区文件或便携资源包用 `export_resources`，需要连同单篇文档引用资源一起检查时用 `extract_doc`。这些动作都不会自动建立回退点。
+
+### 有界导出读回
+
+`export_md` 完成后，检查结果中的文档身份字段和内容，不要把 HTTP 成功 envelope 当成已经落盘的文件。`export_resources` 完成后，检查返回的临时路径或显式 `outputPath` 以及字节数；核对请求的路径集合，不要用无关目录列表代替。响应丢失时，先对精确目标/路径做一次读取，再决定是否重试；不要盲目重发一个可能已经生成本地文件的导出。
+
 ## 安全规则
 
 - `upload_asset` 需要确认，并会读取本地文件路径，属于二进制传输的显式例外。规范参数是 `assetsDirPath + localFilePath`；`file` 可作为 `localFilePath` 的简写，`assetsDirPath` 默认 `/assets/`。
