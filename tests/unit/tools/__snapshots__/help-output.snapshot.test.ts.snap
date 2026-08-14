@@ -2088,12 +2088,20 @@ For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"writ
   },
   "extension": {
     "actions": {
-      "list": {
+      "diagnose_plugin_mcp": {
         "actions": {
           "<official tool name>": {
             "description": "Forward one call to the selected official MCP tool. Calls are never retried.",
             "parameters": {
               "arguments": "object, required",
+            },
+          },
+          "diagnose_plugin_mcp": {
+            "description": "Refresh and inspect the official Source=plugin registry for one plugin without enabling, disabling, reloading, or invoking it.",
+            "parameters": {
+              "expectedState": "present|absent, optional",
+              "expectedToolNames": "string[], optional",
+              "pluginName": "string, required",
             },
           },
           "list": {
@@ -2102,8 +2110,95 @@ For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"writ
               "refresh": "boolean, optional",
             },
           },
+          "validate_package": {
+            "description": "Statically validate explicit plugin/theme/widget metadata and text files without reading host paths or changing runtime state.",
+            "parameters": {
+              "package": "object, required",
+              "runtime": "object, optional",
+            },
+          },
         },
-        "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation.",
+        "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation. validate_package and diagnose_plugin_mcp are local read-only diagnostics; neither installs, enables, trusts, reloads, nor invokes an extension.",
+        "detailsIncluded": false,
+        "discoveredBySource": {
+          "native": 0,
+          "plugin": 0,
+        },
+        "discoveredCount": 0,
+        "includeNativeTools": false,
+        "tool": "extension",
+      },
+      "list": {
+        "actions": {
+          "<official tool name>": {
+            "description": "Forward one call to the selected official MCP tool. Calls are never retried.",
+            "parameters": {
+              "arguments": "object, required",
+            },
+          },
+          "diagnose_plugin_mcp": {
+            "description": "Refresh and inspect the official Source=plugin registry for one plugin without enabling, disabling, reloading, or invoking it.",
+            "parameters": {
+              "expectedState": "present|absent, optional",
+              "expectedToolNames": "string[], optional",
+              "pluginName": "string, required",
+            },
+          },
+          "list": {
+            "description": "Inspect or refresh official MCP tool discovery.",
+            "parameters": {
+              "refresh": "boolean, optional",
+            },
+          },
+          "validate_package": {
+            "description": "Statically validate explicit plugin/theme/widget metadata and text files without reading host paths or changing runtime state.",
+            "parameters": {
+              "package": "object, required",
+              "runtime": "object, optional",
+            },
+          },
+        },
+        "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation. validate_package and diagnose_plugin_mcp are local read-only diagnostics; neither installs, enables, trusts, reloads, nor invokes an extension.",
+        "detailsIncluded": false,
+        "discoveredBySource": {
+          "native": 0,
+          "plugin": 0,
+        },
+        "discoveredCount": 0,
+        "includeNativeTools": false,
+        "tool": "extension",
+      },
+      "validate_package": {
+        "actions": {
+          "<official tool name>": {
+            "description": "Forward one call to the selected official MCP tool. Calls are never retried.",
+            "parameters": {
+              "arguments": "object, required",
+            },
+          },
+          "diagnose_plugin_mcp": {
+            "description": "Refresh and inspect the official Source=plugin registry for one plugin without enabling, disabling, reloading, or invoking it.",
+            "parameters": {
+              "expectedState": "present|absent, optional",
+              "expectedToolNames": "string[], optional",
+              "pluginName": "string, required",
+            },
+          },
+          "list": {
+            "description": "Inspect or refresh official MCP tool discovery.",
+            "parameters": {
+              "refresh": "boolean, optional",
+            },
+          },
+          "validate_package": {
+            "description": "Statically validate explicit plugin/theme/widget metadata and text files without reading host paths or changing runtime state.",
+            "parameters": {
+              "package": "object, required",
+              "runtime": "object, optional",
+            },
+          },
+        },
+        "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation. validate_package and diagnose_plugin_mcp are local read-only diagnostics; neither installs, enables, trusts, reloads, nor invokes an extension.",
         "detailsIncluded": false,
         "discoveredBySource": {
           "native": 0,
@@ -2114,9 +2209,9 @@ For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"writ
         "tool": "extension",
       },
     },
-    "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation.
+    "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation. validate_package and diagnose_plugin_mcp are local read-only diagnostics; neither installs, enables, trusts, reloads, nor invokes an extension.
 
-Currently exposed actions: help, list.",
+Currently exposed actions: help, list, validate_package, diagnose_plugin_mcp.",
     "overview": {
       "actions": {
         "<official tool name>": {
@@ -2125,14 +2220,29 @@ Currently exposed actions: help, list.",
             "arguments": "object, required",
           },
         },
+        "diagnose_plugin_mcp": {
+          "description": "Refresh and inspect the official Source=plugin registry for one plugin without enabling, disabling, reloading, or invoking it.",
+          "parameters": {
+            "expectedState": "present|absent, optional",
+            "expectedToolNames": "string[], optional",
+            "pluginName": "string, required",
+          },
+        },
         "list": {
           "description": "Inspect or refresh official MCP tool discovery.",
           "parameters": {
             "refresh": "boolean, optional",
           },
         },
+        "validate_package": {
+          "description": "Statically validate explicit plugin/theme/widget metadata and text files without reading host paths or changing runtime state.",
+          "parameters": {
+            "package": "object, required",
+            "runtime": "object, optional",
+          },
+        },
       },
-      "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation.",
+      "description": "Bridge tools exposed through the official SiYuan /mcp endpoint. Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled. Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details. Every exposed tool keeps its official name as the action. Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation. validate_package and diagnose_plugin_mcp are local read-only diagnostics; neither installs, enables, trusts, reloads, nor invokes an extension.",
       "detailsIncluded": false,
       "discoveredBySource": {
         "native": 0,

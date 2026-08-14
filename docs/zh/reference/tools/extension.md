@@ -58,6 +58,67 @@ siyuan extension document \
   --arguments-json '{"action":"read","id":"20240318112233-abc123"}'
 ```
 
+## 包与生命周期诊断
+
+`extension` 还提供两个 Sisyphus 自有的只读诊断 action。它们本身不会被当作官方 MCP 工具转发，也绝不接收宿主机文件系统路径；注册表诊断会明确以只读方式刷新一次官方 `tools/list`。
+
+### 校验显式提交的包内容
+
+在另行授权的安装或启用任务之前，使用 `validate_package`。传入候选 manifest，以及与包结构和可执行面有关的包内文本文件：
+
+```json
+{
+  "action": "validate_package",
+  "package": {
+    "type": "plugin",
+    "manifest": {
+      "name": "example-plugin",
+      "version": "1.0.0",
+      "minAppVersion": "3.7.0",
+      "displayName": {"default": "示例插件"},
+      "description": {"default": "示例"},
+      "kernels": ["darwin"]
+    },
+    "files": {
+      "index.js": "module.exports = class Example extends Plugin { onunload() {} };",
+      "kernel.js": "// 由调用方显式提交的候选源码"
+    }
+  },
+  "runtime": {
+    "appVersion": "3.7.3",
+    "backend": "darwin",
+    "frontend": "desktop"
+  }
+}
+```
+
+它检查共享元数据、`minAppVersion`、可选的 backend/frontend/kernel 兼容性、主题 `modes`、必需的 `theme.css`/`index.html`/`index.js`、不应人工写入的运行时 manifest 字段，以及可见的可执行面。对于插件，还会报告静态发现的 `onunload`、`siyuan.mcp.registerTool` 和 `unregisterTool` 调用。结果刻意只限静态层：包有效不等于已经安装、受信任、加载、运行、注册、重载或功能可用。
+
+`package.files` 只能使用相对文件名。该 action 不读取 `path`、不展开压缩包、不扫描目录、不安装包、不改变信任状态、不启用/禁用插件，也不重载思源。无论本机还是远程部署，都应通过 MCP/CLI 请求显式提交候选内容。
+
+### 读回插件 MCP 注册状态
+
+在独立授权的生命周期操作之后，使用 `diagnose_plugin_mcp` 强制刷新一次官方 `tools/list`，观察一个插件的内核 MCP 注册：
+
+```json
+{
+  "action": "diagnose_plugin_mcp",
+  "pluginName": "example-plugin",
+  "expectedToolNames": ["echo"],
+  "expectedState": "present"
+}
+```
+
+manifest 名会按当前思源规则转换——每个非字母数字字符均改成 `_`——因此本地名 `echo` 会按 `plugin__example_plugin__echo` 检查。响应只返回 `source="plugin"` 的注册表证据、匹配工具、可选的期望结果和明确的生命周期边界。
+
+| 观察结果 | 能支持的结论 | 不能支持的结论 |
+|---|---|---|
+| `validate_package` 静态结果 | 候选 metadata/文件形态和可见的可执行风险信号 | 来源可信、已受信任、已安装、已发现、已加载、运行中、已注册、已重载或功能正常 |
+| 新鲜的 `Source="plugin"` 注册表条目 | 该内核插件 MCP 工具在本次观察中已注册；可有限推断内核插件在运行 | 前端插件/UI 已加载、挂件 iframe 可用、每个工具都可用，或确实发生了重载 |
+| 新鲜的注册表缺失 | 该工具在本次观察中不存在 | 禁用、卸载、清理或重载已经成功完成 |
+
+两个诊断都不会调用插件 MCP handler。真实的重载/禁用测试仍是另一个需要明确授权的 live notebook 操作；随后必须针对正确表面读回：插件 MCP 看新鲜注册表，前端行为看真实 UI，挂件看 iframe，主题看对应外观表面。
+
 ## 安全与生命周期
 
 - 连接 `/mcp` 前会先通过 `/api/system/version` 检查思源版本；低于 3.7.0 时直接标记不支持，不访问官方端点。

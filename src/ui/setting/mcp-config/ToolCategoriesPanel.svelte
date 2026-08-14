@@ -279,6 +279,8 @@
             iconSvg: ICON_SVGS.layers,
             actions: [
                 { key: "list", title: "List Official Tools", description: "Inspect or refresh plugin and native tools from the official SiYuan MCP endpoint." },
+                { key: "validate_package", title: "Validate Explicit Package", description: "Statically validate caller-supplied plugin, theme, or widget metadata and text files without reading any local package path or changing SiYuan." },
+                { key: "diagnose_plugin_mcp", title: "Diagnose Plugin MCP Registry", description: "Refresh and inspect Source=plugin registry entries for one plugin without enabling, disabling, reloading, or invoking it." },
             ],
         },
         {
@@ -384,6 +386,7 @@
             throw new Error(`Unknown tool category: ${category}`);
         }
         if (category !== "extension") return buildActionItems(definition);
+        const staticActionItems = buildActionItems(definition);
 
         const sourceCounts = extensionDiscovery.tools.reduce((counts, tool) => {
             counts[tool.source] += 1;
@@ -434,7 +437,7 @@
                 description: `[${source}] ${tool?.description ?? getLabel("extension_tool_unavailable", "Not present in the latest discovery result.")} ${safety}.`,
             };
         });
-        return [
+        return staticActionItems.concat([
             {
                 type: "checkbox",
                 key: "extension__include_native_tools",
@@ -466,7 +469,7 @@
                 },
             },
             ...dynamicItems,
-        ];
+        ]);
     }
 
     function toggleCategory(category: ToolCategory) {
@@ -492,7 +495,9 @@
 
     function countEnabledActions(category: ToolCategory) {
         if (category === "extension") {
-            return (config.extension.actions.list ? 1 : 0)
+            const staticDiagnostics = ACTIONS_BY_CATEGORY.extension
+                .filter((action) => config.extension.actions[action]).length;
+            return staticDiagnostics
                 + extensionDiscovery.tools.filter((tool) =>
                     !RESERVED_EXTENSION_ACTIONS.has(tool.name)
                     && (tool.source === "plugin" || config.extension.includeNativeTools)
@@ -540,7 +545,7 @@
             title: getLabel(definition.groupKey, definition.groupKey),
             enabledActions: countEnabledActions(definition.category),
             totalActions: definition.category === "extension"
-                ? 1 + extensionDiscovery.tools.filter((tool) =>
+                ? ACTIONS_BY_CATEGORY.extension.length + extensionDiscovery.tools.filter((tool) =>
                     !RESERVED_EXTENSION_ACTIONS.has(tool.name)
                     && (tool.source === "plugin" || config.extension.includeNativeTools)
                 ).length

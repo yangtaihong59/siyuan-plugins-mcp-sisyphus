@@ -140,6 +140,8 @@ export const EXTENSION_GUIDANCE: string[] = [
     'extension bridges tools from the official SiYuan /mcp endpoint and requires SiYuan 3.7.0 or newer.',
     'Plugin tools are exposed by default. Native SiYuan tools are exposed only when extension.includeNativeTools is enabled; external source="mcp" tools remain excluded.',
     'Use extension(action="list", refresh=true) to refresh discovery. While includeNativeTools is disabled, the response contains counts only; enable it to inspect tool names, sources, schemas, read-only declarations, and blocked state.',
+    'Use extension(action="validate_package") only with explicit metadata and relative package-file text. It never accepts a host path, scans a directory, installs/enables/trusts a package, or proves runtime loading.',
+    'Use extension(action="diagnose_plugin_mcp") after a separately authorized lifecycle operation to refresh and read back Source="plugin" registry entries. It does not trigger reload/disable or invoke a plugin tool; registry absence does not prove cleanup completed.',
     'Call a discovered tool with extension(action="<official tool name>", arguments={...}). Downstream parameters must stay inside arguments, including a downstream action field.',
     'Tools without readOnlyHint=true may mutate data or trigger side effects and require explicit user confirmation before calling.',
     'Forwarded official MCP tool calls are never retried. A transport error after dispatch means execution status is unknown and must be checked before retrying.',
@@ -572,6 +574,31 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         list: [{
             title: 'Refresh official MCP tool discovery',
             mcp: { action: 'list', refresh: true },
+        }],
+        validate_package: [{
+            title: 'Validate explicit plugin package content',
+            mcp: {
+                action: 'validate_package',
+                package: {
+                    type: 'plugin',
+                    manifest: {
+                        name: 'example-plugin',
+                        version: '1.0.0',
+                        displayName: { default: 'Example Plugin' },
+                        description: { default: 'Example package' },
+                    },
+                    files: { 'index.js': 'module.exports = class Example {}; ' },
+                },
+            },
+        }],
+        diagnose_plugin_mcp: [{
+            title: 'Read back plugin MCP registration',
+            mcp: {
+                action: 'diagnose_plugin_mcp',
+                pluginName: 'example-plugin',
+                expectedToolNames: ['echo'],
+                expectedState: 'present',
+            },
         }],
     },
     mascot: {},

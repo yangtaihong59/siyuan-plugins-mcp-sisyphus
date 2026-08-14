@@ -85,7 +85,7 @@ export const ACTION_SAFETY_POLICIES: {
         list_cards: read(), get_decks: read(), get_cards: read(), review_card: mutation('state'),
         create_card: mutation(), remove_card: mutation('state'),
     },
-    extension: { list: read() },
+    extension: { list: read(), validate_package: read(), diagnose_plugin_mcp: read() },
     mascot: { get_balance: read(), shop: read(), buy: mutation('state') },
     feedback: { submit: external() },
 };
@@ -103,7 +103,14 @@ export function getActionSafetyPolicy(
     action: string,
     args: Record<string, unknown> = {},
 ): ActionSafetyPolicy {
-    if (category === 'extension' && action !== 'list' && action !== 'help') return external();
+    // Dynamic official-MCP actions are external and may have unknown effects.
+    // The named Sisyphus diagnostics above are local/read-only exceptions and
+    // must remain declared in ACTION_SAFETY_POLICIES as the action set grows.
+    if (category === 'extension'
+        && action !== 'list'
+        && action !== 'validate_package'
+        && action !== 'diagnose_plugin_mcp'
+        && action !== 'help') return external();
     const policy = (ACTION_SAFETY_POLICIES[category] as Record<string, ActionSafetyPolicy>)[action];
     if (!policy) return read();
 
