@@ -1495,4 +1495,236 @@ describe('write safety coordinator', () => {
             error: { code: 'readback_mismatch' },
         });
     });
++    it('preflights an explicit link-target scope, rejects a changed child list, commits once, and replays the request ID', async () => {
+        const parentId = '20260813020101-parent01';
+        const existingId = '20260813020102-child001';
+        const createdId = '20260813020103-child002';
+        let children = [{ id: existingId, name: 'Existing target', path: `/${parentId}/${existingId}.sy`, hPath: '/Imports/Existing target' }];
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                const id = body?.id as string | undefined;
+                if (endpoint === '/api/filetree/getPathByID') {
+                    if (id === parentId) return { notebook: 'nb-1', path: `/${parentId}.sy` };
+                    if (id === existingId) return { notebook: 'nb-1', path: `/${parentId}/${existingId}.sy` };
+                    if (id === createdId) return { notebook: 'nb-1', path: `/${parentId}/${createdId}.sy` };
+                }
+                if (endpoint === '/api/filetree/getHPathByID') {
+                    if (id === parentId) return '/Imports';
+                    if (id === existingId) return '/Imports/Existing target';
+                    if (id === createdId) return '/Imports/New target';
+                }
+                if (endpoint === '/api/block/getDocInfo') {
+                    if (id === parentId) return { id, rootID: id, name: 'Imports' };
+                    if (id === existingId) return { id, rootID: id, name: 'Existing target' };
+                    if (id === createdId) return { id, rootID: id, name: 'New target' };
+                }
+                if (endpoint === '/api/filetree/listDocsByPath') {
+                    return { box: 'nb-1', path: `/${parentId}.sy`, files: children.map((child) => ({ ...child, box: 'nb-1' })) };
+                }
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'ensure_link_targets',
+            notebook: 'nb-1',
+            parentId,
+            mode: 'create',
+            targets: [{ key: 'new', title: 'New target' }],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        expect(preflight.preconditionField).toBe('expectedStructureHash');
+        expect(preflight.structureHash).toMatch(/^sha256:v1:/);
+
+        // A new sibling changes the full authority scope, so the create is
+        // stopped before dispatch rather than deciding by a title search.
+        children = [...children, { id: '20260813020104-child003', name: 'Concurrent target', path: `/${parentId}/20260813020104-child003.sy`, hPath: '/Imports/Concurrent target' }];
+        const blocked = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId: uuidV7(Date.now(), '000000000041'), expectedStructureHash: preflight.structureHash },
+            strictMode: true, execute: vi.fn(),
+        }));
+        expect(blocked.error.code).toBe('state_changed');
+
+        const fresh = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            children = [...children, { id: createdId, name: 'New target', path: `/${parentId}/${createdId}.sy`, hPath: '/Imports/New target' }];
+            return success({
+                success: true,
+                created: 1,
+                linkMap: { new: { id: createdId, notebook: 'nb-1', path: `/${parentId}/${createdId}.sy`, hPath: '/Imports/New target' } },
+            });
+        });
+        const requestId = uuidV7(Date.now(), '000000000042');
+        const committed = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            strictMode: true, execute,
+        }));
+        expect(committed.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true });
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const replayed = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            strictMode: true, execute,
+        }));
+        expect(replayed.replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const unknownArgs = {
+            ...args,
+            targets: [{ key: 'unknown', title: 'Unknown target' }],
+        };
+        const unknownPreflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const uncertainExecute = vi.fn(async () => { throw new Error('connection dropped after create dispatch'); });
+        const unknownRequestId = uuidV7(Date.now(), '000000000043');
+        const unknown = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            strictMode: true, execute: uncertainExecute,
+        }));
+        expect(unknown).toMatchObject({
+            transactionState: 'unknown',
+            error: { code: 'outcome_unknown' },
+        });
+
+        const unknownReplay = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            strictMode: true, execute: uncertainExecute,
+        }));
+        expect(unknownReplay.error.code).toBe('outcome_unknown');
+        expect(uncertainExecute).toHaveBeenCalledTimes(1);
+    });
+
+    function createReorderSafetyFixture() {
+        const notebookID = '20260813000000-nbook01';
+        const docs = [
+            { id: '20260813000001-doc0001', path: '/a.sy', hPath: '/A', sort: 10 },
+            { id: '20260813000002-doc0002', path: '/b.sy', hPath: '/B', sort: 20 },
+            { id: '20260813000003-doc0003', path: '/c.sy', hPath: '/C', sort: 30 },
+        ];
+        let order = docs.map((item) => item.id);
+        let sortMode = 2;
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: notebookID, name: 'Ideas', closed: false }] };
+                if (endpoint === '/api/notebook/getNotebookConf') return { box: notebookID, name: 'Ideas', conf: { sortMode, dailyNoteSavePath: '/' } };
+                if (endpoint === '/api/filetree/listDocsByPath') return { box: notebookID, files: order.map((id) => docs.find((item) => item.id === id)) };
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true, canDelete: () => true });
+        permMgr.getAll = vi.fn(() => ({ [notebookID]: 'rwd' }));
+        return {
+            notebookID,
+            docs,
+            client,
+            permMgr,
+            getOrder: () => [...order],
+            setOrder: (next: string[]) => { order = [...next]; },
+            setSortMode: (next: number) => { sortMode = next; },
+        };
+    }
+
+    it('uses a structure lease for reorder, rejects stale trees, commits once, and replays request IDs', async () => {
+        const fixture = createReorderSafetyFixture();
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const targetOrder = [fixture.docs[2].id, fixture.docs[0].id, fixture.docs[1].id];
+        const args = { action: 'reorder', parentID: fixture.notebookID, orderedIDs: targetOrder };
+        const firstPreflight = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+
+        expect(firstPreflight).toMatchObject({
+            validateOnly: true,
+            writeExecuted: false,
+            preconditionField: 'expectedStructureHash',
+        });
+        expect(firstPreflight.structureHash).toMatch(/^sha256:v1:[a-f0-9]{4,}$/);
+
+        fixture.setOrder([fixture.docs[1].id, fixture.docs[0].id, fixture.docs[2].id]);
+        const staleExecute = vi.fn();
+        const stale = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000041'),
+                expectedStructureHash: firstPreflight.structureHash,
+            },
+            strictMode: true,
+            execute: staleExecute,
+        }));
+        expect(stale.error).toMatchObject({ code: 'state_changed', revalidateRequired: true });
+        expect(staleExecute).not.toHaveBeenCalled();
+
+        fixture.setOrder(fixture.docs.map((item) => item.id));
+        const preflight = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            fixture.setOrder(targetOrder);
+            fixture.setSortMode(6);
+            return success({ success: true, changed: true, order: targetOrder });
+        });
+        const requestId = uuidV7(Date.now(), '000000000042');
+        const committed = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
+            args: { ...args, requestId, expectedStructureHash: preflight.structureHash }, strictMode: true, execute,
+        }));
+        expect(committed.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed', replayed: false });
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const replayed = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
+            args: { ...args, requestId, expectedStructureHash: preflight.structureHash }, strictMode: true, execute,
+        }));
+        expect(replayed.replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns readback_mismatch when reorder does not retain the exact target order', async () => {
+        const fixture = createReorderSafetyFixture();
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const targetOrder = [fixture.docs[2].id, fixture.docs[0].id, fixture.docs[1].id];
+        const args = { action: 'reorder', parentID: fixture.notebookID, orderedIDs: targetOrder };
+        const preflight = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const result = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000043'),
+                expectedStructureHash: preflight.structureHash,
+            },
+            strictMode: true,
+            execute: vi.fn(async () => {
+                fixture.setSortMode(6);
+                return success({ success: true, changed: true, order: targetOrder });
+            }),
+        }));
+
+        expect(result.error.code).toBe('readback_mismatch');
+        expect(result.error.cause).toContain('requested complete order');
+    });
 });
