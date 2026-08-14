@@ -49,6 +49,7 @@ export interface DocumentBlockWindow {
 
 export const DEFAULT_DOCUMENT_BLOCK_LIMIT = 50;
 export const DEFAULT_DOCUMENT_TOKEN_BUDGET = 2000;
+const SOFT_DOCUMENT_TOKEN_BUDGET_RATIO = 1.15;
 
 const SELF_CONTAINED_BLOCK_TYPES = new Set([
     'l',
@@ -186,6 +187,7 @@ function buildWindowFromMarkdownBlocks(
     const selectedRefs: DocumentBlockRef[] = [];
     let returnedBlocks = 0;
     let contentChars = 0;
+    let containsBody = false;
 
     if (blockStart < totalBlocks) {
         const end = Math.min(totalBlocks, blockStart + blockLimit);
@@ -193,9 +195,13 @@ function buildWindowFromMarkdownBlocks(
             const markdown = markdownBlocks[blockIndex] ?? '';
             const separatorChars = markdown.length > 0 && contentParts.length > 0 ? 2 : 0;
             const nextChars = contentChars + separatorChars + markdown.length;
-            const exceedsBudget = approximateTokensFromChars(nextChars) > tokenBudget;
+            const nextTokens = approximateTokensFromChars(nextChars);
+            const exceedsBudget = nextTokens > tokenBudget;
+            const isHeading = blocks[blockIndex]?.type === 'h';
+            const isLeadingHeadingOrFirstBody = contentParts.length > 0 && !containsBody;
+            const withinSoftBudget = nextTokens <= Math.ceil(tokenBudget * SOFT_DOCUMENT_TOKEN_BUDGET_RATIO);
 
-            if (markdown.length > 0 && exceedsBudget && contentParts.length > 0) break;
+            if (markdown.length > 0 && exceedsBudget && contentParts.length > 0 && !isLeadingHeadingOrFirstBody && !withinSoftBudget) break;
 
             returnedBlocks += 1;
             if (includeBlockIds) {
@@ -210,7 +216,9 @@ function buildWindowFromMarkdownBlocks(
             if (markdown.length > 0) {
                 contentParts.push(markdown);
                 contentChars = nextChars;
+                if (!isHeading) containsBody = true;
             }
+            if (exceedsBudget && containsBody) break;
         }
     }
 

@@ -281,14 +281,6 @@ async function normalizeTreeNodes(
     }));
 }
 
-function extractTreeArray(result: unknown): unknown[] {
-    if (Array.isArray(result)) return result;
-    if (result && typeof result === 'object' && Array.isArray((result as Record<string, unknown>).tree)) {
-        return (result as Record<string, unknown>).tree as unknown[];
-    }
-    return [];
-}
-
 function collectTreeIds(nodes: unknown): string[] {
     if (!Array.isArray(nodes)) return [];
     const ids: string[] = [];
@@ -299,6 +291,40 @@ function collectTreeIds(nodes: unknown): string[] {
         if (Array.isArray(typed.children)) ids.push(...collectTreeIds(typed.children));
     }
     return ids;
+}
+
+interface FsStorageTreeNode {
+    id: string;
+    children: FsStorageTreeNode[];
+}
+
+async function listStorageDocumentTree(
+    client: Parameters<FsActionHandler>[0]['client'],
+    notebook: string,
+    parentPath: string,
+    maxDepth = Number.POSITIVE_INFINITY,
+    depth = 1,
+    visited = new Set<string>(),
+): Promise<FsStorageTreeNode[]> {
+    const response = await documentApi.listDocsByPath(client, notebook, parentPath, {
+        maxListCount: 0,
+        showHidden: false,
+        ignoreMaxListHint: true,
+    });
+    const nodes = await Promise.all(response.files.map(async (file): Promise<FsStorageTreeNode | null> => {
+        const id = typeof file.id === 'string' && file.id.length > 0 ? file.id : undefined;
+        const storagePath = typeof file.path === 'string' && file.path.length > 0 ? file.path : undefined;
+        if (!id || !storagePath || visited.has(id)) return null;
+        visited.add(id);
+
+        const knownChildCount = file.subFileCount ?? file.count;
+        const shouldReadChildren = depth <= maxDepth && knownChildCount !== 0;
+        const children = shouldReadChildren
+            ? await listStorageDocumentTree(client, notebook, storagePath, maxDepth, depth + 1, visited)
+            : [];
+        return { id, children };
+    }));
+    return nodes.filter((node): node is FsStorageTreeNode => node !== null);
 }
 
 function escapeRegExp(value: string): string {
@@ -453,17 +479,18 @@ async function collectSearchDocuments(
     scope: FsScopePath,
 ): Promise<Array<{ id: string; notebookName: string }>> {
     if (scope.type === 'document') {
-        const tree = extractTreeArray(await documentApi.listDocTree(client, scope.notebook, scope.storagePath));
+        const tree = await listStorageDocumentTree(client, scope.notebook, scope.storagePath);
         return [...new Set([scope.id, ...collectTreeIds(tree)])].map((id) => ({ id, notebookName: scope.notebookName }));
     }
     if (scope.type === 'notebook') {
-        const tree = extractTreeArray(await documentApi.listDocTree(client, scope.notebook, '/'));
+        const tree = await listStorageDocumentTree(client, scope.notebook, '/');
         return [...new Set(collectTreeIds(tree))].map((id) => ({ id, notebookName: scope.notebookName }));
     }
     const notebooks = await listReadableNotebooks(client, permMgr);
     const docs: Array<{ id: string; notebookName: string }> = [];
     for (const notebook of notebooks) {
-        const tree = extractTreeArray(await documentApi.listDocTree(client, notebook.id, '/'));
+        if (notebook.closed) continue;
+        const tree = await listStorageDocumentTree(client, notebook.id, '/');
         docs.push(...[...new Set(collectTreeIds(tree))].map((id) => ({ id, notebookName: notebook.name })));
     }
     return docs;
@@ -553,21 +580,23 @@ const handleTree: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         const notebooks = await listReadableNotebooks(client, permMgr);
         const tree: Array<{ name: string; path: string; children: unknown[]; virtual?: boolean }> = VIRTUAL_ROOT_FILES.map((path) => createVirtualTreeNode(path));
         for (const notebook of notebooks) {
-            const result = await documentApi.listDocTree(client, notebook.id, '/');
+            const result = notebook.closed
+                ? []
+                : await listStorageDocumentTree(client, notebook.id, '/', maxDepth);
             tree.push({
                 name: notebook.name,
                 path: `/${notebook.name}`,
-                children: await normalizeTreeNodes(client, extractTreeArray(result), `/${notebook.name}`, notebook.name, maxDepth),
+                children: await normalizeTreeNodes(client, result, `/${notebook.name}`, notebook.name, maxDepth),
             });
         }
         return createJsonResult({ path: '/', tree, maxDepth });
     }
     const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
     if (denied) return denied;
-    const result = await documentApi.listDocTree(client, scope.notebook, scope.storagePath);
+    const result = await listStorageDocumentTree(client, scope.notebook, scope.storagePath, maxDepth);
     return createJsonResult({
         path: scope.canonicalPath,
-        tree: await normalizeTreeNodes(client, extractTreeArray(result), scope.canonicalPath, scope.notebookName, maxDepth),
+        tree: await normalizeTreeNodes(client, result, scope.canonicalPath, scope.notebookName, maxDepth),
         maxDepth,
     });
 };

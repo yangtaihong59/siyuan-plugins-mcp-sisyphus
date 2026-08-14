@@ -133,6 +133,7 @@ function createTextResult(result: ToolResult, value: unknown): ToolResult {
 function shouldBypassSlimming(ctx: SlimContext): boolean {
     return ctx.category === 'extension'
         || ctx.category === 'timeline'
+        || (ctx.category === 'search' && ctx.action === 'query_sql')
         || ctx.action === 'help'
         || (ctx.category === 'system' && ctx.action === 'conf');
 }
@@ -150,6 +151,8 @@ function slimError(error: Record<string, unknown>): Record<string, unknown> {
         'validActions',
         'validTopics',
         'topic',
+        'reason',
+        'restrictedNotebookCount',
         'expectedField',
         'expectedHash',
         'currentHash',

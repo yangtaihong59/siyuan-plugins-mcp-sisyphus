@@ -174,4 +174,21 @@ describe('slim document-window responses', () => {
             action: 'plugin__example__tool',
         })).toEqual(original);
     });
+
+    it('preserves every user-selected SQL column', () => {
+        const original = {
+            content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                    data: [{ box: 'notebook-1', content: 'raw content', count: 3 }],
+                    total: 1,
+                    totalRows: 1,
+                    showing: 1,
+                    truncated: false,
+                }),
+            }],
+        };
+
+        expect(slimToolResult(original, { category: 'search', action: 'query_sql' })).toEqual(original);
+    });
 });

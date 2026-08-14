@@ -192,7 +192,7 @@ describe('tool action contract coverage', () => {
     it('covers every fs action with a minimal endpoint contract', async () => {
         await runContracts('fs', FS_VARIANTS, callFsTool as ToolCaller, [
             { action: 'ls', args: { action: 'ls', path: '/Notebook/Doc 1' }, expectedEndpoint: '/api/filetree/listDocsByPath' },
-            { action: 'tree', args: { action: 'tree', path: '/Notebook' }, expectedEndpoint: '/api/filetree/listDocTree' },
+            { action: 'tree', args: { action: 'tree', path: '/Notebook' }, expectedEndpoint: '/api/filetree/listDocsByPath' },
             { action: 'read', args: { action: 'read', path: '/Notebook/Doc 1' }, expectedEndpoint: '/api/block/getBlockKramdown' },
             { action: 'write', args: { action: 'write', path: '/Notebook/New Doc', markdown: 'hello' }, expectedEndpoint: '/api/filetree/createDocWithMd' },
             { action: 'replace', args: { action: 'replace', path: '/Notebook/Doc 1', edit: { old: 'content', new: 'updated' } }, expectedEndpoint: '/api/block/getBlockKramdown' },

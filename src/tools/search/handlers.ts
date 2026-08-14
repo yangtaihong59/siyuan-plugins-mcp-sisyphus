@@ -1,3 +1,4 @@
+import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import type { SearchAction } from '../../core/config';
 import {
@@ -347,13 +348,34 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
                 { tool: SEARCH_TOOL_NAME, action: 'query_sql', rawArgs },
             );
         }
+        await permMgr.reload();
+        const notebookList = await notebookApi.listNotebooks(client);
+        const restrictedNotebookCount = notebookList.notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).length;
+        if (restrictedNotebookCount > 0) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: {
+                            type: 'permission_denied',
+                            code: 'raw_sql_unavailable_with_restricted_notebooks',
+                            reason: 'permission_scope_not_enforceable',
+                            restrictedNotebookCount,
+                            message: 'Raw SQL is unavailable while one or more notebooks are unreadable because aggregate, join, CTE, and subquery results cannot be safely post-filtered by notebook.',
+                            hint: 'Grant read access to every notebook before using query_sql, or use permission-aware search and document actions instead.',
+                        },
+                    }, null, 2),
+                }],
+                isError: true,
+            };
+        }
+
         const result = await searchApi.querySQL(client, stmt ?? '');
         const rows = Array.isArray(result) ? result : [];
-        const filtered = await filterItemsByPermission(client, rows, permMgr);
         const resolvedArgs = parsed.sql !== undefined
             ? buildResolvedArgs({ stmt }).resolvedArgs
             : undefined;
-        return createSqlQueryResult(filtered.items, filtered.removedCount, resolvedArgs);
+        return createSqlQueryResult(rows, 0, resolvedArgs);
     },
     get_backlinks: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchGetBacklinksSchema.parse(rawArgs);

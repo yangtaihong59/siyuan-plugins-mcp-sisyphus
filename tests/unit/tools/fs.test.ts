@@ -59,6 +59,16 @@ function createFsClient(options: { ambiguous?: boolean; missingPaths?: string[];
                 return '/Doc 1';
             }
             if (endpoint === '/api/filetree/listDocsByPath') {
+                const path = String(body?.path ?? '/');
+                if (path === '/child.sy') {
+                    return {
+                        box: body?.notebook ?? 'nb-1',
+                        files: [{ id: 'grand-1', box: body?.notebook ?? 'nb-1', path: '/grand.sy', name: 'Grand.sy', subFileCount: 0 }],
+                    };
+                }
+                if (path === '/grand.sy') {
+                    return { box: body?.notebook ?? 'nb-1', files: [] };
+                }
                 return {
                     box: body?.notebook ?? 'nb-1',
                     files: [
@@ -209,6 +219,36 @@ describe('fs tool', () => {
         expect(parsed.tree[1]).toEqual({ name: 'USER_RULES.md', path: USER_RULES_VIRTUAL_PATH, children: [], virtual: true });
         expect(parsed.tree[2].path).toBe('/Notebook');
         expect(JSON.stringify(parsed)).not.toContain('/Archive');
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/listDocTree', expect.anything());
+    });
+
+    it('keeps readable closed notebooks in the root tree without querying their document paths', async () => {
+        const client = createFsClient({ ambiguous: true });
+        client.request.mockImplementationOnce(async () => ({
+            notebooks: [
+                { id: 'nb-1', name: 'Notebook', closed: false },
+                { id: 'nb-2', name: 'Archive', closed: true },
+            ],
+        }));
+
+        const result = await callFsTool(client, { action: 'tree', path: '/' }, fsConfig(), createPermMgr());
+        const parsed = parseResult(result);
+
+        expect(parsed.tree.at(-1)).toEqual({ name: 'Archive', path: '/Archive', children: [] });
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/listDocsByPath', expect.objectContaining({ notebook: 'nb-2' }));
+    });
+
+    it('builds a notebook-root tree without calling listDocTree on slash', async () => {
+        const client = createFsClient();
+        const result = await callFsTool(client, { action: 'tree', path: '/Notebook' }, fsConfig(), createPermMgr());
+        const parsed = parseResult(result);
+
+        expect(parsed.tree[0]).toMatchObject({
+            name: 'Child',
+            path: '/Notebook/Doc 1/Child',
+            children: [{ name: 'Grand', path: '/Notebook/Doc 1/Child/Grand', children: [] }],
+        });
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/listDocTree', expect.anything());
     });
 
     it('reads markdown in complete block windows with continuation metadata', async () => {
@@ -1729,6 +1769,15 @@ describe('fs tool', () => {
             { path: USER_RULES_VIRTUAL_PATH, line: 1, text: 'Prefer budget summaries' },
             { path: '/Notebook/Doc 1', line: 2, text: 'budget line' },
         ]);
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/listDocTree', expect.anything());
+    });
+
+    it('searches a notebook root without calling listDocTree on slash', async () => {
+        const client = createFsClient();
+        const result = await callFsTool(client, { action: 'search', path: '/Notebook', query: 'budget' }, fsConfig(), createPermMgr());
+
+        expect(parseResult(result).data).toEqual([{ path: '/Notebook/Doc 1', line: 2, text: 'budget line' }]);
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/listDocTree', expect.anything());
     });
 
     it('denies scoped search when notebook permission is none', async () => {

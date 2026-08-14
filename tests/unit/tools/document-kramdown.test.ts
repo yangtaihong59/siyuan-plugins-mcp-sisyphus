@@ -84,6 +84,52 @@ describe('document block windows', () => {
         expect(window.estimatedTokens).toBeGreaterThan(window.tokenBudget);
     });
 
+    it('keeps leading headings with the first body block even when the complete block exceeds the budget', async () => {
+        const window = await readDocumentBlockWindow(createWindowClient(), 'doc', {
+            blockStart: 0,
+            blockLimit: 50,
+            tokenBudget: 3,
+        });
+
+        expect(window.content).toBe('## Overview\n\nParagraph text.');
+        expect(window.returnedBlocks).toBe(2);
+        expect(window.nextBlockStart).toBe(2);
+        expect(window.budgetExceeded).toBe(true);
+    });
+
+    it('keeps consecutive leading headings with the first body block', async () => {
+        const client = createMockClient({
+            request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/block/getChildBlocks') {
+                    return body?.id === 'doc'
+                        ? [{ id: 'h1', type: 'h', subtype: 'h1' }, { id: 'h2', type: 'h', subtype: 'h2' }, { id: 'body', type: 'p' }]
+                        : [];
+                }
+                if (endpoint === '/api/block/getBlockKramdown') {
+                    return { kramdown: { h1: '# One', h2: '## Two', body: 'Body text.' }[String(body?.id)] ?? '' };
+                }
+                throw new Error(`Unexpected endpoint: ${endpoint}`);
+            }),
+        });
+        const window = await readDocumentBlockWindow(client, 'doc', { tokenBudget: 1 });
+
+        expect(window.content).toBe('# One\n\n## Two\n\nBody text.');
+        expect(window.returnedBlocks).toBe(3);
+        expect(window.budgetExceeded).toBe(true);
+    });
+
+    it('allows a small complete-block overrun instead of wasting the remaining budget', async () => {
+        const window = await readDocumentBlockWindow(createWindowClient(), 'doc', {
+            blockStart: 1,
+            blockLimit: 50,
+            tokenBudget: 3,
+        });
+
+        expect(window.content).toBe('Paragraph text.');
+        expect(window.returnedBlocks).toBe(1);
+        expect(window.budgetExceeded).toBe(true);
+    });
+
     it('advances consecutive windows without overlap and returns an empty out-of-range window', async () => {
         const client = createWindowClient();
         const first = await readDocumentBlockWindow(client, 'doc', { blockStart: 3, blockLimit: 2 });

@@ -21,7 +21,7 @@ Related pages:
 ## Safety Rules
 
 - `find_replace` is the mutating exception in this tool and requires explicit confirmation.
-- `query_sql` is read-only and only accepts `SELECT` statements; add `LIMIT` yourself.
+- `query_sql` is read-only and only accepts `SELECT` statements; add `LIMIT` yourself. It preserves every selected column and is available only when every notebook is readable. If any notebook is unreadable, raw SQL is rejected before execution because aggregates, joins, CTEs, and subqueries cannot be safely post-filtered by notebook.
 - Search results are filtered by notebook permissions where applicable.
 - Full-text search can lag briefly behind recent writes because indexing is eventually consistent.
 - `semantic` requires SiYuan 3.7.0+, an enabled embedding model, and a completed native embedding index. Encrypted notebooks are not included in that index.
