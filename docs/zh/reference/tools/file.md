@@ -13,9 +13,9 @@
 
 | 分组 | 动作 |
 |------|---------|
-| 上传 / 导出 | `upload_asset`, `export_md`, `export_resources`, `extract_doc` |
+| 上传 / 导出 | `upload_asset`, `export_md`, `export_markdown_snapshot`, `export_resources`, `extract_doc` |
 | 模板 | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
-| 资源查看 | `get_doc_assets`, `get_image_ocr_text`, `list_unused_assets` |
+| 资源查看 | `get_doc_assets`, `audit_image_refs`, `get_image_ocr_text`, `list_unused_assets` |
 | 资源变更 | `remove_unused_assets`, `rename_asset`, `delete_asset` |
 
 `get_doc_assets` 是直接引用资源查看动作，只返回当前文档树直接引用的资源，不会展开查询嵌入块。需要查看完整文档内容和资源时，应使用 `extract_doc`。
@@ -33,6 +33,8 @@
 ### 有界导出读回
 
 `export_md` 完成后，检查结果中的文档身份字段和内容，不要把 HTTP 成功 envelope 当成已经落盘的文件。`export_resources` 完成后，检查返回的临时路径或显式 `outputPath` 以及字节数；核对请求的路径集合，不要用无关目录列表代替。响应丢失时，先对精确目标/路径做一次读取，再决定是否重试；不要盲目重发一个可能已经生成本地文件的导出。
+
+`audit_image_refs` 是只读的导入验收动作。调用方传入文档 ID 和源 Markdown 或预处理 Markdown 中的 expected 图片引用；Sisyphus 通过思源 HTTP API 读取文档直接引用的图片，并返回 expected、actual、missing、extra 引用。比较按规范化 basename 的多重集合进行：每个 occurrence 都保留，并且只能匹配另一侧的一个 occurrence。重复引用、或不同路径但 basename 相同的引用不会被静默合并；发生同 basename 碰撞时，输入顺序决定哪个 occurrence 会被报告为 missing 或 extra。思源追加的时间戳/ID 后缀、查询串和 fragment 只在匹配时忽略。它不读取本地 `.sy` 文件，也不会修复缺失或多余引用。
 
 ## 安全规则
 
@@ -63,6 +65,16 @@ MCP：
 ```
 
 这个结果只表示文档树直接资源；如果需要查看附件内容，请提取整个文档。
+
+只读审计导入后的图片引用：
+
+```json
+{
+  "action": "audit_image_refs",
+  "id": "<doc-id>",
+  "expectedRefs": ["assets/cover.png", "assets/figure.png"]
+}
+```
 
 将文档和资源提取到本地目录：
 
@@ -179,11 +191,18 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `save_doc_as_template`
 - `render`
 - `export_md`
+- `export_markdown_snapshot`
 - `export_resources`
 - `list_unused_assets`
 - `get_doc_assets`
+- `audit_image_refs`
 - `get_image_ocr_text`
 - `remove_unused_assets`
 - `rename_asset`
 - `delete_asset`
 - `extract_doc`
+### `export_markdown_snapshot`
+
+`file(action="export_markdown_snapshot")` 通过思源 API 返回一页确定性 Markdown 快照，不写主机文件系统，也不启动后台任务。请求必须明确给出 `notebookID`，并且在 `roots`（例如 `/`）与 `documentIDs` 中二选一；用 `limit` 和不透明的 `cursor` 分批、可续跑地获取结果。
+
+每个文档返回 API 解析出的 ID、标题、hPath、存储路径、安全的相对 `.md` 路径、canonical metadata，以及 `sha256:v1:` 元数据/正文哈希。排序固定为 hPath 后 ID。重复 hPath 会保留全部文档并用 ID 消歧；大小写不敏感路径冲突和 API/导出不一致会进入 `conflicts`/`errors`，不会猜测覆盖。这个响应是一页结果，不是已经落盘的整库备份；由调用方决定是否及在哪里保存。

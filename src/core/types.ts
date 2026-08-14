@@ -971,6 +971,19 @@ export const FileExportMdSchema = z.object({
     id: z.string().describe("Document ID to export"),
 });
 
+export const FileExportMarkdownSnapshotSchema = z.object({
+    action: z.literal("export_markdown_snapshot"),
+    notebookID: z.string().min(1).describe("Notebook ID that owns every exported document"),
+    roots: z.array(z.string().min(1)).min(1).max(64).optional().describe("Notebook-local storage paths to enumerate (use / for notebook roots)"),
+    documentIDs: z.array(z.string().min(1)).min(1).max(500).optional().describe("Explicit document IDs to export"),
+    limit: z.number().int().min(1).max(200).optional().describe("Documents returned in this page (default 20)"),
+    cursor: z.string().optional().describe("Opaque continuation cursor returned by the previous page"),
+}).superRefine((value, ctx) => {
+    if (Boolean(value.roots) === Boolean(value.documentIDs)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one of roots or documentIDs." });
+    }
+});
+
 export const FileExportResourcesSchema = z.object({
     action: z.literal("export_resources"),
     paths: z.array(z.string()).describe("Paths to export"),
@@ -986,6 +999,12 @@ export const FileGetDocAssetsSchema = z.object({
     action: z.literal("get_doc_assets"),
     id: z.string().describe("Document ID"),
     assetType: z.enum(['all', 'image']).optional().describe("Filter asset type: 'all' (default) returns all assets, 'image' returns only image assets."),
+});
+
+export const FileAuditImageRefsSchema = z.object({
+    action: z.literal("audit_image_refs"),
+    id: z.string().describe("Document ID whose direct image references should be inspected."),
+    expectedRefs: z.array(z.string().min(1)).max(4096).describe("Expected image references from source Markdown; no local file is read."),
 });
 
 export const FileGetImageOCRTextSchema = z.object({
