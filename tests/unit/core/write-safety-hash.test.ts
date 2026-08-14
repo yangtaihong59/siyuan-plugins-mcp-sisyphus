@@ -6,6 +6,7 @@ import {
     isVersionedWriteHash,
     parseWriteHashCredential,
 } from '@/core/write-safety-hash';
+import { hashCanonicalState } from '@/shared/canonical-state';
 
 describe('write state hashing', () => {
     it('is stable across object key order and Unicode input', () => {
@@ -19,6 +20,11 @@ describe('write state hashing', () => {
         expect(hashWriteState([1, 2])).not.toBe(hashWriteState([2, 1]));
         expect(hashWriteState({ value: undefined })).not.toBe(hashWriteState({ value: null }));
         expect(canonicalizeWriteState({ value: undefined })).toContain('undefined');
+    });
+
+    it('keeps renderer-visible canonical SHA-256 equal to the strict coordinator hash', async () => {
+        const value = { b: [undefined, '关系'], a: { n: -0, bytes: new Uint8Array([0, 255]) } };
+        await expect(hashCanonicalState(value)).resolves.toBe(hashWriteState(value));
     });
 
     it('accepts bare or versioned 4-64 digit credentials case-insensitively', () => {

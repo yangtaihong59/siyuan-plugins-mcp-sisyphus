@@ -171,10 +171,10 @@
 - `shop`
 - `buy`
 
-### `av`（12 个 action）
+### `av`（18 个 action）
 
 - `get`
-- `render_attribute_view`
+- `render`
 - `get_attribute_view_keys`
 - `get_attribute_view_filter_sort`
 - `search`
@@ -183,8 +183,14 @@
 - `add_column`
 - `remove_column`
 - `set_cells`
-- `duplicate_block`
+- `duplicate`
 - `get_primary_key_values`
+- `add_view`
+- `set_filters`
+- `set_sorts`
+- `set_group`
+- `set_column_visibility`
+- `set_column_order`
 
 ## 调用示例
 
@@ -426,6 +432,7 @@ siyuan-sisyphus search fulltext --keyword "待办事项" --json | jq '.data[].id
 siyuan-sisyphus system get-version
 siyuan-sisyphus flashcard get-decks
 siyuan-sisyphus av get --id 20240318112233-av123 --json
+siyuan-sisyphus av set-column-visibility --av-id <av-id> --block-id <exact-carrier-block-id> --view-id <carrier-view-id> --key-id <key-id> --hidden true --validate-only
 ```
 
 CLI 支持 kebab / camel / snake 混用 flag 命名、`--<key>-json` 传入复杂对象，以及 `--json` 输出便于管道处理。

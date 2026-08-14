@@ -5,7 +5,11 @@ import type { PermissionManager } from '../../core/permissions';
 import {
     AvActionSchema,
     AvAddColumnSchema,
+    AvAddViewSchema,
     AvAddRowsSchema,
+    AvConfigureRollupSchema,
+    AvConfigureTwoWayRelationSchema,
+    AvCreateFromTemplateSchema,
     AvDuplicateSchema,
     AvGetAttributeViewFilterSortSchema,
     AvGetAttributeViewKeysSchema,
@@ -15,7 +19,16 @@ import {
     AvRemoveRowsSchema,
     AvRenderSchema,
     AvSearchSchema,
+    AvSetColumnOptionsSchema,
     AvSetCellsSchema,
+    AvDuplicateRowsSchema,
+    AvSetColumnOrderSchema,
+    AvSetColumnVisibilitySchema,
+    AvSetFiltersSchema,
+    AvSetGroupSchema,
+    AvSetSortsSchema,
+    AvSetNewItemTemplatesSchema,
+    AvSetRelationSchema,
 } from '../../core/types';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
@@ -34,8 +47,21 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('add_column', AvAddColumnSchema, 'Add a column to a database.'),
     createZodActionVariant('remove_column', AvRemoveColumnSchema, 'Remove a column from a database.'),
     createZodActionVariant('set_cells', AvSetCellsSchema, 'Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write.'),
+    createZodActionVariant('set_column_options', AvSetColumnOptionsSchema, 'Replace one select or multi-select column\'s complete option list. Read the current options first: omitted entries are not preserved.'),
+    createZodActionVariant('duplicate_rows', AvDuplicateRowsSchema, 'Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations.'),
     createZodActionVariant('duplicate', AvDuplicateSchema, 'Duplicate an attribute view using SiYuan copy-as-mirror semantics; previousID overrides the insertion target.'),
     createZodActionVariant('get_primary_key_values', AvGetPrimaryKeyValuesSchema, 'Get primary key values for an attribute view.'),
+    createZodActionVariant('add_view', AvAddViewSchema, 'Add one reviewed table, gallery, or kanban view through a verified carrier.'),
+    createZodActionVariant('set_filters', AvSetFiltersSchema, 'Replace the complete filter array on the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_sorts', AvSetSortsSchema, 'Replace the complete sort array on the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_group', AvSetGroupSchema, 'Set or clear grouping on the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_column_visibility', AvSetColumnVisibilitySchema, 'Set one column\'s hidden state in the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_column_order', AvSetColumnOrderSchema, 'Replace the complete column order in the exact view selected by a verified carrier.'),
+    createZodActionVariant('set_new_item_templates', AvSetNewItemTemplatesSchema, 'Replace the complete ordered native new-item-template configuration after checking each field against the current AV schema.'),
+    createZodActionVariant('create_from_template', AvCreateFromTemplateSchema, 'Create one AV item from a native new-item template. The returned itemID is the AV row identity; blockID is the distinct bound document/block identity.'),
+    createZodActionVariant('configure_two_way_relation', AvConfigureTwoWayRelationSchema, 'Configure an existing source relation key and its stable two-way reverse relation key.'),
+    createZodActionVariant('configure_rollup', AvConfigureRollupSchema, 'Configure an existing rollup key from an existing relation key and destination key using native RollupCalc data.'),
+    createZodActionVariant('set_relation', AvSetRelationSchema, 'Set or clear one relation cell by AV item IDs, then verify the two-way reverse cell when configured.'),
 ];
 
 const avTool = defineTool<AvAction>({

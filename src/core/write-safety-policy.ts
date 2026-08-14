@@ -58,7 +58,15 @@ export const ACTION_SAFETY_POLICIES: {
         get: read(), render: mutation(), get_attribute_view_keys: read(), get_attribute_view_filter_sort: read(),
         search: read(), get_primary_key_values: read(),
         add_rows: mutation(), remove_rows: mutation('manifest'), add_column: mutation('state'),
-        remove_column: mutation('state'), set_cells: mutation('manifest'), duplicate: mutation('state'),
+        remove_column: mutation('state'), set_cells: mutation('manifest'),
+        set_column_options: mutation('state'), duplicate_rows: mutation('manifest'), duplicate: mutation('state'),
+        // View configuration is a W2 mutation even though it does not edit
+        // rows. A stale carrier can otherwise make the kernel fall back to a
+        // different view, so every action requires the strict state lease.
+        add_view: mutation('state'), set_filters: mutation('state'), set_sorts: mutation('state'),
+        set_group: mutation('state'), set_column_visibility: mutation('state'), set_column_order: mutation('state'),
+        set_new_item_templates: mutation('state'), create_from_template: mutation('state'),
+        configure_two_way_relation: mutation('state'), configure_rollup: mutation('state'), set_relation: mutation('state'),
     },
     file: {
         list_templates: read(), read_template: read(), render: read(), export_md: read(), export_markdown_snapshot: read(), list_unused_assets: read(),
