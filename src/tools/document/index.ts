@@ -59,8 +59,8 @@ const documentTool = defineTool<DocumentAction>({
         guidance: DOCUMENT_GUIDANCE,
         actionHints: DOCUMENT_ACTION_HINTS,
         propertyDescriptionOverrides: {
-            path: 'Path value. For action="create", use a human-readable target path such as /Inbox/Weekly Note. For action="lookup" and path-based rename/remove/move, use a storage path returned by document(action="lookup", id=..., include=["path"]); use hpath for human-readable lookup.',
-            parentPath: 'Parent path for title-based creation. Accepts a human-readable parent path such as /Inbox or a storage path ending in .sy returned by document(action="lookup").',
+            path: 'Path value. For action="create", use a human-readable target path RELATIVE TO THE NOTEBOOK ROOT (must start with /, MUST NOT include the notebook name; e.g., /Folder/Weekly Note, not /NotebookName/Folder/Weekly Note). For action="lookup", "list_tree", "search_docs", and path-based rename/remove/move, use a storage path returned by document(action="lookup", id=..., include=["path"]) (or / for list_tree notebook root); use hpath for human-readable lookup.',
+            parentPath: 'Parent path for title-based creation, RELATIVE TO THE NOTEBOOK ROOT. Accepts a human-readable path (must start with /, MUST NOT include the notebook name; e.g., /Folder) or a storage path ending in .sy returned by document(action="lookup").',
             fromPaths: 'Source storage paths returned by document(action="lookup").',
             toPath: 'Target storage path. Use the storage path of an existing destination document returned by document(action="lookup").',
         },
