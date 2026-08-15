@@ -37,6 +37,7 @@ import {
     AvSetRelationSchema,
 } from '../../core/types';
 import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, escapeSqlString, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
+import { computePageCount } from '../internal/pagination';
 import type { ToolActionHandler, ToolHandlerContext } from '../internal/define-tool';
 import { isMissingBlockError, translateError } from '../internal/errorTranslation';
 import { createJsonResult, createPaginatedResult, createWriteSuccessResult, type ToolResult } from '../internal/shared';
@@ -1467,8 +1468,21 @@ function pickString(record: Record<string, unknown>, keys: string[]): string | u
 function normalizeAvValue(value: unknown): unknown {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
     const record = value as Record<string, unknown>;
-    for (const key of ['content', 'text', 'number', 'isChecked', 'date', 'mSelect', 'select', 'block']) {
-        if (key in record) return record[key];
+    // 内核 Value 对象的内容在类型子对象里：text/number/date 等标量类解包出
+    // content/checked，多值/引用类（mSelect/relation/block 等）原样返回
+    for (const key of ['text', 'number', 'date', 'url', 'email', 'phone', 'template', 'created', 'updated', 'checkbox']) {
+        const sub = record[key];
+        if (sub !== undefined && sub !== null) {
+            if (typeof sub === 'object' && !Array.isArray(sub)) {
+                const subRecord = sub as Record<string, unknown>;
+                if ('content' in subRecord) return subRecord.content;
+                if ('checked' in subRecord) return subRecord.checked;
+            }
+            return sub;
+        }
+    }
+    for (const key of ['mSelect', 'select', 'block', 'relation', 'rollup', 'mAsset']) {
+        if (record[key] !== undefined && record[key] !== null) return record[key];
     }
     return value;
 }
@@ -1507,17 +1521,64 @@ function extractAvTableRows(rows: unknown[]): AvTableView['rows'] {
         for (const value of values) {
             if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
             const cell = value as Record<string, unknown>;
+            // 内核渲染 cell：{ id: 值ID, value: { keyID: 列ID, ... }, valueType }，
+            // 顶层 id 是值 ID 而非列 ID，列 keyID 必须从 value.keyID 取
+            const inner = cell.value && typeof cell.value === 'object' && !Array.isArray(cell.value)
+                ? cell.value as Record<string, unknown>
+                : undefined;
             const keyObj = cell.key && typeof cell.key === 'object' && !Array.isArray(cell.key)
                 ? cell.key as Record<string, unknown>
                 : {};
-            const columnID = pickString(cell, ['keyID', 'columnID', 'id']) ?? pickString(keyObj, ['id', 'keyID']);
+            const columnID = (inner ? pickString(inner, ['keyID']) : undefined)
+                ?? pickString(keyObj, ['id', 'keyID'])
+                ?? pickString(cell, ['keyID', 'columnID'])
+                ?? pickString(cell, ['id']);
             if (!columnID) continue;
-            cells[columnID] = normalizeAvValue(cell);
+            cells[columnID] = normalizeAvValue(inner ?? cell);
         }
         if (Object.keys(cells).length === 0) return [];
         const id = pickString(record, ['id', 'rowID', 'blockID']);
         return [{ ...(id ? { id } : {}), cells }];
     });
+}
+
+function extractViewItems(view: Record<string, unknown> | undefined): { items: unknown[]; total: number } {
+    if (!view) return { items: [], total: 0 };
+    const rows = Array.isArray(view.rows) ? view.rows
+        : Array.isArray(view.cards) ? view.cards
+            : [];
+    const total = typeof view.rowCount === 'number' ? view.rowCount as number
+        : typeof view.cardCount === 'number' ? view.cardCount as number
+            : rows.length;
+    if (rows.length > 0 || !Array.isArray(view.groups)) return { items: rows, total };
+    // 分组视图：内核把行移入 view.groups[].rows/cards 并清空顶层行（SetItems(nil)），
+    // 这里聚合各分组当前页的行；总数取顶层 rowCount/cardCount（分页前全量）
+    const items: unknown[] = [];
+    for (const group of view.groups) {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+        const groupView = group as Record<string, unknown>;
+        const groupRows = Array.isArray(groupView.rows) ? groupView.rows
+            : Array.isArray(groupView.cards) ? groupView.cards
+                : [];
+        items.push(...groupRows);
+    }
+    return { items, total };
+}
+
+function computeRenderPageCount(view: Record<string, unknown> | undefined, total: number, effectivePageSize: number): number {
+    const base = computePageCount(total, effectivePageSize);
+    if (!Array.isArray(view?.groups)) return base;
+    // 分组视图的每组独立分页，hasNextPage 以组内最大页数为准
+    let count = base;
+    for (const group of view.groups) {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+        const groupView = group as Record<string, unknown>;
+        const groupTotal = typeof groupView.rowCount === 'number' ? groupView.rowCount as number
+            : typeof groupView.cardCount === 'number' ? groupView.cardCount as number
+                : 0;
+        if (groupTotal > 0) count = Math.max(count, computePageCount(groupTotal, effectivePageSize));
+    }
+    return count;
 }
 
 function buildAvTableView(responseObj: Record<string, unknown>, rows: unknown[], total: number): AvTableView | undefined {
@@ -2216,28 +2277,33 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
     const responseObj = (response && typeof response === 'object' && !Array.isArray(response))
         ? response as Record<string, unknown>
         : {};
-    const rows = Array.isArray(responseObj.rows) ? responseObj.rows as unknown[] : [];
+    // SiYuan kernel nests the rendered view under `view`：
+    // 表格 { pageSize, columns, rows, rowCount }（分组时行移入 view.groups[].rows），
+    // 画廊/看板 { pageSize, cards, cardCount }
+    const view = (responseObj.view && typeof responseObj.view === 'object' && !Array.isArray(responseObj.view))
+        ? responseObj.view as Record<string, unknown>
+        : undefined;
+    const { items: rawRows, total } = extractViewItems(view);
     const page = parsed.page ?? 1;
-    const pageSize = parsed.pageSize ?? (rows.length || 1);
-    const kernelPageCount = typeof responseObj.pageCount === 'number'
-        ? responseObj.pageCount as number
-        : 1;
-    const total = typeof responseObj.rowCount === 'number'
-        ? responseObj.rowCount as number
-        : rows.length;
-    const table = buildAvTableView(responseObj, rows, total);
-    const { rows: _ignoredRows, pageCount: _ignoredPageCount, rowCount: _ignoredRowCount, ...restResponse } = responseObj;
-    void _ignoredRows;
-    void _ignoredPageCount;
-    void _ignoredRowCount;
-    const result = createPaginatedResult(rows, {
+    // 内核分页：请求 pageSize<1（含 -1）时使用视图默认页大小（view.pageSize）
+    const effectivePageSize = (typeof parsed.pageSize === 'number' && parsed.pageSize > 0)
+        ? parsed.pageSize
+        : (typeof view?.pageSize === 'number' && view.pageSize > 0)
+            ? view.pageSize
+            : (rawRows.length || 1);
+    const kernelPageCount = computeRenderPageCount(view, total, effectivePageSize);
+    // 表格布局才构建归一化 table；data 用归一化行（避免原始行/table/view 三份重复）
+    const isTableLayout = Array.isArray(view?.columns);
+    const table = isTableLayout ? buildAvTableView(view as Record<string, unknown>, rawRows, total) : undefined;
+    const data = table?.rows ?? rawRows;
+    const result = createPaginatedResult(data, {
         total,
         page,
-        pageSize,
+        pageSize: effectivePageSize,
         pageCount: kernelPageCount,
         hasNextPage: page < kernelPageCount,
     }, {
-        ...restResponse,
+        ...responseObj,
         avID: effectiveAvID,
         id: effectiveAvID,
         ...(table ? { table } : {}),
