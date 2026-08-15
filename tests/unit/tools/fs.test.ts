@@ -1725,6 +1725,16 @@ describe('fs tool', () => {
         expect(result.content[0].text).toContain('/Archive/Doc 1');
     });
 
+    it('accepts a notebook-omitted path when it uniquely matches across readable notebooks', async () => {
+        const client = createFsClient();
+        const result = await callFsTool(client, { action: 'read', path: '/Doc 1' }, fsConfig(), createPermMgr());
+        const parsed = parseResult(result);
+
+        expect(result.isError).toBeUndefined();
+        expect(parsed.path).toBe('/Notebook/Doc 1');
+        expect(parsed.content).toContain('alpha');
+    });
+
     it('searches markdown lines with regex support', async () => {
         const client = createFsClient();
         const result = await callFsTool(client, { action: 'search', path: '/Notebook/Doc 1', query: '^budget', regex: true }, fsConfig(), createPermMgr());

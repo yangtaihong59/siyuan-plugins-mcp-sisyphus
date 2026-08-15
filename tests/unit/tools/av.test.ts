@@ -3996,6 +3996,38 @@ describe('av tool', () => {
         });
     });
 
+    it('computes grouped pagination from the largest group instead of summed rowCount', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [{ id: 'col-title', name: 'Title', type: 'text' }],
+                rows: [],
+                rowCount: 80,
+                groups: [
+                    { id: 'grp-1', rows: [], rowCount: 40 },
+                    { id: 'grp-2', rows: [], rowCount: 40 },
+                ],
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'render',
+            id: 'av-1',
+        }, enabledActions('render'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            total: 80,
+            pageSize: 50,
+            pageCount: 1,
+            hasNextPage: false,
+        });
+    });
+
     it('requires id when createIfNotExist is not enabled', async () => {
         const avApi = await import('@/api/av');
         const result = await callAvTool(client, {

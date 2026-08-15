@@ -1569,16 +1569,21 @@ function computeRenderPageCount(view: Record<string, unknown> | undefined, total
     const base = computePageCount(total, effectivePageSize);
     if (!Array.isArray(view?.groups)) return base;
     // 分组视图的每组独立分页，hasNextPage 以组内最大页数为准
-    let count = base;
+    let count = 1;
+    let foundGroupTotal = false;
     for (const group of view.groups) {
         if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
         const groupView = group as Record<string, unknown>;
         const groupTotal = typeof groupView.rowCount === 'number' ? groupView.rowCount as number
             : typeof groupView.cardCount === 'number' ? groupView.cardCount as number
-                : 0;
-        if (groupTotal > 0) count = Math.max(count, computePageCount(groupTotal, effectivePageSize));
+                : undefined;
+        if (groupTotal === undefined) continue;
+        foundGroupTotal = true;
+        count = Math.max(count, computePageCount(groupTotal, effectivePageSize));
     }
-    return count;
+    // 如果内核没有提供组内总数，才退回顶层总数；不能把各组总数相加后
+    // 当作单一列表分页，否则多个不足一页的分组会误报 hasNextPage。
+    return foundGroupTotal ? count : base;
 }
 
 function buildAvTableView(responseObj: Record<string, unknown>, rows: unknown[], total: number): AvTableView | undefined {
@@ -2292,7 +2297,8 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
             ? view.pageSize
             : (rawRows.length || 1);
     const kernelPageCount = computeRenderPageCount(view, total, effectivePageSize);
-    // 表格布局才构建归一化 table；data 用归一化行（避免原始行/table/view 三份重复）
+    // 表格布局才构建归一化 table；data 使用归一化行。原始 view 仍保留在
+    // 结果中以兼容需要完整视图/分组元数据的调用方。
     const isTableLayout = Array.isArray(view?.columns);
     const table = isTableLayout ? buildAvTableView(view as Record<string, unknown>, rawRows, total) : undefined;
     const data = table?.rows ?? rawRows;

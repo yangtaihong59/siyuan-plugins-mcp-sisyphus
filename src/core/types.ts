@@ -85,18 +85,18 @@ export const TimelineActionSchema = z.enum(TIMELINE_ACTIONS);
 
 export const FsLsSchema = z.object({
     action: z.literal("ls"),
-    path: z.string().describe("Human-readable workspace path that includes the notebook name (e.g., /Notebook or /Notebook/Folder). Use / to list all readable notebooks."),
+    path: z.string().describe("Human-readable workspace path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder) for unambiguous resolution; a notebook-omitted path is accepted only when it uniquely matches across readable notebooks. Use / to list all readable notebooks."),
 });
 
 export const FsTreeSchema = z.object({
     action: z.literal("tree"),
-    path: z.string().describe("Human-readable workspace path that includes the notebook name (e.g., /Notebook or /Notebook/Folder). Use / to list all readable notebooks."),
+    path: z.string().describe("Human-readable workspace path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder) for unambiguous resolution; a notebook-omitted path is accepted only when it uniquely matches across readable notebooks. Use / to list all readable notebooks."),
     maxDepth: z.number().int().min(0).max(20).optional().describe("Max tree depth to return (default 3)"),
 });
 
 export const FsReadSchema = z.object({
     action: z.literal("read"),
-    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the document uniquely matches across readable notebooks."),
     blockStart: z.number().int().min(0).optional().describe("Zero-based display-block index to start reading from (default 0)"),
     blockLimit: z.number().int().min(1).max(200).optional().describe("Maximum complete display blocks to return (default 50)"),
     tokenBudget: z.number().int().min(1).max(32000).optional().describe("Approximate token budget for the window (default 2000). A single oversized block is still returned whole."),
@@ -115,7 +115,7 @@ export const FsReadSchema = z.object({
 
 export const FsWriteSchema = z.object({
     action: z.literal("write"),
-    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the existing document or parent path uniquely matches across readable notebooks. Root-level creation requires /Notebook/Title."),
     markdown: z.string().describe("Markdown content to create or write. Do not include a leading # Title; a matching create-time H1 is stripped automatically."),
     overwrite: z.boolean().optional().describe("When true, replace an existing document body while keeping the document node and title. This is a full body replacement."),
 });
@@ -128,7 +128,7 @@ export const FsReplaceEditSchema = z.object({
 
 export const FsReplaceSchema = z.object({
     action: z.literal("replace"),
-    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the document uniquely matches across readable notebooks."),
     edit: z.union([
         FsReplaceEditSchema,
         z.array(FsReplaceEditSchema).min(1),
@@ -137,24 +137,24 @@ export const FsReplaceSchema = z.object({
 
 export const FsRmSchema = z.object({
     action: z.literal("rm"),
-    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the document uniquely matches across readable notebooks."),
 });
 
 export const FsMvSchema = z.object({
     action: z.literal("mv"),
-    from: z.string().describe("Human-readable workspace source document path that includes the notebook name (e.g., /Notebook/Folder/Old)"),
-    to: z.string().describe("Human-readable workspace destination document path that includes the notebook name (e.g., /Notebook/Folder/New)"),
+    from: z.string().describe("Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks."),
+    to: z.string().describe("Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title."),
 });
 
 export const FsReorderSchema = z.object({
     action: z.literal("reorder"),
-    path: z.string().describe("Human-readable workspace notebook or parent document path that includes the notebook name (e.g., /Notebook or /Notebook/Folder)"),
-    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document workspace paths, each including the notebook name (e.g., /Notebook/Folder/First)"),
+    path: z.string().describe("Human-readable workspace notebook or parent document path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder); omission is accepted only for a unique document match."),
+    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document workspace paths. Prefer including the notebook name in each path (e.g., /Notebook/Folder/First); an omitted notebook must resolve uniquely."),
 });
 
 export const FsSearchSchema = z.object({
     action: z.literal("search"),
-    path: z.string().describe("Human-readable workspace document or folder path that includes the notebook name (e.g., /Notebook or /Notebook/Folder)"),
+    path: z.string().describe("Human-readable workspace document or folder path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder); omitting it is accepted only when the scope uniquely matches across readable notebooks."),
     query: z.string().describe("Text or regular expression to search for"),
     regex: z.boolean().optional().describe("Treat query as a JavaScript regular expression"),
     caseSensitive: z.boolean().optional().describe("Use case-sensitive matching"),

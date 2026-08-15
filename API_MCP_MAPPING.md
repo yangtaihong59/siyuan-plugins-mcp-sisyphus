@@ -337,7 +337,7 @@
 
 | API 路径 | 位置 | 状态 |
 |---|---|---|
-| `/api/file/readDir` | `src/tools/av/handlers.ts:1387` | 有效 |
+| `/api/file/readDir` | `src/tools/av/handlers.ts:1388` | 有效 |
 
 ### UI-only（不计覆盖率）
 

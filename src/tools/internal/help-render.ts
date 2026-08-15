@@ -51,8 +51,9 @@ export function buildExampleValue(fieldName: string, schema: JsonSchema): unknow
         case 'toPath':
             return '/20240318112233-existing-parent.sy';
         case 'path':
-            if (description.includes('includes the notebook name')) {
-                // fs tool paths include the notebook name (e.g., /Notebook/Folder/Doc)
+            if (description.toLowerCase().includes('workspace')) {
+                // Prefer canonical fs paths with the notebook name even though
+                // uniquely matching notebook-omitted paths are also accepted.
                 return '/Notebook/Folder/Doc';
             }
             if (description.includes('Human-readable')) {

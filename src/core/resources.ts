@@ -162,6 +162,13 @@ function renderDocumentPathSemantics(): string {
     return [
         '# Document Path Semantics',
         '',
+        '## fs workspace path',
+        '',
+        '- Used by `fs` actions such as `read`, `write`, `replace`, `search`, `mv`, and `rm`.',
+        '- Prefer a canonical path that includes the notebook name, such as `/Notebook/Folder/Weekly Note`, so resolution is unambiguous.',
+        '- A notebook-omitted path such as `/Folder/Weekly Note` is accepted only when it uniquely matches across readable notebooks.',
+        '- Root-level creation cannot infer a notebook and therefore requires `/Notebook/Title`.',
+        '',
         '## Human-readable path (notebook-local)',
         '',
         '- Used by `document(action="create")` and `document(action="lookup", hpath=...)`.',
