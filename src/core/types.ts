@@ -85,18 +85,18 @@ export const TimelineActionSchema = z.enum(TIMELINE_ACTIONS);
 
 export const FsLsSchema = z.object({
     action: z.literal("ls"),
-    path: z.string().describe("Human-readable workspace path, such as /Notebook/Folder or / for notebook roots"),
+    path: z.string().describe("Human-readable workspace path that includes the notebook name (e.g., /Notebook or /Notebook/Folder). Use / to list all readable notebooks."),
 });
 
 export const FsTreeSchema = z.object({
     action: z.literal("tree"),
-    path: z.string().describe("Human-readable workspace path, such as /Notebook/Folder or / for all readable notebooks"),
+    path: z.string().describe("Human-readable workspace path that includes the notebook name (e.g., /Notebook or /Notebook/Folder). Use / to list all readable notebooks."),
     maxDepth: z.number().int().min(0).max(20).optional().describe("Max tree depth to return (default 3)"),
 });
 
 export const FsReadSchema = z.object({
     action: z.literal("read"),
-    path: z.string().describe("Human-readable document path"),
+    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
     blockStart: z.number().int().min(0).optional().describe("Zero-based display-block index to start reading from (default 0)"),
     blockLimit: z.number().int().min(1).max(200).optional().describe("Maximum complete display blocks to return (default 50)"),
     tokenBudget: z.number().int().min(1).max(32000).optional().describe("Approximate token budget for the window (default 2000). A single oversized block is still returned whole."),
@@ -115,7 +115,7 @@ export const FsReadSchema = z.object({
 
 export const FsWriteSchema = z.object({
     action: z.literal("write"),
-    path: z.string().describe("Human-readable document path"),
+    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
     markdown: z.string().describe("Markdown content to create or write. Do not include a leading # Title; a matching create-time H1 is stripped automatically."),
     overwrite: z.boolean().optional().describe("When true, replace an existing document body while keeping the document node and title. This is a full body replacement."),
 });
@@ -128,7 +128,7 @@ export const FsReplaceEditSchema = z.object({
 
 export const FsReplaceSchema = z.object({
     action: z.literal("replace"),
-    path: z.string().describe("Human-readable document path to modify"),
+    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
     edit: z.union([
         FsReplaceEditSchema,
         z.array(FsReplaceEditSchema).min(1),
@@ -137,24 +137,24 @@ export const FsReplaceSchema = z.object({
 
 export const FsRmSchema = z.object({
     action: z.literal("rm"),
-    path: z.string().describe("Human-readable document path to delete"),
+    path: z.string().describe("Human-readable workspace document path that includes the notebook name (e.g., /Notebook/Folder/Doc, NOT /Folder/Doc)"),
 });
 
 export const FsMvSchema = z.object({
     action: z.literal("mv"),
-    from: z.string().describe("Human-readable source document path"),
-    to: z.string().describe("Human-readable destination document path"),
+    from: z.string().describe("Human-readable workspace source document path that includes the notebook name (e.g., /Notebook/Folder/Old)"),
+    to: z.string().describe("Human-readable workspace destination document path that includes the notebook name (e.g., /Notebook/Folder/New)"),
 });
 
 export const FsReorderSchema = z.object({
     action: z.literal("reorder"),
-    path: z.string().describe("Human-readable notebook or parent document path"),
-    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document paths"),
+    path: z.string().describe("Human-readable workspace notebook or parent document path that includes the notebook name (e.g., /Notebook or /Notebook/Folder)"),
+    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document workspace paths, each including the notebook name (e.g., /Notebook/Folder/First)"),
 });
 
 export const FsSearchSchema = z.object({
     action: z.literal("search"),
-    path: z.string().describe("Human-readable document or folder path to search within"),
+    path: z.string().describe("Human-readable workspace document or folder path that includes the notebook name (e.g., /Notebook or /Notebook/Folder)"),
     query: z.string().describe("Text or regular expression to search for"),
     regex: z.boolean().optional().describe("Treat query as a JavaScript regular expression"),
     caseSensitive: z.boolean().optional().describe("Use case-sensitive matching"),
@@ -227,8 +227,8 @@ export const NotebookGetChildDocsSchema = z.object({
 export const DocumentCreateSchema = z.object({
     action: z.literal("create"),
     notebook: z.string().describe("Notebook ID"),
-    path: z.string().optional().describe("Human-readable target path, must start with / (e.g., /foo/bar). Parent paths must already exist."),
-    parentPath: z.string().optional().describe("Parent human-readable path or storage path ending in .sy for title-based creation, must start with /"),
+    path: z.string().optional().describe("Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Parent paths must already exist."),
+    parentPath: z.string().optional().describe("Parent path for title-based creation, relative to the notebook root. Accepts a human-readable path (must start with /, MUST NOT include the notebook name) or a storage path ending in .sy returned by document(action=\"lookup\")."),
     title: z.string().optional().describe("Document title when creating under parentPath"),
     markdown: z.string().optional().describe("Markdown content, defaults to empty. Do not include a leading # Title; a matching H1 is stripped automatically."),
     sorts: z.array(z.string()).optional().describe("Compatibility option retained for older callers; title-based creation now uses the reliable path flow"),
@@ -262,8 +262,8 @@ export const DocumentLookupSchema = z.object({
     id: z.string().optional().describe("Document ID to look up"),
     notebook: z.string().optional().describe("Notebook ID, required with path or hpath"),
     path: z.string().optional().describe("Storage path to look up when notebook is provided, e.g. /20240318112233-abc123.sy. Human-readable paths should use hpath instead."),
-    hpath: z.string().optional().describe("Human-readable path to look up when notebook is provided"),
-    hPath: z.string().optional().describe("Alias for hpath"),
+    hpath: z.string().optional().describe("Human-readable notebook-local path to look up when notebook is provided. MUST NOT include the notebook name (e.g., /Folder/Doc, not /Notebook/Folder/Doc)"),
+    hPath: z.string().optional().describe("Alias for hpath (notebook-local, MUST NOT include the notebook name)"),
     include: z.array(DocumentResolveIncludeSchema).optional().describe('Fields to include: "id", "ids", "path", "hpath", "docInfo"'),
 }).superRefine((value, ctx) => {
     const hpath = value.hpath ?? value.hPath;
@@ -408,7 +408,7 @@ export const DocumentSetAttrSchema = z.object({
 export const DocumentListTreeSchema = z.object({
     action: z.literal("list_tree"),
     notebook: z.string().describe("Notebook ID"),
-    path: z.string().describe("Storage path or / for the notebook root"),
+    path: z.string().describe("Storage path (e.g., /20240318112233-abc123.sy) or / for the notebook root"),
     maxDepth: z.number().optional().describe("Max tree depth to return (default 3). Deeper nodes are collapsed to childCount."),
 });
 
@@ -1282,7 +1282,7 @@ export const FileExportMarkdownSnapshotSchema = z.object({
 
 export const FileExportResourcesSchema = z.object({
     action: z.literal("export_resources"),
-    paths: z.array(z.string()).describe("Paths to export"),
+    paths: z.array(z.string()).describe("Workspace-relative file paths to export (e.g., /data/20240318112233-abc123.sy/ or /assets/foo.png)"),
     name: z.string().optional().describe("Export file name"),
     outputPath: z.string().optional().describe("Optional local absolute or relative filesystem path to save the exported ZIP"),
 });
@@ -1342,7 +1342,7 @@ export const SearchFulltextSchema = z.object({
     methodName: SearchMethodNameSchema.optional().describe('Semantic alias for method: "keyword" | "query_syntax" | "sql" | "regex". The short alias "query" also maps to query syntax and overrides method when both are provided.'),
     types: z.record(z.string(), z.boolean()).optional().describe("Block type filter. Accepts full names (e.g. {\"heading\": true}) or shortcodes (e.g. {\"h\": true, \"p\": true}). Codes: d=document, h=heading, p=paragraph, l=list, i=listItem, b=blockquote, c=codeBlock, m=mathBlock, t=table, s=superBlock, html=htmlBlock, embed=embedBlock, av=databaseBlock."),
     typeShortcodes: z.array(z.string()).optional().describe("Alternative shorthand type filter as array: [\"h\",\"p\"]. Merged with types if both provided."),
-    paths: z.array(z.string()).optional().describe("Restrict search to specific notebook paths"),
+    paths: z.array(z.string()).optional().describe("Restrict search to specific notebook IDs or storage paths"),
     groupBy: z.number().optional().describe("0=no grouping (default), 1=group by document"),
     orderBy: z.number().optional().describe("Legacy numeric sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)"),
     sortBy: SearchSortNameSchema.optional().describe('Semantic sort alias: "relevance", "date", "updated_desc", "updated_asc", "created_desc", "created_asc", or "type". Overrides orderBy if both provided.'),
@@ -1356,7 +1356,7 @@ export const SearchFulltextSchema = z.object({
 export const SearchSemanticSchema = z.object({
     action: z.literal("semantic"),
     query: z.string().min(1).describe("Natural-language semantic search query"),
-    paths: z.array(z.string()).optional().describe("Restrict search to notebook IDs or notebook/storage paths"),
+    paths: z.array(z.string()).optional().describe("Restrict search to notebook IDs or storage paths"),
     types: z.record(z.string(), z.boolean()).optional().describe("Block type filter. Accepts full names or shortcodes."),
     typeShortcodes: z.array(z.string()).optional().describe("Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types."),
     subTypes: z.record(z.string(), z.boolean()).optional().describe("Optional SiYuan block subtype filter"),
@@ -1403,7 +1403,7 @@ export const SearchFindReplaceSchema = z.object({
     k: z.string().describe("Find keyword"),
     r: z.string().describe("Replacement text; use empty string to delete matches"),
     ids: z.array(z.string()).min(1).describe("Document or block IDs to mutate"),
-    paths: z.array(z.string()).optional().describe("Optional path scope list"),
+    paths: z.array(z.string()).optional().describe("Optional notebook ID or storage path scope list"),
     types: z.record(z.string(), z.boolean()).optional().describe("Optional block type filter"),
     method: z.number().optional().describe("Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex"),
     methodName: SearchMethodNameSchema.optional().describe('Semantic alias for method: "keyword" | "query_syntax" | "sql" | "regex". The short alias "query" also maps to query syntax and overrides method when both are provided.'),

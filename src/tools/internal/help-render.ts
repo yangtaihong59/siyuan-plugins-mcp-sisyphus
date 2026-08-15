@@ -51,9 +51,16 @@ export function buildExampleValue(fieldName: string, schema: JsonSchema): unknow
         case 'toPath':
             return '/20240318112233-existing-parent.sy';
         case 'path':
-            return description.includes('Human-readable')
-                ? '/Inbox/Weekly Note'
-                : '/20240318112233-abc123.sy';
+            if (description.includes('includes the notebook name')) {
+                // fs tool paths include the notebook name (e.g., /Notebook/Folder/Doc)
+                return '/Notebook/Folder/Doc';
+            }
+            if (description.includes('Human-readable')) {
+                // document tool paths are notebook-local (e.g., /Folder/Weekly Note)
+                return '/Folder/Weekly Note';
+            }
+            // storage paths (e.g., /20240318112233-abc123.sy)
+            return '/20240318112233-abc123.sy';
         case 'paths':
             return ['/assets/example.png'];
         case 'title':

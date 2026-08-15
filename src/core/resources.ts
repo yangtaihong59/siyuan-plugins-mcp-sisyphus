@@ -162,10 +162,12 @@ function renderDocumentPathSemantics(): string {
     return [
         '# Document Path Semantics',
         '',
-        '## Human-readable path',
+        '## Human-readable path (notebook-local)',
         '',
         '- Used by `document(action="create")` and `document(action="lookup", hpath=...)`.',
-        '- Example: `/Inbox/Weekly Note`',
+        '- It is RELATIVE TO THE NOTEBOOK ROOT and MUST NOT include the notebook name.',
+        '- Example: `/Folder/Weekly Note` (NOT `/NotebookName/Folder/Weekly Note`).',
+        '- The notebook is supplied separately via the `notebook` parameter (notebook ID).',
         '',
         '## Storage path',
         '',
@@ -182,7 +184,7 @@ function renderDocumentPathSemantics(): string {
         '',
         '## Common mistake',
         '',
-        '- `document(action="create")` accepts `/Inbox/Weekly Note`.',
+        '- `document(action="create")` accepts a notebook-local path like `/Folder/Weekly Note` and MUST NOT include the notebook name.',
         '- `document(action="rename", notebook=..., path=...)` expects a storage path like `/20240318112233-abc123.sy`.',
         '- `document(action="move", fromPaths=..., toNotebook=..., toPath=...)` does not accept a non-existent `.sy` path or a plain directory-like path as the destination.',
     ].join('\n');

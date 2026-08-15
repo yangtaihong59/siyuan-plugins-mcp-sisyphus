@@ -193,16 +193,18 @@ For basic path-style notebook and document operations, use \`fs\` whenever the t
 
 \`fs\` is a Markdown-oriented convenience layer. It converts document content through Markdown and Kramdown for reading and writing, so it is not a full-fidelity editor for complex SiYuan-native structures. Use it for ordinary prose, headings, lists, simple tables, exact paragraph/heading text replacement, and path-based file workflows. Prefer lower-level tools when the task involves precise block tree structure, block attributes, embeds, media, query embeds, database rows and cells, flashcard deck bindings, or other native structures that are not naturally represented as Markdown.
 
-There are exactly two path types. Do not mix them.
+The document tool uses exactly two path types. Do not mix them.
 
-| Type | Used by | Example |
-|------|---------|---------|
-| Human-readable | document(action=”create”), document(action=”lookup”, hpath=...) | /Inbox/Weekly Note |
-| Storage path | document(action=”rename”), remove, move, lookup (with notebook+path) | /20240318112233-abc123.sy |
+| Type | Used by | Example | Notebook name? |
+|------|---------|---------|----------------|
+| Human-readable (notebook-local) | document(action="create"), document(action="lookup", hpath=...) | /Folder/Weekly Note | MUST NOT include notebook name; notebook is passed separately |
+| Storage path | document(action="rename"), remove, move, lookup (with notebook+path) | /20240318112233-abc123.sy | n/a (returned by lookup) |
 
-Safe workflow: call document(action=”lookup”, id=..., include=[”path”]) first, then reuse the returned storage path.
+Safe workflow: call document(action="lookup", id=..., include=["path"]) first, then reuse the returned storage path.
 
-WRONG: document(action=”rename”, notebook=”...”, path=”/Inbox/Weekly Note”, title=”New Title”) — this will fail because rename expects a storage path, not a human-readable path.
+WRONG: document(action="create", notebook="<id>", path="/NotebookName/Folder/Weekly Note", title="New Title") — this will create an extra folder named after the notebook, because path is notebook-local and MUST NOT include the notebook name.
+WRONG: document(action="rename", notebook="...", path="/Folder/Weekly Note", title="New Title") — this will fail because rename expects a storage path, not a human-readable path.
+CORRECT: document(action="create", notebook="<id>", path="/Folder/Weekly Note")
 CORRECT: document(action=”rename”, notebook=”...”, path=”/20240318112233-abc123.sy”, title=”New Title”)
 
 ## High-risk operations confirmation
