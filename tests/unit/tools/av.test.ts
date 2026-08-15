@@ -58,6 +58,10 @@ vi.mock('@/api/search', () => ({
     querySQL: vi.fn(),
 }));
 
+vi.mock('@/api/system', () => ({
+    getCurrentTime: vi.fn(),
+}));
+
 vi.mock('@/api/transaction', () => ({
     performTransactions: vi.fn(),
 }));
@@ -80,6 +84,7 @@ describe('av tool', () => {
         const blockApi = await import('@/api/block');
         const documentApi = await import('@/api/document');
         const searchApi = await import('@/api/search');
+        const systemApi = await import('@/api/system');
         const transactionApi = await import('@/api/transaction');
 
         vi.mocked(avApi.getAttributeView).mockReset();
@@ -107,6 +112,7 @@ describe('av tool', () => {
         vi.mocked(blockApi.getBlockDOM).mockReset();
         vi.mocked(documentApi.getHPathByID).mockReset();
         vi.mocked(searchApi.querySQL).mockReset();
+        vi.mocked(systemApi.getCurrentTime).mockReset();
         vi.mocked(transactionApi.performTransactions).mockReset();
         vi.mocked(context.ensurePermissionForDocumentId).mockResolvedValue({
             context: { documentId: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy' },
@@ -122,6 +128,7 @@ describe('av tool', () => {
         vi.mocked(blockApi.getBlockAttrs).mockResolvedValue({ 'custom-sy-av-view': 'view-1' });
         vi.mocked(documentApi.getHPathByID).mockResolvedValue('/Created document');
         vi.mocked(searchApi.querySQL).mockResolvedValue([]);
+        vi.mocked(systemApi.getCurrentTime).mockResolvedValue(1_710_000_000_000);
         vi.mocked(avApi.spinBlockDOM).mockImplementation(async (_clientArg, dom) => ({ dom: `<div data-spun="1">${dom}</div>` }));
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
@@ -893,6 +900,7 @@ describe('av tool', () => {
         const avApi = await import('@/api/av');
         const context = await import('@/tools/internal/context');
         const documentApi = await import('@/api/document');
+        const systemApi = await import('@/api/system');
         const templateID = '20260813000000-aaaaaaa';
         const avID = '20260813000009-iiiiiii';
         const databaseBlockID = '20260813000010-jjjjjjj';
@@ -903,6 +911,9 @@ describe('av tool', () => {
             keyValues: [{
                 key: { type: 'block' },
                 values: [{ blockID: '20260813000003-ddddddd', block: { id: 'bound-doc' } }],
+            }, {
+                key: { id: '20260813000004-eeeeeee', type: 'date' },
+                values: [],
             }],
             newItemTemplates: [{
                 id: templateID,
@@ -910,17 +921,26 @@ describe('av tool', () => {
                 targetType: 'document',
                 primaryKeyTemplate: 'Meeting note',
                 saveLocation: { pathTemplate: '/Meetings/{{.Year}}', boxID: 'nb-1' },
+                fieldValues: {
+                    '20260813000004-eeeeeee': { mode: 'currentTime' },
+                },
             }],
         };
         const after = {
             ...source,
-            keyValues: [{
-                key: { type: 'block' },
-                values: [
-                    { blockID: '20260813000003-ddddddd', block: { id: 'bound-doc' } },
-                    { blockID: itemID, block: { id: documentID } },
-                ],
-            }],
+            keyValues: [
+                {
+                    key: { type: 'block' },
+                    values: [
+                        { blockID: '20260813000003-ddddddd', block: { id: 'bound-doc' } },
+                        { blockID: itemID, block: { id: documentID } },
+                    ],
+                },
+                {
+                    key: { id: '20260813000004-eeeeeee', type: 'date' },
+                    values: [{ blockID: itemID, type: 'date', date: { content: 1_710_000_000_001 } }],
+                },
+            ],
         };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
         vi.mocked(avApi.getAttributeView)
@@ -945,6 +965,7 @@ describe('av tool', () => {
             avID, blockID: databaseBlockID, templateID, viewID: undefined, previousID: undefined, groupID: undefined,
         });
         expect(vi.mocked(context.ensurePermissionForNotebook)).toHaveBeenCalledWith(permMgr, 'nb-1', 'write');
+        expect(vi.mocked(systemApi.getCurrentTime)).toHaveBeenCalledWith(client);
         expect(JSON.parse(result.content[0].text)).toMatchObject({
             success: true,
             action: 'create_from_template',

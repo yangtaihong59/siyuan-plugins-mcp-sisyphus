@@ -328,9 +328,45 @@ describe('extension tool', () => {
         }));
         expect(payload.lifecycle).toEqual(expect.objectContaining({
             kernelPluginRunning: 'inferred_from_registered_tool',
-            mcpToolUnregistration: 'registry_absence_observed_not_proven',
+            mcpToolRegistration: 'observed_from_fresh_registry',
+            mcpToolUnregistration: 'not_observed',
             reload: 'not_triggered',
             functionAfterReload: 'not_verified',
+        }));
+    });
+
+    it('does not report registration merely because an empty registry refresh succeeded', async () => {
+        const config = buildDefaultToolConfig().extension;
+        const runtime = {
+            bridge: {
+                refresh: vi.fn().mockResolvedValue({
+                    tools: [], connected: true, supported: true, siyuanVersion: '3.7.3', changed: false,
+                }),
+                getTools: () => [],
+                getSnapshot: () => ({ tools: [], connected: true, changed: false }),
+            },
+        } as unknown as OfficialMcpRuntime;
+
+        const result = await callExtensionTool(
+            createMockClient(),
+            {
+                action: 'diagnose_plugin_mcp',
+                pluginName: 'my-plugin',
+                expectedToolNames: ['echo'],
+                expectedState: 'present',
+            },
+            config,
+            createMockPermissionManager(),
+            runtime,
+        );
+        const payload = JSON.parse(result.content[0].text);
+
+        expect(payload.observation).toBe('completed');
+        expect(payload.expectation).toEqual(expect.objectContaining({ allMet: false }));
+        expect(payload.lifecycle).toEqual(expect.objectContaining({
+            kernelPluginRunning: 'not_observed',
+            mcpToolRegistration: 'not_observed',
+            mcpToolUnregistration: 'not_observed',
         }));
     });
 

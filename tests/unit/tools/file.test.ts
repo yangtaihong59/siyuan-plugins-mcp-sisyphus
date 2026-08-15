@@ -85,7 +85,9 @@ describe('file tool asset actions', () => {
 
         vi.mocked(fileApi.exportMdContent).mockImplementation(async (_client, id) => ({
             content: String(id).startsWith('2026') ? '![image](assets/cover.png)\n\nSome text\n' : `# ${id}\n`,
-            hPath: id.startsWith('same-') ? '/Same' : id === 'doc-2' ? '/Doc 2' : '/My Document',
+            hPath: id.startsWith('same-') ? '/Same'
+                : id.startsWith('bulk-') ? `/Bulk ${id.slice(-2)}`
+                    : id === 'doc-2' ? '/Doc 2' : '/My Document',
         }));
         vi.mocked(fileApi.exportResources).mockResolvedValue({ path: '/temp/export.zip' });
         vi.mocked(fileApi.getUnusedAssets).mockResolvedValue(['assets/orphan.png']);
@@ -123,6 +125,10 @@ describe('file tool asset actions', () => {
         const documentApi = await import('@/api/document');
         vi.mocked(documentApi.listDocTree).mockReset();
         vi.mocked(documentApi.getHPathByID).mockReset();
+
+        const context = await import('@/tools/internal/context');
+        vi.mocked(context.ensurePermissionForDocumentId).mockClear();
+        vi.mocked(context.ensurePermissionForNotebook).mockClear();
     });
 
     it('exports a deterministic paginated remote-safe Markdown snapshot from explicit document IDs', async () => {
@@ -139,14 +145,16 @@ describe('file tool asset actions', () => {
             status: 'complete',
             page: { offset: 0, limit: 1, total: 2, hasNext: true },
             documents: [expect.objectContaining({
-                id: 'doc-2',
-                content: '# doc-2\n',
-                relativePath: 'Doc 2.md',
+                id: 'doc-1',
+                content: '# doc-1\n',
+                relativePath: 'My Document [doc-1].md',
                 contentHash: expect.stringMatching(/^sha256:v1:/),
                 metadataHash: expect.stringMatching(/^sha256:v1:/),
             })],
         });
         expect((payload as any).page.nextCursor).toEqual(expect.any(String));
+        const context = await import('@/tools/internal/context');
+        expect(context.ensurePermissionForDocumentId).toHaveBeenCalledTimes(1);
 
         const next = await callFileTool(client, {
             action: 'export_markdown_snapshot',
@@ -155,7 +163,35 @@ describe('file tool asset actions', () => {
             cursor: (payload as any).page.nextCursor,
             limit: 1,
         }, config.file, {} as never);
-        expect(parseResult(next)).toMatchObject({ page: { offset: 1, hasNext: false } });
+        expect(parseResult(next)).toMatchObject({
+            page: { offset: 1, hasNext: false },
+            documents: [expect.objectContaining({ id: 'doc-2', relativePath: 'Doc 2 [doc-2].md' })],
+        });
+        expect(context.ensurePermissionForDocumentId).toHaveBeenCalledTimes(2);
+    });
+
+    it('resolves only the requested root-inventory page before exporting', async () => {
+        const documentApi = await import('@/api/document');
+        const context = await import('@/tools/internal/context');
+        vi.mocked(documentApi.listDocTree).mockResolvedValueOnce({ tree: Array.from({ length: 50 }, (_, index) => ({
+            id: `bulk-${String(index).padStart(2, '0')}`,
+            name: `Bulk ${String(index).padStart(2, '0')}`,
+            hPath: `/Bulk ${String(index).padStart(2, '0')}`,
+            path: `/bulk-${String(index).padStart(2, '0')}.sy`,
+            children: [],
+        })) });
+
+        const result = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/'],
+            limit: 1,
+        }, config.file, {} as never);
+        const payload = parseResult(result) as any;
+
+        expect(payload.page).toMatchObject({ offset: 0, limit: 1, total: 50, hasNext: true });
+        expect(context.ensurePermissionForDocumentId).toHaveBeenCalledTimes(1);
+        expect(payload.documents).toHaveLength(1);
     });
 
     it('enumerates roots through the document tree and records path conflicts without writing files', async () => {

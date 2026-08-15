@@ -623,6 +623,7 @@ const handleEnsureLinkTargets: DocumentActionHandler = async ({ client, permMgr,
     );
     return applyUiRefresh(client, createJsonResult({
         success: unresolved.length === 0,
+        changed: created.length > 0,
         mode: parsed.mode,
         dryRun: parsed.dryRun === true,
         scope: serializeLinkTargetScope(scope),

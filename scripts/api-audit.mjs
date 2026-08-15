@@ -719,7 +719,7 @@ function generatePlugin(model, existing = '') {
         `- \`src/api\` wrapper 覆盖口径为 **${model.backendLiterals.size}** 个唯一 \`/api/*\` 字面量：**${model.validBackend.length}** 个有效，覆盖当前 **${EXPECTED.apiPaths}** 个内核 API 路径的 **${(model.validBackend.length / EXPECTED.apiPaths * 100).toFixed(1)}%**；工具层直调另列，不混入该基线。`,
         `- UI 设置页另有 **${model.uiOnly.size}** 个 UI-only 路径，不计入工具/API 覆盖率。`,
         `- 唯一失效 wrapper：\`${model.invalidBackend[0]}\`（\`src/api/file.ts:93\`）；本轮仅记录，不删除。`,
-        '- `semantic` 是当前未提交工作区相对 HEAD 新增的第 124 个 action；生成器有意读取插件工作区，以免覆盖用户正在开发的真实状态。', '',
+        '- 生成器直接读取当前工作区注册表，因此新增或移除 action 后会同步更新本页基线。', '',
         '## 工具汇总', '',
         '| 工具 | Action 数 | 危险 Action | 原生 MCP 重叠候选 |', '|---|---:|---|---|',
     ];
@@ -737,7 +737,7 @@ function generatePlugin(model, existing = '') {
             const safety = model.plugin.safety.get(key);
             const native = (NATIVE_OVERLAP[tool.name] ?? []).map((item) => `\`${item}\``).join('、') || '—';
             const notes = key === 'search.semantic' ? '数据外传/外部费用风险；最低 SiYuan v3.8.0'
-                : tool.name === 'extension' ? '动态读取思源原生 MCP tools/list；具体 action 不计入 124'
+                : tool.name === 'extension' ? `动态读取思源原生 MCP tools/list；运行时动态 action 不计入静态 ${model.actions.length}`
                     : endpoints.direct.length || endpoints.indirect.length || endpoints.fallback.length ? '业务端点；另经过权限/刷新/写安全/lifecycle 横切链' : '本地逻辑、外部服务或静态分析无法可靠绑定；未猜测 endpoint';
             lines.push(`| \`${key}\` | ${formatEndpoints(endpoints.direct)} | ${formatEndpoints(endpoints.indirect)} | ${formatEndpoints(endpoints.fallback)} | \`${safety}\`${dangerous ? '；危险：协议确认' : ''} | ${native} | ${notes} |`);
         }
@@ -749,11 +749,11 @@ function generatePlugin(model, existing = '') {
         const layers = [...new Set(locations.filter((item) => item.layer !== 'ui').map((item) => item.layer))].join('+');
         lines.push(`| \`${apiPath}\` | ${layers} | ${locations.filter((item) => item.layer !== 'ui').map((item) => `\`${item.file}:${item.line}\``).join('<br>')} | ${valid ? '有效内核路由' : '失效 wrapper（保留审计）'} |`);
     }
-    lines.push('', '### API wrapper 层外的工具直调（不计 146 wrapper 覆盖口径）', '', '| API 路径 | 位置 | 状态 |', '|---|---|---|');
+    lines.push('', `### API wrapper 层外的工具直调（不计 ${model.backendLiterals.size} wrapper 覆盖口径）`, '', '| API 路径 | 位置 | 状态 |', '|---|---|---|');
     for (const [apiPath, locations] of [...model.toolDirectOnly].sort(([a], [b]) => a.localeCompare(b))) lines.push(`| \`${apiPath}\` | ${locations.filter((item) => item.layer === 'tool-direct').map((item) => `\`${item.file}:${item.line}\``).join('<br>')} | ${model.paths.has(apiPath) ? '有效' : '失效'} |`);
     lines.push('', '### UI-only（不计覆盖率）', '', '| API 路径 | 位置 | 状态 |', '|---|---|---|');
     for (const [apiPath, locations] of [...model.uiOnly].sort(([a], [b]) => a.localeCompare(b))) lines.push(`| \`${apiPath}\` | ${locations.map((item) => `\`${item.file}:${item.line}\``).join('<br>')} | ${model.paths.has(apiPath) ? '有效' : '失效'} |`);
-    lines.push('', '## 覆盖层级解释', '', '- **插件直接覆盖**：后端 API wrapper 或工具层直调，列于上表 146 项。', '- **由 extension 暴露原生工具**：运行时通过思源 `/mcp` 发现；动态 action 不纳入静态 124。', '- **仅内核内部使用**：当前内核路由存在，但没有插件后端字面量；不等同于适合暴露给 AI。', '- **不建议引入**：宿主管理、认证回调、任意文件/网络代理等能力，见人工候选区。', '', '## 风险模型说明', '', '- `DANGEROUS_ACTIONS` 表示 MCP 协议级确认，不等价于“是否写入”。', '- `ACTION_SAFETY_POLICIES` 区分 read/mutation/external 与 precondition；`ACTION_TIERS` 只表示披露层级。三者不得合并成一个布尔值。', '- 原生 MCP 的 action effect 需从 Go 源读取，因为 `ActionEffects` 不通过 `/mcp tools/list` 返回。例如 `semantic` 在上游标注 DataEgress 与 ExternalCost。', '', MANUAL_START, manual, MANUAL_END, '');
+    lines.push('', '## 覆盖层级解释', '', `- **插件直接覆盖**：后端 API wrapper 或工具层直调，列于上表 ${model.backendLiterals.size} 项。`, `- **由 extension 暴露原生工具**：运行时通过思源 \`/mcp\` 发现；动态 action 不纳入静态 ${model.actions.length}。`, '- **仅内核内部使用**：当前内核路由存在，但没有插件后端字面量；不等同于适合暴露给 AI。', '- **不建议引入**：宿主管理、认证回调、任意文件/网络代理等能力，见人工候选区。', '', '## 风险模型说明', '', '- `DANGEROUS_ACTIONS` 表示 MCP 协议级确认，不等价于“是否写入”。', '- `ACTION_SAFETY_POLICIES` 区分 read/mutation/external 与 precondition；`ACTION_TIERS` 只表示披露层级。三者不得合并成一个布尔值。', '- 原生 MCP 的 action effect 需从 Go 源读取，因为 `ActionEffects` 不通过 `/mcp tools/list` 返回。例如 `semantic` 在上游标注 DataEgress 与 ExternalCost。', '', MANUAL_START, manual, MANUAL_END, '');
     return lines.join('\n');
 }
 

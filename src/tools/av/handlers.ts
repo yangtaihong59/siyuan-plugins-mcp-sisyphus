@@ -3,6 +3,7 @@ import * as avApi from '../../api/av';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
 import * as searchApi from '../../api/search';
+import * as systemApi from '../../api/system';
 import * as transactionApi from '../../api/transaction';
 import type { TransactionOperation } from '../../api/transaction';
 import type { AvAction } from '../../core/config';
@@ -3236,7 +3237,17 @@ async function handleCreateFromTemplate({ client, permMgr, rawArgs }: ToolHandle
         });
     }
 
-    const createdAfterMs = Date.now();
+    // currentTime is materialized by the SiYuan kernel. Use the same remote
+    // clock for readback so a standalone/remote MCP process cannot reject a
+    // successful create merely because its local clock runs ahead. Static-only
+    // templates do not need the extra system request.
+    const templateFields = template.fieldValues && typeof template.fieldValues === 'object' && !Array.isArray(template.fieldValues)
+        ? Object.values(template.fieldValues as Record<string, unknown>)
+        : [];
+    const hasCurrentTimeField = templateFields.some((field) => Boolean(
+        field && typeof field === 'object' && !Array.isArray(field) && (field as Record<string, unknown>).mode === 'currentTime',
+    ));
+    const createdAfterMs = hasCurrentTimeField ? await systemApi.getCurrentTime(client) : Number.NEGATIVE_INFINITY;
     const response = await avApi.createAttributeViewItem(client, {
         avID: parsed.avID, blockID: parsed.blockID, viewID: parsed.viewID, templateID: parsed.templateID,
         previousID: parsed.previousID, groupID: parsed.groupID,

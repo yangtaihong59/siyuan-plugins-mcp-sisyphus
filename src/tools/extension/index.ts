@@ -561,6 +561,11 @@ export async function callExtensionTool(
                 ? presentNames.has(item.qualifiedName)
                 : !presentNames.has(item.qualifiedName)),
         }));
+        const expectedAbsenceObserved = expectedState === 'absent'
+            && !snapshot.error
+            && (expected.length > 0
+                ? expectation.every((item) => item.expectationMet)
+                : matchingTools.length === 0);
         return textResult({
             kind: 'plugin_mcp_registry_observation',
             observation: snapshot.error ? 'unavailable' : 'completed',
@@ -591,8 +596,10 @@ export async function callExtensionTool(
                 trustGranted: 'not_observed',
                 frontendPluginLoaded: 'not_observed',
                 kernelPluginRunning: snapshot.error ? 'not_observed' : matchingTools.length > 0 ? 'inferred_from_registered_tool' : 'not_observed',
-                mcpToolRegistration: snapshot.error ? 'not_observed' : 'observed_from_fresh_registry',
-                mcpToolUnregistration: expectedState === 'absent' && !snapshot.error
+                mcpToolRegistration: !snapshot.error && matchingTools.length > 0
+                    ? 'observed_from_fresh_registry'
+                    : 'not_observed',
+                mcpToolUnregistration: expectedAbsenceObserved
                     ? 'registry_absence_observed_not_proven'
                     : 'not_observed',
                 reload: 'not_triggered',

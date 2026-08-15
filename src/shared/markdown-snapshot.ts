@@ -65,11 +65,12 @@ function canonicalize(value: unknown): string {
 }
 
 async function hashSnapshotBytes(value: Uint8Array): Promise<string> {
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', value);
+    const bytes = Uint8Array.from(value);
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes.buffer);
     return `sha256:v1:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-export function hashSnapshotMetadata(metadata: Record<string, unknown>): Promise<string> {
+export function hashSnapshotMetadata(metadata: unknown): Promise<string> {
     return hashSnapshotBytes(new TextEncoder().encode(canonicalize(metadata)));
 }
 

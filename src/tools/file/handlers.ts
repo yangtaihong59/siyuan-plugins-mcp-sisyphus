@@ -409,6 +409,11 @@ const handleExportMd: ToolActionHandler = async ({ client, permMgr, rawArgs }) =
     return createJsonResult(result);
 };
 
+function suffixSnapshotPathWithID(relativePath: string, documentID: string): string {
+    const suffix = ` [${documentID}].md`;
+    return relativePath.endsWith(suffix) ? relativePath : `${relativePath.slice(0, -3)}${suffix}`;
+}
+
 const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FileExportMarkdownSnapshotSchema.parse(rawArgs);
     const deniedNotebook = await ensurePermissionForNotebook(permMgr, parsed.notebookID, 'read');
@@ -462,8 +467,50 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
         if (!byID.has(candidate.id)) byID.set(candidate.id, candidate);
     }
 
+    // Build the continuation inventory from the enumeration surface itself.
+    // Root enumeration already returns IDs and paths; explicit IDs are their
+    // own stable inventory. Resolving every document before slicing made each
+    // page repeat the complete notebook scan.
+    const inventoryCandidates = [...byID.values()].sort((left, right) => {
+        const leftKey = left.hPath || left.id;
+        const rightKey = right.hPath || right.id;
+        return compareSnapshotText(leftKey, rightKey) || compareSnapshotText(left.id, right.id);
+    });
+    const inventoryHash = await hashSnapshotMetadata(inventoryCandidates.map((candidate) => ({
+        id: candidate.id,
+        ...(candidate.path ? { path: candidate.path } : {}),
+        ...(candidate.hPath ? { hPath: candidate.hPath } : {}),
+        ...(candidate.name ? { name: candidate.name } : {}),
+    })));
+    if (cursor && (cursor.scopeHash !== scopeHash || cursor.inventoryHash !== inventoryHash)) {
+        throw new Error('export_markdown_snapshot cursor does not match the current notebook inventory; restart from the first page.');
+    }
+
+    // Root trees contain enough metadata to plan collisions for the complete
+    // inventory without resolving every document. Any candidate whose tree
+    // metadata is incomplete is resolved only when its page is requested.
+    const plannedRecords: SnapshotDocumentRecord[] = inventoryCandidates
+        .filter((candidate): candidate is SnapshotDocumentCandidate & { path: string; hPath: string } => Boolean(candidate.path && candidate.hPath))
+        .map((candidate) => {
+            const metadata = canonicalMetadata(parsed.notebookID, candidate);
+            return {
+                id: metadata.id,
+                title: metadata.title,
+                hPath: metadata.hPath,
+                storagePath: metadata.storagePath,
+                metadata,
+                metadataHash: '',
+            };
+        });
+    const conflicts = planSnapshotPaths(plannedRecords);
+    const plannedPathByID = new Map(plannedRecords.map((record) => [record.id, record.relativePath]));
+    for (const record of plannedRecords) {
+        for (const error of record.errors ?? []) errors.push(error);
+    }
+
+    const pageCandidates = inventoryCandidates.slice(offset, offset + limit);
     const records: SnapshotDocumentRecord[] = [];
-    for (const candidate of byID.values()) {
+    for (const candidate of pageCandidates) {
         try {
             const resolved = await ensurePermissionForDocumentId(client, permMgr, candidate.id, 'read');
             if (resolved.denied) {
@@ -483,14 +530,16 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
                 hPath,
                 name: resolved.context.name || candidate.name,
             });
-            records.push({
+            const record: SnapshotDocumentRecord = {
                 id: metadata.id,
                 title: metadata.title,
                 hPath: metadata.hPath,
                 storagePath: metadata.storagePath,
                 metadata,
                 metadataHash: await hashSnapshotMetadata(metadata),
-            });
+                relativePath: plannedPathByID.get(metadata.id),
+            };
+            records.push(record);
         } catch (error) {
             errors.push({
                 code: 'document_metadata_unavailable',
@@ -501,19 +550,30 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
         }
     }
 
-    records.sort((left, right) => compareSnapshotText(left.hPath, right.hPath) || compareSnapshotText(left.id, right.id));
-    const inventoryHash = await hashSnapshotMetadata(records.map((record) => record.metadata));
-    if (cursor && (cursor.scopeHash !== scopeHash || (cursor.inventoryHash && cursor.inventoryHash !== inventoryHash))) {
-        throw new Error('export_markdown_snapshot cursor does not match the current notebook inventory; restart from the first page.');
+    const unplannedRecords = records.filter((record) => !record.relativePath);
+    conflicts.push(...planSnapshotPaths(unplannedRecords));
+    // Explicit-ID pagination cannot know other pages' hPaths without doing the
+    // full scan we are avoiding. Add the stable ID to every explicit export
+    // filename so cross-page collisions are impossible by construction.
+    if (documentIDs) {
+        for (const record of records) {
+            if (!record.relativePath) continue;
+            record.relativePath = suffixSnapshotPathWithID(record.relativePath, record.id);
+        }
+    } else {
+        // A tree entry with incomplete metadata was planned only after page
+        // resolution; suffix it so it cannot collide with another page.
+        for (const record of unplannedRecords) {
+            if (!record.relativePath) continue;
+            record.relativePath = suffixSnapshotPathWithID(record.relativePath, record.id);
+        }
     }
-    const conflicts = planSnapshotPaths(records);
     for (const record of records) {
         for (const error of record.errors ?? []) {
             if (!errors.includes(error)) errors.push(error);
         }
     }
-    const pageRecords = records.slice(offset, offset + limit);
-    for (const record of pageRecords) {
+    for (const record of records) {
         try {
             const result = normalizeMarkdownContent(await fileApi.exportMdContent(client, record.id));
             if (result.hPath !== record.hPath) {
@@ -535,27 +595,27 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
         }
     }
 
-    const nextOffset = offset + pageRecords.length;
+    const nextOffset = offset + pageCandidates.length;
     return createJsonResult({
         kind: 'siyuan-markdown-snapshot-page',
         schemaVersion: '1.0.0',
-        status: errors.length > 0 || pageRecords.some((record) => record.errors?.length) ? 'partial' : 'complete',
+        status: errors.length > 0 || records.some((record) => record.errors?.length) ? 'partial' : 'complete',
         source: {
             notebookID: parsed.notebookID,
             inventorySurface: parsed.documentIDs ? 'documentIDs' : 'document.list_tree',
             exportSurface: 'file.export_md',
-            ...(scope.roots ? { roots: scope.roots } : { documentIDs: scope.documentIDs }),
+            ...(roots ? { roots } : { documentIDs: documentIDs! }),
         },
         scope: { ...scope, scopeHash },
         page: {
             offset,
             limit,
-            total: records.length,
-            hasNext: nextOffset < records.length,
-            ...(nextOffset < records.length ? { nextCursor: encodeSnapshotCursor(scopeHash, inventoryHash, nextOffset) } : {}),
+            total: inventoryCandidates.length,
+            hasNext: nextOffset < inventoryCandidates.length,
+            ...(nextOffset < inventoryCandidates.length ? { nextCursor: encodeSnapshotCursor(scopeHash, inventoryHash, nextOffset) } : {}),
         },
         inventoryHash,
-        documents: pageRecords,
+        documents: records,
         conflicts,
         errors,
     });

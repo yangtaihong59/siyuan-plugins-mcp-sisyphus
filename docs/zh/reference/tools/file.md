@@ -205,4 +205,4 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 
 `file(action="export_markdown_snapshot")` 通过思源 API 返回一页确定性 Markdown 快照，不写主机文件系统，也不启动后台任务。请求必须明确给出 `notebookID`，并且在 `roots`（例如 `/`）与 `documentIDs` 中二选一；用 `limit` 和不透明的 `cursor` 分批、可续跑地获取结果。
 
-每个文档返回 API 解析出的 ID、标题、hPath、存储路径、安全的相对 `.md` 路径、canonical metadata，以及 `sha256:v1:` 元数据/正文哈希。排序固定为 hPath 后 ID。重复 hPath 会保留全部文档并用 ID 消歧；大小写不敏感路径冲突和 API/导出不一致会进入 `conflicts`/`errors`，不会猜测覆盖。这个响应是一页结果，不是已经落盘的整库备份；由调用方决定是否及在哪里保存。
+每个文档返回 API 解析出的 ID、标题、hPath、存储路径、安全的相对 `.md` 路径、canonical metadata，以及 `sha256:v1:` 元数据/正文哈希。根目录清单按枚举得到的 hPath 后 ID 排序；显式 `documentIDs` 按 ID 排序。每次只解析权限并导出当前页。根目录模式会用轻量全量清单规划跨页路径冲突；显式 ID 模式则始终在文件名中加入文档 ID，保证不同页面不会互相覆盖。大小写不敏感路径冲突和 API/导出不一致会进入 `conflicts`/`errors`，不会猜测覆盖。这个响应是一页结果，不是已经落盘的整库备份；由调用方决定是否及在哪里保存。

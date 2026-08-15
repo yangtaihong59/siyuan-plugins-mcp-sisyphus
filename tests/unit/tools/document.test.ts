@@ -96,6 +96,7 @@ describe('document.ensure_link_targets', () => {
 
         expect(parseResult(result)).toMatchObject({
             success: true,
+            changed: false,
             createdCount: 0,
             resolvedCount: 1,
             unresolvedCount: 0,
@@ -123,6 +124,7 @@ describe('document.ensure_link_targets', () => {
 
         expect(parseResult(result)).toMatchObject({
             success: true,
+            changed: false,
             reusedCount: 1,
             reused: [{ key: 'existing', disposition: 'reused', id: existingId }],
             unresolvedCount: 0,
@@ -141,6 +143,7 @@ describe('document.ensure_link_targets', () => {
 
         expect(parseResult(result)).toMatchObject({
             success: false,
+            changed: false,
             dryRun: true,
             created: [],
             unresolved: [{ key: 'new', title: 'New target', reason: 'same_title_child_requires_explicit_id' }],
@@ -159,6 +162,7 @@ describe('document.ensure_link_targets', () => {
 
         expect(parseResult(result)).toMatchObject({
             success: true,
+            changed: true,
             createdCount: 1,
             reusedCount: 0,
             unresolvedCount: 0,
