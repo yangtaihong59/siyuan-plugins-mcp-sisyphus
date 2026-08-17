@@ -252,6 +252,48 @@ async function enrichTreeNodesWithDocInfo(
     }));
 }
 
+async function listDocumentTreeByPath(
+    client: SiYuanClient,
+    notebook: string,
+    parentPath: string,
+    maxDepth: number,
+    currentDepth = 0,
+    ancestors = new Set<string>(),
+): Promise<Record<string, unknown>[]> {
+    const response = await documentApi.listDocsByPath(client, notebook, parentPath, {
+        maxListCount: 0,
+        showHidden: false,
+        ignoreMaxListHint: true,
+    });
+    const nodes = await Promise.all(response.files.map(async (file) => {
+        const id = typeof file.id === 'string' && file.id.length > 0
+            ? file.id
+            : extractDocumentId(file.path);
+        if (!id || ancestors.has(id)) return null;
+        const nextAncestors = new Set(ancestors);
+        nextAncestors.add(id);
+
+        const node: Record<string, unknown> = { ...file, id };
+        const knownChildCount = file.subFileCount ?? file.count;
+        if (currentDepth < maxDepth && knownChildCount !== 0) {
+            const children = await listDocumentTreeByPath(
+                client,
+                notebook,
+                file.path,
+                maxDepth,
+                currentDepth + 1,
+                nextAncestors,
+            );
+            node.children = children;
+        } else if (currentDepth >= maxDepth && typeof knownChildCount === 'number' && knownChildCount > 0) {
+            node.childCount = knownChildCount;
+            node.childrenTruncated = true;
+        }
+        return node;
+    }));
+    return nodes.filter((node): node is Record<string, unknown> => node !== null);
+}
+
 function filterSearchDocsResultByPermission(result: unknown, permMgr: PermissionManager): unknown {
     if (Array.isArray(result)) {
         return filterBacklinkResultByPermission({ backmentions: result }, permMgr).backmentions;
@@ -845,7 +887,16 @@ const handleListTree: DocumentActionHandler = async ({ client, permMgr, rawArgs 
     const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
     if (denied) return denied;
     const maxDepth = parsed.maxDepth ?? 3;
-    const result = await documentApi.listDocTree(client, parsed.notebook, parsed.path);
+    let result: unknown;
+    if (parsed.path === '/') {
+        result = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
+    } else {
+        try {
+            result = await documentApi.listDocTree(client, parsed.notebook, parsed.path);
+        } catch {
+            result = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
+        }
+    }
     const depthHint = 'Use maxDepth to control tree depth. Use document(action="list_tree") with a deeper path to expand specific subtrees.';
     if (result && typeof result === 'object' && Array.isArray((result as Record<string, unknown>).tree)) {
         const enriched = await enrichTreeNodesWithDocInfo(client, (result as Record<string, unknown>).tree);

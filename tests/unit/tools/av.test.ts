@@ -982,6 +982,55 @@ describe('av tool', () => {
         });
     });
 
+    it('accepts a detached template row without a bound document block identity', async () => {
+        const avApi = await import('@/api/av');
+        const avID = '20260813002009-iiiiiii';
+        const databaseBlockID = '20260813002010-jjjjjjj';
+        const templateID = '20260813002000-aaaaaaa';
+        const itemID = '20260813002001-bbbbbbb';
+        const template = { id: templateID, name: 'Inbox', targetType: 'detached' };
+        const source = {
+            id: avID,
+            keyValues: [{ key: { type: 'block' }, values: [] }],
+            newItemTemplates: [template],
+            defaultTemplateID: templateID,
+        };
+        const after = {
+            ...source,
+            keyValues: [{
+                key: { type: 'block' },
+                values: [{ blockID: itemID, isDetached: true, block: { content: 'Inbox' } }],
+            }],
+        };
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        vi.mocked(avApi.getAttributeView)
+            .mockResolvedValueOnce({ av: source })
+            .mockResolvedValueOnce({ av: after });
+        vi.mocked(avApi.createAttributeViewItem).mockResolvedValue({
+            itemID,
+            blockID: itemID,
+            content: 'Inbox',
+            isDetached: true,
+        });
+
+        const result = await callAvTool(client, {
+            action: 'create_from_template',
+            avID,
+            blockID: databaseBlockID,
+            templateID,
+        }, enabledActions('create_from_template'), permMgr);
+
+        expect(result.isError).toBeUndefined();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'create_from_template',
+            itemID,
+            blockID: itemID,
+            isDetached: true,
+            fieldReadback: 'verified',
+        });
+    });
+
     it('writes and clears a two-way relation through the dedicated cross-AV action', async () => {
         const avApi = await import('@/api/av');
         const sourceAvID = '20260813000009-iiiiiii';

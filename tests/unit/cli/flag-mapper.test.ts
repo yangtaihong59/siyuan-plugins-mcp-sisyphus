@@ -262,4 +262,21 @@ describe('cli/flag-mapper', () => {
         expect(mapFlagsToArgs(['--id', 'block-1'], blockSchema, { category: 'block', action: 'word_count' }).args)
             .toEqual({ ids: ['block-1'] });
     });
+
+    it('maps document.ensure_link_targets --parent-id to parentId', () => {
+        const schema = {
+            type: 'object',
+            properties: { action: { type: 'string' } },
+            'x-sisyphus-actionSchemas': [
+                { properties: { action: { const: 'reorder' }, parentID: { type: 'string' } } },
+                { properties: { action: { const: 'ensure_link_targets' }, parentId: { type: 'string' } } },
+            ],
+        };
+
+        expect(mapFlagsToArgs(
+            ['--parent-id', 'doc-1'],
+            schema,
+            { category: 'document', action: 'ensure_link_targets' },
+        ).args).toEqual({ parentId: 'doc-1' });
+    });
 });

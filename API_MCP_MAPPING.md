@@ -65,7 +65,7 @@
 | `document.get_child_blocks` | `/api/block/getChildBlocks` | — | — | `read` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `document.get_child_docs` | `/api/filetree/listDocsByPath` | — | — | `read` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `document.set_attr` | `/api/transactions` | — | — | `mutation(state)` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
-| `document.list_tree` | `/api/filetree/listDocTree` | — | — | `read` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
+| `document.list_tree` | `/api/filetree/listDocsByPath` | — | — | `read` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `document.search_docs` | `/api/filetree/searchDocs` | — | — | `read` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `document.get_doc` | `/api/filetree/getDoc` | — | — | `read` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `document.get_outline` | `/api/outline/getDocOutline` | — | — | `read` | `document`、`outline`、`dailynote` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |

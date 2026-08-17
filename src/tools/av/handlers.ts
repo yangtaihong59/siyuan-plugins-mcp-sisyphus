@@ -3329,8 +3329,6 @@ async function handleCreateFromTemplate({ client, permMgr, rawArgs }: ToolHandle
     const after = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.avID)).av, parsed.avID);
     const createdLookup = extractAvRowLookup(after);
     if (!createdLookup.rowIDs.has(response.itemID)) throw new Error(`create_from_template readback: returned itemID "${response.itemID}" is not a raw AV row item.`);
-    const boundBlockID = getBoundBlockIDForItem(after, response.itemID, 'create_from_template readback');
-    if (boundBlockID !== response.blockID) throw new Error('create_from_template readback: native returned blockID differs from the row bound block identity.');
     await verifyCreatedTemplateFieldValues(after, template, response.itemID, createdAfterMs, 'create_from_template readback');
     for (const [keyID, target] of relationTargets) {
         await readRelationPostimage(client, parsed.avID, keyID, response.itemID, target.relatedItemIDs, target.destinationAvID, target.backKeyID, [], 'create_from_template relation readback');
@@ -3338,6 +3336,8 @@ async function handleCreateFromTemplate({ client, permMgr, rawArgs }: ToolHandle
     if (response.isDetached) {
         if (response.blockID !== response.itemID) throw new Error('create_from_template readback: detached template returned a distinct document blockID.');
     } else {
+        const boundBlockID = getBoundBlockIDForItem(after, response.itemID, 'create_from_template readback');
+        if (boundBlockID !== response.blockID) throw new Error('create_from_template readback: native returned blockID differs from the row bound block identity.');
         if (response.blockID === response.itemID || !await blockApi.checkBlockExist(client, response.blockID)) throw new Error('create_from_template readback: document template did not materialize its returned bound document block.');
         const hPath = await documentApi.getHPathByID(client, response.blockID);
         if (!hPath || (response.content && !hPath.endsWith(`/${response.content}`))) throw new Error('create_from_template readback: returned document content did not match its persisted document path.');

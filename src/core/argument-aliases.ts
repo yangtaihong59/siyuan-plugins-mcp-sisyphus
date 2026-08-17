@@ -153,6 +153,15 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
         ];
     }
 
+    // document combines actions that use both parentID and parentId in one
+    // aggregated CLI schema. Their kebab/snake aliases collide, so pin this
+    // action to its exact MCP contract.
+    if (context.category === 'document' && action === 'ensure_link_targets') {
+        return [
+            { canonical: 'parentId', aliases: ['parentID', 'parent-id', 'parent_id'], schema: STRING_SCHEMA },
+        ];
+    }
+
     if (context.category === 'block' && action === 'word_count') {
         return [
             { canonical: 'ids', aliases: ['id'], schema: { type: 'array', items: STRING_SCHEMA } },

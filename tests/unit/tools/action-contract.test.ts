@@ -233,7 +233,7 @@ describe('tool action contract coverage', () => {
             { action: 'get_child_blocks', args: { action: 'get_child_blocks', id: 'doc-1' }, expectedEndpoint: '/api/block/getChildBlocks' },
             { action: 'get_child_docs', args: { action: 'get_child_docs', id: 'doc-1' }, expectedEndpoint: '/api/filetree/listDocsByPath' },
             { action: 'set_attr', args: { action: 'set_attr', id: 'doc-1', attrs: { icon: '1f4d4' } }, expectedEndpoint: '/api/transactions' },
-            { action: 'list_tree', args: { action: 'list_tree', notebook: 'nb-1', path: '/' }, expectedEndpoint: '/api/filetree/listDocTree' },
+            { action: 'list_tree', args: { action: 'list_tree', notebook: 'nb-1', path: '/' }, expectedEndpoint: '/api/filetree/listDocsByPath' },
             { action: 'search_docs', args: { action: 'search_docs', notebook: 'nb-1', query: 'Doc' }, expectedEndpoint: '/api/filetree/searchDocs' },
             { action: 'get_doc', args: { action: 'get_doc', id: 'doc-1', mode: 'html' }, expectedEndpoint: '/api/filetree/getDoc' },
             { action: 'get_outline', args: { action: 'get_outline', id: 'doc-1' }, expectedEndpoint: '/api/outline/getDocOutline' },

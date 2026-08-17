@@ -543,10 +543,12 @@ describe('tool permission and filtering behavior', () => {
             name: 'Doc One.sy',
             icon: '1f4d4',
         } as never);
-        vi.spyOn(documentApi, 'listDocTree').mockResolvedValue({
-            tree: [
-                { id: 'doc-1' },
-                { id: 'doc-1' },
+        vi.spyOn(documentApi, 'listDocsByPath').mockResolvedValue({
+            box: 'allowed',
+            path: '/',
+            files: [
+                { id: 'doc-1', path: '/doc-1.sy', subFileCount: 0 },
+                { id: 'doc-1', path: '/doc-1.sy', subFileCount: 0 },
             ],
         });
 
@@ -560,5 +562,28 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.tree).toHaveLength(2);
         expect(parsed.tree[0].name).toBe('Doc One');
         expect(getDocInfo).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to listDocsByPath when listDocTree cannot open a leaf document path', async () => {
+        vi.spyOn(documentApi, 'listDocTree').mockRejectedValue(new Error('no such file or directory'));
+        const listDocsByPath = vi.spyOn(documentApi, 'listDocsByPath').mockResolvedValue({
+            box: 'allowed',
+            path: '/doc-1.sy',
+            files: [],
+        });
+
+        const result = await callDocumentTool({} as never, {
+            action: 'list_tree',
+            notebook: 'allowed',
+            path: '/doc-1.sy',
+        }, documentConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        expect(parsed.tree).toEqual([]);
+        expect(listDocsByPath).toHaveBeenCalledWith(expect.anything(), 'allowed', '/doc-1.sy', {
+            maxListCount: 0,
+            showHidden: false,
+            ignoreMaxListHint: true,
+        });
     });
 });
