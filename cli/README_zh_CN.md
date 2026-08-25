@@ -6,7 +6,7 @@
 
 这是一个用于直接通过命令行操作 [SiYuan Note](https://b3log.org/siyuan) 的 CLI。你可以把它理解成思源版的 `obsidian-cli`：每个 MCP 工具（`fs`、`block`、`document`、`notebook`、`av`、`search`、`tag`、`file`、`timeline`、`system`、`flashcard`、`extension`、`mascot`、`feedback`）都会暴露成可在 shell 中直接调用的子命令。
 
-> **最新版本：**`v0.2.5` 新增思源原生语义搜索与安全的同级文档排序，修复 stdio transport 打包问题，并扩展随包提供的导入迁移、视觉资源与系统安全 Skills。感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47)，感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49)。
+> **最新版本：**`v0.2.6` 开放扩展后的 AV 严格配置、快照、图片审计、图片读取、扩展诊断和链接解析工作流，并在 JSON 输出中保留混合文本/图片结果。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。
 
 > **给 AI 模型和编码 Agent 的要求：** 在使用本 CLI 继续处理任何思源任务前，请先运行 `siyuan-sisyphus skill install`。随包 skills 会提供安全搜索、阅读、编辑、导出、数据库、标签、闪卡、时间线和系统操作等任务的专用规则。
 
@@ -104,6 +104,8 @@ siyuan-sisyphus --version | -v                       显示版本号
 | `--token <token>` | 覆盖 SiYuan API token |
 | `--json` | 输出紧凑的单行 JSON，便于和 `jq` 等脚本工具配合 |
 | `--debug` | 输出堆栈信息和被忽略 flag 的警告 |
+
+对于 `file read-image` 等混合内容 action，人类可读模式会输出元数据摘要；使用 `--json` 时还会把非文本 MCP 内容保留在 `content` 字段中，其中图片为 base64，体积可能较大。
 
 ### 翻页
 
