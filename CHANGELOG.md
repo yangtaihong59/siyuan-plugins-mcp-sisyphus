@@ -2,6 +2,15 @@
 
 本文件记录项目的主要版本变更。
 
+## v0.6.4 - 2026-08-25
+
+- 扩展 AV 严格写入能力，新增视图筛选、排序、分组、列布局、新建模板、双向关系、汇总及行复制，并修正真实内核渲染、关系单元格和写后读回语义
+- 新增可审计 Markdown 快照、图片引用审计和受文档权限约束的 `file.read_image`，补充受限链接目标解析、扩展包生命周期诊断、远程分页与路径语义
+- 统一 MCP/CLI 混合内容输出、action 清单、帮助、Skills、API 审计与安全约束；CLI 包同步提升至 v0.2.6
+- **感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48)、[#50](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/50)、[#51](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/51)、[#52](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/52)、[#53](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/53)、[#54](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/54)、[#55](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/55) 与 [#56](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/56)**，贡献 CI 与 action 清单修正、严格写入边界、可审计快照和图片引用审计、扩展诊断、受限链接解析及 AV 高级配置能力
+- **感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)**，修正 `av.render` 对真实内核行、单元格、分组与分页语义的处理
+- **感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)**，消除 `fs` 与 `document` 工具的路径语义歧义
+
 ## v0.6.3 - 2026-08-13
 
 - 新增 `search(action="semantic")`，复用思源原生嵌入索引，并在设置页提供模型配置、连接测试、索引进度、重建与失败重试

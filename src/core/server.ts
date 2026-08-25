@@ -36,6 +36,7 @@ import { listHelpResources, listHelpResourceTemplates, readHelpResource } from '
 import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory, TOOL_REGISTRY } from './tool-registry';
 import { runToolCall } from './tool-lifecycle';
 import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from './skills';
+import type { ToolResult } from '../tools/internal/shared';
 
 export { buildServerInstructions } from './server-instructions';
 
@@ -402,7 +403,13 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         const actionEnabled = appActionConfig
             ? (appActionConfig.actions as Record<string, boolean>)[action] === true
             : category === 'extension'
-                ? true
+                // Official MCP actions are discovered dynamically and remain
+                // governed by bridge discovery/trust. The named diagnostics
+                // are Sisyphus-owned actions, so their persisted action
+                // switches must still work like every other category.
+                ? (Object.prototype.hasOwnProperty.call(config.extension.actions, action)
+                    ? config.extension.actions[action as keyof typeof config.extension.actions] === true
+                    : true)
                 : (config[category].actions as Record<string, boolean>)[action] === true;
         if (action !== 'help' && !actionEnabled) {
             const disabled = {
@@ -426,9 +433,11 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         const extensionTool = category === 'extension'
             ? officialMcpBridge.getTools().find((tool) => tool.name === action)
             : undefined;
+        const extensionDynamicAction = category === 'extension'
+            && !['list', 'help', 'validate_package', 'diagnose_plugin_mcp'].includes(action);
         const requiresConfirmation = actionEnabled && args?.validateOnly !== true && (
             isDangerousAction(category as ToolCategory, action)
-            || (category === 'extension' && action !== 'list' && action !== 'help' && extensionTool?.readOnlyHint !== true)
+            || (extensionDynamicAction && extensionTool?.readOnlyHint !== true)
         );
 
         // 2026-07-28 carries confirmation in-band through MRTR. Legacy
@@ -530,9 +539,8 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             },
         );
         // The low-level v2 Server leaves cross-era result projection to the
-        // handler. Our tools currently have text-only output and no advertised
-        // outputSchema, but projecting here keeps modern and legacy shapes in
-        // sync when structured output is introduced later.
+        // handler. Project the complete mixed-content result here so text,
+        // image, and structured metadata stay aligned in both protocol eras.
         const projectedResult = withStructuredContent(result);
         return server.projectCallToolResult(
             compactMcpAppToolResult(name, action, projectedResult, appsEnabled, config.mcpApps),
@@ -543,11 +551,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
     return server;
 }
 
-function withStructuredContent(result: {
-    content: Array<{ type: 'text'; text: string }>;
-    isError?: boolean;
-    structuredContent?: Record<string, unknown>;
-}): CallToolResult {
+function withStructuredContent(result: ToolResult): CallToolResult {
     if (result.structuredContent) return result as CallToolResult;
 
     const text = result.content.find((item) => item.type === 'text')?.text ?? '';

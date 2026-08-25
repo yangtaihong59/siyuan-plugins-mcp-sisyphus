@@ -6,7 +6,7 @@ import { getInvocationTransport } from './runtime';
 import { slimToolResult } from './slim-response';
 import { maybeSendTelemetry } from './telemetry';
 import { APPROX_TOKEN_MODE, measureApproxContent, measureApproxText } from './token-usage';
-import type { ToolResult } from '@/tools/internal/shared';
+import type { ToolContent, ToolResult } from '@/tools/internal/shared';
 
 /**
  * Context handed to runToolCall. Enough for the lifecycle wrappers
@@ -32,11 +32,11 @@ function buildAnalyticsEvent(
     status: 'success' | 'error',
     durationMs: number,
     resultText?: string,
-    content?: { type: 'text'; text: string }[],
+    content?: ToolContent[],
 ) {
     const requestMetrics = measureApproxText(requestText);
     const responseMetrics = content ? measureApproxContent(content) : measureApproxText(resultText);
-    const responseText = content ? content.map((item) => item.text ?? '').join('') : (resultText ?? '');
+    const responseText = content ? content.map((item) => item.type === 'text' ? item.text : '').join('') : (resultText ?? '');
     const requestSnapshot = truncateAnalyticsText(requestText);
     const responseSnapshot = truncateAnalyticsText(responseText);
     const paramKeys = args && typeof args === 'object'
@@ -104,7 +104,7 @@ function filterUiRefreshMetadata(result: ToolResult, includeUiRefreshMetadata: b
     delete nextPayload.uiRefresh;
     return {
         ...result,
-        content: [{ ...first, text: JSON.stringify(nextPayload, null, 2) }],
+        content: [{ ...first, text: JSON.stringify(nextPayload, null, 2) }, ...result.content.slice(1)],
     };
 }
 
@@ -203,7 +203,7 @@ export async function runToolCall(
             requestText,
             result.isError ? 'error' : 'success',
             durationMs,
-            result.content[0]?.text,
+            result.content.find((item) => item.type === 'text')?.text,
             result.content,
         ),
     );

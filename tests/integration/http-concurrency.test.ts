@@ -67,10 +67,38 @@ describe('HTTP MCP concurrency', () => {
 
             if (urlStr.includes('/api/file/getFile')) {
                 const body = init?.body ? JSON.parse(String(init.body)) as { path?: string } : {};
+                if (body.path === '/data/assets/question.png') {
+                    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]);
+                    return {
+                        ok: true,
+                        text: async () => '',
+                        arrayBuffer: async () => bytes.buffer,
+                    } as Response;
+                }
                 return {
                     ok: true,
                     text: async () => storedFiles[body.path ?? ''] ?? '',
                 } as Response;
+            }
+
+            if (urlStr.includes('/api/query/sql')) {
+                return jsonResponse({
+                    code: 0,
+                    msg: 'success',
+                    data: [{
+                        id: 'doc-image',
+                        root_id: 'doc-image',
+                        box: 'notebook-1',
+                        path: '/doc-image.sy',
+                        hpath: '/Image Question',
+                        content: 'Image Question',
+                        type: 'd',
+                    }],
+                });
+            }
+
+            if (urlStr.includes('/api/asset/getDocImageAssets')) {
+                return jsonResponse({ code: 0, msg: 'success', data: ['assets/question.png'] });
             }
 
             if (urlStr.includes('/api/file/putFile')) {
@@ -260,9 +288,27 @@ describe('HTTP MCP concurrency', () => {
         await client.connect(transport);
         const tools = await client.listTools();
         const versionResult = await client.callTool({ name: 'system', arguments: { action: 'get_version' } });
+        const imageResult = await client.callTool({
+            name: 'file',
+            arguments: { action: 'read_image', id: 'doc-image', path: 'assets/question.png' },
+        });
         const syncResult = await client.callTool({ name: 'system', arguments: { action: 'perform_sync' } });
 
         expect(client.getNegotiatedProtocolVersion()).toBe('2026-07-28');
+        expect(imageResult.content).toEqual([
+            expect.objectContaining({ type: 'text', text: expect.stringContaining('"delivery": "mcp_image"') }),
+            {
+                type: 'image',
+                data: Buffer.from(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])).toString('base64'),
+                mimeType: 'image/png',
+            },
+        ]);
+        expect(imageResult.structuredContent).toMatchObject({
+            documentID: 'doc-image',
+            path: 'assets/question.png',
+            mimeType: 'image/png',
+            bytes: 9,
+        });
         expect(client.getDiscoverResult()?.supportedVersions).toContain('2026-07-28');
         expect(transport.sessionId).toBeUndefined();
         expect(tools.tools.map((tool) => tool.name)).toContain('system');

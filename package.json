@@ -1,6 +1,7 @@
 {
   "name": "siyuan-plugins-mcp-sisyphus",
-  "version": "0.6.3",
+  "version": "0.6.4",
+  "packageManager": "pnpm@9.15.9",
   "type": "module",
   "description": "Let AI control your notes with a SiYuan MCP server that exposes 14 aggregated tools with action-level routing, including document timeline diff and official plugin tool bridging.",
   "repository": "https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus",
@@ -25,6 +26,8 @@
     "test:smoke": "node tests/smoke/live_mcp_smoke.cjs",
     "test:repro-index": "node scripts/repro-index-error.cjs",
     "test:repro-index-mcp": "node scripts/repro-index-error-mcp.cjs",
+    "api:audit": "node scripts/api-audit.mjs",
+    "api:audit:check": "node scripts/api-audit.mjs --check",
     "skills:generate": "node scripts/generate-skills.mjs",
     "skills:check": "node scripts/generate-skills.mjs --check",
     "make-link": "node --no-warnings ./scripts/make_dev_link.js",

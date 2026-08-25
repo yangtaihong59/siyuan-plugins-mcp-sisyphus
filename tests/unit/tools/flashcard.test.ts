@@ -707,6 +707,7 @@ describe('flashcard tool', () => {
     });
 
     it('fails create_card when the builtin deck record is not queryable after write', async () => {
+        vi.useFakeTimers();
         const api = await import('@/api/flashcard');
         const attributeApi = await import('@/api/block');
         vi.mocked(attributeApi.getBlockAttrs)
@@ -717,28 +718,35 @@ describe('flashcard tool', () => {
             blocks: [{ id: 'block-1', content: '不存在符合条件的内容块' }],
         });
 
-        const result = await callFlashcardTool({} as any, {
+        const pending = callFlashcardTool({} as any, {
             action: 'create_card',
             deckID: '',
             blockIDs: ['block-1'],
         }, enabledActions as any, {} as any);
+        await vi.runAllTimersAsync();
+        const result = await pending;
+        vi.useRealTimers();
 
         expect(result.isError).toBe(true);
         expect(result.content[0].text).toContain('did not create readable riff card records');
     });
 
     it('fails remove_card when builtin deck records remain queryable', async () => {
+        vi.useFakeTimers();
         const api = await import('@/api/flashcard');
         vi.mocked(api.removeRiffCards).mockResolvedValue({ id: '20230218211946-2kw8jgx' });
         vi.mocked(api.getRiffCardsByBlockIDs).mockResolvedValue({
             blocks: [{ id: 'block-1', riffCardID: 'card-1', riffCard: { state: 0 } }],
         });
 
-        const result = await callFlashcardTool({} as any, {
+        const pending = callFlashcardTool({} as any, {
             action: 'remove_card',
             deckID: '',
             blockIDs: ['block-1'],
         }, enabledActions as any, {} as any);
+        await vi.runAllTimersAsync();
+        const result = await pending;
+        vi.useRealTimers();
 
         expect(result.isError).toBe(true);
         expect(result.content[0].text).toContain('did not fully remove readable riff card records');

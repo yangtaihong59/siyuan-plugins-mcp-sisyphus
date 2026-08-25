@@ -23,20 +23,21 @@ const runStamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
 const testNotebookName = `Sisyphus-全写入实测-${runStamp}`;
 const results = [];
 let requestSequence = 1;
+let nodeSequence = 1;
 
 const actionsByCategory = {
     fs: ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv', 'reorder', 'search'],
     notebook: ['list', 'create', 'set_open_state', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'],
-    document: ['create', 'lookup', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
+    document: ['create', 'lookup', 'ensure_link_targets', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
     block: ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'get_kramdown', 'batch_kramdown', 'get_children', 'transfer_references', 'set_attrs', 'get_attrs', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count', 'add_to_daily_note', 'docs_info'],
-    av: ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'duplicate', 'get_primary_key_values'],
-    file: ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'],
+    av: ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'get_primary_key_values', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'],
+    file: ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_markdown_snapshot', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'audit_image_refs', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'],
     search: ['fulltext', 'semantic', 'query_sql', 'get_backlinks', 'search_refs', 'find_replace', 'search_assets', 'fulltext_asset_content', 'list_invalid_refs'],
     tag: ['list', 'rename', 'remove'],
     timeline: ['list_nodes', 'create_node', 'compare_node', 'delete_node', 'rollback_document', 'rollback_block'],
     system: ['workspace_info', 'network', 'conf', 'notify', 'changelog', 'perform_sync', 'get_version', 'get_current_time'],
     flashcard: ['list_cards', 'get_decks', 'get_cards', 'review_card', 'create_card', 'remove_card'],
-    extension: ['list'],
+    extension: ['list', 'validate_package', 'diagnose_plugin_mcp'],
     mascot: ['get_balance', 'shop', 'buy'],
     feedback: ['submit'],
 };
@@ -61,6 +62,10 @@ function uuidV7() {
     const timestamp = Date.now().toString(16).padStart(12, '0');
     const suffix = String(requestSequence++).padStart(12, '0');
     return `${timestamp.slice(0, 8)}-${timestamp.slice(8)}-7000-8000-${suffix}`;
+}
+
+function siyuanNodeId() {
+    return `${runStamp}-${(nodeSequence++).toString(36).padStart(7, '0')}`;
 }
 
 function kebab(value) {
@@ -93,7 +98,9 @@ function parseCliJson(stdout) {
 }
 
 async function callCli(tool, action, args = {}, options = {}) {
-    const argv = [cliPath, tool, action, ...flagsFor(args), '--json'];
+    // Debug disables the runtime's slim-response projection. Live readback
+    // assertions need the complete handler payload, not only summary fields.
+    const argv = [cliPath, tool, action, ...flagsFor(args), '--json', ...(options.fullResponse === false ? [] : ['--debug'])];
     try {
         const { stdout } = await execFileAsync(process.execPath, argv, {
             cwd: repoRoot,
@@ -117,8 +124,8 @@ function assertNoError(payload, label) {
     }
 }
 
-async function read(tool, action, args = {}) {
-    const payload = await callCli(tool, action, args);
+async function read(tool, action, args = {}, options = {}) {
+    const payload = await callCli(tool, action, args, options);
     assertNoError(payload, `${tool}.${action}`);
     return payload;
 }
@@ -145,10 +152,10 @@ async function mutate(tool, action, args, precondition = 'none', options = {}) {
             }
             executionArgs.requestId = uuidV7();
             payload = await callCli(tool, action, executionArgs, options);
-            if (payload?.error?.code === 'state_changed'
+            if (['state_changed', 'preflight_lease_invalid', 'ambiguous_hash_prefix'].includes(payload?.error?.code)
                 && payload?.writeAttempted === false
                 && attempt < 2) {
-                process.stdout.write(`RETRY ${label} after state_changed\n`);
+                process.stdout.write(`RETRY ${label} after ${payload.error.code}\n`);
                 continue;
             }
             assertNoError(payload, `${label} execution`);
@@ -417,6 +424,36 @@ async function runNotebookAndFsGroup(state) {
 async function runDocumentGroup(state) {
     const documentParentID = await createDocument(state, '/文档操作', 'document operation fixtures');
     const sourceID = await createDocument(state, '/文档操作/源文档', 'document source');
+    const resolvedLinks = await read('document', 'ensure_link_targets', {
+        notebook: state.notebookId,
+        parentId: documentParentID,
+        mode: 'resolve',
+        targets: [{ key: 'source', id: sourceID }],
+    });
+    if (resolvedLinks.linkMap?.source?.id !== sourceID) {
+        throw new Error('document.ensure_link_targets resolve did not preserve the exact target ID');
+    }
+    await read('document', 'ensure_link_targets', {
+        notebook: state.notebookId,
+        parentId: documentParentID,
+        mode: 'reuse',
+        targets: [{ key: 'source', id: sourceID }],
+    });
+    await read('document', 'ensure_link_targets', {
+        notebook: state.notebookId,
+        parentId: documentParentID,
+        mode: 'create',
+        targets: [{ key: 'created', title: `链接目标-${runStamp}` }],
+        markdown: `由 ensure_link_targets 创建：${runStamp}`,
+        dryRun: true,
+    });
+    await mutate('document', 'ensure_link_targets', {
+        notebook: state.notebookId,
+        parentId: documentParentID,
+        mode: 'create',
+        targets: [{ key: 'created', title: `链接目标-${runStamp}` }],
+        markdown: `由 ensure_link_targets 创建：${runStamp}`,
+    }, 'structure');
     await mutate('document', 'rename', { id: sourceID, title: '源文档-已重命名' }, 'state');
     await mutate('document', 'set_attr', { id: sourceID, attrs: { icon: '1f4dd' } }, 'state');
     await mutate('document', 'duplicate', { id: sourceID }, 'state');
@@ -553,6 +590,21 @@ async function runAvGroup(state) {
     const columnID = firstString(column, ['keyID', 'columnID']);
     if (!columnID) throw new Error('av.add_column did not return keyID');
 
+    const selectColumn = await mutate('av', 'add_column', {
+        avID,
+        ...(databaseBlockID ? { blockID: databaseBlockID } : {}),
+        keyName: `阶段-${runStamp}`,
+        keyType: 'select',
+    }, 'state', { variant: 'select-fixture' });
+    const selectColumnID = firstString(selectColumn, ['keyID', 'columnID']);
+    if (!selectColumnID) throw new Error('av.add_column select fixture did not return keyID');
+    await mutate('av', 'set_column_options', {
+        avID,
+        blockID: databaseBlockID,
+        keyID: selectColumnID,
+        options: [{ name: '待办', color: '1' }, { name: '完成', color: '2' }],
+    }, 'state');
+
     const removableColumn = await mutate('av', 'add_column', {
         avID,
         ...(databaseBlockID ? { blockID: databaseBlockID } : {}),
@@ -579,6 +631,114 @@ async function runAvGroup(state) {
         valueType: 'text',
         text: `已写入-${runStamp}`,
     }, 'manifest');
+
+    const boundSourceDocID = await createDocument(state, '/数据库操作/绑定源行', `bound source ${runStamp}`);
+    const boundRows = await mutate('av', 'add_rows', {
+        avID,
+        blockID: databaseBlockID,
+        blockIDs: [boundSourceDocID],
+    }, 'none', { variant: 'bound-row' });
+    const boundSourceItemID = asArray(boundRows)[0]?.rowID;
+    if (!boundSourceItemID) throw new Error('av.add_rows bound fixture did not return rowID');
+    await mutate('av', 'duplicate_rows', {
+        avID,
+        blockID: databaseBlockID,
+        sourceRowIDs: [boundSourceItemID],
+    }, 'manifest');
+
+    const avSnapshot = await read('av', 'get', { id: avID, blockID: databaseBlockID });
+    const definition = avSnapshot.av;
+    const views = Array.isArray(definition?.views) ? definition.views : [];
+    const carrierAttrs = await read('block', 'get_attrs', { id: databaseBlockID });
+    const currentViewID = carrierAttrs['custom-sy-av-view'] || carrierAttrs.attrs?.['custom-sy-av-view'] || views[0]?.id;
+    if (!currentViewID) throw new Error('Cannot resolve current AV view ID');
+    const currentView = views.find((view) => view?.id === currentViewID) || views[0];
+    const currentLayout = currentView?.table || currentView?.gallery || currentView?.kanban;
+    const viewColumns = Array.isArray(currentLayout?.columns) ? currentLayout.columns : Array.isArray(currentLayout?.fields) ? currentLayout.fields : [];
+    const orderedKeyIDs = viewColumns.map((entry) => entry?.id).filter((id) => typeof id === 'string' && id);
+    if (!orderedKeyIDs.includes(selectColumnID)) throw new Error('Current AV view does not expose the new select column');
+
+    await mutate('av', 'set_filters', {
+        avID, blockID: databaseBlockID, viewID: currentViewID,
+        filters: [{ column: selectColumnID, operator: 'Is not empty' }],
+    }, 'state');
+    await mutate('av', 'set_sorts', {
+        avID, blockID: databaseBlockID, viewID: currentViewID,
+        sorts: [{ column: selectColumnID, order: 'ASC' }],
+    }, 'state');
+    await mutate('av', 'set_group', {
+        avID, blockID: databaseBlockID, viewID: currentViewID,
+        group: { field: selectColumnID, method: 0, order: 3, hideEmpty: false },
+    }, 'state');
+    await mutate('av', 'set_column_visibility', {
+        avID, blockID: databaseBlockID, viewID: currentViewID,
+        keyID: selectColumnID, hidden: true,
+    }, 'state');
+    await mutate('av', 'set_column_order', {
+        avID, blockID: databaseBlockID, viewID: currentViewID,
+        keyIDs: [...orderedKeyIDs].reverse(),
+    }, 'state');
+
+    const templateID = siyuanNodeId();
+    await mutate('av', 'set_new_item_templates', {
+        avID,
+        blockID: databaseBlockID,
+        templates: [{ id: templateID, name: `收件箱-${runStamp}`, targetType: 'detached' }],
+        defaultTemplateID: templateID,
+    }, 'state');
+    await mutate('av', 'create_from_template', {
+        avID, blockID: databaseBlockID, templateID,
+    }, 'state');
+
+    const destinationDocID = await createDocument(state, '/数据库操作/目标数据库文档', 'destination database host');
+    const destinationRendered = await mutate('av', 'render', {
+        blockID: destinationDocID,
+        createIfNotExist: true,
+    }, 'none', { variant: 'relation-destination-create' });
+    const destinationAvID = firstString(destinationRendered, ['avID', 'id']);
+    const destinationBlockID = firstString(destinationRendered, ['blockID']);
+    if (!destinationAvID || !destinationBlockID) throw new Error('Destination AV materialization returned incomplete IDs');
+    const destinationBoundDocID = await createDocument(state, '/数据库操作/绑定目标行', `bound destination ${runStamp}`);
+    const destinationRows = await mutate('av', 'add_rows', {
+        avID: destinationAvID,
+        blockID: destinationBlockID,
+        blockIDs: [destinationBoundDocID],
+    }, 'none', { variant: 'relation-destination-row' });
+    const destinationItemID = asArray(destinationRows)[0]?.rowID;
+    if (!destinationItemID) throw new Error('Destination AV bound row did not return rowID');
+
+    const relationColumn = await mutate('av', 'add_column', {
+        avID, blockID: databaseBlockID, keyName: `关联-${runStamp}`, keyType: 'relation',
+    }, 'state', { variant: 'relation-fixture' });
+    const relationKeyID = firstString(relationColumn, ['keyID', 'columnID']);
+    const rollupColumn = await mutate('av', 'add_column', {
+        avID, blockID: databaseBlockID, keyName: `汇总-${runStamp}`, keyType: 'rollup',
+    }, 'state', { variant: 'rollup-fixture' });
+    const rollupKeyID = firstString(rollupColumn, ['keyID', 'columnID']);
+    if (!relationKeyID || !rollupKeyID) throw new Error('Relation/rollup fixtures did not return key IDs');
+    const destinationKeys = await read('av', 'get_attribute_view_keys', { id: destinationAvID });
+    const destinationKeyList = asArray(destinationKeys.keys || destinationKeys);
+    const destinationPrimaryKeyID = destinationKeyList.find((key) => key?.type === 'block')?.id || destinationKeyList[0]?.id;
+    if (!destinationPrimaryKeyID) throw new Error('Destination AV primary key ID could not be resolved');
+    const backRelationKeyID = siyuanNodeId();
+    await mutate('av', 'configure_two_way_relation', {
+        avID, blockID: databaseBlockID, keyID: relationKeyID,
+        destinationAvID, destinationBlockID, backRelationKeyID,
+        sourceName: `关联-${runStamp}`, destinationName: `反向关联-${runStamp}`,
+    }, 'state');
+    await mutate('av', 'set_relation', {
+        avID, blockID: databaseBlockID, itemID: boundSourceItemID,
+        keyID: relationKeyID, relatedItemIDs: [destinationItemID],
+    }, 'state');
+    await mutate('av', 'configure_rollup', {
+        avID, blockID: databaseBlockID, keyID: rollupKeyID,
+        relationKeyID, destinationKeyID: destinationPrimaryKeyID,
+        calc: { operator: 'Count all' },
+    }, 'state');
+
+    await mutate('av', 'add_view', {
+        avID, blockID: databaseBlockID, viewID: siyuanNodeId(), layout: 'table', name: `备用表格-${runStamp}`,
+    }, 'state');
 
     await mutate('av', 'duplicate', {
         avID,
@@ -691,7 +851,7 @@ async function runFlashcardGroup(state) {
     await mutate('flashcard', 'create_card', { deckID, blockIDs: [headingID] });
     let cardID;
     for (let attempt = 0; attempt < 8 && !cardID; attempt += 1) {
-        const cards = await read('flashcard', 'get_cards', { deckID, page: 1, pageSize: 512 });
+        const cards = await read('flashcard', 'get_cards', { deckID, page: 1, pageSize: 512 }, { fullResponse: false });
         const card = asArray(cards).find((item) => {
             const blockID = firstString(item, ['blockID', 'id', 'block.id']);
             return blockID === headingID;
@@ -726,6 +886,21 @@ async function cleanupStaleFixtures() {
             notebook: notebook.id,
             permission: 'rwd',
         }, 'state', { variant: 'stale-cleanup' });
+        const flashcardDoc = await callCli('document', 'lookup', {
+            notebook: notebook.id,
+            hpath: '/闪卡操作',
+            include: ['id'],
+        });
+        const flashcardDocID = !flashcardDoc?.error && firstString(flashcardDoc, ['id', 'ids.0']);
+        if (flashcardDocID) {
+            const flashcardBlocks = await childBlocks(flashcardDocID);
+            for (const block of flashcardBlocks.filter((item) => item?.type === 'h')) {
+                await mutate('flashcard', 'remove_card', {
+                    deckID: '20230218211946-2kw8jgx',
+                    blockIDs: [block.id],
+                }, 'state', { variant: 'stale-cleanup', continueOnError: true });
+            }
+        }
         await mutate('notebook', 'remove', { notebook: notebook.id }, 'state', { variant: 'stale-cleanup' });
     }
 
@@ -825,9 +1000,9 @@ async function main() {
         await writeRemoteFile(toolConfigPath, JSON.stringify(enableActions(originalConfig, {
             notebook: ['create', 'set_open_state', 'remove', 'set_permission', 'rename', 'set_icon', 'get_conf', 'set_conf'],
             fs: ['write', 'replace', 'mv', 'rm', 'reorder'],
-            document: ['create', 'lookup', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
+            document: ['create', 'lookup', 'ensure_link_targets', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
             block: ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'transfer_references', 'set_attrs', 'add_to_daily_note'],
-            av: ['render', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'duplicate'],
+            av: ['get', 'render', 'get_attribute_view_keys', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'],
             file: ['upload_asset', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'rename_asset', 'delete_asset'],
             search: ['search_assets', 'find_replace'],
             tag: ['rename', 'remove'],

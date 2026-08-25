@@ -93,6 +93,12 @@ Use search-assisted discovery when the path is unknown:
 {{call document}}
 {{call block}}
 
+If the Markdown contains an \`assets/...\` image and the task depends on its visual content, a vision-capable client should read one relevant image directly:
+
+{{call image}}
+
+Provide either the document ID or its human-readable \`documentPath\`, never both. The server authorizes that document and verifies its direct image reference before returning an image content block. MCP clients receive the image directly; CLI default output shows metadata, while explicit \`--json\` retains the non-text block for scripts. Do not inline every image during ordinary document reads. Stored OCR is only a fallback when direct vision is unavailable.
+
 ## Path semantics
 
 | Value | Example | Typical use |
@@ -115,6 +121,7 @@ Discovery identifies candidates; it does not authorize a write. Before changing 
             lookup: call('document', 'lookup', { id: '<doc-id>', include: ['path', 'hpath', 'notebook'] }),
             document: call('document', 'get_doc', { id: '<doc-id>', mode: 'markdown' }),
             block: call('block', 'get_kramdown', { id: '<block-id>' }),
+            image: call('file', 'read_image', { id: '<doc-id>', path: 'assets/question.png' }),
         },
     },
     {
@@ -257,8 +264,8 @@ Treat a successful mutation response as provisional until the same view and affe
         id: 'file-export',
         cliName: 'siyuan-sisyphus-file-export',
         mcpName: 'siyuan-mcp-file-export',
-        cliDescription: 'CLI-only playbook for SiYuan assets and exports with siyuan-sisyphus. Use for uploads, Markdown export, document extraction, resource ZIP export, OCR text, templates, and safe asset maintenance.',
-        mcpDescription: 'MCP playbook for SiYuan assets and exports. Use for uploads, Markdown export, document extraction, resource ZIP export, OCR text, templates, and safe asset maintenance.',
+        cliDescription: 'CLI-only playbook for SiYuan assets and exports with siyuan-sisyphus. Use for uploads, direct image reads, Markdown export, document extraction, resource ZIP export, stored OCR text, templates, and safe asset maintenance.',
+        mcpDescription: 'MCP playbook for SiYuan assets and exports. Use for uploads, direct visual image reads, Markdown export, document extraction, resource ZIP export, stored OCR text, templates, and safe asset maintenance.',
         title: 'Handle SiYuan Files and Exports',
         displayName: 'SiYuan Files & Export',
         shortDescription: 'Move assets and export SiYuan content',
@@ -270,7 +277,10 @@ Treat a successful mutation response as provisional until the same view and affe
 {{call extract}}
 {{call exportResources}}
 {{call assets}}
+{{call image}}
 {{call ocr}}
+
+When Markdown contains an \`assets/...\` image and visual content matters, read one relevant image with \`read_image\`. Supply exactly one authorized document ID or human-readable document path; do not bulk-inline a whole document. MCP clients receive a standard image block without a host-file write; CLI default output shows metadata, while explicit \`--json\` retains the non-text block for scripts. \`get_image_ocr_text\` only reads OCR already stored by SiYuan and does not run recognition; use it when direct vision is unavailable.
 
 Large uploads must stop and require explicit confirmation before retrying with the large-file confirmation field. A document extraction output directory may be cleared; use a task-specific empty directory. Before renaming, deleting, or removing unused assets, list the exact targets and obtain approval. Verify returned paths after the operation. Read {{help file upload_asset}} for current size and path constraints.
 `,
@@ -280,6 +290,7 @@ Large uploads must stop and require explicit confirmation before retrying with t
             extract: call('file', 'extract_doc', { id: '<doc-id>', outputDir: '/tmp/siyuan-extract' }),
             exportResources: call('file', 'export_resources', { paths: ['assets/file.png', 'assets/file.pdf'] }),
             assets: call('file', 'get_doc_assets', { id: '<doc-id>', assetType: 'image' }),
+            image: call('file', 'read_image', { id: '<doc-id>', path: 'assets/image.png' }),
             ocr: call('file', 'get_image_ocr_text', { path: 'assets/image.png' }),
         },
     },
@@ -447,8 +458,9 @@ After each write, read the exact affected ID before any search or UI conclusion:
 {{call dom}}
 {{call assets}}
 {{call assetSearch}}
+{{call readImage}}
 
-Confirm block type, parent/sibling order, kramdown, DOM attributes, viewBox, escaped text, returned asset path, \`data-chart-key\`, canonical embed target, and image/HTML containment. \`get_doc_assets\` and \`search_assets\` find references or candidates; neither proves rendering. API success, file existence, SQL/index results, or a renderer invocation cannot replace structural readback or real SiYuan UI review.
+Confirm block type, parent/sibling order, kramdown, DOM attributes, viewBox, escaped text, returned asset path, \`data-chart-key\`, canonical embed target, and image/HTML containment. \`get_doc_assets\` and \`search_assets\` find references or candidates; neither proves rendering. For a bitmap already referenced by the authorized document, a vision-capable client may call \`read_image\` for that one image; it still does not replace a real SiYuan UI rendering review. API success, file existence, SQL/index results, or a renderer invocation cannot replace structural readback or real SiYuan UI review.
 
 If a response is lost or the returned asset path is missing/non-unique, stop and inspect the exact target; do not retry an upload or append blindly. Classify geometry WARNs as repaired, justified exemption, or TODO; after repeated unsuccessful adjustments, stop and report instead of relaxing tolerances.`,
         calls: {
@@ -460,6 +472,7 @@ If a response is lost or the returned asset path is missing/non-unique, stop and
             dom: call('block', 'dom', { id: '<written-block-id>' }),
             assets: call('file', 'get_doc_assets', { id: '<resolved-document-id>', assetType: 'all' }),
             assetSearch: call('search', 'search_assets', { query: '<asset-filename>', exts: ['svg', 'png'] }),
+            readImage: call('file', 'read_image', { id: '<resolved-document-id>', path: 'assets/<returned-image-path>' }),
         },
     },
     {

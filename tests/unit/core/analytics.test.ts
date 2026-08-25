@@ -290,6 +290,10 @@ describe('analytics', () => {
             expect(estimateResultSizeHint([{ type: 'text', text: 'a'.repeat(3000) }])).toBe('1K-5K');
             expect(estimateResultSizeHint([{ type: 'text', text: 'a'.repeat(10000) }])).toBe('5K-20K');
             expect(estimateResultSizeHint([{ type: 'text', text: 'a'.repeat(50000) }])).toBe('20K+');
+            expect(estimateResultSizeHint([
+                { type: 'text', text: 'metadata' },
+                { type: 'image', data: 'a'.repeat(100_000), mimeType: 'image/png' },
+            ])).toBe('0-200');
         });
     });
 

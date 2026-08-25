@@ -8,6 +8,10 @@ import type {
 import type { PermissionManager } from '../../core/permissions';
 import type { ToolDescriptor } from '../../core/tool-registry';
 import type { ActionVariant, ToolResult } from '../internal/shared';
+import {
+    toPluginMcpToolName,
+    validateExplicitExtensionPackage,
+} from './package-validator';
 
 const EXTENSION_DESCRIPTION = [
     'Bridge tools exposed through the official SiYuan /mcp endpoint.',
@@ -15,10 +19,13 @@ const EXTENSION_DESCRIPTION = [
     'Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details.',
     'Every exposed tool keeps its official name as the action.',
     'Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation.',
+    'validate_package and diagnose_plugin_mcp are local read-only diagnostics; neither installs, enables, trusts, reloads, nor invokes an extension.',
 ].join(' ');
-const RESERVED_EXTENSION_ACTIONS = new Set(['help', 'list']);
+// The aggregate owns these names. Filtering them prevents a discovered
+// official tool from silently being routed to a different local action.
+const RESERVED_EXTENSION_ACTIONS = new Set(['help', 'list', 'validate_package', 'diagnose_plugin_mcp']);
 
-export const EXTENSION_VARIANTS: ActionVariant<'list'>[] = [{
+export const EXTENSION_VARIANTS: ActionVariant<'list' | 'validate_package' | 'diagnose_plugin_mcp'>[] = [{
     action: 'list',
     schema: {
         type: 'object',
@@ -31,6 +38,65 @@ export const EXTENSION_VARIANTS: ActionVariant<'list'>[] = [{
             },
         },
         required: ['action'],
+    },
+}, {
+    action: 'validate_package',
+    schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            action: { type: 'string', const: 'validate_package' },
+            package: {
+                type: 'object',
+                description: 'Explicit package metadata and text files to validate in memory. This action never accepts or reads a host filesystem path.',
+                additionalProperties: false,
+                properties: {
+                    type: { type: 'string', enum: ['plugin', 'theme', 'widget'] },
+                    manifest: { type: 'object', additionalProperties: true },
+                    files: {
+                        type: 'object',
+                        description: 'Relative package filenames mapped to UTF-8 text. Include required entries such as index.js, kernel.js, theme.css, or index.html when applicable.',
+                        additionalProperties: { type: 'string' },
+                    },
+                },
+                required: ['type', 'manifest', 'files'],
+            },
+            runtime: {
+                type: 'object',
+                description: 'Optional observed compatibility context. Omit values that were not actually observed.',
+                additionalProperties: false,
+                properties: {
+                    appVersion: { type: 'string' },
+                    backend: { type: 'string' },
+                    frontend: { type: 'string' },
+                },
+            },
+        },
+        required: ['action', 'package'],
+    },
+}, {
+    action: 'diagnose_plugin_mcp',
+    schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            action: { type: 'string', const: 'diagnose_plugin_mcp' },
+            pluginName: {
+                type: 'string',
+                description: 'The plugin manifest name. SiYuan sanitizes it before forming plugin MCP tool names.',
+            },
+            expectedToolNames: {
+                type: 'array',
+                description: 'Optional plugin-local MCP tool names expected after the separately performed lifecycle step. Each is checked against the refreshed Source=plugin registry.',
+                items: { type: 'string' },
+            },
+            expectedState: {
+                type: 'string',
+                enum: ['present', 'absent'],
+                description: 'Whether expectedToolNames should be present or absent in this fresh registry observation. Defaults to present.',
+            },
+        },
+        required: ['action', 'pluginName'],
     },
 }];
 
@@ -117,13 +183,57 @@ function actionVariant(tool: OfficialMcpTool, branchIndex: number): Record<strin
     };
 }
 
+function staticDiagnosticVariants(): Record<string, unknown>[] {
+    return [{
+        type: 'object',
+        title: 'Validate explicit extension package content',
+        description: 'Validate caller-supplied plugin, theme, or widget metadata and text files without reading a host path or changing SiYuan runtime state.',
+        properties: {
+            action: { type: 'string', const: 'validate_package' },
+            package: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    type: { type: 'string', enum: ['plugin', 'theme', 'widget'] },
+                    manifest: { type: 'object', additionalProperties: true },
+                    files: { type: 'object', additionalProperties: { type: 'string' } },
+                },
+                required: ['type', 'manifest', 'files'],
+            },
+            runtime: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    appVersion: { type: 'string' },
+                    backend: { type: 'string' },
+                    frontend: { type: 'string' },
+                },
+            },
+        },
+        required: ['action', 'package'],
+        additionalProperties: false,
+    }, {
+        type: 'object',
+        title: 'Diagnose plugin MCP registry state',
+        description: 'Refresh the official registry and inspect Source=plugin tools for one plugin. It does not reload, enable, disable, or invoke a plugin.',
+        properties: {
+            action: { type: 'string', const: 'diagnose_plugin_mcp' },
+            pluginName: { type: 'string' },
+            expectedToolNames: { type: 'array', items: { type: 'string' } },
+            expectedState: { type: 'string', enum: ['present', 'absent'] },
+        },
+        required: ['action', 'pluginName'],
+        additionalProperties: false,
+    }];
+}
+
 export function listExtensionTools(
     config: ExtensionCategoryToolConfig,
     runtime?: OfficialMcpRuntime,
 ): ToolDescriptor[] {
     if (!config.enabled) return [];
     const tools = getExposedExtensionTools(config, runtime);
-    const actionNames = ['help', 'list', ...tools.map((tool) => tool.name)];
+    const actionNames = ['help', 'list', 'validate_package', 'diagnose_plugin_mcp', ...tools.map((tool) => tool.name)];
     const variants: Record<string, unknown>[] = [{
         type: 'object',
         title: 'Extension help',
@@ -148,7 +258,7 @@ export function listExtensionTools(
         },
         required: ['action'],
         additionalProperties: false,
-    }, ...tools.map((tool, index) => actionVariant(tool, index + 2))];
+    }, ...staticDiagnosticVariants(), ...tools.map((tool, index) => actionVariant(tool, index + 4))];
 
     return [{
         name: 'extension',
@@ -169,6 +279,11 @@ export function listExtensionTools(
                     description: 'Arguments forwarded unchanged to the selected official MCP tool.',
                     additionalProperties: true,
                 },
+                package: { type: 'object', additionalProperties: true },
+                runtime: { type: 'object', additionalProperties: true },
+                pluginName: { type: 'string' },
+                expectedToolNames: { type: 'array', items: { type: 'string' } },
+                expectedState: { type: 'string', enum: ['present', 'absent'] },
                 refresh: { type: 'boolean' },
                 topic: { type: 'string' },
             },
@@ -326,6 +441,14 @@ function helpResult(
                 parameters: { refresh: 'boolean, optional' },
                 description: 'Inspect or refresh official MCP tool discovery.',
             },
+            validate_package: {
+                parameters: { package: 'object, required', runtime: 'object, optional' },
+                description: 'Statically validate explicit plugin/theme/widget metadata and text files without reading host paths or changing runtime state.',
+            },
+            diagnose_plugin_mcp: {
+                parameters: { pluginName: 'string, required', expectedToolNames: 'string[], optional', expectedState: 'present|absent, optional' },
+                description: 'Refresh and inspect the official Source=plugin registry for one plugin without enabling, disabling, reloading, or invoking it.',
+            },
             '<official tool name>': {
                 parameters: { arguments: 'object, required' },
                 description: 'Forward one call to the selected official MCP tool. Calls are never retried.',
@@ -366,6 +489,17 @@ export async function callExtensionTool(
             runtime,
         );
     }
+    if (action === 'validate_package') {
+        const packageInput = rawArgs?.package;
+        const runtimeInput = rawArgs?.runtime;
+        if (runtimeInput !== undefined && (runtimeInput === null || typeof runtimeInput !== 'object' || Array.isArray(runtimeInput))) {
+            return textResult('extension.runtime must be an object when supplied.', true);
+        }
+        return textResult(validateExplicitExtensionPackage({
+            package: packageInput,
+            runtime: runtimeInput,
+        }));
+    }
     if (!runtime) {
         return textResult('Official MCP bridge runtime is unavailable.', true);
     }
@@ -380,6 +514,103 @@ export async function callExtensionTool(
             await notifyListChanged(runtime);
         }
         return textResult(formatDiscovery(snapshot, config));
+    }
+    if (action === 'diagnose_plugin_mcp') {
+        const pluginName = typeof rawArgs?.pluginName === 'string' ? rawArgs.pluginName.trim() : '';
+        if (!pluginName) {
+            return textResult('extension.pluginName is required for diagnose_plugin_mcp.', true);
+        }
+        const expectedToolNames = rawArgs?.expectedToolNames;
+        if (expectedToolNames !== undefined
+            && (!Array.isArray(expectedToolNames) || expectedToolNames.some((name) => typeof name !== 'string' || !name.trim()))) {
+            return textResult('extension.expectedToolNames must be an array of non-empty plugin-local tool names when supplied.', true);
+        }
+        const expectedState = rawArgs?.expectedState === undefined ? 'present' : rawArgs.expectedState;
+        if (expectedState !== 'present' && expectedState !== 'absent') {
+            return textResult('extension.expectedState must be "present" or "absent" when supplied.', true);
+        }
+
+        const snapshot = await runtime.bridge.refresh({ forceVersionCheck: true });
+        if (updateExposedToolsFingerprint(config, runtime, snapshot.tools)) {
+            await notifyListChanged(runtime);
+        }
+        const prefix = `plugin__${pluginName.replace(/[^0-9a-zA-Z]/g, '_')}__`;
+        // A failed refresh can preserve a previous bridge cache. Showing those
+        // entries as current would turn stale data into fake lifecycle proof,
+        // so only a successful refresh is allowed to supply registry evidence.
+        const observedTools = snapshot.error ? [] : snapshot.tools;
+        const matchingTools = observedTools
+            .filter((tool) => tool.source === 'plugin' && tool.name.startsWith(prefix))
+            .map((tool) => ({
+                name: tool.name,
+                title: tool.title,
+                description: tool.description,
+                readOnlyHint: tool.readOnlyHint,
+                effectScope: tool.effectScope,
+                schemaDegraded: tool.schemaDegraded,
+            }));
+        const expected = (expectedToolNames as string[] | undefined)?.map((name) => ({
+            localName: name.trim(),
+            qualifiedName: toPluginMcpToolName(pluginName, name.trim()),
+        })) ?? [];
+        const presentNames = new Set(matchingTools.map((tool) => tool.name));
+        const expectation = expected.map((item) => ({
+            ...item,
+            observed: presentNames.has(item.qualifiedName),
+            expectationMet: !snapshot.error && (expectedState === 'present'
+                ? presentNames.has(item.qualifiedName)
+                : !presentNames.has(item.qualifiedName)),
+        }));
+        const expectedAbsenceObserved = expectedState === 'absent'
+            && !snapshot.error
+            && (expected.length > 0
+                ? expectation.every((item) => item.expectationMet)
+                : matchingTools.length === 0);
+        return textResult({
+            kind: 'plugin_mcp_registry_observation',
+            observation: snapshot.error ? 'unavailable' : 'completed',
+            registry: {
+                connected: snapshot.connected,
+                supported: snapshot.supported,
+                siyuanVersion: snapshot.siyuanVersion,
+                lastSuccessfulRefreshAt: snapshot.lastSuccessfulRefreshAt,
+                lastAttemptAt: snapshot.lastAttemptAt,
+                error: snapshot.error,
+            },
+            plugin: {
+                manifestName: pluginName,
+                sanitizedName: pluginName.replace(/[^0-9a-zA-Z]/g, '_'),
+                toolPrefix: prefix,
+                source: 'plugin',
+                registeredTools: matchingTools,
+            },
+            ...(expected.length > 0 ? {
+                expectation: {
+                    expectedState,
+                    tools: expectation,
+                    allMet: expectation.every((item) => item.expectationMet),
+                },
+            } : {}),
+            lifecycle: {
+                staticPackage: 'not_observed',
+                trustGranted: 'not_observed',
+                frontendPluginLoaded: 'not_observed',
+                kernelPluginRunning: snapshot.error ? 'not_observed' : matchingTools.length > 0 ? 'inferred_from_registered_tool' : 'not_observed',
+                mcpToolRegistration: !snapshot.error && matchingTools.length > 0
+                    ? 'observed_from_fresh_registry'
+                    : 'not_observed',
+                mcpToolUnregistration: expectedAbsenceObserved
+                    ? 'registry_absence_observed_not_proven'
+                    : 'not_observed',
+                reload: 'not_triggered',
+                functionAfterReload: 'not_verified',
+            },
+            limitations: [
+                'This action refreshes only the official MCP tools/list registry. It does not read a package path, install a package, grant trust, enable or disable a plugin, trigger a reload, inspect logs, or invoke a plugin MCP tool.',
+                'A registered Source=plugin tool supports an inference that its kernel plugin is running at this observation, but does not prove frontend loading, UI cleanup, or full feature behavior.',
+                'A missing tool only means it was absent from this refreshed registry. It does not prove that a requested disable, unload, or reload completed.',
+            ],
+        }, snapshot.error !== undefined);
     }
     if (!action) {
         return textResult('extension.action is required. Use action="list" to inspect available official MCP tools.', true);

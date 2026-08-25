@@ -54,7 +54,10 @@ siyuan-sisyphus file get-doc-assets --id '<resolved-document-id>' --asset-type '
 ```bash
 siyuan-sisyphus search search-assets --query '<asset-filename>' --exts-json '["svg","png"]' --json
 ```
+```bash
+siyuan-sisyphus file read-image --id '<resolved-document-id>' --path 'assets/<returned-image-path>' --json
+```
 
-Confirm block type, parent/sibling order, kramdown, DOM attributes, viewBox, escaped text, returned asset path, `data-chart-key`, canonical embed target, and image/HTML containment. `get_doc_assets` and `search_assets` find references or candidates; neither proves rendering. API success, file existence, SQL/index results, or a renderer invocation cannot replace structural readback or real SiYuan UI review.
+Confirm block type, parent/sibling order, kramdown, DOM attributes, viewBox, escaped text, returned asset path, `data-chart-key`, canonical embed target, and image/HTML containment. `get_doc_assets` and `search_assets` find references or candidates; neither proves rendering. For a bitmap already referenced by the authorized document, a vision-capable client may call `read_image` for that one image; it still does not replace a real SiYuan UI rendering review. API success, file existence, SQL/index results, or a renderer invocation cannot replace structural readback or real SiYuan UI review.
 
 If a response is lost or the returned asset path is missing/non-unique, stop and inspect the exact target; do not retry an upload or append blindly. Classify geometry WARNs as repaired, justified exemption, or TODO; after repeated unsuccessful adjustments, stop and report instead of relaxing tolerances.

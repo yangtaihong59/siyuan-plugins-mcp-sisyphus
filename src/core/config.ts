@@ -6,10 +6,10 @@ export type ToolCategory = typeof TOOL_CATEGORIES[number];
 
 export const FS_ACTIONS = ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv', 'reorder', 'search'] as const;
 export const NOTEBOOK_ACTIONS = ['list', 'create', 'set_open_state', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'] as const;
-export const DOCUMENT_ACTIONS = ['create', 'lookup', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'] as const;
+export const DOCUMENT_ACTIONS = ['create', 'lookup', 'ensure_link_targets', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'] as const;
 export const BLOCK_ACTIONS = ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'get_kramdown', 'batch_kramdown', 'get_children', 'transfer_references', 'set_attrs', 'get_attrs', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count', 'add_to_daily_note', 'docs_info'] as const;
-export const AV_ACTIONS = ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'duplicate', 'get_primary_key_values'] as const;
-export const FILE_ACTIONS = ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'] as const;
+export const AV_ACTIONS = ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'get_primary_key_values', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'] as const;
+export const FILE_ACTIONS = ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_markdown_snapshot', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'audit_image_refs', 'read_image', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'] as const;
 export const SEARCH_ACTIONS = ['fulltext', 'semantic', 'query_sql', 'get_backlinks', 'search_refs', 'find_replace', 'search_assets', 'fulltext_asset_content', 'list_invalid_refs'] as const;
 export const TAG_ACTIONS = ['list', 'rename', 'remove'] as const;
 export const TIMELINE_ACTIONS = ['list_nodes', 'create_node', 'compare_node', 'delete_node', 'rollback_document', 'rollback_block'] as const;
@@ -18,7 +18,7 @@ export const FLASHCARD_REVIEW_APP_ACTIONS = ['review_card'] as const;
 export const MASCOT_SHOP_APP_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
 export const SYSTEM_ACTIONS = ['workspace_info', 'network', 'conf', 'notify', 'changelog', 'perform_sync', 'get_version', 'get_current_time'] as const;
 export const FLASHCARD_ACTIONS = ['list_cards', 'get_decks', 'get_cards', 'review_card', 'create_card', 'remove_card'] as const;
-export const EXTENSION_ACTIONS = ['list'] as const;
+export const EXTENSION_ACTIONS = ['list', 'validate_package', 'diagnose_plugin_mcp'] as const;
 export const MASCOT_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
 export const FEEDBACK_ACTIONS = ['submit'] as const;
 
@@ -168,6 +168,7 @@ const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
     },
     document: {
         create: 'basic', lookup: 'basic', get_doc: 'basic', get_outline: 'basic',
+        ensure_link_targets: 'advanced',
         get_child_blocks: 'basic', get_child_docs: 'basic',
         search_docs: 'basic', rename: 'basic',
         remove: 'advanced', move: 'advanced', reorder: 'advanced', set_attr: 'advanced',
@@ -188,14 +189,18 @@ const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
         get_attribute_view_keys: 'basic', get_attribute_view_filter_sort: 'basic',
         search: 'basic', get_primary_key_values: 'basic',
         add_rows: 'advanced', remove_rows: 'advanced', add_column: 'advanced',
-        remove_column: 'advanced', set_cells: 'advanced',
-        duplicate: 'advanced',
+        remove_column: 'advanced', set_cells: 'advanced', set_column_options: 'advanced',
+        duplicate_rows: 'advanced', duplicate: 'advanced', add_view: 'advanced',
+        set_filters: 'advanced', set_sorts: 'advanced', set_group: 'advanced',
+        set_column_visibility: 'advanced', set_column_order: 'advanced',
+        set_new_item_templates: 'advanced', create_from_template: 'advanced',
+        configure_two_way_relation: 'advanced', configure_rollup: 'advanced', set_relation: 'advanced',
     },
     file: {
-        export_md: 'basic', upload_asset: 'basic',
+        export_md: 'basic', export_markdown_snapshot: 'basic', upload_asset: 'basic',
         list_templates: 'basic', read_template: 'basic',
         create_template: 'basic', update_template: 'basic', save_doc_as_template: 'basic',
-        get_doc_assets: 'basic', extract_doc: 'basic',
+        get_doc_assets: 'basic', audit_image_refs: 'basic', read_image: 'basic', extract_doc: 'basic',
         render: 'advanced',
         delete_template: 'advanced',
         export_resources: 'advanced', list_unused_assets: 'advanced',
@@ -226,7 +231,7 @@ const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
         review_card: 'advanced', create_card: 'advanced', remove_card: 'advanced',
     },
     extension: {
-        list: 'basic',
+        list: 'basic', validate_package: 'basic', diagnose_plugin_mcp: 'basic',
     },
     mascot: {
         get_balance: 'basic', shop: 'basic', buy: 'basic',
@@ -245,7 +250,10 @@ export const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
     notebook: new Set(['remove', 'set_permission']),
     document: new Set(['remove', 'move']),
     block: new Set(['delete', 'move']),
-    av: new Set(),
+    // These operations replace persistent AV configuration or can write a
+    // relation graph across databases. A normal AV write confirmation is not
+    // enough to make their scope apparent to the caller.
+    av: new Set(['set_column_options', 'duplicate_rows', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
     file: new Set(['upload_asset', 'delete_template', 'remove_unused_assets', 'delete_asset']),
     search: new Set(['find_replace']),
     tag: new Set(['remove']),
@@ -280,7 +288,7 @@ export function buildDefaultToolConfig(): ToolConfig {
         },
         document: {
             enabled: true,
-            actions: createActionsRecord(DOCUMENT_ACTIONS, ['create', 'lookup', 'rename', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading']),
+            actions: createActionsRecord(DOCUMENT_ACTIONS, ['create', 'lookup', 'ensure_link_targets', 'rename', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading']),
         },
         block: {
             enabled: true,
@@ -288,11 +296,11 @@ export function buildDefaultToolConfig(): ToolConfig {
         },
         av: {
             enabled: true,
-            actions: createActionsRecord(AV_ACTIONS, ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'duplicate', 'get_primary_key_values']),
+            actions: createActionsRecord(AV_ACTIONS, ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'get_primary_key_values', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
         },
         file: {
             enabled: true,
-            actions: createActionsRecord(FILE_ACTIONS, ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'save_doc_as_template', 'render', 'export_md', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc']),
+            actions: createActionsRecord(FILE_ACTIONS, ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'save_doc_as_template', 'render', 'export_md', 'export_markdown_snapshot', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'audit_image_refs', 'read_image', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc']),
             uploadLargeFileThresholdMB: 10,
         },
         search: {
@@ -317,7 +325,7 @@ export function buildDefaultToolConfig(): ToolConfig {
         },
         extension: {
             enabled: true,
-            actions: createActionsRecord(EXTENSION_ACTIONS, ['list']),
+            actions: createActionsRecord(EXTENSION_ACTIONS, EXTENSION_ACTIONS),
             includeNativeTools: false,
             blockedTools: [],
         },

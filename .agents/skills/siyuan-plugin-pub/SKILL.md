@@ -1,6 +1,6 @@
 ---
 name: siyuan-plugin-pub
-description: Publish the SiYuan Sisyphus plugin, standalone CLI, or both. Use for version bumps, release notes, docs, commit messages, tags, and npm publish prep.
+description: Publish the SiYuan Sisyphus plugin, standalone CLI, or both. Use for version bumps, release notes, merged-PR contributor attribution, docs, commit messages, tags, and npm publish prep.
 ---
 
 # SiYuan Plugin Pub
@@ -44,6 +44,8 @@ This repo already keeps release metadata, fallback versions, and release notes i
 - Keep the feedback tool fallback version in `src/core/feedback.ts` (`FEEDBACK_PLUGIN_VERSION`) on the same plugin version. It is used when the compiled `__PLUGIN_VERSION__` define is unavailable.
 - Keep CLI version in `cli/package.json` independent from the plugin version, such as `0.1.5`. Do not force it to match the plugin version.
 - `CHANGELOG.md` is the source of truth for plugin release notes and uses Chinese entries with newest plugin version on top.
+- When a release contains merged PRs, identify each PR author from PR metadata and explicitly thank them in both `CHANGELOG.md` and the settings changelog (`public/i18n/zh_CN.json` and `public/i18n/en_US.json`). Never write only the PR number or a generic “thanks for the contribution.”
+- Use the contributor's GitHub login, not the merge committer or an inferred display name. Prefer GitHub PR metadata; use the merge commit author only as a fallback when PR metadata is unavailable, and state that the attribution was inferred before publishing.
 - `README.md` and `README_zh_CN.md` both maintain the latest plugin version callout near the top; update both for plugin releases.
 - `cli/README.md` and `cli/README_zh_CN.md` describe standalone CLI usage; update them when CLI behavior, install flow, or command syntax changes.
 - `docs/development/release-cli.md` and `docs/zh/development/release-cli.md` are the CLI publish docs; keep them aligned when release procedure changes.
@@ -56,20 +58,23 @@ This repo already keeps release metadata, fallback versions, and release notes i
 
 1. Run `git status --short` and inspect current versions in `plugin.json`, root `package.json`, `src/core/feedback.ts`, and `cli/package.json`.
 2. Apply the checklist for the chosen release path below.
-3. Check that English and Chinese descriptions have the same release meaning, even if not literally translated.
-4. Review the diff for version consistency and scope.
-5. If releasing from the `dev` branch, merge into `main` with `--no-ff` to preserve the feature branch history and create an explicit merge commit:
+3. If the release includes merged PRs, inspect the PR metadata before writing release notes. Record the PR number, contributor GitHub login, PR URL, and contributed outcome for each PR.
+4. Add contributor thanks to `CHANGELOG.md` and both settings changelog strings in `public/i18n/zh_CN.json` and `public/i18n/en_US.json`. If a README latest-version callout mentions those PRs, include the contributor attribution there too.
+5. Check that English and Chinese descriptions have the same release meaning and contributor attribution, even if not literally translated.
+6. Review the diff for version consistency and scope.
+7. If releasing from the `dev` branch, merge into `main` with `--no-ff` to preserve the feature branch history and create an explicit merge commit:
     ```bash
     git checkout main
     git merge --no-ff dev -m "feat：合并 dev 分支并发布 vX.Y.Z"
     ```
     - Do **not** use a fast-forward merge; the explicit merge commit makes the release boundary clear in the history graph.
-6. Prepare a recommended commit message and the exact next commands. Do not run `git tag`, `git push`, or `pnpm publish:cli` unless the user explicitly asks.
+8. Prepare a recommended commit message and the exact next commands. Do not run `git tag`, `git push`, or `pnpm publish:cli` unless the user explicitly asks.
 
 ### Plugin-Only Checklist
 
 - Update `plugin.json`, root `package.json`, and `src/core/feedback.ts` (`FEEDBACK_PLUGIN_VERSION`) to the same numeric version without leading `v`.
 - Add a top `CHANGELOG.md` entry: `## vX.Y.Z - YYYY-MM-DD`, with 2-3 concise Chinese bullets.
+- If merged PRs are included, add one explicit contributor-thanks bullet per PR and synchronize the same attribution into `public/i18n/zh_CN.json` and `public/i18n/en_US.json`.
 - Update latest-version callouts / timeline content in `README.md` and `README_zh_CN.md`.
 - Leave `cli/package.json` unchanged.
 - Prepare plugin tag/push commands only.
@@ -90,6 +95,7 @@ This repo already keeps release metadata, fallback versions, and release notes i
 - Update plugin versions in `plugin.json`, root `package.json`, and `src/core/feedback.ts`.
 - Update CLI version in `cli/package.json`.
 - Add a plugin `CHANGELOG.md` entry and mention the CLI bump, e.g. `CLI 包同步提升至 v0.1.5`.
+- If merged PRs are included, add one explicit contributor-thanks bullet per PR and synchronize the same attribution into `public/i18n/zh_CN.json` and `public/i18n/en_US.json`.
 - Update root bilingual READMEs for plugin release notes.
 - Update CLI docs if CLI behavior or publish procedure changed.
 - Prepare both plugin tag/push commands and `pnpm publish:cli`.
@@ -102,6 +108,7 @@ Stop and ask before editing or publishing if:
 - the release path remains ambiguous after checking the request and changed files
 - required version files disagree, such as `plugin.json`, root `package.json`, and `src/core/feedback.ts` having different plugin versions
 - a required release note/doc update is absent for the chosen path
+- merged PRs are part of the release but the contributor login cannot be verified, or either the repository changelog or settings changelog lacks the contributor thanks
 - the diff includes unrelated changes that make the release scope unclear
 
 ## Version Notes
@@ -143,6 +150,21 @@ For combined releases where the CLI version also changed, add a bullet like:
 - CLI 包同步提升至 v0.1.5
 ```
 
+For every merged PR included in the release, add a separate attribution bullet using this form:
+
+```md
+- **感谢 [@contributor](https://github.com/contributor) 提交 [PR #123](https://github.com/OWNER/REPO/pull/123)**，贡献 <用户可感知的结果>
+```
+
+In the settings changelog, keep the same contributor and PR mapping in plain Markdown-safe text:
+
+```text
+**感谢 @contributor 提交 PR #123。**
+**Thanks to @contributor for PR #123.**
+```
+
+Do not collapse multiple contributors into “感谢 PR #123、#124 的贡献”. Do not credit the repository maintainer merely because they merged the PR.
+
 For CLI-only releases, do not add a fake plugin changelog entry just to record the npm package publish. Prefer a CLI docs update or the npm package changelog if one is added later.
 
 ## README Timeline Guidance
@@ -161,6 +183,8 @@ Before proposing release commands, verify:
 - plugin versions match in `plugin.json`, root `package.json`, and `src/core/feedback.ts` when the plugin is released
 - CLI version changed only when the CLI is released
 - required changelog, README, and CLI docs match the chosen release path
+- every merged PR is mapped to its verified GitHub contributor in `CHANGELOG.md`, `public/i18n/zh_CN.json`, and `public/i18n/en_US.json`
+- contributor names and PR numbers match between Chinese and English settings changelogs
 - release wording is semantically aligned across all edited English and Chinese docs
 - the diff scope matches the intended release
 - if CLI changed: `cli/package.json` version was bumped and `cli/dist/cli.cjs` was rebuilt or will be rebuilt during publish

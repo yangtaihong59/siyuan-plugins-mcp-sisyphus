@@ -120,6 +120,23 @@ describe('extension server integration', () => {
             expect(extension).toBeDefined();
             expect((extension!.inputSchema.properties?.action as any).enum).toContain('plugin__example__aggregate');
             expect((extension!.inputSchema.properties?.action as any).enum).not.toContain('document');
+            expect((extension!.inputSchema.properties?.action as any).enum).toContain('validate_package');
+
+            const validation = await client.callTool({
+                name: 'extension',
+                arguments: {
+                    action: 'validate_package',
+                    package: {
+                        type: 'theme',
+                        manifest: { name: 'example-theme', version: '1.0.0', modes: ['light'] },
+                        files: { 'theme.css': ':root { color: black; }' },
+                    },
+                },
+            });
+            expect(JSON.parse((validation.content[0] as { text: string }).text)).toMatchObject({
+                kind: 'static_extension_package_validation',
+                staticPackage: 'valid',
+            });
 
             const result = await client.callTool({
                 name: 'extension',

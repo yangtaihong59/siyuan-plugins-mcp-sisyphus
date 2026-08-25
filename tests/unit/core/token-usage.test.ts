@@ -23,6 +23,10 @@ describe('token usage helpers', () => {
             chars: 6,
             approxTokens: 2,
         });
+        expect(measureApproxContent([
+            { type: 'text', text: 'meta' },
+            { type: 'image', data: 'a'.repeat(100_000), mimeType: 'image/png' },
+        ])).toEqual({ chars: 4, approxTokens: 1 });
     });
 
     it('calculates MCP initial cost from current config', () => {

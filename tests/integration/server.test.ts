@@ -63,10 +63,38 @@ describe('MCP Server Integration', () => {
                 if (failConfigRead && body.path?.endsWith('/mcpToolsConfig')) {
                     throw new Error('config read unavailable');
                 }
+                if (body.path === '/data/assets/question.png') {
+                    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]);
+                    return {
+                        ok: true,
+                        text: async () => '',
+                        arrayBuffer: async () => bytes.buffer,
+                    } as Response;
+                }
                 return {
                     ok: true,
                     text: async () => storedFiles[body.path ?? ''] ?? '',
                 } as Response;
+            }
+
+            if (urlStr.includes('/api/query/sql')) {
+                return jsonResponse({
+                    code: 0,
+                    msg: 'success',
+                    data: [{
+                        id: 'doc-image',
+                        root_id: 'doc-image',
+                        box: 'notebook-1',
+                        path: '/doc-image.sy',
+                        hpath: '/Image Question',
+                        content: 'Image Question',
+                        type: 'd',
+                    }],
+                });
+            }
+
+            if (urlStr.includes('/api/asset/getDocImageAssets')) {
+                return jsonResponse({ code: 0, msg: 'success', data: ['assets/question.png'] });
             }
 
             if (urlStr.includes('/api/file/putFile')) {
@@ -161,6 +189,29 @@ describe('MCP Server Integration', () => {
 
             const result = await client.callTool({ name: 'system', arguments: { action: 'get_version' } });
             expect(result.structuredContent).toEqual(expect.any(Object));
+        });
+
+        it('preserves read_image blocks in legacy tools/call projection', async () => {
+            const expectedImage = {
+                type: 'image',
+                data: Buffer.from(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])).toString('base64'),
+                mimeType: 'image/png',
+            };
+
+            const legacyResult = await client.callTool({
+                name: 'file',
+                arguments: { action: 'read_image', id: 'doc-image', path: 'assets/question.png' },
+            });
+            expect(legacyResult.content).toEqual([
+                expect.objectContaining({ type: 'text', text: expect.stringContaining('"delivery": "mcp_image"') }),
+                expectedImage,
+            ]);
+            expect(legacyResult.structuredContent).toMatchObject({
+                documentID: 'doc-image',
+                path: 'assets/question.png',
+                mimeType: 'image/png',
+                bytes: 9,
+            });
         });
 
         it('negotiates MCP Apps and serves the flashcard, timeline, and shop views', async () => {

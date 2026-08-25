@@ -147,7 +147,7 @@ export function renderCliError(error: unknown, options: { debug?: boolean; exitH
  * - default: emit a human-readable summary and fall back to pretty JSON when needed.
  */
 export function renderToolResult(result: ToolResult, options: RenderOptions): number {
-    const firstText = result.content[0]?.text ?? '';
+    const firstText = result.content.find((item) => item.type === 'text')?.text ?? '';
 
     let payload: unknown;
     try {
@@ -161,6 +161,12 @@ export function renderToolResult(result: ToolResult, options: RenderOptions): nu
     payload = translatePresentationPayload(payload, 'cli');
 
     if (options.json) {
+        const nonTextContent = result.content.filter((item) => item.type !== 'text');
+        if (nonTextContent.length > 0) {
+            payload = isObject(payload)
+                ? { ...payload, content: nonTextContent }
+                : { value: payload, content: nonTextContent };
+        }
         return emitJson(payload, result.isError);
     }
 
@@ -176,7 +182,7 @@ export function renderToolResult(result: ToolResult, options: RenderOptions): nu
 export function extractPaginationInfo(result: ToolResult): PaginationInfo | null {
     if (result.isError) return null;
 
-    const firstText = result.content[0]?.text ?? '';
+    const firstText = result.content.find((item) => item.type === 'text')?.text ?? '';
     let payload: unknown;
     try {
         payload = firstText ? JSON.parse(firstText) : null;

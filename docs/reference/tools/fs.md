@@ -26,9 +26,10 @@ Path shape:
 - Normal block and list-item IAL metadata is hidden, so `{: id="..." updated="..."}` does not leak into list text; snippets copied from `fs.read`, such as `- item`, can be used directly as `fs.replace` `old` text.
 - Fenced code, math blocks, and literal user text are not globally rewritten just because they look like metadata.
 - Blockquotes, tables, super blocks, and similar containers are read as containers, so child blocks are not duplicated. `fs.read` filters SiYuan-generated container IAL, but complex blocks still return a non-fidelity warning and should be modified with advanced tools.
-- `read` always paginates by complete display blocks. Use the returned `nextWindow`, or pass zero-based `blockStart`, `blockLimit` (default `50`), and `tokenBudget` (default `2000`). Lists, tables, blockquotes, code fences, math blocks, and other containers are never split between windows.
+- `read` always paginates by complete display blocks. Use the returned `nextWindow`, or pass zero-based `blockStart`, `blockLimit` (default `50`), and `tokenBudget` (default `2000`). Lists, tables, blockquotes, code fences, math blocks, and other containers are never split between windows. A window may exceed the budget by up to 15% at a complete-block boundary, and leading headings stay with the first body block even when that block requires a larger overrun; such responses set `budgetExceeded=true`.
 - Every read returns a full heading `outline` with block positions. Pass `includeBlockIds=true` to receive a sidecar `blockRefs` mapping; IDs are never injected into the editable Markdown `content`.
 - The old `page/pageSize` character pagination has been removed. A single block larger than `tokenBudget` is returned whole with `budgetExceeded=true`.
+- `tree` and `search` recursively enumerate notebook roots through `listDocsByPath`, so `/` and `/<notebook name>` work on SiYuan versions that reject `listDocTree("/")`.
 
 ## Markdown Safety Semantics
 

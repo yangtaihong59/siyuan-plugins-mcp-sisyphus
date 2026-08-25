@@ -1,6 +1,6 @@
 # file 工具
 
-这个工具覆盖资源上传、导出、模板发现与管理、模板渲染、OCR 与资源维护。
+这个工具覆盖资源上传、视觉图片直读、导出、模板发现与管理、模板渲染、已保存 OCR 与资源维护。
 
 适用场景：你需要上传资源、导出内容、查找/读取/创建/更新/删除/渲染模板，或查询文档关联资源。
 
@@ -13,12 +13,30 @@
 
 | 分组 | 动作 |
 |------|---------|
-| 上传 / 导出 | `upload_asset`, `export_md`, `export_resources`, `extract_doc` |
+| 上传 / 导出 | `upload_asset`, `export_md`, `export_markdown_snapshot`, `export_resources`, `extract_doc` |
 | 模板 | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
-| 资源查看 | `get_doc_assets`, `get_image_ocr_text`, `list_unused_assets` |
+| 资源查看 | `get_doc_assets`, `audit_image_refs`, `read_image`, `get_image_ocr_text`, `list_unused_assets` |
 | 资源变更 | `remove_unused_assets`, `rename_asset`, `delete_asset` |
 
 `get_doc_assets` 是直接引用资源查看动作，只返回当前文档树直接引用的资源，不会展开查询嵌入块。需要查看完整文档内容和资源时，应使用 `extract_doc`。
+
+Markdown 中出现 `assets/...` 图片且答案依赖图片内容时，具备视觉能力的客户端应对一张相关图片调用 `read_image`。结果先返回 JSON 元数据，再返回标准 MCP `image` 内容块；`structuredContent` 不重复携带 Base64。该动作不落地本地文件，也不运行 OCR。`get_image_ocr_text` 只读取思源已经保存的 OCR。
+
+## 导出边界
+
+`export_md` 和 `export_resources` 是读取/导出动作，不是恢复动作。调用前先解析具体目标：`export_md` 使用文档 ID，`export_resources` 则要逐一核对每个工作区相对路径。多个文档或资源可能同名时，标题、搜索结果或凭记忆写出的路径都不够作为目标依据。
+
+- `export_md` 会把文档 Markdown 返回在工具结果中。它不会创建 repo/history 快照，也不会写本地文件。因此这是内存中的导出，内容可能经由调用者离开思源进程；只有确实需要这个外部副作用时才另行保存。
+- `export_resources` 打包显式提供的工作区路径。`assets/example.png` 这类常见资源写法会在调用内核前规范化为 `/data/assets/example.png`。返回的是文件级 ZIP，不是语义级文档备份；它本身不能恢复块 ID、引用、属性视图状态或文档树关系。
+- 不传 `outputPath` 时，`export_resources` 返回内核临时导出路径。传入 `outputPath` 后，handler 会读取这个 ZIP 并写入本地文件系统，这是外部副作用，需要明确确认。执行前要解析并复核目标位置，不能因为源操作是只读就把目标路径当成无害。
+
+按意图选择最窄的导出：文字检查用 `export_md`，选定工作区文件或便携资源包用 `export_resources`，需要连同单篇文档引用资源一起检查时用 `extract_doc`。这些动作都不会自动建立回退点。
+
+### 有界导出读回
+
+`export_md` 完成后，检查结果中的文档身份字段和内容，不要把 HTTP 成功 envelope 当成已经落盘的文件。`export_resources` 完成后，检查返回的临时路径或显式 `outputPath` 以及字节数；核对请求的路径集合，不要用无关目录列表代替。响应丢失时，先对精确目标/路径做一次读取，再决定是否重试；不要盲目重发一个可能已经生成本地文件的导出。
+
+`audit_image_refs` 是只读的导入验收动作。调用方传入文档 ID 和源 Markdown 或预处理 Markdown 中的 expected 图片引用；Sisyphus 通过思源 HTTP API 读取文档直接引用的图片，并返回 expected、actual、missing、extra 引用。比较按规范化 basename 的多重集合进行：每个 occurrence 都保留，并且只能匹配另一侧的一个 occurrence。重复引用、或不同路径但 basename 相同的引用不会被静默合并；发生同 basename 碰撞时，输入顺序决定哪个 occurrence 会被报告为 missing 或 extra。思源追加的时间戳/ID 后缀、查询串和 fragment 只在匹配时忽略。它不读取本地 `.sy` 文件，也不会修复缺失或多余引用。
 
 ## 安全规则
 
@@ -28,6 +46,7 @@
 - 模板写入通过思源工作区文件 API 写 `/data/templates/...`，不会直接写本地文件系统。
 - `export_resources` 如果指定本地输出路径，也应谨慎处理。
 - `extract_doc` 将导出文件写入本地文件系统（默认 `~/siyuan-extracted/`），每次导出前会清空整个输出目录，避免旧提取结果无限积累。结果会返回 `outputRoot` 和 `defaultOutputDirUsed`；需要稳定路径时请显式传 `outputDir`，例如 `/private/tmp/...`。
+- `read_image` 只接受已授权文档树直接引用的 `assets/...` 路径，通过文件签名识别 PNG/JPEG/WebP/GIF，并拒绝超过 20 MiB 的图片。URL、本地路径、路径穿越及未引用资源都会被拒绝。
 
 ## 示例
 
@@ -49,6 +68,28 @@ MCP：
 ```
 
 这个结果只表示文档树直接资源；如果需要查看附件内容，请提取整个文档。
+
+让具备视觉能力的 MCP 客户端直接读取一张被引用图片：
+
+```json
+{
+  "action": "read_image",
+  "path": "assets/question.png",
+  "id": "<doc-id>"
+}
+```
+
+已有可读路径时，可用 `documentPath: "/Notebook/Folder/Doc"` 代替 `id`，二者必须且只能提供一个。不要让 `fs.read`、`document.get_doc` 或 `get_doc_assets` 自动内联整篇文档的全部图片。
+
+只读审计导入后的图片引用：
+
+```json
+{
+  "action": "audit_image_refs",
+  "id": "<doc-id>",
+  "expectedRefs": ["assets/cover.png", "assets/figure.png"]
+}
+```
 
 将文档和资源提取到本地目录：
 
@@ -151,8 +192,12 @@ CLI：
 
 ```bash
 siyuan file get-doc-assets --id <doc-id> --asset-type image
+siyuan file read-image --id <doc-id> --path assets/question.png
+siyuan file read-image --id <doc-id> --path assets/question.png --json
 siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 ```
+
+CLI 默认只显示图片元数据；显式传 `--json` 时会附带非文本内容块及 Base64，供脚本使用。
 
 ## 动作列表
 
@@ -165,11 +210,19 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `save_doc_as_template`
 - `render`
 - `export_md`
+- `export_markdown_snapshot`
 - `export_resources`
 - `list_unused_assets`
 - `get_doc_assets`
+- `audit_image_refs`
+- `read_image`
 - `get_image_ocr_text`
 - `remove_unused_assets`
 - `rename_asset`
 - `delete_asset`
 - `extract_doc`
+### `export_markdown_snapshot`
+
+`file(action="export_markdown_snapshot")` 通过思源 API 返回一页确定性 Markdown 快照，不写主机文件系统，也不启动后台任务。请求必须明确给出 `notebookID`，并且在 `roots`（例如 `/`）与 `documentIDs` 中二选一；用 `limit` 和不透明的 `cursor` 分批、可续跑地获取结果。
+
+每个文档返回 API 解析出的 ID、标题、hPath、存储路径、安全的相对 `.md` 路径、canonical metadata，以及 `sha256:v1:` 元数据/正文哈希。根目录清单按枚举得到的 hPath 后 ID 排序；显式 `documentIDs` 按 ID 排序。每次只解析权限并导出当前页。根目录模式会用轻量全量清单规划跨页路径冲突；显式 ID 模式则始终在文件名中加入文档 ID，保证不同页面不会互相覆盖。大小写不敏感路径冲突和 API/导出不一致会进入 `conflicts`/`errors`，不会猜测覆盖。这个响应是一页结果，不是已经落盘的整库备份；由调用方决定是否及在哪里保存。

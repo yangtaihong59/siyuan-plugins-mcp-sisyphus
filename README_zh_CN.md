@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：**`v0.6.3` — 新增思源原生语义搜索、嵌入模型与索引管理设置页，以及安全的同级文档排序；同时修复 stdio transport 打包问题，并扩展导入迁移、视觉资源与系统安全 Skills。感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47)，感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49)。CLI 提升至 `v0.2.5`。
+> **最新版本：**`v0.6.4` — 扩展受保护的 AV 配置能力，新增可审计 Markdown 快照、图片引用审计、权限受控的视觉图片读取、扩展诊断与更清晰的路径语义。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。CLI 提升至 `v0.2.6`。
 
 ## 项目方向调整
 
@@ -265,7 +265,7 @@ Sisyphus 自有工具的默认设计是让用户明确控制 AI 的操作范围�
 
 ### 赞助致谢
 
-感谢 **undefined**、**Fngd Z**、**ou**、**米建**、**锋🌀☁️** 、**wooh**和其他好心人对本项目的赞助支持。
+感谢 **undefined**、**Fngd Z**、**ou**、**米建**、**锋🌀☁️** 、**wooh**、**芝士柴犬**和其他好心人对本项目的赞助支持。
 
 <p align="left">
   <img src="docs/archive/thank.jpeg" alt="赞赏码" width="200">

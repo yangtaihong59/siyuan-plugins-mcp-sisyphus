@@ -55,6 +55,40 @@ describe('cli/render', () => {
         io.restore();
     });
 
+    it('shows image metadata by default without printing Base64', () => {
+        const io = captureStdIO();
+        const result: ToolResult = {
+            content: [
+                { type: 'text', text: JSON.stringify({ documentID: 'doc-1', path: 'assets/image.png', mimeType: 'image/png', bytes: 7 }) },
+                { type: 'image', data: 'BASE64_SENTINEL', mimeType: 'image/png' },
+            ],
+        };
+
+        expect(renderToolResult(result, { json: false, debug: false })).toBe(0);
+        expect(io.stdout).toContain('assets/image.png');
+        expect(io.stdout).toContain('image/png');
+        expect(io.stdout).not.toContain('BASE64_SENTINEL');
+        io.restore();
+    });
+
+    it('includes non-text image content for explicit --json output', () => {
+        const io = captureStdIO();
+        const result: ToolResult = {
+            content: [
+                { type: 'text', text: JSON.stringify({ documentID: 'doc-1', path: 'assets/image.png' }) },
+                { type: 'image', data: 'BASE64_SENTINEL', mimeType: 'image/png' },
+            ],
+        };
+
+        expect(renderToolResult(result, { json: true, debug: false })).toBe(0);
+        expect(JSON.parse(io.stdout)).toEqual({
+            documentID: 'doc-1',
+            path: 'assets/image.png',
+            content: [{ type: 'image', data: 'BASE64_SENTINEL', mimeType: 'image/png' }],
+        });
+        io.restore();
+    });
+
     it('renders paginated data as summary plus list', () => {
         const io = captureStdIO();
         const result: ToolResult = {

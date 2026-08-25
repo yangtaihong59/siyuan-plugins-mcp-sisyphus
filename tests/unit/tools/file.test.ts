@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
 import { callFileTool, listFileTools } from '@/tools/file';
+import { MAX_INLINE_IMAGE_BYTES } from '@/tools/file/handlers';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
 
@@ -13,6 +14,11 @@ vi.mock('@/api/file', () => ({
     getDocImageAssets: vi.fn(),
     getImageOCRText: vi.fn(),
     deleteAsset: vi.fn(),
+}));
+
+vi.mock('@/api/document', () => ({
+    listDocTree: vi.fn(),
+    getHPathByID: vi.fn(),
 }));
 
 vi.mock('@/api/template', () => ({
@@ -40,9 +46,26 @@ vi.mock('@/api/template', () => ({
 
 vi.mock('@/tools/internal/context', () => ({
 
-    ensurePermissionForDocumentId: vi.fn(async () => ({
-        context: { documentId: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy' },
+    ensurePermissionForNotebook: vi.fn(async () => null),
+    ensurePermissionForDocumentId: vi.fn(async (_client: unknown, _permMgr: unknown, id: string) => ({
+        context: {
+            documentId: id,
+            notebook: 'nb-1',
+            path: `/${id}.sy`,
+            hPath: id.startsWith('same-') ? '/Same' : id === 'doc-2' ? '/Doc 2' : id === 'doc-1' ? '/My Document' : '/My Document',
+            name: id.startsWith('same-') ? 'Same' : id === 'doc-2' ? 'Doc 2' : 'My Document',
+        },
         denied: null,
+    })),
+}));
+
+vi.mock('@/tools/internal/helpers/fs-path', () => ({
+    resolveFsScopePath: vi.fn(async () => ({
+        type: 'document',
+        id: 'doc-from-path',
+        notebook: 'nb-1',
+        path: '/doc-from-path.sy',
+        hPath: '/Folder/Doc',
     })),
 }));
 
@@ -71,10 +94,12 @@ describe('file tool asset actions', () => {
         vi.mocked(templateApi.renderTemplate).mockReset();
         vi.mocked(templateApi.renderSprig).mockReset();
 
-        vi.mocked(fileApi.exportMdContent).mockResolvedValue({
-            content: '![image](assets/cover.png)\n\nSome text\n',
-            hPath: '/My Document',
-        });
+        vi.mocked(fileApi.exportMdContent).mockImplementation(async (_client, id) => ({
+            content: String(id).startsWith('2026') ? '![image](assets/cover.png)\n\nSome text\n' : `# ${id}\n`,
+            hPath: id.startsWith('same-') ? '/Same'
+                : id.startsWith('bulk-') ? `/Bulk ${id.slice(-2)}`
+                    : id === 'doc-2' ? '/Doc 2' : '/My Document',
+        }));
         vi.mocked(fileApi.exportResources).mockResolvedValue({ path: '/temp/export.zip' });
         vi.mocked(fileApi.getUnusedAssets).mockResolvedValue(['assets/orphan.png']);
         vi.mocked(fileApi.getDocAssets).mockResolvedValue(['assets/manual.pdf', 'assets/cover.png']);
@@ -107,6 +132,98 @@ describe('file tool asset actions', () => {
             content: '<div>rendered</div>',
         });
         vi.mocked(templateApi.renderSprig).mockResolvedValue('sprig');
+
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockReset();
+        vi.mocked(documentApi.getHPathByID).mockReset();
+
+        const context = await import('@/tools/internal/context');
+        vi.mocked(context.ensurePermissionForDocumentId).mockClear();
+        vi.mocked(context.ensurePermissionForNotebook).mockClear();
+    });
+
+    it('exports a deterministic paginated remote-safe Markdown snapshot from explicit document IDs', async () => {
+        const result = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            documentIDs: ['doc-2', 'doc-1'],
+            limit: 1,
+        }, config.file, {} as never);
+
+        const payload = parseResult(result);
+        expect(payload).toMatchObject({
+            kind: 'siyuan-markdown-snapshot-page',
+            status: 'complete',
+            page: { offset: 0, limit: 1, total: 2, hasNext: true },
+            documents: [expect.objectContaining({
+                id: 'doc-1',
+                content: '# doc-1\n',
+                relativePath: 'My Document [doc-1].md',
+                contentHash: expect.stringMatching(/^sha256:v1:/),
+                metadataHash: expect.stringMatching(/^sha256:v1:/),
+            })],
+        });
+        expect((payload as any).page.nextCursor).toEqual(expect.any(String));
+        const context = await import('@/tools/internal/context');
+        expect(context.ensurePermissionForDocumentId).toHaveBeenCalledTimes(1);
+
+        const next = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            documentIDs: ['doc-2', 'doc-1'],
+            cursor: (payload as any).page.nextCursor,
+            limit: 1,
+        }, config.file, {} as never);
+        expect(parseResult(next)).toMatchObject({
+            page: { offset: 1, hasNext: false },
+            documents: [expect.objectContaining({ id: 'doc-2', relativePath: 'Doc 2 [doc-2].md' })],
+        });
+        expect(context.ensurePermissionForDocumentId).toHaveBeenCalledTimes(2);
+    });
+
+    it('resolves only the requested root-inventory page before exporting', async () => {
+        const documentApi = await import('@/api/document');
+        const context = await import('@/tools/internal/context');
+        vi.mocked(documentApi.listDocTree).mockResolvedValueOnce({ tree: Array.from({ length: 50 }, (_, index) => ({
+            id: `bulk-${String(index).padStart(2, '0')}`,
+            name: `Bulk ${String(index).padStart(2, '0')}`,
+            hPath: `/Bulk ${String(index).padStart(2, '0')}`,
+            path: `/bulk-${String(index).padStart(2, '0')}.sy`,
+            children: [],
+        })) });
+
+        const result = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/'],
+            limit: 1,
+        }, config.file, {} as never);
+        const payload = parseResult(result) as any;
+
+        expect(payload.page).toMatchObject({ offset: 0, limit: 1, total: 50, hasNext: true });
+        expect(context.ensurePermissionForDocumentId).toHaveBeenCalledTimes(1);
+        expect(payload.documents).toHaveLength(1);
+    });
+
+    it('enumerates roots through the document tree and records path conflicts without writing files', async () => {
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockResolvedValueOnce({ tree: [
+            { id: 'same-1', name: 'Same', hPath: '/Same', path: '/same-1.sy', children: [] },
+            { id: 'same-2', name: 'Same', hPath: '/Same', path: '/same-2.sy', children: [] },
+        ] });
+        const result = await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/'],
+        }, config.file, {} as never);
+        const payload = parseResult(result) as any;
+        expect(payload.conflicts).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'relative_path_collision', documentIDs: ['same-1', 'same-2'] }),
+        ]));
+        expect(payload.documents.map((item: any) => item.relativePath)).toEqual([
+            'Same [same-1].md',
+            'Same [same-2].md',
+        ]);
     });
 
     it('exposes asset management actions in the grouped schema', () => {
@@ -122,6 +239,8 @@ describe('file tool asset actions', () => {
         expect(actionDescription).toContain('save_doc_as_template');
         expect(actionDescription).toContain('list_unused_assets');
         expect(actionDescription).toContain('get_doc_assets');
+        expect(actionDescription).toContain('audit_image_refs');
+        expect(actionDescription).toContain('read_image');
         expect(actionDescription).toContain('get_image_ocr_text');
         expect(actionDescription).toContain('remove_unused_assets');
         expect(actionDescription).toContain('rename_asset');
@@ -449,6 +568,186 @@ describe('file tool asset actions', () => {
         });
     });
 
+    it('audits expected image references without reading or repairing local files', async () => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getDocImageAssets).mockResolvedValueOnce([
+            'assets/cover-20260813120000-abcdefg.png',
+            'assets/extra.png',
+        ]);
+
+        const result = await callFileTool(client, {
+            action: 'audit_image_refs',
+            id: 'doc-1',
+            expectedRefs: ['assets/cover.png', 'assets/missing.png'],
+        }, config.file, {} as never);
+
+        expect(fileApi.getDocImageAssets).toHaveBeenCalledWith(client, 'doc-1');
+        expect(parseResult(result)).toEqual({
+            id: 'doc-1',
+            expectedRefs: ['assets/cover.png', 'assets/missing.png'],
+            actualRefs: ['assets/cover-20260813120000-abcdefg.png', 'assets/extra.png'],
+            missingRefs: ['assets/missing.png'],
+            extraRefs: ['assets/extra.png'],
+            expectedCount: 2,
+            actualCount: 2,
+            ok: false,
+            comparison: 'multiset basename; each occurrence is matched once, and SiYuan timestamp/id suffixes are ignored for matching',
+        });
+    });
+
+    it.each([
+        ['PNG', 'image/png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])],
+        ['JPEG', 'image/jpeg', new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x01])],
+        ['WebP', 'image/webp', new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x01])],
+        ['GIF', 'image/gif', new TextEncoder().encode('GIF89a!')],
+    ])('returns %s bytes as metadata plus one MCP image block', async (_format, mimeType, data) => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getDocImageAssets).mockResolvedValueOnce(['assets/cover.fake']);
+        const readFileBinary = vi.fn().mockResolvedValue(data);
+        const localClient = createMockClient({ readFileBinary });
+
+        const result = await callFileTool(localClient, {
+            action: 'read_image',
+            id: 'doc-1',
+            path: '/data/assets/cover.fake',
+        }, config.file, {} as never);
+
+        expect(result.isError).not.toBe(true);
+        expect(result.content).toEqual([
+            {
+                type: 'text',
+                text: JSON.stringify({
+                    documentID: 'doc-1',
+                    path: 'assets/cover.fake',
+                    mimeType,
+                    bytes: data.byteLength,
+                    delivery: 'mcp_image',
+                }, null, 2),
+            },
+            {
+                type: 'image',
+                data: Buffer.from(data).toString('base64'),
+                mimeType,
+            },
+        ]);
+        expect(result.structuredContent).toEqual({
+            documentID: 'doc-1',
+            path: 'assets/cover.fake',
+            mimeType,
+            bytes: data.byteLength,
+            delivery: 'mcp_image',
+        });
+        expect(readFileBinary).toHaveBeenCalledWith('/data/assets/cover.fake');
+    });
+
+    it('authorizes read_image with a human-readable document path', async () => {
+        const fsPath = await import('@/tools/internal/helpers/fs-path');
+        const context = await import('@/tools/internal/context');
+        const readFileBinary = vi.fn().mockResolvedValue(new Uint8Array([0xff, 0xd8, 0xff, 0x01]));
+        const localClient = createMockClient({ readFileBinary });
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getDocImageAssets).mockResolvedValueOnce(['/assets/cover.png']);
+
+        const result = await callFileTool(localClient, {
+            action: 'read_image',
+            documentPath: '/Notebook/Folder/Doc',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).not.toBe(true);
+        expect(fsPath.resolveFsScopePath).toHaveBeenCalledWith(localClient, expect.anything(), '/Notebook/Folder/Doc', 'read');
+        expect(context.ensurePermissionForNotebook).toHaveBeenCalledWith(expect.anything(), 'nb-1', 'read');
+        expect(result.structuredContent).toMatchObject({ documentID: 'doc-from-path', path: 'assets/cover.png' });
+    });
+
+    it('returns the document permission denial before reading image assets', async () => {
+        const context = await import('@/tools/internal/context');
+        const fileApi = await import('@/api/file');
+        const denied = {
+            isError: true,
+            content: [{ type: 'text' as const, text: JSON.stringify({ error: { type: 'permission_denied' } }) }],
+        };
+        vi.mocked(context.ensurePermissionForDocumentId).mockResolvedValueOnce({ denied } as never);
+        const readFileBinary = vi.fn();
+
+        const result = await callFileTool(createMockClient({ readFileBinary }), {
+            action: 'read_image',
+            id: 'private-doc',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result).toBe(denied);
+        expect(fileApi.getDocImageAssets).not.toHaveBeenCalled();
+        expect(readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['URL', 'https://example.com/image.png'],
+        ['local path', '/private/tmp/image.png'],
+        ['path traversal', 'assets/../secret.png'],
+        ['encoded path traversal', 'assets/%2e%2e/secret.png'],
+        ['encoded slash traversal', 'assets/safe%2f..%2fsecret.png'],
+    ])('rejects a %s image path before API access', async (_label, imagePath) => {
+        const readFileBinary = vi.fn();
+        const result = await callFileTool(createMockClient({ readFileBinary }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: imagePath,
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it('requires exactly one document authorization field', async () => {
+        for (const args of [
+            { action: 'read_image', path: 'assets/cover.png' },
+            { action: 'read_image', path: 'assets/cover.png', id: 'doc-1', documentPath: '/Notebook/Doc' },
+        ]) {
+            const result = await callFileTool(client, args, config.file, {} as never);
+            expect(result.isError).toBe(true);
+            expect(result.content[0].text).toContain('exactly one');
+        }
+    });
+
+    it('rejects an image that is not referenced by the authorized document', async () => {
+        const readFileBinary = vi.fn();
+        const result = await callFileTool(createMockClient({ readFileBinary }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: 'assets/not-referenced.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('is not referenced');
+        expect(readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it('trusts the file signature instead of the extension and rejects unsupported data', async () => {
+        const data = new TextEncoder().encode('%PDF-1.7');
+        const result = await callFileTool(createMockClient({ readFileBinary: vi.fn().mockResolvedValue(data) }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('Unsupported image data');
+    });
+
+    it('rejects images larger than 20 MiB before Base64 encoding', async () => {
+        const data = new Uint8Array(MAX_INLINE_IMAGE_BYTES + 1);
+        const result = await callFileTool(createMockClient({ readFileBinary: vi.fn().mockResolvedValue(data) }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('too large');
+        expect(result.content[0].text).toContain(String(MAX_INLINE_IMAGE_BYTES));
+    });
+
     it('returns OCR text for an image asset', async () => {
         const result = await callFileTool(client, {
             action: 'get_image_ocr_text',
@@ -458,6 +757,23 @@ describe('file tool asset actions', () => {
         expect(parseResult(result)).toEqual({
             path: 'assets/cover.png',
             text: 'recognized text',
+        });
+    });
+
+    it('guides empty stored OCR results to read_image without changing non-empty OCR', async () => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getImageOCRText).mockResolvedValueOnce({ text: '' });
+
+        const result = await callFileTool(client, {
+            action: 'get_image_ocr_text',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(parseResult(result)).toMatchObject({
+            path: 'assets/cover.png',
+            text: '',
+            available: false,
+            hint: expect.stringContaining('file(action="read_image"'),
         });
     });
 

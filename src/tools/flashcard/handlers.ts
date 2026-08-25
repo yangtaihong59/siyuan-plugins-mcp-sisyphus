@@ -23,8 +23,11 @@ const NODE_ATTR_RIFF_DECKS = 'custom-riff-decks';
 const BUILTIN_DECK_NAME = 'Built-in Deck';
 const GET_CARDS_RETRY_ATTEMPTS = 5;
 const GET_CARDS_RETRY_DELAY_MS = 300;
-const FLASHCARD_BINDING_VERIFY_ATTEMPTS = 6;
-const FLASHCARD_BINDING_VERIFY_DELAY_MS = 300;
+// SiYuan can persist custom-riff-decks before the corresponding built-in
+// deck record becomes queryable. Keep the readback bounded, but allow the
+// asynchronous riff index enough time under a busy workspace.
+const FLASHCARD_BINDING_VERIFY_ATTEMPTS = 24;
+const FLASHCARD_BINDING_VERIFY_DELAY_MS = 500;
 
 type BlockAttrMap = Record<string, string>;
 

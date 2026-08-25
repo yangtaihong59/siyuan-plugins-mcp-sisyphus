@@ -202,7 +202,12 @@ describe('extension tool', () => {
         const { runtime } = fakeRuntime([reserved]);
 
         const descriptor = listExtensionTools(config, runtime)[0];
-        expect((descriptor.inputSchema as any).properties.action.enum).toEqual(['help', 'list']);
+        expect((descriptor.inputSchema as any).properties.action.enum).toEqual([
+            'help',
+            'list',
+            'validate_package',
+            'diagnose_plugin_mcp',
+        ]);
 
         const result = await callExtensionTool(
             createMockClient(),
@@ -239,6 +244,167 @@ describe('extension tool', () => {
         expect(callTool).toHaveBeenCalledTimes(1);
         expect(callTool).toHaveBeenCalledWith('plugin__alpha__aggregate', downstreamArgs);
         expect(result.isError).not.toBe(true);
+    });
+
+    it('validates explicit package content locally without requiring an official MCP bridge', async () => {
+        const config = buildDefaultToolConfig().extension;
+
+        const result = await callExtensionTool(
+            createMockClient(),
+            {
+                action: 'validate_package',
+                package: {
+                    type: 'theme',
+                    manifest: {
+                        name: 'sample-theme',
+                        version: '1.0.0',
+                        modes: ['light'],
+                    },
+                    files: { 'theme.css': ':root { --b3-theme-background: #fff; }' },
+                },
+            },
+            config,
+            createMockPermissionManager(),
+        );
+        const payload = JSON.parse(result.content[0].text);
+
+        expect(result.isError).not.toBe(true);
+        expect(payload).toEqual(expect.objectContaining({
+            kind: 'static_extension_package_validation',
+            staticPackage: 'valid',
+            lifecycle: expect.objectContaining({ reload: 'not_triggered' }),
+        }));
+    });
+
+    it('reads a refreshed Source=plugin registry without treating absence as completed unload', async () => {
+        const config = buildDefaultToolConfig().extension;
+        const observed = pluginTool({
+            name: 'plugin__my_plugin__read_item',
+            readOnlyHint: true,
+        });
+        const refresh = vi.fn().mockResolvedValue({
+            tools: [observed],
+            connected: true,
+            supported: true,
+            siyuanVersion: '3.7.3',
+            changed: false,
+        });
+        const runtime = {
+            bridge: {
+                refresh,
+                getTools: () => [observed],
+                getSnapshot: () => ({ tools: [observed], connected: true, changed: false }),
+            },
+        } as unknown as OfficialMcpRuntime;
+
+        const result = await callExtensionTool(
+            createMockClient(),
+            {
+                action: 'diagnose_plugin_mcp',
+                pluginName: 'my-plugin',
+                expectedToolNames: ['read item', 'removed'],
+                expectedState: 'absent',
+            },
+            config,
+            createMockPermissionManager(),
+            runtime,
+        );
+        const payload = JSON.parse(result.content[0].text);
+
+        expect(refresh).toHaveBeenCalledWith({ forceVersionCheck: true });
+        expect(payload.plugin).toEqual(expect.objectContaining({
+            manifestName: 'my-plugin',
+            sanitizedName: 'my_plugin',
+            toolPrefix: 'plugin__my_plugin__',
+            registeredTools: [expect.objectContaining({ name: 'plugin__my_plugin__read_item' })],
+        }));
+        expect(payload.expectation).toEqual(expect.objectContaining({
+            expectedState: 'absent',
+            allMet: false,
+            tools: expect.arrayContaining([
+                expect.objectContaining({ qualifiedName: 'plugin__my_plugin__read_item', observed: true, expectationMet: false }),
+                expect.objectContaining({ qualifiedName: 'plugin__my_plugin__removed', observed: false, expectationMet: true }),
+            ]),
+        }));
+        expect(payload.lifecycle).toEqual(expect.objectContaining({
+            kernelPluginRunning: 'inferred_from_registered_tool',
+            mcpToolRegistration: 'observed_from_fresh_registry',
+            mcpToolUnregistration: 'not_observed',
+            reload: 'not_triggered',
+            functionAfterReload: 'not_verified',
+        }));
+    });
+
+    it('does not report registration merely because an empty registry refresh succeeded', async () => {
+        const config = buildDefaultToolConfig().extension;
+        const runtime = {
+            bridge: {
+                refresh: vi.fn().mockResolvedValue({
+                    tools: [], connected: true, supported: true, siyuanVersion: '3.7.3', changed: false,
+                }),
+                getTools: () => [],
+                getSnapshot: () => ({ tools: [], connected: true, changed: false }),
+            },
+        } as unknown as OfficialMcpRuntime;
+
+        const result = await callExtensionTool(
+            createMockClient(),
+            {
+                action: 'diagnose_plugin_mcp',
+                pluginName: 'my-plugin',
+                expectedToolNames: ['echo'],
+                expectedState: 'present',
+            },
+            config,
+            createMockPermissionManager(),
+            runtime,
+        );
+        const payload = JSON.parse(result.content[0].text);
+
+        expect(payload.observation).toBe('completed');
+        expect(payload.expectation).toEqual(expect.objectContaining({ allMet: false }));
+        expect(payload.lifecycle).toEqual(expect.objectContaining({
+            kernelPluginRunning: 'not_observed',
+            mcpToolRegistration: 'not_observed',
+            mcpToolUnregistration: 'not_observed',
+        }));
+    });
+
+    it('does not present a stale bridge cache as fresh lifecycle evidence after refresh fails', async () => {
+        const config = buildDefaultToolConfig().extension;
+        const stale = pluginTool({ name: 'plugin__my_plugin__echo' });
+        const runtime = {
+            bridge: {
+                refresh: vi.fn().mockResolvedValue({
+                    tools: [stale],
+                    connected: false,
+                    changed: false,
+                    error: 'connection failed',
+                }),
+                getTools: () => [stale],
+                getSnapshot: () => ({ tools: [stale], connected: false, changed: false }),
+            },
+        } as unknown as OfficialMcpRuntime;
+
+        const result = await callExtensionTool(
+            createMockClient(),
+            {
+                action: 'diagnose_plugin_mcp',
+                pluginName: 'my-plugin',
+                expectedToolNames: ['echo'],
+                expectedState: 'present',
+            },
+            config,
+            createMockPermissionManager(),
+            runtime,
+        );
+        const payload = JSON.parse(result.content[0].text);
+
+        expect(result.isError).toBe(true);
+        expect(payload.observation).toBe('unavailable');
+        expect(payload.plugin.registeredTools).toEqual([]);
+        expect(payload.expectation).toEqual(expect.objectContaining({ allMet: false }));
+        expect(payload.lifecycle.mcpToolRegistration).toBe('not_observed');
     });
 
     it('rejects cached native tools while disabled and forwards them after the switch is enabled', async () => {

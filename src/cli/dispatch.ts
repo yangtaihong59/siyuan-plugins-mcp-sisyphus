@@ -54,13 +54,18 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
 
         const module = TOOL_REGISTRY[category];
         if (category === 'extension') {
-            await prepareTool(category, toolConfig, officialMcpRuntime);
-            const discoveredActions = getExposedExtensionTools(toolConfig.extension, officialMcpRuntime)
-                .map((tool) => tool.name);
-            if (!knownActions.includes(normalizedAction as never)
-                && normalizedAction !== 'help'
-                && !discoveredActions.includes(normalizedAction)) {
-                throw formatUnknownActionError(category, normalizedAction, discoveredActions);
+            // validate_package deliberately accepts only caller-provided in-memory content. It must
+            // remain useful when the official bridge is unavailable, otherwise a static package
+            // check would unnecessarily depend on a live SiYuan instance and blur those states.
+            if (normalizedAction !== 'validate_package') {
+                await prepareTool(category, toolConfig, officialMcpRuntime);
+                const discoveredActions = getExposedExtensionTools(toolConfig.extension, officialMcpRuntime)
+                    .map((tool) => tool.name);
+                if (normalizedAction !== 'help'
+                    && !knownActions.includes(normalizedAction as never)
+                    && !discoveredActions.includes(normalizedAction)) {
+                    throw formatUnknownActionError(category, normalizedAction, discoveredActions);
+                }
             }
         }
         const inputSchema = resolveInputSchema(category, toolConfig, officialMcpRuntime);

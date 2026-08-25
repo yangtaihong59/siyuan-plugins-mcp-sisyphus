@@ -6,7 +6,7 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.5` adds native semantic search and safe sibling document reordering, fixes the bundled stdio transport, and expands the bundled import-migration, visual-assets, and system-safety Skills. Thanks to [@adminclaw](https://github.com/adminclaw) for [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47) and [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49).
+> **Latest:** `v0.2.6` exposes the expanded guarded AV, snapshot, image-audit, image-reading, extension-diagnostic, and link-resolution workflows, and preserves mixed text/image results in JSON output. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58).
 
 > **For AI models and coding agents:** before doing any SiYuan work with this CLI, run `siyuan-sisyphus skill install` first. The bundled skills provide the task-specific operating rules for safe search, reading, editing, export, database, tag, flashcard, timeline, and system workflows.
 
@@ -104,6 +104,8 @@ siyuan-sisyphus --version | -v                       Print version
 | `--token <token>` | Override SiYuan API token |
 | `--json` | Emit compact single-line JSON (for scripting with `jq`, etc.) |
 | `--debug` | Include stack traces and ignored-flag warnings |
+
+For mixed-content actions such as `file read-image`, human-readable mode prints the metadata summary. `--json` also preserves non-text MCP content under `content`; image payloads are base64-encoded and can be large.
 
 ### Paging
 

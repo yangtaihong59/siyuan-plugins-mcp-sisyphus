@@ -1,6 +1,6 @@
 # file
 
-This tool covers asset upload, export, template discovery and management, template rendering, OCR, and asset maintenance.
+This tool covers asset upload, direct visual image delivery, export, template discovery and management, stored OCR, and asset maintenance.
 
 When to read this page: you need to upload assets, export content, find/read/create/update/delete/render templates, or query document-linked resources.
 
@@ -13,12 +13,30 @@ Related pages:
 
 | Group | Actions |
 |------|---------|
-| Upload / export | `upload_asset`, `export_md`, `export_resources`, `extract_doc` |
+| Upload / export | `upload_asset`, `export_md`, `export_markdown_snapshot`, `export_resources`, `extract_doc` |
 | Templates | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
-| Asset inspection | `get_doc_assets`, `get_image_ocr_text`, `list_unused_assets` |
+| Asset inspection | `get_doc_assets`, `audit_image_refs`, `read_image`, `get_image_ocr_text`, `list_unused_assets` |
 | Asset mutations | `remove_unused_assets`, `rename_asset`, `delete_asset` |
 
 `get_doc_assets` is a direct-reference inspection action. It reports assets referenced by the current document tree and does not expand query embed blocks. When you need to inspect the full document content and assets, use `extract_doc`.
+
+When Markdown contains an `assets/...` image and the answer depends on its visual content, vision-capable clients should call `read_image` for one relevant image. The action returns JSON metadata followed by a standard MCP `image` content block; Base64 is not duplicated in `structuredContent`. It does not write a local file or run OCR. `get_image_ocr_text` only reads OCR already stored by SiYuan.
+
+## Export boundaries
+
+`export_md` and `export_resources` are read/export operations, not recovery actions. Resolve the concrete target before calling either action: use a document ID for `export_md`, and verify every workspace-relative path for `export_resources`. A title, search result, or remembered path is not enough when more than one document or resource can match.
+
+- `export_md` returns the document's Markdown in the tool result. It does not create a repo/history snapshot or write a local file. The returned content is therefore an in-memory export that may leave the SiYuan process through the caller; treat it as a content-disclosure boundary and save it separately only when that external effect is intended.
+- `export_resources` packages the explicitly supplied workspace paths. Common asset forms such as `assets/example.png` are normalized to `/data/assets/example.png` before the kernel call. The result is a file-level ZIP, not a semantic document backup: it cannot by itself restore block IDs, references, attribute-view state, or document-tree relationships.
+- Without `outputPath`, `export_resources` returns the kernel's temporary export path. With `outputPath`, the handler reads that ZIP and writes it to the local filesystem, which is an external side effect and requires explicit confirmation. Resolve and review the destination before execution; do not assume the path is harmless because the source operation is read-only.
+
+Choose the narrowest export for the intent: use `export_md` for text inspection, `export_resources` for selected workspace files or a portable resource bundle, and `extract_doc` when the goal is to inspect one document together with its referenced assets. None of these actions creates a rollback point automatically.
+
+### Bounded export readback
+
+After `export_md`, check the returned document identity fields and content rather than treating an HTTP success envelope as a saved artifact. After `export_resources`, check the returned temporary path or the explicit local `outputPath` and reported byte count; verify the requested path set, not an unrelated directory listing. If the response is lost, perform one exact target/path read before considering a retry. Do not blindly repeat an export that may already have produced a local file.
+
+`audit_image_refs` is a read-only import acceptance check. Pass the document ID and expected image references from source or preprocessed Markdown. It reads direct image references through SiYuan's HTTP API and returns expected, actual, missing, and extra references. Matching is a multiset by normalized basename: each occurrence is preserved and can satisfy only one occurrence on the other side. Duplicate references and different paths sharing one basename are therefore not silently merged; within a basename collision, input order determines which occurrence is reported missing or extra. SiYuan timestamp/id suffixes, query strings, and fragments are ignored only for matching. It never reads local `.sy` files or repairs content.
 
 ## Safety Rules
 
@@ -28,6 +46,7 @@ Related pages:
 - Template writes use SiYuan's workspace file API for `/data/templates/...`; they do not write the local filesystem directly.
 - `export_resources` with a local output path should be treated carefully.
 - `extract_doc` writes to the local filesystem (default `~/siyuan-extracted/`) and clears the entire output directory before each export to prevent accumulation of old extracts. Results include `outputRoot` and `defaultOutputDirUsed`; pass `outputDir` explicitly for predictable paths such as `/private/tmp/...`.
+- `read_image` accepts only referenced `assets/...` paths from an authorized document tree, identifies PNG/JPEG/WebP/GIF by file signature, and rejects images larger than 20 MiB. URLs, local paths, path traversal, and unreferenced assets are rejected.
 
 ## Examples
 
@@ -49,6 +68,28 @@ MCP:
 ```
 
 This returns direct document-tree assets only. It is not a substitute for extracting the document when you need to inspect attachment content.
+
+Read one referenced image directly with a vision-capable MCP client:
+
+```json
+{
+  "action": "read_image",
+  "path": "assets/question.png",
+  "id": "<doc-id>"
+}
+```
+
+Use `documentPath: "/Notebook/Folder/Doc"` instead of `id` when you have a human-readable path. Exactly one authorization field is required. Do not use `fs.read`, `document.get_doc`, or `get_doc_assets` to inline every image automatically.
+
+Audit imported image references without touching local workspace files:
+
+```json
+{
+  "action": "audit_image_refs",
+  "id": "<doc-id>",
+  "expectedRefs": ["assets/cover.png", "assets/figure.png"]
+}
+```
 
 Extract a document and its assets into a local folder:
 
@@ -151,8 +192,12 @@ CLI:
 
 ```bash
 siyuan file get-doc-assets --id <doc-id> --asset-type image
+siyuan file read-image --id <doc-id> --path assets/question.png
+siyuan file read-image --id <doc-id> --path assets/question.png --json
 siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 ```
+
+The default CLI rendering shows image metadata only. `--json` also includes the non-text content block and its Base64 data for scripts.
 
 ## Action List
 
@@ -165,11 +210,19 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `save_doc_as_template`
 - `render`
 - `export_md`
+- `export_markdown_snapshot`
 - `export_resources`
 - `list_unused_assets`
 - `get_doc_assets`
+- `audit_image_refs`
+- `read_image`
 - `get_image_ocr_text`
 - `remove_unused_assets`
 - `rename_asset`
 - `delete_asset`
 - `extract_doc`
+### `export_markdown_snapshot`
+
+`file(action="export_markdown_snapshot")` returns one deterministic page of a Markdown snapshot without writing the host filesystem or starting a background job. The request must include an explicit `notebookID` and exactly one of `roots` (notebook-local storage paths, such as `/`) or `documentIDs`. Use `limit` and the opaque `cursor` for resumable batches.
+
+Each returned document includes the API-resolved ID, title, hPath, storage path, a safe relative `.md` path, canonical metadata plus `sha256:v1:` metadata/content hashes. Root inventories are ordered by the enumerated hPath and ID; explicit `documentIDs` are ordered by ID. Only the requested page is permission-resolved and exported. Root-tree path collisions are planned across the complete lightweight inventory, while explicit-ID filenames always include the document ID so documents on different pages cannot overwrite each other. Case-insensitive collisions and API/export mismatches are reported in `conflicts`/`errors` rather than guessed away. The response is a page, not a completed workspace backup; callers decide whether and where to persist it.

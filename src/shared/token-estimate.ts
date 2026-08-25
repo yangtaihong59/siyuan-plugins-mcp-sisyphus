@@ -17,7 +17,7 @@ export function measureApproxText(text: string | undefined | null): ApproxTokenM
     };
 }
 
-export function measureApproxContent(content: { type: 'text'; text: string }[] | undefined): ApproxTokenMetrics {
-    const text = (content ?? []).map((item) => item.text ?? '').join('');
+export function measureApproxContent(content: Array<{ type: string; text?: string }> | undefined): ApproxTokenMetrics {
+    const text = (content ?? []).map((item) => item.type === 'text' ? item.text ?? '' : '').join('');
     return measureApproxText(text);
 }

@@ -3,6 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { slimToolResult } from '@/core/slim-response';
 
 describe('slim document-window responses', () => {
+    it('preserves read_image metadata, structured content, and the image block verbatim', () => {
+        const original = {
+            content: [
+                { type: 'text' as const, text: JSON.stringify({ documentID: 'doc-1', path: 'assets/image.png', bytes: 4 }) },
+                { type: 'image' as const, data: 'iVBORw==', mimeType: 'image/png' },
+            ],
+            structuredContent: { documentID: 'doc-1', path: 'assets/image.png', bytes: 4 },
+        };
+
+        expect(slimToolResult(original, { category: 'file', action: 'read_image' })).toEqual(original);
+    });
+
     it('preserves strict-write commit metadata on slim success responses', () => {
         const result = slimToolResult({
             content: [{ type: 'text', text: JSON.stringify({
@@ -173,5 +185,22 @@ describe('slim document-window responses', () => {
             category: 'extension',
             action: 'plugin__example__tool',
         })).toEqual(original);
+    });
+
+    it('preserves every user-selected SQL column', () => {
+        const original = {
+            content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                    data: [{ box: 'notebook-1', content: 'raw content', count: 3 }],
+                    total: 1,
+                    totalRows: 1,
+                    showing: 1,
+                    truncated: false,
+                }),
+            }],
+        };
+
+        expect(slimToolResult(original, { category: 'search', action: 'query_sql' })).toEqual(original);
     });
 });

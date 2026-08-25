@@ -126,13 +126,18 @@ function createTextResult(result: ToolResult, value: unknown): ToolResult {
     const first = result.content[0];
     return {
         ...result,
-        content: [{ ...(first ?? { type: 'text' as const }), type: 'text', text: JSON.stringify(value, null, 2) }],
+        content: [
+            { ...(first?.type === 'text' ? first : { type: 'text' as const }), type: 'text', text: JSON.stringify(value, null, 2) },
+            ...result.content.slice(first?.type === 'text' ? 1 : 0),
+        ],
     };
 }
 
 function shouldBypassSlimming(ctx: SlimContext): boolean {
     return ctx.category === 'extension'
         || ctx.category === 'timeline'
+        || (ctx.category === 'file' && ctx.action === 'read_image')
+        || (ctx.category === 'search' && ctx.action === 'query_sql')
         || ctx.action === 'help'
         || (ctx.category === 'system' && ctx.action === 'conf');
 }
@@ -150,6 +155,8 @@ function slimError(error: Record<string, unknown>): Record<string, unknown> {
         'validActions',
         'validTopics',
         'topic',
+        'reason',
+        'restrictedNotebookCount',
         'expectedField',
         'expectedHash',
         'currentHash',

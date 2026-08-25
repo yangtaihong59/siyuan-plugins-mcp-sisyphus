@@ -189,20 +189,24 @@ For basic path-style notebook and document operations, use \`fs\` whenever the t
 - Reorder all visible direct children: first list the parent, then call \`fs(action="reorder", path="/Notebook/Folder", orderedPaths=["/Notebook/Folder/First", "/Notebook/Folder/Second"])\` with every child path exactly once. This enables custom sorting for the notebook.
 - Delete, move, or rename by path: \`fs(action="rm", path="/Notebook/Folder/Doc")\`, \`fs(action="mv", from="/Notebook/Old", to="/Notebook/New")\` after explicit confirmation.
 
-\`fs\` paths are human-readable workspace paths and \`fs\` hides notebook IDs, block IDs, and storage paths. Prefer \`fs\` for basic browse/read/write/edit/search/move/delete workflows. Use the lower-level \`document\`, \`block\`, \`search\`, and \`av\` tools only when you need SiYuan-specific block layout, metadata, SQL, backlinks, assets, database operations, or direct block IDs.
+\`fs\` paths are human-readable workspace paths and \`fs\` hides notebook IDs, block IDs, and storage paths. Prefer including the notebook name (for example \`/Notebook/Folder/Doc\`) so resolution is unambiguous. A notebook-omitted path such as \`/Folder/Doc\` is accepted only when it uniquely matches across readable notebooks; root-level creation still requires \`/Notebook/Title\`. Prefer \`fs\` for basic browse/read/write/edit/search/move/delete workflows. Use the lower-level \`document\`, \`block\`, \`search\`, and \`av\` tools only when you need SiYuan-specific block layout, metadata, SQL, backlinks, assets, database operations, or direct block IDs.
 
 \`fs\` is a Markdown-oriented convenience layer. It converts document content through Markdown and Kramdown for reading and writing, so it is not a full-fidelity editor for complex SiYuan-native structures. Use it for ordinary prose, headings, lists, simple tables, exact paragraph/heading text replacement, and path-based file workflows. Prefer lower-level tools when the task involves precise block tree structure, block attributes, embeds, media, query embeds, database rows and cells, flashcard deck bindings, or other native structures that are not naturally represented as Markdown.
 
-There are exactly two path types. Do not mix them.
+When Markdown contains an \`assets/...\` image and answering depends on its visual content, a vision-capable client should call \`file(action="read_image", path="assets/...", id="<document-id>")\` or provide \`documentPath="/Notebook/Folder/Doc"\` instead of \`id\`. Read one relevant image per call; do not make \`fs.read\`, \`document.get_doc\`, or \`get_doc_assets\` inline all images automatically. \`get_image_ocr_text\` only returns OCR text already stored by SiYuan and does not perform recognition, so use it as a fallback when direct vision is unavailable.
 
-| Type | Used by | Example |
-|------|---------|---------|
-| Human-readable | document(action=”create”), document(action=”lookup”, hpath=...) | /Inbox/Weekly Note |
-| Storage path | document(action=”rename”), remove, move, lookup (with notebook+path) | /20240318112233-abc123.sy |
+The document tool uses exactly two path types. Do not mix them.
 
-Safe workflow: call document(action=”lookup”, id=..., include=[”path”]) first, then reuse the returned storage path.
+| Type | Used by | Example | Notebook name? |
+|------|---------|---------|----------------|
+| Human-readable (notebook-local) | document(action="create"), document(action="lookup", hpath=...) | /Folder/Weekly Note | MUST NOT include notebook name; notebook is passed separately |
+| Storage path | document(action="rename"), remove, move, lookup (with notebook+path) | /20240318112233-abc123.sy | n/a (returned by lookup) |
 
-WRONG: document(action=”rename”, notebook=”...”, path=”/Inbox/Weekly Note”, title=”New Title”) — this will fail because rename expects a storage path, not a human-readable path.
+Safe workflow: call document(action="lookup", id=..., include=["path"]) first, then reuse the returned storage path.
+
+WRONG: document(action="create", notebook="<id>", path="/NotebookName/Folder/Weekly Note", title="New Title") — this will create an extra folder named after the notebook, because path is notebook-local and MUST NOT include the notebook name.
+WRONG: document(action="rename", notebook="...", path="/Folder/Weekly Note", title="New Title") — this will fail because rename expects a storage path, not a human-readable path.
+CORRECT: document(action="create", notebook="<id>", path="/Folder/Weekly Note")
 CORRECT: document(action=”rename”, notebook=”...”, path=”/20240318112233-abc123.sy”, title=”New Title”)
 
 ## High-risk operations confirmation

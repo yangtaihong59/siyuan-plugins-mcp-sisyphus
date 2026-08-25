@@ -23,7 +23,7 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.3` — Adds native semantic search, an embedding-model and index-management settings page, and safe sibling document reordering. It also fixes the bundled stdio transport and expands the import-migration, visual-assets, and system-safety Skills. Thanks to [@adminclaw](https://github.com/adminclaw) for [PR #47](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/47) and [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #49](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/49). CLI is now `v0.2.5`.
+> **Latest:** `v0.6.4` — Expands guarded AV configuration, adds auditable Markdown snapshots, image-reference auditing, permission-scoped visual image delivery, extension diagnostics, and clearer path semantics. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58). CLI is now `v0.2.6`.
 
 ## Project Direction Update
 
@@ -260,7 +260,7 @@ If you find this project helpful, please consider supporting it. Your support he
 
 ### Sponsor Thanks
 
-Thanks to **undefined**, **Fngd Z**, **ou**, **米建**, **锋🌀☁️**, **wooh** and all other kind supporters for sponsoring this project.
+Thanks to **undefined**, **Fngd Z**, **ou**, **米建**, **锋🌀☁️**, **wooh**, **芝士柴犬** and all other kind supporters for sponsoring this project.
 
 <p align="left">
   <img src="docs/archive/thank.jpeg" alt="Support QR code" width="280">

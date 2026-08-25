@@ -600,6 +600,9 @@ describe('search tool filtering', () => {
         }));
         const client = createMockClient({
             request: async (endpoint: string, body: unknown) => {
+                if (endpoint === '/api/notebook/lsNotebooks') {
+                    return { notebooks: [{ id: 'allowed', name: 'Allowed', closed: false }] };
+                }
                 expect(endpoint).toBe('/api/query/sql');
                 expect(body).toMatchObject({ stmt: 'SELECT * FROM blocks LIMIT 60' });
                 return rows;
@@ -626,6 +629,66 @@ describe('search tool filtering', () => {
         expect(parsed.truncated).toBe(true);
         expect(parsed.hint).toContain('LIMIT and OFFSET');
         expect(parsed.resolvedArgs).toEqual({ stmt: 'SELECT * FROM blocks LIMIT 60' });
+    });
+
+    it('returns unattributable aggregate SQL when every notebook is readable', async () => {
+        const request = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/notebook/lsNotebooks') {
+                return { notebooks: [{ id: 'allowed', name: 'Allowed', closed: false }] };
+            }
+            if (endpoint === '/api/query/sql') return [{ n: 42 }];
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const client = createMockClient({ request });
+        const permMgr = {
+            reload: vi.fn(async () => undefined),
+            canRead: () => true,
+            canWrite: () => true,
+            canDelete: () => true,
+            get: () => 'rwd',
+        };
+
+        const result = await callSearchTool(client, {
+            action: 'query_sql',
+            stmt: 'SELECT COUNT(*) AS n FROM blocks',
+        }, buildDefaultToolConfig().search, permMgr as never);
+
+        expect(parseResult(result)).toMatchObject({ data: [{ n: 42 }], total: 1 });
+    });
+
+    it('rejects raw SQL before execution when any notebook is unreadable', async () => {
+        const request = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/notebook/lsNotebooks') {
+                return {
+                    notebooks: [
+                        { id: 'allowed', name: 'Allowed', closed: false },
+                        { id: 'blocked', name: 'Blocked', closed: false },
+                    ],
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const client = createMockClient({ request });
+        const permMgr = {
+            reload: vi.fn(async () => undefined),
+            canRead: (id: string) => id !== 'blocked',
+            canWrite: () => false,
+            canDelete: () => false,
+            get: (id: string) => id === 'blocked' ? 'none' : 'r',
+        };
+
+        const result = await callSearchTool(client, {
+            action: 'query_sql',
+            stmt: 'SELECT COUNT(*) AS n FROM blocks',
+        }, buildDefaultToolConfig().search, permMgr as never);
+        const parsed = parseResult(result);
+
+        expect(result.isError).toBe(true);
+        expect(parsed.error).toMatchObject({
+            code: 'raw_sql_unavailable_with_restricted_notebooks',
+            reason: 'permission_scope_not_enforceable',
+        });
+        expect(request).not.toHaveBeenCalledWith('/api/query/sql', expect.anything());
     });
 
     it('adds an indexing hint when tag search returns empty for a non-empty keyword', async () => {

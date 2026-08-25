@@ -6,6 +6,7 @@ import {
     DocumentActionSchema,
     DocumentCreateDailyNoteSchema,
     DocumentCreateSchema,
+    DocumentEnsureLinkTargetsSchema,
     DocumentDocToHeadingSchema,
     DocumentDuplicateSchema,
     DocumentGetChildBlocksSchema,
@@ -31,6 +32,7 @@ export const DOCUMENT_TOOL_NAME = 'document';
 export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
     createZodActionVariant('create', DocumentCreateSchema, 'Create a new document. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.'),
     createZodActionVariant('lookup', DocumentLookupSchema, 'Look up document IDs, storage paths, human-readable paths, and document metadata from one document reference.'),
+    createZodActionVariant('ensure_link_targets', DocumentEnsureLinkTargetsSchema, 'Resolve, reuse, or create explicitly scoped direct-child document link targets. Existing targets require IDs; titles are never guessed as identities.'),
     createZodActionVariant('rename', DocumentRenameSchema, 'Rename a document'),
     createZodActionVariant('remove', DocumentRemoveSchema, 'Delete a document'),
     createZodActionVariant('move', DocumentMoveSchema, 'Move a document to another location'),
@@ -57,8 +59,8 @@ const documentTool = defineTool<DocumentAction>({
         guidance: DOCUMENT_GUIDANCE,
         actionHints: DOCUMENT_ACTION_HINTS,
         propertyDescriptionOverrides: {
-            path: 'Path value. For action="create", use a human-readable target path such as /Inbox/Weekly Note. For action="lookup" and path-based rename/remove/move, use a storage path returned by document(action="lookup", id=..., include=["path"]); use hpath for human-readable lookup.',
-            parentPath: 'Parent path for title-based creation. Accepts a human-readable parent path such as /Inbox or a storage path ending in .sy returned by document(action="lookup").',
+            path: 'Path value. For action="create", use a human-readable target path RELATIVE TO THE NOTEBOOK ROOT (must start with /, MUST NOT include the notebook name; e.g., /Folder/Weekly Note, not /NotebookName/Folder/Weekly Note). For action="lookup", "list_tree", "search_docs", and path-based rename/remove/move, use a storage path returned by document(action="lookup", id=..., include=["path"]) (or / for list_tree notebook root); use hpath for human-readable lookup.',
+            parentPath: 'Parent path for title-based creation, RELATIVE TO THE NOTEBOOK ROOT. Accepts a human-readable path (must start with /, MUST NOT include the notebook name; e.g., /Folder) or a storage path ending in .sy returned by document(action="lookup").',
             fromPaths: 'Source storage paths returned by document(action="lookup").',
             toPath: 'Target storage path. Use the storage path of an existing destination document returned by document(action="lookup").',
         },

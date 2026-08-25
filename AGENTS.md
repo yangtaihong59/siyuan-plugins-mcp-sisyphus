@@ -11,12 +11,12 @@
 1. **MCP Server 插件**：作为 SiYuan 插件运行，对外暴露 MCP（Model Context Protocol）服务。AI 客户端（Claude Desktop、Cursor、Cherry Studio 等）通过 HTTP 或 stdio 连接。
 2. **独立 CLI `siyuan-sisyphus`**：发布到 npm 的包名 `siyuan-sisyphus`，安装后提供 `siyuan-sisyphus` / `siyuan` 命令。直接通过思源 HTTP API 执行单次操作后退出，无需 MCP 客户端。
 
-两种接口共享同一套底层能力（10 个聚合工具、115+ 个 action），覆盖思源绝大部分功能：笔记本管理、文档操作、块级读写、属性视图（数据库）、搜索、标签、文件资源、闪卡、系统接口等。
+两种接口共享同一套底层能力，覆盖思源绝大部分功能：笔记本管理、文档操作、块级读写、属性视图（数据库）、搜索、标签、文件资源、闪卡、系统接口等。聚合工具类别和静态 action 清单以 `src/core/config.ts` 的 `TOOL_CATEGORIES` 与 `ACTIONS_BY_CATEGORY` 为唯一事实来源；`extension` 还可按官方注册表发现动态 action。
 
 - 仓库地址：`https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus`
 - 作者：Taihong Yang
 - 许可证：MIT
-- 当前版本：`0.3.6`（根 `package.json` 与 `plugin.json` 同步）
+- 当前版本：`0.6.1`（根 `package.json` 与 `plugin.json` 同步）
 
 ---
 
@@ -65,7 +65,7 @@ siyuan-plugins-mcp-sisyphus/
 │   ├── core/                    # MCP 服务器核心与工具元数据
 │   │   ├── server.ts            # MCP Server 入口：createSiYuanServer()、startMcpServer()
 │   │   ├── http-transport.ts    # HTTP MCP 2026 无状态 + legacy 有会话双协议传输
-│   │   ├── tool-registry.ts     # TOOL_REGISTRY：10 个聚合工具的注册表
+│   │   ├── tool-registry.ts     # TOOL_REGISTRY：聚合工具注册表
 │   │   ├── tool-lifecycle.ts    # 工具调用生命周期：analytics、telemetry、token 计数、错误包装
 │   │   ├── config.ts            # ToolConfig 类型、默认值、配置迁移（扁平 → 嵌套）、危险动作定义
 │   │   ├── permissions.ts       # PermissionManager：笔记本级权限（rwd/rw/r/none）
@@ -80,7 +80,7 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── server-instructions.ts # 服务端 instructions 文本构建
 │   │   └── runtime.ts           # 运行时环境检测（isPluginMode 等）
 │   │
-│   ├── tools/                   # 10 个聚合工具的实现
+│   ├── tools/                   # 聚合工具的实现
 │   │   ├── index.ts             # barrel export：统一导出所有工具模块
 │   │   ├── internal/            # 工具层共享基础设施（非独立工具）
 │   │   │   ├── define-tool.ts   # defineTool() 工厂：统一工具定义模式
@@ -240,20 +240,9 @@ pnpm update-version     # 同步版本号到 plugin.json 与 cli/package.json
 
 ### 聚合工具模型（Aggregated Tools）
 
-所有思源能力被收敛为 **10 个聚合工具**，每个工具通过 `action` 字段路由到具体 operation：
+所有思源能力被收敛为聚合工具，每个工具通过 `action` 字段路由到具体 operation。`src/core/config.ts` 中的 `TOOL_CATEGORIES` 定义类别顺序，`ACTIONS_BY_CATEGORY` 定义每类静态 action；要查看或更新清单，直接以这两个导出为准。`extension` 的官方下游工具仍按运行时注册表动态发现。
 
-```
-notebook    → 11 actions（list, create, set_open_state, remove, rename, ...）
-document    → 17 actions（create, resolve, rename, remove, move, list_tree, ...）
-block       → 22 actions（insert, prepend, append, update, delete, move, ...）
-av          → 12 actions（get, render_attribute_view, add_rows, set_cells, ...）
-search      → 11 actions（fulltext, query_sql, get_backlinks, find_replace, ...）
-file        → 13 actions（upload_asset, export_md, list_unused_assets, ...）
-tag         → 3  actions（list, rename, remove）
-system      → 10 actions（get_version, push_msg, workspace_info, ...）
-flashcard   → 8  actions（list_cards, review_card, create_card, ...）
-mascot      → 3  actions（get_balance, shop, buy）
-```
+静态清单由单元测试从这两个导出计算，避免文档在独立 action PR 合并后保留过期计数。
 
 **约定**：不要拆散这个模型。每个 action 不是独立工具，而是聚合工具的参数分支。这降低了 MCP 的上下文占用，也保持了 CLI 命令的一致性。
 

@@ -179,10 +179,13 @@
                 { key: "save_doc_as_template", title: "Save Doc As Template", description: "Save an existing document as a root-level template." },
                 { key: "render", title: "Render Template", description: "Render a workspace template or Sprig template." },
                 { key: "export_md", title: "Export Markdown Content", description: "Export document content as Markdown." },
+                { key: "export_markdown_snapshot", title: "Export Markdown Snapshot", description: "Return a deterministic, paginated Markdown snapshot with metadata and content hashes without writing the host filesystem." },
                 { key: "export_resources", title: "Export Resources", description: "Export resources as a ZIP archive." },
                 { key: "list_unused_assets", title: "List Unused Assets", description: "List asset files not currently referenced." },
                 { key: "get_doc_assets", title: "Get Direct Document Assets", description: "List assets directly referenced by the current document tree. Use Extract Document for complete content and asset inspection." },
-                { key: "get_image_ocr_text", title: "Get Image OCR Text", description: "Get stored OCR text for an image asset." },
+                { key: "audit_image_refs", title: "Audit Image References", description: "Compare expected imported image references with direct document image assets without local file access or repair." },
+                { key: "read_image", title: "Read Image for Vision", description: "Return one image referenced by an authorized document as a standard MCP image block." },
+                { key: "get_image_ocr_text", title: "Get Stored Image OCR Text", description: "Get OCR text already stored by SiYuan; this action does not run OCR." },
                 { key: "remove_unused_assets", title: "Remove Unused Assets", description: "Remove all unused asset files." },
                 { key: "rename_asset", title: "Rename Asset", description: "Rename an asset file." },
                 { key: "delete_asset", title: "Delete Asset", description: "Delete an asset file." },
@@ -279,6 +282,8 @@
             iconSvg: ICON_SVGS.layers,
             actions: [
                 { key: "list", title: "List Official Tools", description: "Inspect or refresh plugin and native tools from the official SiYuan MCP endpoint." },
+                { key: "validate_package", title: "Validate Explicit Package", description: "Statically validate caller-supplied plugin, theme, or widget metadata and text files without reading any local package path or changing SiYuan." },
+                { key: "diagnose_plugin_mcp", title: "Diagnose Plugin MCP Registry", description: "Refresh and inspect Source=plugin registry entries for one plugin without enabling, disabling, reloading, or invoking it." },
             ],
         },
         {
@@ -384,6 +389,7 @@
             throw new Error(`Unknown tool category: ${category}`);
         }
         if (category !== "extension") return buildActionItems(definition);
+        const staticActionItems = buildActionItems(definition);
 
         const sourceCounts = extensionDiscovery.tools.reduce((counts, tool) => {
             counts[tool.source] += 1;
@@ -434,7 +440,7 @@
                 description: `[${source}] ${tool?.description ?? getLabel("extension_tool_unavailable", "Not present in the latest discovery result.")} ${safety}.`,
             };
         });
-        return [
+        return staticActionItems.concat([
             {
                 type: "checkbox",
                 key: "extension__include_native_tools",
@@ -466,7 +472,7 @@
                 },
             },
             ...dynamicItems,
-        ];
+        ]);
     }
 
     function toggleCategory(category: ToolCategory) {
@@ -492,7 +498,9 @@
 
     function countEnabledActions(category: ToolCategory) {
         if (category === "extension") {
-            return (config.extension.actions.list ? 1 : 0)
+            const staticDiagnostics = ACTIONS_BY_CATEGORY.extension
+                .filter((action) => config.extension.actions[action]).length;
+            return staticDiagnostics
                 + extensionDiscovery.tools.filter((tool) =>
                     !RESERVED_EXTENSION_ACTIONS.has(tool.name)
                     && (tool.source === "plugin" || config.extension.includeNativeTools)
@@ -540,7 +548,7 @@
             title: getLabel(definition.groupKey, definition.groupKey),
             enabledActions: countEnabledActions(definition.category),
             totalActions: definition.category === "extension"
-                ? 1 + extensionDiscovery.tools.filter((tool) =>
+                ? ACTIONS_BY_CATEGORY.extension.length + extensionDiscovery.tools.filter((tool) =>
                     !RESERVED_EXTENSION_ACTIONS.has(tool.name)
                     && (tool.source === "plugin" || config.extension.includeNativeTools)
                 ).length

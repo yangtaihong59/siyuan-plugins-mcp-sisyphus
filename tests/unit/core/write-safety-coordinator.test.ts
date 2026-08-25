@@ -17,7 +17,462 @@ function success(payload: Record<string, unknown>) {
     };
 }
 
+function createCrossObjectAvFixture() {
+    const sourceAvID = '20260813000000-sourcea';
+    const destinationAvID = '20260813000001-desta01';
+    const sourceBlockID = '20260813000002-sourceb';
+    const destinationBlockID = '20260813000003-destb01';
+    const sourceItemID = '20260813000004-sourcei';
+    const destinationItemID = '20260813000005-desti01';
+    const sourceKeyID = '20260813000006-relkey1';
+    const destinationKeyID = '20260813000008-destkey';
+    const rollupKeyID = '20260813000009-rollup1';
+    const templateID = '20260813000010-templat';
+    const notebookConfig = { revision: 1 };
+    const carriers: Record<string, { avID: string; box: string; domRevision: number }> = {
+        [sourceBlockID]: { avID: sourceAvID, box: 'nb-source', domRevision: 1 },
+        [destinationBlockID]: { avID: destinationAvID, box: 'nb-destination', domRevision: 1 },
+    };
+    const sourceAv: Record<string, any> = {
+        id: sourceAvID,
+        revision: 1,
+        keyValues: [
+            {
+                key: { id: '20260813000011-blockkey', type: 'block' },
+                values: [{ blockID: sourceItemID, block: { id: '20260813000012-sourcedoc' } }],
+            },
+            {
+                key: {
+                    id: sourceKeyID,
+                    type: 'relation',
+                    name: 'Source links',
+                    relation: { avID: destinationAvID, backKeyID: '20260813000007-backkey', isTwoWay: true },
+                },
+                values: [{
+                    id: '20260813000015-relvalue',
+                    blockID: sourceItemID,
+                    relation: { blockIDs: [destinationItemID] },
+                }],
+            },
+            {
+                key: {
+                    id: rollupKeyID,
+                    type: 'rollup',
+                    name: 'Destination status',
+                    rollup: { relationKeyID: sourceKeyID, keyID: destinationKeyID, calc: { operator: 'count' } },
+                },
+                values: [],
+            },
+        ],
+        views: [{ id: '20260813000017-view001', itemIDs: [sourceItemID] }],
+        newItemTemplates: [{
+            id: templateID,
+            name: 'Linked document',
+            targetType: 'document',
+            saveLocation: { boxID: 'nb-destination', pathTemplate: '/Linked' },
+            fieldValues: {
+                [sourceKeyID]: {
+                    mode: 'static',
+                    value: { type: 'relation', relation: { blockIDs: [destinationItemID] } },
+                },
+            },
+        }],
+    };
+    const destinationAv: Record<string, any> = {
+        id: destinationAvID,
+        revision: 1,
+        keyValues: [
+            {
+                key: { id: '20260813000013-destblock', type: 'block' },
+                values: [{ blockID: destinationItemID, block: { id: '20260813000014-destdoc' } }],
+            },
+            {
+                key: {
+                    id: '20260813000007-backkey',
+                    type: 'relation',
+                    name: 'Destination links',
+                    relation: { avID: sourceAvID, backKeyID: sourceKeyID, isTwoWay: true },
+                },
+                values: [{
+                    id: '20260813000016-backvalue',
+                    blockID: destinationItemID,
+                    relation: { blockIDs: [sourceItemID] },
+                }],
+            },
+            {
+                key: { id: destinationKeyID, type: 'text', name: 'Status' },
+                values: [{ id: '20260813000018-destval', blockID: destinationItemID, text: { content: 'Ready' } }],
+            },
+        ],
+        views: [],
+    };
+    const client = {
+        readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+        writeFile: vi.fn(async () => undefined),
+        requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+            if (endpoint === '/api/av/getAttributeView') {
+                const avID = body?.id;
+                if (avID === sourceAvID) return { av: structuredClone(sourceAv) };
+                if (avID === destinationAvID) return { av: structuredClone(destinationAv) };
+                throw new Error(`unexpected AV ${String(avID)}`);
+            }
+            if (endpoint === '/api/av/getMirrorDatabaseBlocks') {
+                return { refDefs: [{ refID: destinationBlockID }] };
+            }
+            if (endpoint === '/api/notebook/getNotebookConf') {
+                return { notebook: body?.notebook, revision: notebookConfig.revision };
+            }
+            if (endpoint === '/api/query/sql') return [];
+            if (endpoint === '/api/block/getBlockDOM') {
+                const carrier = carriers[String(body?.id)];
+                if (!carrier) return { dom: '' };
+                return {
+                    dom: `<div data-type="NodeAttributeView" data-av-id="${carrier.avID}" data-lease-revision="${carrier.domRevision}"></div>`,
+                };
+            }
+            if (endpoint === '/api/block/getBlockInfo') {
+                const carrier = carriers[String(body?.id)];
+                return carrier ? { id: body?.id, box: carrier.box, revision: carrier.domRevision } : {};
+            }
+            return null;
+        }),
+    } as never;
+    const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+    permMgr.getAll = vi.fn(() => ({ 'nb-source': 'rw', 'nb-destination': 'rw' }));
+    permMgr.get = vi.fn((notebook: string) => notebook === 'nb-source' || notebook === 'nb-destination' ? 'rw' : 'r');
+
+    return {
+        client,
+        permMgr,
+        sourceAv,
+        destinationAv,
+        carriers,
+        notebookConfig,
+        ids: {
+            sourceAvID,
+            destinationAvID,
+            sourceBlockID,
+            destinationBlockID,
+            sourceItemID,
+            destinationItemID,
+            sourceKeyID,
+            destinationKeyID,
+            rollupKeyID,
+            templateID,
+        },
+    };
+}
+
+async function assertStableCrossObjectActionThenRejectDrift(
+    action: 'duplicate_rows' | 'configure_two_way_relation' | 'configure_rollup' | 'create_from_template',
+    args: Record<string, unknown>,
+    drift: (fixture: ReturnType<typeof createCrossObjectAvFixture>) => void,
+    suffix: string,
+) {
+    const stableFixture = createCrossObjectAvFixture();
+    const stableCoordinator = new WriteSafetyCoordinator(stableFixture.client);
+    const stablePreflight = parseResult(await stableCoordinator.run({
+        client: stableFixture.client,
+        permMgr: stableFixture.permMgr,
+        category: 'av',
+        action,
+        args: { ...args, validateOnly: true },
+        strictMode: true,
+        execute: vi.fn(),
+    }));
+    const stableExecute = vi.fn(async () => success({ success: true, action, changed: false, status: 'already_applied' }));
+    const stableResult = parseResult(await stableCoordinator.run({
+        client: stableFixture.client,
+        permMgr: stableFixture.permMgr,
+        category: 'av',
+        action,
+        args: {
+            ...args,
+            requestId: uuidV7(Date.now(), `${suffix.slice(0, 10)}01`),
+            [action === 'duplicate_rows' ? 'expectedManifestHash' : 'expectedStateHash']:
+                action === 'duplicate_rows' ? stablePreflight.manifestHash : stablePreflight.stateHash,
+        },
+        strictMode: true,
+        execute: stableExecute,
+    }));
+    expect(stableExecute).toHaveBeenCalledTimes(1);
+    expect(stableResult).toMatchObject({
+        success: true,
+        safety: { writeAttempted: false, writeExecuted: false, transactionState: 'no_change' },
+    });
+
+    const staleFixture = createCrossObjectAvFixture();
+    const staleCoordinator = new WriteSafetyCoordinator(staleFixture.client);
+    const stalePreflight = parseResult(await staleCoordinator.run({
+        client: staleFixture.client,
+        permMgr: staleFixture.permMgr,
+        category: 'av',
+        action,
+        args: { ...args, validateOnly: true },
+        strictMode: true,
+        execute: vi.fn(),
+    }));
+    drift(staleFixture);
+    const staleExecute = vi.fn();
+    const staleResult = parseResult(await staleCoordinator.run({
+        client: staleFixture.client,
+        permMgr: staleFixture.permMgr,
+        category: 'av',
+        action,
+        args: {
+            ...args,
+            requestId: uuidV7(Date.now(), `${suffix.slice(0, 10)}02`),
+            [action === 'duplicate_rows' ? 'expectedManifestHash' : 'expectedStateHash']:
+                action === 'duplicate_rows' ? stalePreflight.manifestHash : stalePreflight.stateHash,
+        },
+        strictMode: true,
+        execute: staleExecute,
+    }));
+    expect(staleResult.error).toMatchObject({
+        code: 'state_changed',
+        expectedHash: action === 'duplicate_rows' ? stalePreflight.manifestHash : stalePreflight.stateHash,
+    });
+    expect(staleExecute).not.toHaveBeenCalled();
+}
+
 describe('write safety coordinator', () => {
+    it('rejects a set_relation destination AV drift before dispatch', async () => {
+        const fixture = createCrossObjectAvFixture();
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const args = {
+            action: 'set_relation', avID: fixture.ids.sourceAvID, blockID: fixture.ids.sourceBlockID,
+            itemID: fixture.ids.sourceItemID, keyID: fixture.ids.sourceKeyID,
+            relatedItemIDs: [fixture.ids.destinationItemID],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        fixture.destinationAv.revision += 1;
+        const execute = vi.fn();
+        const result = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000101'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(result.error).toMatchObject({ code: 'state_changed', expectedHash: preflight.stateHash });
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('does not reject a set_relation lease when SiYuan only reorders carrier HTML attributes', async () => {
+        const fixture = createCrossObjectAvFixture();
+        const originalRequestRead = fixture.client.requestRead.getMockImplementation()!;
+        let alternateCarrierAttributeOrder = false;
+        fixture.client.requestRead.mockImplementation(async (endpoint: string, body?: Record<string, unknown>) => {
+            if (endpoint === '/api/block/getBlockDOM') {
+                const carrier = fixture.carriers[String(body?.id)];
+                if (!carrier) return { dom: '' };
+                const attributes = alternateCarrierAttributeOrder
+                    ? `class="av" data-av-id="${carrier.avID}" data-type="NodeAttributeView" updated="stable" custom-sy-av-view="view-1"`
+                    : `class="av" custom-sy-av-view="view-1" updated="stable" data-type="NodeAttributeView" data-av-id="${carrier.avID}"`;
+                return { dom: `<div ${attributes}></div>` };
+            }
+            return originalRequestRead(endpoint, body);
+        });
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const args = {
+            action: 'set_relation', avID: fixture.ids.sourceAvID, blockID: fixture.ids.sourceBlockID,
+            itemID: fixture.ids.sourceItemID, keyID: fixture.ids.sourceKeyID,
+            relatedItemIDs: [fixture.ids.destinationItemID],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        alternateCarrierAttributeOrder = true;
+        const execute = vi.fn(async () => success({ success: true, action: 'set_relation', changed: false, status: 'already_applied' }));
+        const result = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000151'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(result.safety).toMatchObject({ writeAttempted: false, writeExecuted: false, transactionState: 'no_change' });
+    });
+
+    it('leases duplicate_rows against its linked destination AV and carrier', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'duplicate_rows',
+            { action: 'duplicate_rows', avID: ids.sourceAvID, blockID: ids.sourceBlockID, sourceRowIDs: [ids.sourceItemID] },
+            (fixture) => { fixture.destinationAv.revision += 1; },
+            '000000000111',
+        );
+    });
+
+    it('leases configure_two_way_relation against the verified destination carrier', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'configure_two_way_relation',
+            {
+                action: 'configure_two_way_relation', avID: ids.sourceAvID, blockID: ids.sourceBlockID,
+                keyID: ids.sourceKeyID, destinationAvID: ids.destinationAvID, destinationBlockID: ids.destinationBlockID,
+                backRelationKeyID: '20260813000007-backkey', sourceName: 'Source links', destinationName: 'Destination links',
+            },
+            (fixture) => { fixture.carriers[fixture.ids.destinationBlockID].domRevision += 1; },
+            '000000000112',
+        );
+    });
+
+    it('leases configure_rollup against the relation destination AV', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'configure_rollup',
+            {
+                action: 'configure_rollup', avID: ids.sourceAvID, blockID: ids.sourceBlockID,
+                keyID: ids.rollupKeyID, relationKeyID: ids.sourceKeyID, destinationKeyID: ids.destinationKeyID,
+                calc: { operator: 'count' },
+            },
+            (fixture) => { fixture.destinationAv.revision += 1; },
+            '000000000113',
+        );
+    });
+
+    it('leases create_from_template against its explicit destination notebook', async () => {
+        const ids = createCrossObjectAvFixture().ids;
+        await assertStableCrossObjectActionThenRejectDrift(
+            'create_from_template',
+            {
+                action: 'create_from_template', avID: ids.sourceAvID, blockID: ids.sourceBlockID,
+                templateID: ids.templateID, viewID: '20260813000017-view001',
+            },
+            (fixture) => { fixture.notebookConfig.revision += 1; },
+            '000000000114',
+        );
+    });
+
+    it.each([
+        'set_column_options',
+        'create_from_template',
+        'configure_two_way_relation',
+        'configure_rollup',
+        'set_relation',
+    ])('preflights dangerous AV action %s against a verified rw carrier without requiring rwd', async (action) => {
+        const avID = '20260813000000-avopts01';
+        const carrierBlockID = '20260813000001-carrier';
+        const destinationAvID = '20260813000002-avdest01';
+        const destinationBlockID = '20260813000003-destcar';
+        const sourceItemID = '20260813000004-sourcei';
+        const destinationItemID = '20260813000005-desti01';
+        const relationKeyID = '20260813000006-relkey1';
+        const rollupKeyID = '20260813000007-rollup1';
+        const destinationKeyID = '20260813000008-destkey';
+        const templateID = '20260813000009-templat';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/av/getAttributeView') {
+                    if (body?.id === destinationAvID) {
+                        return { av: {
+                            id: destinationAvID,
+                            keyValues: [
+                                { key: { type: 'block' }, values: [{ blockID: destinationItemID, block: { id: '20260813000010-destdoc' } }] },
+                                { key: { id: '20260813000011-backkey', type: 'relation', relation: { avID, backKeyID: relationKeyID, isTwoWay: true } }, values: [] },
+                                { key: { id: destinationKeyID, type: 'text' }, values: [] },
+                            ],
+                            views: [{ id: '20260813000012-destview', itemIDs: [destinationItemID] }],
+                        } };
+                    }
+                    return {
+                        av: {
+                            id: avID,
+                            keyValues: [
+                                { key: { type: 'block' }, values: [{ blockID: sourceItemID, block: { id: '20260813000013-sourcedoc' } }] },
+                                { key: { id: 'status', type: 'select', options: [] }, values: [] },
+                                { key: { id: relationKeyID, type: 'relation', relation: { avID: destinationAvID, backKeyID: '20260813000011-backkey', isTwoWay: true } }, values: [] },
+                                { key: { id: rollupKeyID, type: 'rollup' }, values: [] },
+                            ],
+                            newItemTemplates: [{ id: templateID, name: 'Fixture document', targetType: 'document', saveLocation: { boxID: 'nb-rw', pathTemplate: '/Fixture document' } }],
+                            views: [{ id: '20260813000014-sourceview', itemIDs: [sourceItemID] }],
+                        },
+                    };
+                }
+                if (endpoint === '/api/block/getBlockDOM') {
+                    const isDestination = body?.id === destinationBlockID;
+                    return { id: body?.id, dom: `<div data-type="NodeAttributeView" data-av-id="${isDestination ? destinationAvID : avID}"></div>` };
+                }
+                if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, box: 'nb-rw' };
+                if (endpoint === '/api/av/getMirrorDatabaseBlocks') return { refDefs: [{ refID: destinationBlockID }] };
+                if (endpoint === '/api/notebook/getNotebookConf') return { notebook: 'nb-rw', revision: 1 };
+                return [];
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: (notebook) => notebook === 'nb-rw', canDelete: () => false });
+        permMgr.getAll = vi.fn(() => ({ 'nb-rw': 'rw' }));
+        const actionArgs: Record<string, Record<string, unknown>> = {
+            set_column_options: { keyID: 'status', options: [] },
+            set_new_item_templates: { templates: [], defaultTemplateID: '' },
+            create_from_template: { templateID },
+            configure_two_way_relation: { keyID: relationKeyID, destinationAvID, destinationBlockID, backRelationKeyID: '20260813000011-backkey', sourceName: 'Source', destinationName: 'Destination' },
+            configure_rollup: { keyID: rollupKeyID, relationKeyID, destinationKeyID, calc: { operator: 'Count all' } },
+            set_relation: { itemID: sourceItemID, keyID: relationKeyID, relatedItemIDs: [destinationItemID] },
+        };
+        const result = parseResult(await new WriteSafetyCoordinator(client).run({
+            client,
+            permMgr,
+            category: 'av',
+            action,
+            args: {
+                action, avID, blockID: carrierBlockID, ...actionArgs[action], validateOnly: true,
+            },
+            strictMode: true,
+            execute: vi.fn(),
+        }));
+
+        expect(result).toMatchObject({ validateOnly: true, writeAttempted: false });
+        expect(result.stateHash).toMatch(/^sha256:v1:/);
+        expect(permMgr.canWrite).toHaveBeenCalledWith('nb-rw');
+        expect(permMgr.canDelete).not.toHaveBeenCalled();
+    });
+
+    it('leases a newly added unconfigured relation key against the requested destination', async () => {
+        const fixture = createCrossObjectAvFixture();
+        const relationEntry = fixture.sourceAv.keyValues.find((entry: { key: { id?: string } }) => entry.key.id === fixture.ids.sourceKeyID);
+        delete relationEntry.key.relation;
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const result = parseResult(await coordinator.run({
+            client: fixture.client,
+            permMgr: fixture.permMgr,
+            category: 'av',
+            action: 'configure_two_way_relation',
+            args: {
+                action: 'configure_two_way_relation',
+                avID: fixture.ids.sourceAvID,
+                blockID: fixture.ids.sourceBlockID,
+                keyID: fixture.ids.sourceKeyID,
+                destinationAvID: fixture.ids.destinationAvID,
+                destinationBlockID: fixture.ids.destinationBlockID,
+                backRelationKeyID: '20260813000007-backkey',
+                sourceName: 'Source links',
+                destinationName: 'Destination links',
+                validateOnly: true,
+            },
+            strictMode: true,
+            execute: vi.fn(),
+        }));
+
+        expect(result).toMatchObject({ action: 'configure_two_way_relation', validateOnly: true, writeAttempted: false });
+        expect(result.stateHash).toMatch(/^sha256:v1:/);
+    });
+
     it('observes timeline rollback changes through live document markdown', async () => {
         const documentID = '20260812000000-timeline';
         const blockID = '20260812000001-timeline';
@@ -858,6 +1313,302 @@ describe('write safety coordinator', () => {
         }));
 
         expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
+    });
+
+    it('reads an AV empty AND root semantically after one strict filter replacement', async () => {
+        const avID = '20260813000000-avtest1';
+        const blockID = '20260813000001-avtest1';
+        const viewID = '20260813000002-avtest1';
+        const definition: Record<string, any> = {
+            id: avID,
+            viewID,
+            keyValues: [{ key: { id: 'key-status', type: 'select' }, values: [] }],
+            views: [{
+                id: viewID,
+                name: '主视图',
+                type: 'table',
+                filters: [{ column: 'key-status', operator: '=', value: { type: 'select', mSelect: [{ content: '进行中' }] } }],
+                sorts: [],
+                table: { columns: [{ id: 'key-status', hidden: false }] },
+            }],
+        };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
+                if (endpoint === '/api/attr/getBlockAttrs') return { 'custom-sy-av-view': viewID, 'custom-sy-av-visible-views': 'all' };
+                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'set_filters', avID, blockID, viewID, filters: [] };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'set_filters',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            // `filters,omitempty` means the durable empty AND root loses its
+            // empty child array and zero-value leaf fields on raw readback.
+            definition.views[0].filters = [{ column: '', operator: '', value: null, combination: 'and' }];
+            return success({ success: true, action: 'set_filters' });
+        });
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'set_filters',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000031'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(client.requestRead).toHaveBeenCalledWith('/api/av/getAttributeView', { id: avID });
+        expect(client.requestRead).not.toHaveBeenCalledWith('/api/av/renderAttributeView', expect.anything());
+        expect(permMgr.reload).toHaveBeenCalled();
+    });
+
+    it('accepts the Retest6 native add-view carrier transition from SiYuan v3.8.0', async () => {
+        const avID = '20260813045601-avview1';
+        const blockID = '20260813045603-cmg284p';
+        const tableViewID = '20260813045603-kizaqbf';
+        const newViewID = '20260813045610-vwnew01';
+        const definition: Record<string, any> = {
+            id: avID,
+            viewID: tableViewID,
+            views: [{ id: tableViewID, name: '表格', type: 'table', table: { columns: [] } }],
+        };
+        let carrierAttrs: Record<string, string> = {
+            'custom-sy-av-view': tableViewID,
+        };
+        const requestRead = vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
+            if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
+            if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+            if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
+            return null;
+        });
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead,
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'add_view', avID, blockID, viewID: newViewID, layout: 'table', name: 'Retest6 View' };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            definition.viewID = newViewID;
+            definition.views.push({ id: newViewID, name: 'Retest6 View', type: 'table', table: { columns: [] } });
+            // v3.8.0 addAttrViewView appends this ID after normalizing the
+            // carrier list to raw AV view order, and selects it on the carrier.
+            carrierAttrs = {
+                'custom-sy-av-view': newViewID,
+                'custom-sy-av-visible-views': `${tableViewID},${newViewID}`,
+            };
+            return success({ success: true, action: 'add_view' });
+        });
+
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000032'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute,
+        }));
+
+        expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(requestRead).not.toHaveBeenCalledWith('/api/av/renderAttributeView', expect.anything());
+    });
+
+    it('treats an add-view carrier list that is not the native new-ID append as unknown', async () => {
+        const avID = '20260813045701-avview1';
+        const blockID = '20260813045703-cmg284p';
+        const currentViewID = '20260813045703-kizaqbf';
+        const newViewID = '20260813045705-newview';
+        const definition: Record<string, any> = {
+            id: avID,
+            viewID: currentViewID,
+            views: [{ id: currentViewID, name: '主视图', type: 'table', table: { columns: [] } }],
+        };
+        let carrierAttrs: Record<string, string> = {
+            'custom-sy-av-view': currentViewID,
+            'custom-sy-av-visible-views': currentViewID,
+        };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
+                if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
+                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'add_view', avID, blockID, viewID: newViewID, layout: 'gallery', name: '新增画廊' };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: {
+                ...args,
+                requestId: uuidV7(Date.now(), '000000000033'),
+                expectedStateHash: preflight.stateHash,
+            },
+            strictMode: true,
+            execute: vi.fn(async () => {
+                definition.viewID = newViewID;
+                definition.views.push({ id: newViewID, name: '新增画廊', type: 'gallery', gallery: { fields: [] } });
+                carrierAttrs = {
+                    'custom-sy-av-view': newViewID,
+                    'custom-sy-av-visible-views': `${currentViewID},unexpected-view,${newViewID}`,
+                };
+                return success({ success: true, action: 'add_view' });
+            }),
+        }));
+
+        expect(result).toMatchObject({
+            writeAttempted: true,
+            writeExecuted: false,
+            transactionState: 'unknown',
+            error: { code: 'readback_mismatch' },
+        });
+    });
++    it('preflights an explicit link-target scope, rejects a changed child list, commits once, and replays the request ID', async () => {
+        const parentId = '20260813020101-parent01';
+        const existingId = '20260813020102-child001';
+        const createdId = '20260813020103-child002';
+        let children = [{ id: existingId, name: 'Existing target', path: `/${parentId}/${existingId}.sy`, hPath: '/Imports/Existing target' }];
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                const id = body?.id as string | undefined;
+                if (endpoint === '/api/filetree/getPathByID') {
+                    if (id === parentId) return { notebook: 'nb-1', path: `/${parentId}.sy` };
+                    if (id === existingId) return { notebook: 'nb-1', path: `/${parentId}/${existingId}.sy` };
+                    if (id === createdId) return { notebook: 'nb-1', path: `/${parentId}/${createdId}.sy` };
+                }
+                if (endpoint === '/api/filetree/getHPathByID') {
+                    if (id === parentId) return '/Imports';
+                    if (id === existingId) return '/Imports/Existing target';
+                    if (id === createdId) return '/Imports/New target';
+                }
+                if (endpoint === '/api/block/getDocInfo') {
+                    if (id === parentId) return { id, rootID: id, name: 'Imports' };
+                    if (id === existingId) return { id, rootID: id, name: 'Existing target' };
+                    if (id === createdId) return { id, rootID: id, name: 'New target' };
+                }
+                if (endpoint === '/api/filetree/listDocsByPath') {
+                    return { box: 'nb-1', path: `/${parentId}.sy`, files: children.map((child) => ({ ...child, box: 'nb-1' })) };
+                }
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'ensure_link_targets',
+            notebook: 'nb-1',
+            parentId,
+            mode: 'create',
+            targets: [{ key: 'new', title: 'New target' }],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        expect(preflight.preconditionField).toBe('expectedStructureHash');
+        expect(preflight.structureHash).toMatch(/^sha256:v1:/);
+
+        // A new sibling changes the full authority scope, so the create is
+        // stopped before dispatch rather than deciding by a title search.
+        children = [...children, { id: '20260813020104-child003', name: 'Concurrent target', path: `/${parentId}/20260813020104-child003.sy`, hPath: '/Imports/Concurrent target' }];
+        const blocked = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId: uuidV7(Date.now(), '000000000041'), expectedStructureHash: preflight.structureHash },
+            strictMode: true, execute: vi.fn(),
+        }));
+        expect(blocked.error.code).toBe('state_changed');
+
+        const fresh = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => {
+            children = [...children, { id: createdId, name: 'New target', path: `/${parentId}/${createdId}.sy`, hPath: '/Imports/New target' }];
+            return success({
+                success: true,
+                created: 1,
+                linkMap: { new: { id: createdId, notebook: 'nb-1', path: `/${parentId}/${createdId}.sy`, hPath: '/Imports/New target' } },
+            });
+        });
+        const requestId = uuidV7(Date.now(), '000000000042');
+        const committed = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            strictMode: true, execute,
+        }));
+        expect(committed.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true });
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const replayed = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            strictMode: true, execute,
+        }));
+        expect(replayed.replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const unknownArgs = {
+            ...args,
+            targets: [{ key: 'unknown', title: 'Unknown target' }],
+        };
+        const unknownPreflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const uncertainExecute = vi.fn(async () => { throw new Error('connection dropped after create dispatch'); });
+        const unknownRequestId = uuidV7(Date.now(), '000000000043');
+        const unknown = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            strictMode: true, execute: uncertainExecute,
+        }));
+        expect(unknown).toMatchObject({
+            transactionState: 'unknown',
+            error: { code: 'outcome_unknown' },
+        });
+
+        const unknownReplay = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'ensure_link_targets',
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            strictMode: true, execute: uncertainExecute,
+        }));
+        expect(unknownReplay.error.code).toBe('outcome_unknown');
+        expect(uncertainExecute).toHaveBeenCalledTimes(1);
     });
 
     function createReorderSafetyFixture() {

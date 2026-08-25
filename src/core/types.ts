@@ -85,18 +85,18 @@ export const TimelineActionSchema = z.enum(TIMELINE_ACTIONS);
 
 export const FsLsSchema = z.object({
     action: z.literal("ls"),
-    path: z.string().describe("Human-readable workspace path, such as /Notebook/Folder or / for notebook roots"),
+    path: z.string().describe("Human-readable workspace path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder) for unambiguous resolution; a notebook-omitted path is accepted only when it uniquely matches across readable notebooks. Use / to list all readable notebooks."),
 });
 
 export const FsTreeSchema = z.object({
     action: z.literal("tree"),
-    path: z.string().describe("Human-readable workspace path, such as /Notebook/Folder or / for all readable notebooks"),
+    path: z.string().describe("Human-readable workspace path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder) for unambiguous resolution; a notebook-omitted path is accepted only when it uniquely matches across readable notebooks. Use / to list all readable notebooks."),
     maxDepth: z.number().int().min(0).max(20).optional().describe("Max tree depth to return (default 3)"),
 });
 
 export const FsReadSchema = z.object({
     action: z.literal("read"),
-    path: z.string().describe("Human-readable document path"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the document uniquely matches across readable notebooks."),
     blockStart: z.number().int().min(0).optional().describe("Zero-based display-block index to start reading from (default 0)"),
     blockLimit: z.number().int().min(1).max(200).optional().describe("Maximum complete display blocks to return (default 50)"),
     tokenBudget: z.number().int().min(1).max(32000).optional().describe("Approximate token budget for the window (default 2000). A single oversized block is still returned whole."),
@@ -115,7 +115,7 @@ export const FsReadSchema = z.object({
 
 export const FsWriteSchema = z.object({
     action: z.literal("write"),
-    path: z.string().describe("Human-readable document path"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the existing document or parent path uniquely matches across readable notebooks. Root-level creation requires /Notebook/Title."),
     markdown: z.string().describe("Markdown content to create or write. Do not include a leading # Title; a matching create-time H1 is stripped automatically."),
     overwrite: z.boolean().optional().describe("When true, replace an existing document body while keeping the document node and title. This is a full body replacement."),
 });
@@ -128,7 +128,7 @@ export const FsReplaceEditSchema = z.object({
 
 export const FsReplaceSchema = z.object({
     action: z.literal("replace"),
-    path: z.string().describe("Human-readable document path to modify"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the document uniquely matches across readable notebooks."),
     edit: z.union([
         FsReplaceEditSchema,
         z.array(FsReplaceEditSchema).min(1),
@@ -137,24 +137,24 @@ export const FsReplaceSchema = z.object({
 
 export const FsRmSchema = z.object({
     action: z.literal("rm"),
-    path: z.string().describe("Human-readable document path to delete"),
+    path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the document uniquely matches across readable notebooks."),
 });
 
 export const FsMvSchema = z.object({
     action: z.literal("mv"),
-    from: z.string().describe("Human-readable source document path"),
-    to: z.string().describe("Human-readable destination document path"),
+    from: z.string().describe("Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks."),
+    to: z.string().describe("Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title."),
 });
 
 export const FsReorderSchema = z.object({
     action: z.literal("reorder"),
-    path: z.string().describe("Human-readable notebook or parent document path"),
-    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document paths"),
+    path: z.string().describe("Human-readable workspace notebook or parent document path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder); omission is accepted only for a unique document match."),
+    orderedPaths: z.array(z.string()).min(1).describe("Complete ordered list of all visible direct child document workspace paths. Prefer including the notebook name in each path (e.g., /Notebook/Folder/First); an omitted notebook must resolve uniquely."),
 });
 
 export const FsSearchSchema = z.object({
     action: z.literal("search"),
-    path: z.string().describe("Human-readable document or folder path to search within"),
+    path: z.string().describe("Human-readable workspace document or folder path. Prefer including the notebook name (e.g., /Notebook or /Notebook/Folder); omitting it is accepted only when the scope uniquely matches across readable notebooks."),
     query: z.string().describe("Text or regular expression to search for"),
     regex: z.boolean().optional().describe("Treat query as a JavaScript regular expression"),
     caseSensitive: z.boolean().optional().describe("Use case-sensitive matching"),
@@ -227,8 +227,8 @@ export const NotebookGetChildDocsSchema = z.object({
 export const DocumentCreateSchema = z.object({
     action: z.literal("create"),
     notebook: z.string().describe("Notebook ID"),
-    path: z.string().optional().describe("Human-readable target path, must start with / (e.g., /foo/bar). Parent paths must already exist."),
-    parentPath: z.string().optional().describe("Parent human-readable path or storage path ending in .sy for title-based creation, must start with /"),
+    path: z.string().optional().describe("Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Parent paths must already exist."),
+    parentPath: z.string().optional().describe("Parent path for title-based creation, relative to the notebook root. Accepts a human-readable path (must start with /, MUST NOT include the notebook name) or a storage path ending in .sy returned by document(action=\"lookup\")."),
     title: z.string().optional().describe("Document title when creating under parentPath"),
     markdown: z.string().optional().describe("Markdown content, defaults to empty. Do not include a leading # Title; a matching H1 is stripped automatically."),
     sorts: z.array(z.string()).optional().describe("Compatibility option retained for older callers; title-based creation now uses the reliable path flow"),
@@ -262,8 +262,8 @@ export const DocumentLookupSchema = z.object({
     id: z.string().optional().describe("Document ID to look up"),
     notebook: z.string().optional().describe("Notebook ID, required with path or hpath"),
     path: z.string().optional().describe("Storage path to look up when notebook is provided, e.g. /20240318112233-abc123.sy. Human-readable paths should use hpath instead."),
-    hpath: z.string().optional().describe("Human-readable path to look up when notebook is provided"),
-    hPath: z.string().optional().describe("Alias for hpath"),
+    hpath: z.string().optional().describe("Human-readable notebook-local path to look up when notebook is provided. MUST NOT include the notebook name (e.g., /Folder/Doc, not /Notebook/Folder/Doc)"),
+    hPath: z.string().optional().describe("Alias for hpath (notebook-local, MUST NOT include the notebook name)"),
     include: z.array(DocumentResolveIncludeSchema).optional().describe('Fields to include: "id", "ids", "path", "hpath", "docInfo"'),
 }).superRefine((value, ctx) => {
     const hpath = value.hpath ?? value.hPath;
@@ -281,6 +281,69 @@ export const DocumentLookupSchema = z.object({
             message: "notebook is required when resolving path or hpath.",
             path: ["notebook"],
         });
+    }
+});
+
+const DocumentLinkTargetSchema = z.object({
+    key: z.string().trim().min(1).max(256).describe('Stable caller key used in the returned link map. It is not resolved as a document title.'),
+    id: z.string().trim().min(1).optional().describe('Explicit existing document ID. Required for mode="resolve" and mode="reuse".'),
+    title: z.string().trim().min(1).max(256).optional().describe('Explicit title for a new direct child document. Allowed only for mode="create" and never used to adopt an existing document.'),
+}).superRefine((value, ctx) => {
+    if (value.id && value.title) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Each link target must provide either id or title, not both.',
+        });
+    }
+    if (value.title && /[\\/]/.test(value.title)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['title'],
+            message: 'Link-target titles must be one direct child name and cannot contain / or \\.',
+        });
+    }
+});
+
+/**
+ * This contract intentionally has no title lookup branch. A caller first
+ * resolves a concrete parent ID, then either supplies exact existing target
+ * IDs or explicitly asks to create named children. Matching a duplicate title
+ * only fails closed; it never turns into an implicit reuse decision.
+ */
+export const DocumentEnsureLinkTargetsSchema = z.object({
+    action: z.literal('ensure_link_targets'),
+    notebook: z.string().trim().min(1).describe('Explicit notebook ID that must own the parent document and every returned target.'),
+    parentId: z.string().trim().min(1).describe('Explicit parent document ID. Only direct child documents of this resolved parent are in scope.'),
+    mode: z.enum(['resolve', 'reuse', 'create']).describe('resolve/reuse accept exact existing IDs without title fallback; create accepts explicit new titles and refuses to adopt same-title children.'),
+    targets: z.array(DocumentLinkTargetSchema).min(1).max(100).describe('Explicit link targets. keys must be unique; IDs are identities, while titles are only new-document names.'),
+    markdown: z.string().optional().describe('Optional Markdown body for every target created by mode="create". Existing targets are never edited.'),
+    dryRun: z.boolean().optional().describe('Plan and inspect the explicit scope without creating documents. For strict creation preflight, use validateOnly=true instead.'),
+}).superRefine((value, ctx) => {
+    const keys = new Set<string>();
+    const titles = new Set<string>();
+    for (const [index, target] of value.targets.entries()) {
+        if (keys.has(target.key)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'key'], message: 'Link-target keys must be unique.' });
+        }
+        keys.add(target.key);
+        if (value.mode === 'create' && !target.title) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'title'], message: 'mode="create" requires an explicit title for every target.' });
+        }
+        if (value.mode === 'create' && target.title) {
+            if (titles.has(target.title)) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'title'], message: 'mode="create" target titles must be unique within one request.' });
+            }
+            titles.add(target.title);
+        }
+        if (value.mode !== 'create' && !target.id) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targets', index, 'id'], message: `mode="${value.mode}" requires an explicit existing document ID for every target.` });
+        }
+    }
+    if (value.mode !== 'create' && value.markdown !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['markdown'], message: 'markdown is only valid for mode="create"; resolve/reuse never edit targets.' });
+    }
+    if (value.dryRun === true && value.mode !== 'create') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['dryRun'], message: 'dryRun is only valid for mode="create"; resolve and reuse are already read-only.' });
     }
 });
 
@@ -345,7 +408,7 @@ export const DocumentSetAttrSchema = z.object({
 export const DocumentListTreeSchema = z.object({
     action: z.literal("list_tree"),
     notebook: z.string().describe("Notebook ID"),
-    path: z.string().describe("Storage path or / for the notebook root"),
+    path: z.string().describe("Storage path (e.g., /20240318112233-abc123.sy) or / for the notebook root"),
     maxDepth: z.number().optional().describe("Max tree depth to return (default 3). Deeper nodes are collapsed to childCount."),
 });
 
@@ -759,6 +822,12 @@ const AvCellUpdateItemSchema = z.object({
     columnID: z.string().describe("Column key ID"),
 }).and(AvSetCellValueFieldsSchema);
 
+const AvSelectOptionSchema = z.object({
+    name: z.string().min(1).describe("Option label; empty option names are rejected before the transaction."),
+    color: z.string().optional().describe("Optional SiYuan option color token"),
+    desc: z.string().optional().describe("Optional option description"),
+}).strict();
+
 export const AvGetSchema = z.object({
     action: z.literal("get"),
     id: z.string().describe("Attribute view ID"),
@@ -888,6 +957,34 @@ export const AvSetCellsSchema = z.object({
     }
 });
 
+export const AvSetColumnOptionsSchema = z.object({
+    action: z.literal("set_column_options"),
+    avID: z.string().describe("Attribute view ID"),
+    blockID: z.string().optional().describe("Registered database block ID for exact context, permission resolution, and UI refresh"),
+    keyID: z.string().describe("Select or multi-select column key ID"),
+    options: z.array(AvSelectOptionSchema).describe("Complete desired option list, which may be empty. This is not a patch: omit no existing option unless its removal is intentional."),
+}).superRefine((value, ctx) => {
+    const names = value.options.map((option) => option.name.trim());
+    if (names.some((name) => !name)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Option names must not be blank after trimming.", path: ["options"] });
+    }
+    if (new Set(names).size !== names.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Option names must be unique within the complete desired list.", path: ["options"] });
+    }
+});
+
+export const AvDuplicateRowsSchema = z.object({
+    action: z.literal("duplicate_rows"),
+    avID: z.string().describe("Attribute view ID"),
+    blockID: z.string().optional().describe("Registered database block ID for exact context, permission resolution, and UI refresh"),
+    sourceRowIDs: z.array(z.string()).min(1).describe("Canonical AV row item IDs to copy, in source order. Do not pass cell value IDs or bound source block IDs."),
+    previousID: z.string().optional().describe("Optional row item ID after which the copied rows are inserted; omit to let SiYuan append them"),
+}).superRefine((value, ctx) => {
+    if (new Set(value.sourceRowIDs).size !== value.sourceRowIDs.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "sourceRowIDs must not contain duplicates.", path: ["sourceRowIDs"] });
+    }
+});
+
 export const AvDuplicateSchema = z.object({
     action: z.literal("duplicate"),
     avID: z.string().describe("Source attribute view ID"),
@@ -901,6 +998,205 @@ export const AvGetPrimaryKeyValuesSchema = z.object({
     keyword: z.string().optional().describe("Optional keyword filter for primary key values"),
     page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
     pageSize: z.number().int().min(1).optional().describe("Rows per page, default all"),
+});
+
+const AvViewIDSchema = z.string().min(1).describe('Attribute-view view ID');
+const AvCarrierBlockIDSchema = z.string().min(1).describe('Exact NodeAttributeView carrier block ID; kernel fallback is not permitted');
+const AvLayoutSchema = z.enum(['table', 'gallery', 'kanban']).describe('View layout type');
+const AvFilterValueSchema = z.object({
+    type: z.enum(['block', 'text', 'number', 'date', 'select', 'mSelect', 'url', 'email', 'phone', 'mAsset', 'template', 'created', 'updated', 'checkbox', 'relation', 'rollup']),
+    text: z.object({ content: z.string() }).optional(),
+    number: z.object({ content: z.number(), isNotEmpty: z.boolean().optional(), format: z.string().optional(), formattedContent: z.string().optional() }).optional(),
+    date: z.object({ content: z.number(), content2: z.number().optional(), isNotEmpty: z.boolean().optional(), isNotTime: z.boolean().optional(), hasEndDate: z.boolean().optional() }).optional(),
+    mSelect: z.array(z.object({ content: z.string(), color: z.string().optional() })).optional(),
+    checkbox: z.object({ checked: z.boolean() }).optional(),
+    url: z.object({ content: z.string() }).optional(),
+    email: z.object({ content: z.string() }).optional(),
+    phone: z.object({ content: z.string() }).optional(),
+    relation: z.object({ contents: z.array(z.unknown()).optional() }).optional(),
+}).strict().describe('Typed SiYuan AV filter value. This is a Value-shaped predicate operand, not arbitrary AV JSON.');
+
+type AvFilterInput = {
+    column?: string;
+    quantifier?: 'Any' | 'All' | 'None';
+    operator?: '=' | '!=' | '>' | '>=' | '<' | '<=' | 'Contains' | 'Does not contains' | 'Is empty' | 'Is not empty' | 'Starts with' | 'Ends with' | 'Is between' | 'Is true' | 'Is false';
+    value?: unknown;
+    relativeDate?: { count: number; unit: 0 | 1 | 2 | 3; direction: -1 | 0 | 1 };
+    relativeDate2?: { count: number; unit: 0 | 1 | 2 | 3; direction: -1 | 0 | 1 };
+    combination?: 'and' | 'or';
+    filters?: AvFilterInput[];
+};
+const AvRelativeDateSchema = z.object({
+    count: z.number().int(),
+    unit: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+    direction: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+}).strict();
+const AvFilterSchema = z.lazy(() => z.object({
+    column: z.string().min(1).optional().describe('Existing AV key ID for a leaf filter'),
+    quantifier: z.enum(['Any', 'All', 'None']).optional(),
+    operator: z.enum(['=', '!=', '>', '>=', '<', '<=', 'Contains', 'Does not contains', 'Is empty', 'Is not empty', 'Starts with', 'Ends with', 'Is between', 'Is true', 'Is false']).optional(),
+    value: AvFilterValueSchema.nullable().optional(),
+    relativeDate: AvRelativeDateSchema.optional(),
+    relativeDate2: AvRelativeDateSchema.optional(),
+    combination: z.enum(['and', 'or']).optional(),
+    filters: z.array(AvFilterSchema).optional(),
+}).strict().superRefine((filter, ctx) => {
+    const group = filter.combination !== undefined || filter.filters !== undefined;
+    if (!group && (!filter.column || !filter.operator)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A leaf filter requires column and operator.', path: ['column'] });
+    }
+}));
+
+export const AvAddViewSchema = z.object({
+    action: z.literal('add_view'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('New view ID. Supply a stable ID before strict preflight; MCP never invents one after preflight.'),
+    layout: AvLayoutSchema,
+    name: z.string().trim().min(1).max(255).describe('Name for the new view. Creation and naming are sent in one native transaction and read back together.'),
+});
+
+export const AvSetFiltersSchema = z.object({
+    action: z.literal('set_filters'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    filters: z.array(AvFilterSchema).describe('Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root.'),
+});
+
+export const AvSetSortsSchema = z.object({
+    action: z.literal('set_sorts'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    sorts: z.array(z.object({
+        column: z.string().min(1).describe('Column key ID'),
+        order: z.enum(['ASC', 'DESC']).describe('Sort direction'),
+    })).describe('Complete replacement sort array; [] clears all sorts.'),
+});
+
+export const AvSetGroupSchema = z.object({
+    action: z.literal('set_group'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    group: z.object({
+        field: z.string().describe('Grouping key ID; empty string clears grouping'),
+        method: z.number().int().min(0).max(6).describe('0=value, 1=numeric range, 2=relative date, 3=day, 4=week, 5=month, 6=year'),
+        range: z.object({
+            numStart: z.number(),
+            numEnd: z.number(),
+            numStep: z.number().positive(),
+        }).optional().describe('Required by the kernel for numeric-range grouping'),
+        order: z.number().int().min(0).max(3).describe('0=ascending, 1=descending, 2=manual, 3=select-option order'),
+        hideEmpty: z.boolean(),
+    }).superRefine((group, ctx) => {
+        if (group.method === 1 && !group.range) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'range is required when group.method is 1 (numeric range).', path: ['range'] });
+        }
+    }),
+});
+
+export const AvSetColumnVisibilitySchema = z.object({
+    action: z.literal('set_column_visibility'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    keyID: z.string().min(1).describe('Column key ID in the carrier-selected view'),
+    hidden: z.boolean().describe('Whether the column is hidden in the carrier-selected view'),
+});
+
+export const AvSetColumnOrderSchema = z.object({
+    action: z.literal('set_column_order'),
+    avID: z.string().min(1).describe('Attribute view ID'),
+    blockID: AvCarrierBlockIDSchema,
+    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    keyIDs: z.array(z.string().min(1)).min(1).describe('Complete column key order for the current table, gallery, or kanban layout.'),
+}).superRefine((value, ctx) => {
+    if (new Set(value.keyIDs).size !== value.keyIDs.length) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'keyIDs must not contain duplicates.',
+            path: ['keyIDs'],
+        });
+    }
+});
+
+const SiYuanNodeIdSchema = z.string().regex(/^\d{14}-[a-z0-9]{7}$/, "Must be a SiYuan node ID.");
+
+/** The native template model is intentionally passed through as one complete array. */
+export const AvNewItemTemplateSchema = z.object({
+    id: SiYuanNodeIdSchema.describe("Stable new-item template ID"),
+    name: z.string().min(1).describe("Template name; SiYuan trims surrounding whitespace"),
+    icon: z.string().optional().describe("Document template icon"),
+    targetType: z.enum(['detached', 'document']).describe("Whether creation makes a detached row or a document-bound row"),
+    primaryKeyTemplate: z.string().optional().describe("Native Go-template primary-key source"),
+    fieldValues: z.record(z.string(), z.object({
+        mode: z.enum(['static', 'currentTime']).describe("Native new-item field-value mode"),
+        value: z.record(z.string(), z.unknown()).optional().describe("Native AV value payload; omitted for currentTime"),
+    })).optional().describe("Defaults keyed by AV key ID"),
+    saveLocation: z.object({
+        boxID: z.string().optional(),
+        pathTemplate: z.string(),
+    }).optional().describe("Document target location; omitted means inherit SiYuan's document-create configuration"),
+    contentTemplatePath: z.string().optional().describe("Native content-template path for document targets"),
+});
+
+export const AvSetNewItemTemplatesSchema = z.object({
+    action: z.literal('set_new_item_templates'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Materialized database block used for permission and transaction context"),
+    templates: z.array(AvNewItemTemplateSchema).describe("Complete ordered replacement template array"),
+    defaultTemplateID: SiYuanNodeIdSchema.or(z.literal('')).describe("Default template ID, or empty to clear it; required because this replaces the complete configuration"),
+});
+
+export const AvCreateFromTemplateSchema = z.object({
+    action: z.literal('create_from_template'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Materialized database block; never an AV row item ID"),
+    templateID: SiYuanNodeIdSchema.describe("Existing native new-item template ID"),
+    viewID: SiYuanNodeIdSchema.optional().describe("Optional exact view placement context"),
+    previousID: SiYuanNodeIdSchema.optional().describe("Optional preceding AV row item ID"),
+    groupID: SiYuanNodeIdSchema.optional().describe("Optional target group ID"),
+});
+
+export const AvConfigureTwoWayRelationSchema = z.object({
+    action: z.literal('configure_two_way_relation'),
+    avID: SiYuanNodeIdSchema.describe("Source attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Source materialized database block"),
+    keyID: SiYuanNodeIdSchema.describe("Existing source relation key ID"),
+    destinationAvID: SiYuanNodeIdSchema.describe("Destination attribute view ID"),
+    destinationBlockID: SiYuanNodeIdSchema.optional().describe("Optional explicit destination database block for permission verification"),
+    backRelationKeyID: SiYuanNodeIdSchema.describe("Stable destination reverse relation key ID; created when absent"),
+    sourceName: z.string().min(1).describe("Source relation field name"),
+    destinationName: z.string().min(1).describe("Destination reverse relation field name"),
+});
+
+export const AvConfigureRollupSchema = z.object({
+    action: z.literal('configure_rollup'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view that owns the rollup field"),
+    blockID: SiYuanNodeIdSchema.describe("Materialized database block used for permission and transaction context"),
+    keyID: SiYuanNodeIdSchema.describe("Existing rollup key ID"),
+    relationKeyID: SiYuanNodeIdSchema.describe("Existing relation key in the same AV"),
+    destinationKeyID: SiYuanNodeIdSchema.describe("Existing key in the relation destination AV"),
+    calc: z.record(z.string(), z.unknown()).describe("Native RollupCalc payload, preserved without invented calculation aliases"),
+});
+
+export const AvSetRelationSchema = z.object({
+    action: z.literal('set_relation'),
+    avID: SiYuanNodeIdSchema.describe("Attribute view ID"),
+    blockID: SiYuanNodeIdSchema.describe("Verified source database block; relation writes never infer this from a row's bound block"),
+    itemID: SiYuanNodeIdSchema.describe("AV row item ID; never the bound document block ID"),
+    keyID: SiYuanNodeIdSchema.describe("Relation key ID"),
+    relatedItemIDs: z.array(SiYuanNodeIdSchema).describe("Target AV row item IDs; an empty array clears the relation"),
+}).superRefine((value, ctx) => {
+    if (new Set(value.relatedItemIDs).size !== value.relatedItemIDs.length) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "relatedItemIDs must not contain duplicates.",
+            path: ['relatedItemIDs'],
+        });
+    }
 });
 
 export const FileUploadAssetSchema = z.object({
@@ -971,9 +1267,22 @@ export const FileExportMdSchema = z.object({
     id: z.string().describe("Document ID to export"),
 });
 
+export const FileExportMarkdownSnapshotSchema = z.object({
+    action: z.literal("export_markdown_snapshot"),
+    notebookID: z.string().min(1).describe("Notebook ID that owns every exported document"),
+    roots: z.array(z.string().min(1)).min(1).max(64).optional().describe("Notebook-local storage paths to enumerate (use / for notebook roots)"),
+    documentIDs: z.array(z.string().min(1)).min(1).max(500).optional().describe("Explicit document IDs to export"),
+    limit: z.number().int().min(1).max(200).optional().describe("Documents returned in this page (default 20)"),
+    cursor: z.string().optional().describe("Opaque continuation cursor returned by the previous page"),
+}).superRefine((value, ctx) => {
+    if (Boolean(value.roots) === Boolean(value.documentIDs)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one of roots or documentIDs." });
+    }
+});
+
 export const FileExportResourcesSchema = z.object({
     action: z.literal("export_resources"),
-    paths: z.array(z.string()).describe("Paths to export"),
+    paths: z.array(z.string()).describe("Workspace-relative file paths to export (e.g., /data/20240318112233-abc123.sy/ or /assets/foo.png)"),
     name: z.string().optional().describe("Export file name"),
     outputPath: z.string().optional().describe("Optional local absolute or relative filesystem path to save the exported ZIP"),
 });
@@ -986,6 +1295,27 @@ export const FileGetDocAssetsSchema = z.object({
     action: z.literal("get_doc_assets"),
     id: z.string().describe("Document ID"),
     assetType: z.enum(['all', 'image']).optional().describe("Filter asset type: 'all' (default) returns all assets, 'image' returns only image assets."),
+});
+
+export const FileAuditImageRefsSchema = z.object({
+    action: z.literal("audit_image_refs"),
+    id: z.string().describe("Document ID whose direct image references should be inspected."),
+    expectedRefs: z.array(z.string().min(1)).max(4096).describe("Expected image references from source Markdown; no local file is read."),
+});
+
+export const FileReadImageSchema = z.object({
+    action: z.literal("read_image"),
+    path: z.string().min(1).describe("SiYuan image asset path referenced by the document, such as assets/question.png"),
+    id: z.string().min(1).optional().describe("Document ID that references the image"),
+    documentPath: z.string().min(1).optional().describe("Human-readable fs document path, including the notebook name, that references the image"),
+}).superRefine((value, ctx) => {
+    if (Boolean(value.id) === Boolean(value.documentPath)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Provide exactly one of id or documentPath.",
+            path: ["id"],
+        });
+    }
 });
 
 export const FileGetImageOCRTextSchema = z.object({
@@ -1027,7 +1357,7 @@ export const SearchFulltextSchema = z.object({
     methodName: SearchMethodNameSchema.optional().describe('Semantic alias for method: "keyword" | "query_syntax" | "sql" | "regex". The short alias "query" also maps to query syntax and overrides method when both are provided.'),
     types: z.record(z.string(), z.boolean()).optional().describe("Block type filter. Accepts full names (e.g. {\"heading\": true}) or shortcodes (e.g. {\"h\": true, \"p\": true}). Codes: d=document, h=heading, p=paragraph, l=list, i=listItem, b=blockquote, c=codeBlock, m=mathBlock, t=table, s=superBlock, html=htmlBlock, embed=embedBlock, av=databaseBlock."),
     typeShortcodes: z.array(z.string()).optional().describe("Alternative shorthand type filter as array: [\"h\",\"p\"]. Merged with types if both provided."),
-    paths: z.array(z.string()).optional().describe("Restrict search to specific notebook paths"),
+    paths: z.array(z.string()).optional().describe("Restrict search to specific notebook IDs or storage paths"),
     groupBy: z.number().optional().describe("0=no grouping (default), 1=group by document"),
     orderBy: z.number().optional().describe("Legacy numeric sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)"),
     sortBy: SearchSortNameSchema.optional().describe('Semantic sort alias: "relevance", "date", "updated_desc", "updated_asc", "created_desc", "created_asc", or "type". Overrides orderBy if both provided.'),
@@ -1041,7 +1371,7 @@ export const SearchFulltextSchema = z.object({
 export const SearchSemanticSchema = z.object({
     action: z.literal("semantic"),
     query: z.string().min(1).describe("Natural-language semantic search query"),
-    paths: z.array(z.string()).optional().describe("Restrict search to notebook IDs or notebook/storage paths"),
+    paths: z.array(z.string()).optional().describe("Restrict search to notebook IDs or storage paths"),
     types: z.record(z.string(), z.boolean()).optional().describe("Block type filter. Accepts full names or shortcodes."),
     typeShortcodes: z.array(z.string()).optional().describe("Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types."),
     subTypes: z.record(z.string(), z.boolean()).optional().describe("Optional SiYuan block subtype filter"),
@@ -1088,7 +1418,7 @@ export const SearchFindReplaceSchema = z.object({
     k: z.string().describe("Find keyword"),
     r: z.string().describe("Replacement text; use empty string to delete matches"),
     ids: z.array(z.string()).min(1).describe("Document or block IDs to mutate"),
-    paths: z.array(z.string()).optional().describe("Optional path scope list"),
+    paths: z.array(z.string()).optional().describe("Optional notebook ID or storage path scope list"),
     types: z.record(z.string(), z.boolean()).optional().describe("Optional block type filter"),
     method: z.number().optional().describe("Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex"),
     methodName: SearchMethodNameSchema.optional().describe('Semantic alias for method: "keyword" | "query_syntax" | "sql" | "regex". The short alias "query" also maps to query syntax and overrides method when both are provided.'),

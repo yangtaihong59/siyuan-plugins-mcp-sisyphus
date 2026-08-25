@@ -79,7 +79,7 @@ Examples:
   ${PRIMARY_CLI_COMMAND} skill install --target .codex --local
   ${PRIMARY_CLI_COMMAND} help document create
   ${PRIMARY_CLI_COMMAND} fs read --path "/Inbox/Test"
-  ${PRIMARY_CLI_COMMAND} document create --notebook <id> --path "/Inbox/Test" --markdown "正文从这里开始"
+  ${PRIMARY_CLI_COMMAND} document create --notebook <id> --path "/Folder/Test" --markdown "正文从这里开始"
   ${PRIMARY_CLI_COMMAND} block append --parent-id <id> --data-type markdown --data "- item"
   ${PRIMARY_CLI_COMMAND} search fulltext --query "keyword" --page-size 10
   ${PRIMARY_CLI_COMMAND} timeline list-nodes --scope all --document-id <id>
