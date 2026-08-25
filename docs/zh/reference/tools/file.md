@@ -1,6 +1,6 @@
 # file 工具
 
-这个工具覆盖资源上传、导出、模板发现与管理、模板渲染、OCR 与资源维护。
+这个工具覆盖资源上传、视觉图片直读、导出、模板发现与管理、模板渲染、已保存 OCR 与资源维护。
 
 适用场景：你需要上传资源、导出内容、查找/读取/创建/更新/删除/渲染模板，或查询文档关联资源。
 
@@ -15,10 +15,12 @@
 |------|---------|
 | 上传 / 导出 | `upload_asset`, `export_md`, `export_markdown_snapshot`, `export_resources`, `extract_doc` |
 | 模板 | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
-| 资源查看 | `get_doc_assets`, `audit_image_refs`, `get_image_ocr_text`, `list_unused_assets` |
+| 资源查看 | `get_doc_assets`, `audit_image_refs`, `read_image`, `get_image_ocr_text`, `list_unused_assets` |
 | 资源变更 | `remove_unused_assets`, `rename_asset`, `delete_asset` |
 
 `get_doc_assets` 是直接引用资源查看动作，只返回当前文档树直接引用的资源，不会展开查询嵌入块。需要查看完整文档内容和资源时，应使用 `extract_doc`。
+
+Markdown 中出现 `assets/...` 图片且答案依赖图片内容时，具备视觉能力的客户端应对一张相关图片调用 `read_image`。结果先返回 JSON 元数据，再返回标准 MCP `image` 内容块；`structuredContent` 不重复携带 Base64。该动作不落地本地文件，也不运行 OCR。`get_image_ocr_text` 只读取思源已经保存的 OCR。
 
 ## 导出边界
 
@@ -44,6 +46,7 @@
 - 模板写入通过思源工作区文件 API 写 `/data/templates/...`，不会直接写本地文件系统。
 - `export_resources` 如果指定本地输出路径，也应谨慎处理。
 - `extract_doc` 将导出文件写入本地文件系统（默认 `~/siyuan-extracted/`），每次导出前会清空整个输出目录，避免旧提取结果无限积累。结果会返回 `outputRoot` 和 `defaultOutputDirUsed`；需要稳定路径时请显式传 `outputDir`，例如 `/private/tmp/...`。
+- `read_image` 只接受已授权文档树直接引用的 `assets/...` 路径，通过文件签名识别 PNG/JPEG/WebP/GIF，并拒绝超过 20 MiB 的图片。URL、本地路径、路径穿越及未引用资源都会被拒绝。
 
 ## 示例
 
@@ -65,6 +68,18 @@ MCP：
 ```
 
 这个结果只表示文档树直接资源；如果需要查看附件内容，请提取整个文档。
+
+让具备视觉能力的 MCP 客户端直接读取一张被引用图片：
+
+```json
+{
+  "action": "read_image",
+  "path": "assets/question.png",
+  "id": "<doc-id>"
+}
+```
+
+已有可读路径时，可用 `documentPath: "/Notebook/Folder/Doc"` 代替 `id`，二者必须且只能提供一个。不要让 `fs.read`、`document.get_doc` 或 `get_doc_assets` 自动内联整篇文档的全部图片。
 
 只读审计导入后的图片引用：
 
@@ -177,8 +192,12 @@ CLI：
 
 ```bash
 siyuan file get-doc-assets --id <doc-id> --asset-type image
+siyuan file read-image --id <doc-id> --path assets/question.png
+siyuan file read-image --id <doc-id> --path assets/question.png --json
 siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 ```
+
+CLI 默认只显示图片元数据；显式传 `--json` 时会附带非文本内容块及 Base64，供脚本使用。
 
 ## 动作列表
 
@@ -196,6 +215,7 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `list_unused_assets`
 - `get_doc_assets`
 - `audit_image_refs`
+- `read_image`
 - `get_image_ocr_text`
 - `remove_unused_assets`
 - `rename_asset`

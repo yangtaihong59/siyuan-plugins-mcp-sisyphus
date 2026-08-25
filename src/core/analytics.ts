@@ -310,9 +310,9 @@ export async function clearAnalyticsData(client: SiYuanClient): Promise<void> {
     }
 }
 
-export function estimateResultSizeHint(content: { type: 'text'; text: string }[] | undefined): string | undefined {
+export function estimateResultSizeHint(content: Array<{ type: string; text?: string }> | undefined): string | undefined {
     if (!content || content.length === 0) return '0';
-    const totalChars = content.reduce((sum, item) => sum + (item.text?.length ?? 0), 0);
+    const totalChars = content.reduce((sum, item) => sum + (item.type === 'text' ? item.text?.length ?? 0 : 0), 0);
     if (totalChars <= 200) return '0-200';
     if (totalChars <= 1000) return '200-1K';
     if (totalChars <= 5000) return '1K-5K';

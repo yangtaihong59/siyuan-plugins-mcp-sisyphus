@@ -17,6 +17,7 @@ import {
     FileExtractDocSchema,
     FileGetDocAssetsSchema,
     FileAuditImageRefsSchema,
+    FileReadImageSchema,
     FileGetImageOCRTextSchema,
     FileListTemplatesSchema,
     FileListUnusedAssetsSchema,
@@ -32,6 +33,7 @@ import { ensurePermissionForDocumentId, ensurePermissionForNotebook } from '../i
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult, createPaginatedResult, paginate, type ToolResult } from '../internal/shared';
 import { auditImageReferences } from '../internal/image-reference-audit';
+import { resolveFsScopePath } from '../internal/helpers/fs-path';
 import {
     canonicalMetadata,
     compareSnapshotText,
@@ -48,6 +50,75 @@ import {
 
 export const FILE_TOOL_NAME = 'file';
 export const DEFAULT_LARGE_UPLOAD_THRESHOLD_MB = 10;
+export const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
+
+interface NormalizedImageAssetPath {
+    assetPath: string;
+    dataPath: string;
+}
+
+function normalizeImageAssetPath(input: string): NormalizedImageAssetPath {
+    const trimmed = input.trim();
+    if (!trimmed) throw new Error('Image asset path must not be empty.');
+    if (trimmed.includes('\\') || trimmed.includes('\0')) {
+        throw new Error('Image asset path must use SiYuan forward-slash asset syntax.');
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//')) {
+        throw new Error('Image asset path must be a SiYuan assets/... path, not a URL or local filesystem path.');
+    }
+
+    const withoutSuffix = trimmed.split(/[?#]/, 1)[0].replace(/^\/+/, '');
+    const relative = withoutSuffix.startsWith('data/assets/')
+        ? withoutSuffix.slice('data/assets/'.length)
+        : withoutSuffix.startsWith('assets/')
+            ? withoutSuffix.slice('assets/'.length)
+            : '';
+    if (!relative) {
+        throw new Error('Image asset path must start with assets/, /assets/, data/assets/, or /data/assets/.');
+    }
+    const segments = relative.split('/');
+    if (segments.some((segment) => {
+        if (segment === '' || segment === '.' || segment === '..') return true;
+        try {
+            const decoded = decodeURIComponent(segment);
+            return decoded === '.'
+                || decoded === '..'
+                || decoded.includes('/')
+                || decoded.includes('\\')
+                || decoded.includes('\0');
+        } catch {
+            return true;
+        }
+    })) {
+        throw new Error('Image asset path contains an unsafe path segment.');
+    }
+
+    return {
+        assetPath: `assets/${relative}`,
+        dataPath: `/data/assets/${relative}`,
+    };
+}
+
+function detectSupportedImageMime(data: Uint8Array): string | undefined {
+    if (data.length >= 8
+        && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47
+        && data[4] === 0x0d && data[5] === 0x0a && data[6] === 0x1a && data[7] === 0x0a) {
+        return 'image/png';
+    }
+    if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+        return 'image/jpeg';
+    }
+    if (data.length >= 6) {
+        const signature = String.fromCharCode(...data.slice(0, 6));
+        if (signature === 'GIF87a' || signature === 'GIF89a') return 'image/gif';
+    }
+    if (data.length >= 12
+        && String.fromCharCode(...data.slice(0, 4)) === 'RIFF'
+        && String.fromCharCode(...data.slice(8, 12)) === 'WEBP') {
+        return 'image/webp';
+    }
+    return undefined;
+}
 
 function normalizeResourcePath(input: string): string {
     const trimmed = input.trim().replace(/\\/g, '/');
@@ -686,12 +757,75 @@ const handleAuditImageRefs: ToolActionHandler = async ({ client, permMgr, rawArg
     });
 };
 
+const handleReadImage: ToolActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = FileReadImageSchema.parse(rawArgs);
+    const normalized = normalizeImageAssetPath(parsed.path);
+
+    let documentID: string;
+    if (parsed.id) {
+        const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+        if (denied) return denied;
+        documentID = context.documentId;
+    } else {
+        const scope = await resolveFsScopePath(client, permMgr, parsed.documentPath!, 'read');
+        if (scope.type !== 'document') {
+            throw new Error(`read_image requires a document path, got "${parsed.documentPath}".`);
+        }
+        const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
+        if (denied) return denied;
+        documentID = scope.id;
+    }
+
+    const referenced = await fileApi.getDocImageAssets(client, documentID);
+    const referencedPaths = Array.isArray(referenced)
+        ? referenced.flatMap((candidate) => {
+            if (typeof candidate !== 'string') return [];
+            try {
+                return [normalizeImageAssetPath(candidate).assetPath];
+            } catch {
+                return [];
+            }
+        })
+        : [];
+    if (!referencedPaths.includes(normalized.assetPath)) {
+        throw new Error(`Image asset "${normalized.assetPath}" is not referenced by document "${documentID}".`);
+    }
+
+    const data = await client.readFileBinary(normalized.dataPath);
+    if (data.byteLength > MAX_INLINE_IMAGE_BYTES) {
+        throw new Error(`Image asset is too large for inline visual delivery: ${data.byteLength} bytes exceeds the ${MAX_INLINE_IMAGE_BYTES}-byte limit.`);
+    }
+    const mimeType = detectSupportedImageMime(data);
+    if (!mimeType) {
+        throw new Error('Unsupported image data. read_image accepts PNG, JPEG, WebP, and GIF images identified from their file signature.');
+    }
+
+    const metadata = {
+        documentID,
+        path: normalized.assetPath,
+        mimeType,
+        bytes: data.byteLength,
+        delivery: 'mcp_image',
+    };
+    return {
+        content: [
+            { type: 'text', text: JSON.stringify(metadata, null, 2) },
+            { type: 'image', data: Buffer.from(data).toString('base64'), mimeType },
+        ],
+        structuredContent: metadata,
+    };
+};
+
 const handleGetImageOCRText: ToolActionHandler = async ({ client, rawArgs }) => {
     const parsed = FileGetImageOCRTextSchema.parse(rawArgs);
     const result = await fileApi.getImageOCRText(client, parsed.path);
     return createJsonResult({
         path: parsed.path ?? null,
         ...result,
+        ...(!result.text ? {
+            available: false,
+            hint: 'SiYuan has no stored OCR text for this image. If the client supports vision, resolve the referencing document and call file(action="read_image", id=... or documentPath=..., path=...) to inspect the image directly. Otherwise install/configure Tesseract OCR in SiYuan and generate OCR data first.',
+        } : {}),
     });
 };
 
@@ -802,6 +936,7 @@ export function createFileActionHandlers(thresholdMB: number, largeUploadThresho
         list_unused_assets: handleListUnusedAssets,
         get_doc_assets: handleGetDocAssets,
         audit_image_refs: handleAuditImageRefs,
+        read_image: handleReadImage,
         get_image_ocr_text: handleGetImageOCRText,
         remove_unused_assets: handleRemoveUnusedAssets,
         rename_asset: handleRenameAsset,

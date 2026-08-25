@@ -3133,6 +3133,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use id + expectedRefs from source or preprocessed Markdown. The action reads only SiYuan's direct image asset references over HTTP and returns expectedRefs, actualRefs, missingRefs, extraRefs, counts, and ok. Matching is a multiset by basename: each occurrence is preserved and consumed once, so duplicates and same-basename paths are not silently merged. It ignores SiYuan timestamp/id suffixes; it does not read local files or repair imports.",
         "requiredFields": [
@@ -3181,6 +3183,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use path + markdown to create a Markdown template under data/templates. overwrite=false by default returns template_exists when the path already exists; pass overwrite=true to replace it.",
         "requiredFields": [
@@ -3215,6 +3219,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "requiredFields": [
           "path",
@@ -3247,6 +3253,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.",
         "requiredFields": [
@@ -3280,6 +3288,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.",
         "requiredFields": [
@@ -3313,6 +3323,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "requiredFields": [
           "id",
@@ -3347,6 +3359,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
         "requiredFields": [
@@ -3391,6 +3405,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.",
         "requiredFields": [
@@ -3424,6 +3440,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use a document ID to list assets directly referenced by the current document tree after read-permission checks. This does not expand query embed blocks; when the user needs to inspect the full document content and assets, guide them to file(action="extract_doc") instead. Use assetType="image" to return only direct image assets.",
         "requiredFields": [
@@ -3456,8 +3474,10 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
-        "hint": "Use an asset path to read stored OCR text. If path is omitted, SiYuan returns an empty text payload.",
+        "hint": "Use an asset path to read OCR text already stored by SiYuan. This action does not run OCR. Empty stored text returns available=false and points vision-capable clients to read_image.",
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
@@ -3486,6 +3506,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Searches SiYuan data/templates via the kernel template picker endpoint. Empty query lists all visible Markdown templates. Results include readArgs and renderArgsTemplate for reuse.",
         "requiredFields": [],
@@ -3516,11 +3538,48 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
           "action only",
+        ],
+        "tool": "file",
+      },
+      "read_image": {
+        "action": "read_image",
+        "example": {
+          "action": "read_image",
+          "path": "/20240318112233-abc123.sy",
+        },
+        "fullDocResource": "siyuan://help/action/file/read_image",
+        "guidance": [
+          "file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution.",
+          "If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.",
+          "file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.",
+          "file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.",
+          "Use file(action="list_templates") before rendering when you need to discover valid workspace template paths under data/templates.",
+          "file(action="read_template") reads Markdown template source through SiYuan’s authenticated /templates/ route; it does not expose arbitrary workspace files.",
+          "file(action="create_template"|"update_template") writes Markdown templates through SiYuan’s /api/file/putFile workspace API; it does not write data/templates through the local filesystem.",
+          "file(action="delete_template") removes an existing Markdown template resolved from SiYuan’s template picker and requires explicit user confirmation before execution.",
+          "file(action="save_doc_as_template") saves an existing document as a root-level template after read-permission checks; use create_template when you need a nested template path.",
+          "file(action="render", engine="template") requires a template path inside the SiYuan workspace; arbitrary local paths like /tmp/... are rejected by the kernel.",
+          "file(action="render", engine="template") uses SiYuan workspace template syntax .action{.title}, .action{.id}, .action{.name}, and .action{.alias}; it does not replace {{...}} placeholders.",
+          "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
+          "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
+          "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
+        ],
+        "hint": "Use path plus exactly one of id or documentPath. MCP first authorizes that document tree and verifies that the image is directly referenced there, then returns metadata followed by one standard MCP image content block. Only PNG, JPEG, WebP, and GIF up to 20 MiB are accepted. It never writes a host file or runs OCR.",
+        "requiredFields": [
+          "path",
+        ],
+        "requiresConfirmation": false,
+        "shapes": [
+          "path",
         ],
         "tool": "file",
       },
@@ -3546,6 +3605,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use a path from list_templates, /data/templates/..., /templates/..., or a path relative to data/templates. Reads only Markdown template source and supports offset/limit pagination.",
         "requiredFields": [
@@ -3578,6 +3639,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "requiredFields": [],
         "requiresConfirmation": true,
@@ -3609,6 +3672,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "requiredFields": [
           "oldPath",
@@ -3642,6 +3707,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use engine="template" with id + path for a workspace template; that engine uses .action{...} delimiters and exposes limited document fields such as id/title/name/alias. Set preview=true for SiYuan preview DOM. Use engine="sprig" with inline template for {{...}} syntax; Sprig has functions but no document context.",
         "requiredFields": [
@@ -3686,6 +3753,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use id + name to save a document as a root-level template through SiYuan’s docSaveAsTemplate API. Slashes are rejected; pass overwrite=true to replace an existing root template.",
         "requiredFields": [
@@ -3734,6 +3803,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use path + markdown to replace an existing Markdown template. The template must resolve through list_templates first; otherwise MCP returns template_not_found.",
         "requiredFields": [
@@ -3787,6 +3858,8 @@ feedback submits plain-text product feedback to the developer through the config
           "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
           "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
           "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+          "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+          "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
         "hint": "Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
         "requiredFields": [
@@ -3802,7 +3875,7 @@ feedback submits plain-text product feedback to the developer through the config
     },
     "description": "📁 Grouped file and asset operations. Use the "action" field to select the operation.
 
-Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, export_markdown_snapshot, get_doc_assets, audit_image_refs, extract_doc. Required fields: upload_asset: assetsDirPath, localFilePath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; export_markdown_snapshot: notebookID; get_doc_assets: id; audit_image_refs: id, expectedRefs; extract_doc: id.
+Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, export_markdown_snapshot, get_doc_assets, audit_image_refs, read_image, extract_doc. Required fields: upload_asset: assetsDirPath, localFilePath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; export_markdown_snapshot: notebookID; get_doc_assets: id; audit_image_refs: id, expectedRefs; read_image: path; extract_doc: id.
 
 Additional actions: delete_template, render, export_resources, list_unused_assets, get_image_ocr_text, remove_unused_assets, rename_asset, delete_asset. Read siyuan://help/action/file/{action} for details, or call action="help" if resources are unavailable.
 
@@ -3821,6 +3894,7 @@ file.export_resources: required [paths] | optional [name, outputPath]
 file.list_unused_assets: required [] | optional []
 file.get_doc_assets: required [id] | optional [assetType]
 file.audit_image_refs: required [id, expectedRefs] | optional []
+file.read_image: required [path] | optional [id, documentPath]
 file.get_image_ocr_text: required [] | optional [path]
 file.remove_unused_assets: required [] | optional []
 file.rename_asset: required [oldPath, newName] | optional []
@@ -3839,9 +3913,10 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "export_resources": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
         "extract_doc": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.",
         "get_doc_assets": "Use a document ID to list assets directly referenced by the current document tree after read-permission checks. This does not expand query embed blocks; when the user needs to inspect the full document content and assets, guide them to file(action="extract_doc") instead. Use assetType="image" to return only direct image assets.",
-        "get_image_ocr_text": "Use an asset path to read stored OCR text. If path is omitted, SiYuan returns an empty text payload.",
+        "get_image_ocr_text": "Use an asset path to read OCR text already stored by SiYuan. This action does not run OCR. Empty stored text returns available=false and points vision-capable clients to read_image.",
         "list_templates": "Searches SiYuan data/templates via the kernel template picker endpoint. Empty query lists all visible Markdown templates. Results include readArgs and renderArgsTemplate for reuse.",
         "list_unused_assets": "no extra fields",
+        "read_image": "Use path plus exactly one of id or documentPath. MCP first authorizes that document tree and verifies that the image is directly referenced there, then returns metadata followed by one standard MCP image content block. Only PNG, JPEG, WebP, and GIF up to 20 MiB are accepted. It never writes a host file or runs OCR.",
         "read_template": "Use a path from list_templates, /data/templates/..., /templates/..., or a path relative to data/templates. Reads only Markdown template source and supports offset/limit pagination.",
         "remove_unused_assets": "no extra fields",
         "rename_asset": "requires: oldPath, newName",
@@ -3886,7 +3961,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
           "requiresConfirmation": false,
         },
         "get_image_ocr_text": {
-          "hint": "Use an asset path to read stored OCR text. If path is omitted, SiYuan returns an empty text payload.",
+          "hint": "Use an asset path to read OCR text already stored by SiYuan. This action does not run OCR. Empty stored text returns available=false and points vision-capable clients to read_image.",
           "requiresConfirmation": false,
         },
         "list_templates": {
@@ -3894,6 +3969,10 @@ file(action="upload_asset") reads a local file path and uploads that file into S
           "requiresConfirmation": false,
         },
         "list_unused_assets": {
+          "requiresConfirmation": false,
+        },
+        "read_image": {
+          "hint": "Use path plus exactly one of id or documentPath. MCP first authorizes that document tree and verifies that the image is directly referenced there, then returns metadata followed by one standard MCP image content block. Only PNG, JPEG, WebP, and GIF up to 20 MiB are accepted. It never writes a host file or runs OCR.",
           "requiresConfirmation": false,
         },
         "read_template": {
@@ -3944,6 +4023,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "export_markdown_snapshot",
         "get_doc_assets",
         "audit_image_refs",
+        "read_image",
         "extract_doc",
       ],
       "detailsHint": "Call file(action="help", topic="<actionName>") for required fields, shapes, and a minimal example.",
@@ -3962,6 +4042,8 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "file(action="render", engine="sprig") uses inline Go/Sprig template syntax such as {{ now | date "2006-01-02" }}, but it has no document context.",
         "file(action="extract_doc") exports a document and all its assets into a self-contained uncompressed folder, so AI tools can read the files directly. Prefer this over export_resources when the goal is to inspect attachment content such as images, spreadsheets, or other binary files.",
         "file(action="audit_image_refs") compares caller-supplied expected image references with SiYuan's read-only direct image asset list. It uses multiset basename matching: every occurrence is preserved and matched once, including duplicate refs and different paths with the same basename. It ignores SiYuan timestamp/id filename suffixes, never reads local .sy files, and never repairs content.",
+        "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
+        "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
       ],
       "helpResources": [
         "siyuan://help/action/file/{action}",

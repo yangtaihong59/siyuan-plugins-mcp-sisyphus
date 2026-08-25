@@ -43,6 +43,14 @@ siyuan-sisyphus document get-doc --id '<doc-id>' --mode 'markdown' --json
 siyuan-sisyphus block get-kramdown --id '<block-id>' --json
 ```
 
+If the Markdown contains an `assets/...` image and the task depends on its visual content, a vision-capable client should read one relevant image directly:
+
+```bash
+siyuan-sisyphus file read-image --id '<doc-id>' --path 'assets/question.png' --json
+```
+
+Provide either the document ID or its human-readable `documentPath`, never both. The server authorizes that document and verifies its direct image reference before returning an image content block. MCP clients receive the image directly; CLI default output shows metadata, while explicit `--json` retains the non-text block for scripts. Do not inline every image during ordinary document reads. Stored OCR is only a fallback when direct vision is unavailable.
+
 ## Path semantics
 
 | Value | Example | Typical use |

@@ -3,6 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { slimToolResult } from '@/core/slim-response';
 
 describe('slim document-window responses', () => {
+    it('preserves read_image metadata, structured content, and the image block verbatim', () => {
+        const original = {
+            content: [
+                { type: 'text' as const, text: JSON.stringify({ documentID: 'doc-1', path: 'assets/image.png', bytes: 4 }) },
+                { type: 'image' as const, data: 'iVBORw==', mimeType: 'image/png' },
+            ],
+            structuredContent: { documentID: 'doc-1', path: 'assets/image.png', bytes: 4 },
+        };
+
+        expect(slimToolResult(original, { category: 'file', action: 'read_image' })).toEqual(original);
+    });
+
     it('preserves strict-write commit metadata on slim success responses', () => {
         const result = slimToolResult({
             content: [{ type: 'text', text: JSON.stringify({

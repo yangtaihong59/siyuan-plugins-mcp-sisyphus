@@ -4,7 +4,7 @@
 
 ## 当前基线
 
-- **14** 个聚合工具、**142** 个静态 action（不含隐式 `help`、MCP App 重复 action、`extension` 运行时动态 action）。
+- **14** 个聚合工具、**143** 个静态 action（不含隐式 `help`、MCP App 重复 action、`extension` 运行时动态 action）。
 - `src/api` wrapper 覆盖口径为 **150** 个唯一 `/api/*` 字面量：**149** 个有效，覆盖当前 **582** 个内核 API 路径的 **25.6%**；工具层直调另列，不混入该基线。
 - UI 设置页另有 **5** 个 UI-only 路径，不计入工具/API 覆盖率。
 - 唯一失效 wrapper：`/api/asset/setImageAlpha`（`src/api/file.ts:93`）；本轮仅记录，不删除。
@@ -19,7 +19,7 @@
 | `document` | 18 | `remove`、`move` | `document`、`outline`、`dailynote` |
 | `block` | 21 | `delete`、`move` | `block`、`attr` |
 | `av` | 25 | `set_column_options`、`duplicate_rows`、`set_new_item_templates`、`create_from_template`、`configure_two_way_relation`、`configure_rollup`、`set_relation` | `database` |
-| `file` | 19 | `upload_asset`、`delete_template`、`remove_unused_assets`、`delete_asset` | `file`、`asset`、`export`、`template` |
+| `file` | 20 | `upload_asset`、`delete_template`、`remove_unused_assets`、`delete_asset` | `file`、`asset`、`export`、`template` |
 | `search` | 9 | `find_replace` | `search`、`sql`、`ref` |
 | `tag` | 3 | `remove` | `tag` |
 | `timeline` | 6 | `delete_node`、`rollback_document`、`rollback_block` | `repo`、`history` |
@@ -133,6 +133,7 @@
 | `file.list_unused_assets` | `/api/asset/getUnusedAssets` | — | — | `read` | `file`、`asset`、`export`、`template` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `file.get_doc_assets` | `/api/asset/getDocAssets` | — | — | `read` | `file`、`asset`、`export`、`template` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `file.audit_image_refs` | `/api/asset/getDocImageAssets` | — | — | `read` | `file`、`asset`、`export`、`template` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
+| `file.read_image` | `/api/asset/getDocImageAssets` | — | — | `read` | `file`、`asset`、`export`、`template` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `file.get_image_ocr_text` | `/api/asset/getImageOCRText` | — | — | `read` | `file`、`asset`、`export`、`template` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `file.remove_unused_assets` | `/api/asset/removeUnusedAssets` | — | — | `mutation(manifest)`；危险：协议确认 | `file`、`asset`、`export`、`template` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `file.rename_asset` | `/api/asset/renameAsset` | — | — | `mutation(state)` | `file`、`asset`、`export`、`template` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
@@ -170,9 +171,9 @@
 | `flashcard.review_card` | `/api/riff/reviewRiffCard`<br>`/api/riff/skipReviewRiffCard` | — | — | `mutation(state)` | — | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `flashcard.create_card` | `/api/riff/addRiffCards` | — | — | `mutation(none)` | — | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `flashcard.remove_card` | `/api/riff/removeRiffCards` | — | — | `mutation(state)`；危险：协议确认 | — | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
-| `extension.list` | `/mcp` | — | — | `read` | `动态官方 MCP 工具` | 动态读取思源原生 MCP tools/list；运行时动态 action 不计入静态 142 |
-| `extension.validate_package` | — | — | — | `read` | `动态官方 MCP 工具` | 动态读取思源原生 MCP tools/list；运行时动态 action 不计入静态 142 |
-| `extension.diagnose_plugin_mcp` | — | — | — | `read` | `动态官方 MCP 工具` | 动态读取思源原生 MCP tools/list；运行时动态 action 不计入静态 142 |
+| `extension.list` | `/mcp` | — | — | `read` | `动态官方 MCP 工具` | 动态读取思源原生 MCP tools/list；运行时动态 action 不计入静态 143 |
+| `extension.validate_package` | — | — | — | `read` | `动态官方 MCP 工具` | 动态读取思源原生 MCP tools/list；运行时动态 action 不计入静态 143 |
+| `extension.diagnose_plugin_mcp` | — | — | — | `read` | `动态官方 MCP 工具` | 动态读取思源原生 MCP tools/list；运行时动态 action 不计入静态 143 |
 | `mascot.get_balance` | `external:Sisyphus service` | — | — | `read` | — | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `mascot.shop` | `external:Sisyphus service` | — | — | `read` | — | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `mascot.buy` | `external:Sisyphus service` | — | — | `mutation(state)` | — | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
@@ -310,7 +311,7 @@
 | `/api/search/searchTag` | api-wrapper | `src/api/search.ts:37` | 有效内核路由 |
 | `/api/search/searchTemplate` | api-wrapper | `src/api/template.ts:154` | 有效内核路由 |
 | `/api/search/semanticSearchBlock` | api-wrapper | `src/api/search.ts:26` | 有效内核路由 |
-| `/api/sync/performSync` | api-wrapper+core | `src/api/system.ts:28`<br>`src/core/help.ts:321` | 有效内核路由 |
+| `/api/sync/performSync` | api-wrapper+core | `src/api/system.ts:28`<br>`src/core/help.ts:324` | 有效内核路由 |
 | `/api/system/bootProgress` | api-wrapper | `src/api/system.ts:24` | 有效内核路由 |
 | `/api/system/currentTime` | api-wrapper | `src/api/system.ts:36` | 有效内核路由 |
 | `/api/system/getChangelog` | api-wrapper | `src/api/system.ts:12` | 有效内核路由 |
@@ -352,7 +353,7 @@
 ## 覆盖层级解释
 
 - **插件直接覆盖**：后端 API wrapper 或工具层直调，列于上表 150 项。
-- **由 extension 暴露原生工具**：运行时通过思源 `/mcp` 发现；动态 action 不纳入静态 142。
+- **由 extension 暴露原生工具**：运行时通过思源 `/mcp` 发现；动态 action 不纳入静态 143。
 - **仅内核内部使用**：当前内核路由存在，但没有插件后端字面量；不等同于适合暴露给 AI。
 - **不建议引入**：宿主管理、认证回调、任意文件/网络代理等能力，见人工候选区。
 

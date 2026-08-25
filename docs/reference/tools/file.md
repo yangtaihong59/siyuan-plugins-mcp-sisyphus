@@ -1,6 +1,6 @@
 # file
 
-This tool covers asset upload, export, template discovery and management, template rendering, OCR, and asset maintenance.
+This tool covers asset upload, direct visual image delivery, export, template discovery and management, stored OCR, and asset maintenance.
 
 When to read this page: you need to upload assets, export content, find/read/create/update/delete/render templates, or query document-linked resources.
 
@@ -15,10 +15,12 @@ Related pages:
 |------|---------|
 | Upload / export | `upload_asset`, `export_md`, `export_markdown_snapshot`, `export_resources`, `extract_doc` |
 | Templates | `list_templates`, `read_template`, `create_template`, `update_template`, `delete_template`, `save_doc_as_template`, `render` |
-| Asset inspection | `get_doc_assets`, `audit_image_refs`, `get_image_ocr_text`, `list_unused_assets` |
+| Asset inspection | `get_doc_assets`, `audit_image_refs`, `read_image`, `get_image_ocr_text`, `list_unused_assets` |
 | Asset mutations | `remove_unused_assets`, `rename_asset`, `delete_asset` |
 
 `get_doc_assets` is a direct-reference inspection action. It reports assets referenced by the current document tree and does not expand query embed blocks. When you need to inspect the full document content and assets, use `extract_doc`.
+
+When Markdown contains an `assets/...` image and the answer depends on its visual content, vision-capable clients should call `read_image` for one relevant image. The action returns JSON metadata followed by a standard MCP `image` content block; Base64 is not duplicated in `structuredContent`. It does not write a local file or run OCR. `get_image_ocr_text` only reads OCR already stored by SiYuan.
 
 ## Export boundaries
 
@@ -44,6 +46,7 @@ After `export_md`, check the returned document identity fields and content rathe
 - Template writes use SiYuan's workspace file API for `/data/templates/...`; they do not write the local filesystem directly.
 - `export_resources` with a local output path should be treated carefully.
 - `extract_doc` writes to the local filesystem (default `~/siyuan-extracted/`) and clears the entire output directory before each export to prevent accumulation of old extracts. Results include `outputRoot` and `defaultOutputDirUsed`; pass `outputDir` explicitly for predictable paths such as `/private/tmp/...`.
+- `read_image` accepts only referenced `assets/...` paths from an authorized document tree, identifies PNG/JPEG/WebP/GIF by file signature, and rejects images larger than 20 MiB. URLs, local paths, path traversal, and unreferenced assets are rejected.
 
 ## Examples
 
@@ -65,6 +68,18 @@ MCP:
 ```
 
 This returns direct document-tree assets only. It is not a substitute for extracting the document when you need to inspect attachment content.
+
+Read one referenced image directly with a vision-capable MCP client:
+
+```json
+{
+  "action": "read_image",
+  "path": "assets/question.png",
+  "id": "<doc-id>"
+}
+```
+
+Use `documentPath: "/Notebook/Folder/Doc"` instead of `id` when you have a human-readable path. Exactly one authorization field is required. Do not use `fs.read`, `document.get_doc`, or `get_doc_assets` to inline every image automatically.
 
 Audit imported image references without touching local workspace files:
 
@@ -177,8 +192,12 @@ CLI:
 
 ```bash
 siyuan file get-doc-assets --id <doc-id> --asset-type image
+siyuan file read-image --id <doc-id> --path assets/question.png
+siyuan file read-image --id <doc-id> --path assets/question.png --json
 siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 ```
+
+The default CLI rendering shows image metadata only. `--json` also includes the non-text content block and its Base64 data for scripts.
 
 ## Action List
 
@@ -196,6 +215,7 @@ siyuan file extract-doc --id <doc-id> --output-dir ./siyuan-extracted
 - `list_unused_assets`
 - `get_doc_assets`
 - `audit_image_refs`
+- `read_image`
 - `get_image_ocr_text`
 - `remove_unused_assets`
 - `rename_asset`

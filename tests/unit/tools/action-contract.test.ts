@@ -53,7 +53,7 @@ function createContractClient() {
         getAuthHeaders: vi.fn(() => ({ Authorization: 'Token test' })),
         requestFormData: vi.fn(async () => ({ errFiles: [], succMap: { 'asset.txt': 'assets/asset.txt' } })),
         writeFile: vi.fn(async () => undefined),
-        readFileBinary: vi.fn(async () => new Uint8Array([1, 2, 3])),
+        readFileBinary: vi.fn(async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])),
         request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
             if (endpoint.startsWith('/api/ui/')) return null;
             if (endpoint === '/api/query/sql') {
@@ -300,6 +300,7 @@ describe('tool action contract coverage', () => {
             { action: 'list_unused_assets', args: { action: 'list_unused_assets' }, expectedEndpoint: '/api/asset/getUnusedAssets' },
             { action: 'get_doc_assets', args: { action: 'get_doc_assets', id: 'doc-1' }, expectedEndpoint: '/api/asset/getDocAssets' },
             { action: 'audit_image_refs', args: { action: 'audit_image_refs', id: 'doc-1', expectedRefs: ['assets/doc.png'] }, expectedEndpoint: '/api/asset/getDocImageAssets' },
+            { action: 'read_image', args: { action: 'read_image', id: 'doc-1', path: 'assets/doc.png' }, expectedEndpoint: '/api/asset/getDocImageAssets' },
             { action: 'get_image_ocr_text', args: { action: 'get_image_ocr_text', path: 'assets/demo.png' }, expectedEndpoint: '/api/asset/getImageOCRText' },
             { action: 'remove_unused_assets', args: { action: 'remove_unused_assets' }, expectedEndpoint: '/api/asset/removeUnusedAssets' },
             { action: 'rename_asset', args: { action: 'rename_asset', oldPath: 'assets/old.png', newName: 'new.png' }, expectedEndpoint: '/api/asset/renameAsset' },

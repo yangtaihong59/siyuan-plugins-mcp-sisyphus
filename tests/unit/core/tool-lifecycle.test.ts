@@ -106,6 +106,38 @@ describe('mcp/tool-lifecycle', () => {
         });
     });
 
+    it('preserves image blocks while excluding Base64 from analytics and token fields', async () => {
+        const { appendAnalyticsEvent } = await import('@/core/analytics');
+        const metadataText = JSON.stringify({ documentID: 'doc-1', path: 'assets/image.png', bytes: 4 });
+        const base64 = 'BASE64_SENTINEL_SHOULD_NOT_BE_LOGGED';
+
+        const result = await runToolCall(
+            {
+                client: {} as never,
+                category: 'file',
+                name: 'file',
+                action: 'read_image',
+                args: { action: 'read_image', id: 'doc-1', path: 'assets/image.png' },
+                requestText: '{"action":"read_image"}',
+            },
+            async () => ({
+                content: [
+                    { type: 'text', text: metadataText },
+                    { type: 'image', data: base64, mimeType: 'image/png' },
+                ],
+                structuredContent: { documentID: 'doc-1', path: 'assets/image.png', bytes: 4 },
+            }),
+        );
+
+        expect(result.content[1]).toEqual({ type: 'image', data: base64, mimeType: 'image/png' });
+        expect(result.structuredContent).toEqual({ documentID: 'doc-1', path: 'assets/image.png', bytes: 4 });
+        const analytics = vi.mocked(appendAnalyticsEvent).mock.calls[0][1];
+        expect(analytics.responseText).toBe(metadataText);
+        expect(analytics.responseChars).toBe(metadataText.length);
+        expect(analytics.responseApproxTokens).toBe(Math.ceil(metadataText.length / 4));
+        expect(JSON.stringify(analytics)).not.toContain(base64);
+    });
+
     it('strips successful uiRefresh metadata by default before returning and logging analytics', async () => {
         const { appendAnalyticsEvent } = await import('@/core/analytics');
 

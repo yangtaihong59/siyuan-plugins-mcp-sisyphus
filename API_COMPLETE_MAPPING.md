@@ -514,7 +514,7 @@
 | 288 | POST | `/api/sync/createCloudSyncDir` | sync | `createCloudSyncDir` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:342` |
 | 289 | POST | `/api/sync/removeCloudSyncDir` | sync | `removeCloudSyncDir` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:343` |
 | 290 | POST | `/api/sync/listCloudSyncDir` | sync | `listCloudSyncDir` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:344` |
-| 291 | POST | `/api/sync/performSync` | sync | `performSync` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/system.ts:28<br>core:src/core/help.ts:321 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:345` |
+| 291 | POST | `/api/sync/performSync` | sync | `performSync` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/system.ts:28<br>core:src/core/help.ts:324 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:345` |
 | 292 | POST | `/api/sync/performBootSync` | sync | `performBootSync` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:346` |
 | 293 | POST | `/api/sync/getBootSync` | sync | `getBootSync` | ✓ |  |  | 条件可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:347` |
 | 294 | POST | `/api/sync/getSyncInfo` | sync | `getSyncInfo` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:348` |

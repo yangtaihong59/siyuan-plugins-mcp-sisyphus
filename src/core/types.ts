@@ -1303,6 +1303,21 @@ export const FileAuditImageRefsSchema = z.object({
     expectedRefs: z.array(z.string().min(1)).max(4096).describe("Expected image references from source Markdown; no local file is read."),
 });
 
+export const FileReadImageSchema = z.object({
+    action: z.literal("read_image"),
+    path: z.string().min(1).describe("SiYuan image asset path referenced by the document, such as assets/question.png"),
+    id: z.string().min(1).optional().describe("Document ID that references the image"),
+    documentPath: z.string().min(1).optional().describe("Human-readable fs document path, including the notebook name, that references the image"),
+}).superRefine((value, ctx) => {
+    if (Boolean(value.id) === Boolean(value.documentPath)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Provide exactly one of id or documentPath.",
+            path: ["id"],
+        });
+    }
+});
+
 export const FileGetImageOCRTextSchema = z.object({
     action: z.literal("get_image_ocr_text"),
     path: z.string().optional().describe("Asset path; omit to receive an empty OCR text payload"),

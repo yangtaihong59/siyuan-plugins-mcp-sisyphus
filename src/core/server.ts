@@ -36,6 +36,7 @@ import { listHelpResources, listHelpResourceTemplates, readHelpResource } from '
 import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory, TOOL_REGISTRY } from './tool-registry';
 import { runToolCall } from './tool-lifecycle';
 import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from './skills';
+import type { ToolResult } from '../tools/internal/shared';
 
 export { buildServerInstructions } from './server-instructions';
 
@@ -538,9 +539,8 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             },
         );
         // The low-level v2 Server leaves cross-era result projection to the
-        // handler. Our tools currently have text-only output and no advertised
-        // outputSchema, but projecting here keeps modern and legacy shapes in
-        // sync when structured output is introduced later.
+        // handler. Project the complete mixed-content result here so text,
+        // image, and structured metadata stay aligned in both protocol eras.
         const projectedResult = withStructuredContent(result);
         return server.projectCallToolResult(
             compactMcpAppToolResult(name, action, projectedResult, appsEnabled, config.mcpApps),
@@ -551,11 +551,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
     return server;
 }
 
-function withStructuredContent(result: {
-    content: Array<{ type: 'text'; text: string }>;
-    isError?: boolean;
-    structuredContent?: Record<string, unknown>;
-}): CallToolResult {
+function withStructuredContent(result: ToolResult): CallToolResult {
     if (result.structuredContent) return result as CallToolResult;
 
     const text = result.content.find((item) => item.type === 'text')?.text ?? '';

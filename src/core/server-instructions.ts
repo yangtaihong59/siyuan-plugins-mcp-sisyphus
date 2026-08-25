@@ -193,6 +193,8 @@ For basic path-style notebook and document operations, use \`fs\` whenever the t
 
 \`fs\` is a Markdown-oriented convenience layer. It converts document content through Markdown and Kramdown for reading and writing, so it is not a full-fidelity editor for complex SiYuan-native structures. Use it for ordinary prose, headings, lists, simple tables, exact paragraph/heading text replacement, and path-based file workflows. Prefer lower-level tools when the task involves precise block tree structure, block attributes, embeds, media, query embeds, database rows and cells, flashcard deck bindings, or other native structures that are not naturally represented as Markdown.
 
+When Markdown contains an \`assets/...\` image and answering depends on its visual content, a vision-capable client should call \`file(action="read_image", path="assets/...", id="<document-id>")\` or provide \`documentPath="/Notebook/Folder/Doc"\` instead of \`id\`. Read one relevant image per call; do not make \`fs.read\`, \`document.get_doc\`, or \`get_doc_assets\` inline all images automatically. \`get_image_ocr_text\` only returns OCR text already stored by SiYuan and does not perform recognition, so use it as a fallback when direct vision is unavailable.
+
 The document tool uses exactly two path types. Do not mix them.
 
 | Type | Used by | Example | Notebook name? |

@@ -11,8 +11,25 @@ import {
     normalizeJsonSchema,
 } from './schema-analyzer';
 
+export interface ToolTextContent {
+    type: 'text';
+    text: string;
+    data?: never;
+    mimeType?: never;
+}
+
+export interface ToolImageContent {
+    type: 'image';
+    data: string;
+    mimeType: string;
+    text?: never;
+    _meta?: Record<string, unknown>;
+}
+
+export type ToolContent = ToolTextContent | ToolImageContent;
+
 export interface ToolResult {
-    content: Array<{ type: 'text'; text: string }>;
+    content: ToolContent[];
     isError?: boolean;
     structuredContent?: Record<string, unknown>;
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
 import { callFileTool, listFileTools } from '@/tools/file';
+import { MAX_INLINE_IMAGE_BYTES } from '@/tools/file/handlers';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
 
@@ -55,6 +56,16 @@ vi.mock('@/tools/internal/context', () => ({
             name: id.startsWith('same-') ? 'Same' : id === 'doc-2' ? 'Doc 2' : 'My Document',
         },
         denied: null,
+    })),
+}));
+
+vi.mock('@/tools/internal/helpers/fs-path', () => ({
+    resolveFsScopePath: vi.fn(async () => ({
+        type: 'document',
+        id: 'doc-from-path',
+        notebook: 'nb-1',
+        path: '/doc-from-path.sy',
+        hPath: '/Folder/Doc',
     })),
 }));
 
@@ -229,6 +240,7 @@ describe('file tool asset actions', () => {
         expect(actionDescription).toContain('list_unused_assets');
         expect(actionDescription).toContain('get_doc_assets');
         expect(actionDescription).toContain('audit_image_refs');
+        expect(actionDescription).toContain('read_image');
         expect(actionDescription).toContain('get_image_ocr_text');
         expect(actionDescription).toContain('remove_unused_assets');
         expect(actionDescription).toContain('rename_asset');
@@ -583,6 +595,159 @@ describe('file tool asset actions', () => {
         });
     });
 
+    it.each([
+        ['PNG', 'image/png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])],
+        ['JPEG', 'image/jpeg', new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x01])],
+        ['WebP', 'image/webp', new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x01])],
+        ['GIF', 'image/gif', new TextEncoder().encode('GIF89a!')],
+    ])('returns %s bytes as metadata plus one MCP image block', async (_format, mimeType, data) => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getDocImageAssets).mockResolvedValueOnce(['assets/cover.fake']);
+        const readFileBinary = vi.fn().mockResolvedValue(data);
+        const localClient = createMockClient({ readFileBinary });
+
+        const result = await callFileTool(localClient, {
+            action: 'read_image',
+            id: 'doc-1',
+            path: '/data/assets/cover.fake',
+        }, config.file, {} as never);
+
+        expect(result.isError).not.toBe(true);
+        expect(result.content).toEqual([
+            {
+                type: 'text',
+                text: JSON.stringify({
+                    documentID: 'doc-1',
+                    path: 'assets/cover.fake',
+                    mimeType,
+                    bytes: data.byteLength,
+                    delivery: 'mcp_image',
+                }, null, 2),
+            },
+            {
+                type: 'image',
+                data: Buffer.from(data).toString('base64'),
+                mimeType,
+            },
+        ]);
+        expect(result.structuredContent).toEqual({
+            documentID: 'doc-1',
+            path: 'assets/cover.fake',
+            mimeType,
+            bytes: data.byteLength,
+            delivery: 'mcp_image',
+        });
+        expect(readFileBinary).toHaveBeenCalledWith('/data/assets/cover.fake');
+    });
+
+    it('authorizes read_image with a human-readable document path', async () => {
+        const fsPath = await import('@/tools/internal/helpers/fs-path');
+        const context = await import('@/tools/internal/context');
+        const readFileBinary = vi.fn().mockResolvedValue(new Uint8Array([0xff, 0xd8, 0xff, 0x01]));
+        const localClient = createMockClient({ readFileBinary });
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getDocImageAssets).mockResolvedValueOnce(['/assets/cover.png']);
+
+        const result = await callFileTool(localClient, {
+            action: 'read_image',
+            documentPath: '/Notebook/Folder/Doc',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).not.toBe(true);
+        expect(fsPath.resolveFsScopePath).toHaveBeenCalledWith(localClient, expect.anything(), '/Notebook/Folder/Doc', 'read');
+        expect(context.ensurePermissionForNotebook).toHaveBeenCalledWith(expect.anything(), 'nb-1', 'read');
+        expect(result.structuredContent).toMatchObject({ documentID: 'doc-from-path', path: 'assets/cover.png' });
+    });
+
+    it('returns the document permission denial before reading image assets', async () => {
+        const context = await import('@/tools/internal/context');
+        const fileApi = await import('@/api/file');
+        const denied = {
+            isError: true,
+            content: [{ type: 'text' as const, text: JSON.stringify({ error: { type: 'permission_denied' } }) }],
+        };
+        vi.mocked(context.ensurePermissionForDocumentId).mockResolvedValueOnce({ denied } as never);
+        const readFileBinary = vi.fn();
+
+        const result = await callFileTool(createMockClient({ readFileBinary }), {
+            action: 'read_image',
+            id: 'private-doc',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result).toBe(denied);
+        expect(fileApi.getDocImageAssets).not.toHaveBeenCalled();
+        expect(readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['URL', 'https://example.com/image.png'],
+        ['local path', '/private/tmp/image.png'],
+        ['path traversal', 'assets/../secret.png'],
+        ['encoded path traversal', 'assets/%2e%2e/secret.png'],
+        ['encoded slash traversal', 'assets/safe%2f..%2fsecret.png'],
+    ])('rejects a %s image path before API access', async (_label, imagePath) => {
+        const readFileBinary = vi.fn();
+        const result = await callFileTool(createMockClient({ readFileBinary }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: imagePath,
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it('requires exactly one document authorization field', async () => {
+        for (const args of [
+            { action: 'read_image', path: 'assets/cover.png' },
+            { action: 'read_image', path: 'assets/cover.png', id: 'doc-1', documentPath: '/Notebook/Doc' },
+        ]) {
+            const result = await callFileTool(client, args, config.file, {} as never);
+            expect(result.isError).toBe(true);
+            expect(result.content[0].text).toContain('exactly one');
+        }
+    });
+
+    it('rejects an image that is not referenced by the authorized document', async () => {
+        const readFileBinary = vi.fn();
+        const result = await callFileTool(createMockClient({ readFileBinary }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: 'assets/not-referenced.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('is not referenced');
+        expect(readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it('trusts the file signature instead of the extension and rejects unsupported data', async () => {
+        const data = new TextEncoder().encode('%PDF-1.7');
+        const result = await callFileTool(createMockClient({ readFileBinary: vi.fn().mockResolvedValue(data) }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('Unsupported image data');
+    });
+
+    it('rejects images larger than 20 MiB before Base64 encoding', async () => {
+        const data = new Uint8Array(MAX_INLINE_IMAGE_BYTES + 1);
+        const result = await callFileTool(createMockClient({ readFileBinary: vi.fn().mockResolvedValue(data) }), {
+            action: 'read_image',
+            id: 'doc-1',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('too large');
+        expect(result.content[0].text).toContain(String(MAX_INLINE_IMAGE_BYTES));
+    });
+
     it('returns OCR text for an image asset', async () => {
         const result = await callFileTool(client, {
             action: 'get_image_ocr_text',
@@ -592,6 +757,23 @@ describe('file tool asset actions', () => {
         expect(parseResult(result)).toEqual({
             path: 'assets/cover.png',
             text: 'recognized text',
+        });
+    });
+
+    it('guides empty stored OCR results to read_image without changing non-empty OCR', async () => {
+        const fileApi = await import('@/api/file');
+        vi.mocked(fileApi.getImageOCRText).mockResolvedValueOnce({ text: '' });
+
+        const result = await callFileTool(client, {
+            action: 'get_image_ocr_text',
+            path: 'assets/cover.png',
+        }, config.file, {} as never);
+
+        expect(parseResult(result)).toMatchObject({
+            path: 'assets/cover.png',
+            text: '',
+            available: false,
+            hint: expect.stringContaining('file(action="read_image"'),
         });
     });
 
