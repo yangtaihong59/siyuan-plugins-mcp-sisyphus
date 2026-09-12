@@ -247,7 +247,7 @@ export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     duplicate: 'Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.',
     get_primary_key_values: 'Returns the AV name plus primary-key rows, with optional keyword/page/pageSize filtering.',
     add_view: 'Provide avID + exact NodeAttributeView blockID + a new stable viewID + table/gallery/kanban + name. First run validateOnly=true. It does not use render; kanban requires an existing select key to avoid an implicit schema write.',
-    set_filters: 'Provide avID + exact carrier blockID + its current viewID + the complete typed recursive filter tree. [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.',
+    set_filters: 'Provide avID + exact carrier blockID + its current viewID + the complete typed filter tree (group nesting capped at 5 levels). [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.',
     set_sorts: 'Provide avID + exact carrier blockID + its current viewID + the complete [{column, order}] array. [] clears all sorts; partial patch input is rejected by contract. First run validateOnly=true.',
     set_group: 'Provide avID + exact carrier blockID + its current viewID + group. field="" clears grouping; numeric range method requires range. First run validateOnly=true.',
     set_column_visibility: 'Provide avID + exact carrier blockID + its current viewID + keyID + hidden. keyID must exist in that view layout. First run validateOnly=true.',
