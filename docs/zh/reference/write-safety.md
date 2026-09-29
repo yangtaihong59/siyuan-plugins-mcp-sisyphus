@@ -79,6 +79,8 @@
 
 ## 边界
 
+外部操作（包括 `feedback.submit`）在用户授权后使用业务参数直接调用，不传 `validateOnly`、`requestId` 或哈希凭证。工具声明仅对已启用的严格修改操作提供预检字段；混合工具会列出哪些 action 需要预检。误传 `validateOnly` 会返回零执行错误和后续操作提示。
+
 MCP 2026-07-28 高危操作确认会区分 `confirmation_declined`（客户端明确拒绝或 `confirm=false`）、`confirmation_cancelled`（客户端明确取消）和 `confirmation_invalid`（响应格式无效、字段缺失或类型错误）。只有明确取消才返回 `cancelled=true`。无效响应不代表用户撤回授权；应检查客户端的 elicitation 支持，不能跳过确认。确认通过后仍执行原有权限与严格预检校验。
 
 `extension` 转发的第三方或思源原生 Tool 不在 Sisyphus 的控制范围内，因此不会宣称严格写入保证。本地导出、通知、同步和反馈等外部副作用也无法通过思源状态读回验证：`validateOnly` 会拒绝且保证不执行；真实调用仍保持单次传输，但响应会明确给出 `writeSafetyGuaranteed: false`。

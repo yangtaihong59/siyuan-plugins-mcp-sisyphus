@@ -106,10 +106,23 @@ export class WriteSafetyCoordinator {
         }
         if (policy.mode === 'external') {
             if (execution.args.validateOnly === true) {
-                return writeSafetyFailure(
-                    'preflight_unavailable',
-                    'This action has an external or local side effect that cannot be verified by the strict write coordinator. Nothing was executed.',
-                );
+                return jsonResult({
+                    success: false,
+                    writeSafetyMode: execution.strictMode ? 'strict' : 'legacy',
+                    writeAttempted: false,
+                    writeExecuted: false,
+                    transactionState: 'rejected',
+                    error: {
+                        code: 'preflight_unavailable',
+                        message: 'This action has an external or local side effect that cannot be verified by the strict write coordinator. Nothing was executed.',
+                        hint: `After the user authorizes the exact external action ${execution.category}.${execution.action}, submit the same business arguments without validateOnly, requestId or hash credentials. Do not retry an uncertain submission automatically.`,
+                    },
+                    safety: {
+                        writeSafetyMode: execution.strictMode ? 'strict' : 'legacy',
+                        writeSafetyGuaranteed: false,
+                        reason: 'external_uncontrolled',
+                    },
+                }, true);
             }
             return addSafetyMetadata(await execution.execute(stripSafetyFields(execution.args)), {
                 writeSafetyMode: execution.strictMode ? 'strict' : 'legacy',

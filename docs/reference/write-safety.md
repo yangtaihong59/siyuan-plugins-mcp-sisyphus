@@ -79,6 +79,8 @@ If active hashes in the same operation scope share four digits, a new preflight 
 
 ## Boundaries
 
+After user authorization, invoke external actions such as `feedback.submit` with business arguments only, without `validateOnly`, `requestId`, or hash credentials. Tool schemas advertise preflight fields only for enabled strict mutations; mixed tools name the applicable actions. An accidental `validateOnly` request returns a zero-execution error with a recovery hint.
+
 MCP 2026-07-28 confirmation distinguishes `confirmation_declined` (explicit client refusal or `confirm=false`), `confirmation_cancelled` (explicit client cancellation), and `confirmation_invalid` (malformed, missing, or incorrectly typed content). Only explicit cancellation sets `cancelled=true`. Invalid content does not mean the user withdrew authorization: check client elicitation support without bypassing confirmation. Accepted confirmation still passes through permission and strict preflight checks.
 
 Third-party and native SiYuan tools forwarded through `extension` are outside Sisyphus control and do not receive this guarantee. Local exports, notifications, sync, and feedback are also external side effects that cannot be verified through SiYuan state readback: `validateOnly` rejects without executing, while a real call still uses single-attempt transport and returns `writeSafetyGuaranteed: false`.

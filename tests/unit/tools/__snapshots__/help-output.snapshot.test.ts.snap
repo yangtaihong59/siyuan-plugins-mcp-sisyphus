@@ -757,7 +757,9 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "avID": "<avID>",
           "blockID": "<blockID>",
           "filters": [
-            "<filtersItem>",
+            {
+              "column": "<column>",
+            },
           ],
           "viewID": "<viewID>",
         },
@@ -3068,13 +3070,14 @@ Currently exposed actions: help, list, validate_package, diagnose_plugin_mcp.",
         "fullDocResource": "siyuan://help/action/feedback/submit",
         "guidance": [
           "feedback submits plain-text product feedback to the developer through the configured WPS form channel.",
+          "After user authorization, submit without validateOnly, requestId or hash credentials, even in strict mode. External feedback has no strict state preflight or replay guarantee; do not automatically retry an uncertain submission.",
           "Use feedback(action="submit") when the user asks you to pass along feedback, or when an AI client needs to report MCP tool friction after explaining what will be sent.",
           "Prefer GitHub Issue-style feedback for bugs, confusing names/parameters/help/errors, or rough workflows encountered during an AI session.",
           "Put the full issue-style body in description with these headings when useful: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix.",
           "Use impact for a one- or two-sentence impact summary, and suggestion for the most direct improvement idea without repeating the full description.",
           "Do not include secrets, private note content, API tokens, or sensitive document paths in feedback.",
         ],
-        "hint": "Sends plain-text feedback. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
+        "hint": "Sends plain-text feedback after user authorization, without validateOnly, requestId or hash credentials even in strict mode. External submissions have no strict replay guarantee; do not automatically retry an uncertain submission. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
         "requiredFields": [
           "description",
         ],
@@ -3092,14 +3095,14 @@ Common actions: submit. Required fields: submit: description.
 Parameter contract per action (fields outside the action's optional list should not be sent):
 feedback.submit: required [description] | optional [impact, suggestion, agent, source]
 
-feedback submits plain-text product feedback to the developer through the configured WPS form channel. Use feedback(action="submit") when the user asks you to pass along feedback, or when an AI client needs to report MCP tool friction after explaining what will be sent.",
+feedback submits plain-text product feedback to the developer through the configured WPS form channel. After user authorization, submit without validateOnly, requestId or hash credentials, even in strict mode. External feedback has no strict state preflight or replay guarantee; do not automatically retry an uncertain submission.",
     "overview": {
       "actionSummaries": {
-        "submit": "Sends plain-text feedback. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
+        "submit": "Sends plain-text feedback after user authorization, without validateOnly, requestId or hash credentials even in strict mode. External submissions have no strict replay guarantee; do not automatically retry an uncertain submission. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
       },
       "actions": {
         "submit": {
-          "hint": "Sends plain-text feedback. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
+          "hint": "Sends plain-text feedback after user authorization, without validateOnly, requestId or hash credentials even in strict mode. External submissions have no strict replay guarantee; do not automatically retry an uncertain submission. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
           "requiresConfirmation": false,
         },
       },
@@ -3110,6 +3113,7 @@ feedback submits plain-text product feedback to the developer through the config
       "detailsHint": "Call feedback(action="help", topic="<actionName>") for required fields, shapes, and a minimal example.",
       "guidance": [
         "feedback submits plain-text product feedback to the developer through the configured WPS form channel.",
+        "After user authorization, submit without validateOnly, requestId or hash credentials, even in strict mode. External feedback has no strict state preflight or replay guarantee; do not automatically retry an uncertain submission.",
         "Use feedback(action="submit") when the user asks you to pass along feedback, or when an AI client needs to report MCP tool friction after explaining what will be sent.",
         "Prefer GitHub Issue-style feedback for bugs, confusing names/parameters/help/errors, or rough workflows encountered during an AI session.",
         "Put the full issue-style body in description with these headings when useful: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix.",

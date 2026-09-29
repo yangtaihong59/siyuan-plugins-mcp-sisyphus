@@ -352,6 +352,33 @@ describe('HTTP MCP concurrency', () => {
         expect(JSON.stringify(logs)).not.toContain('previousID');
     });
 
+    it('provides a usable feedback path in strict mode without sending during preflight', async () => {
+        const defaultFetch = vi.mocked(global.fetch).getMockImplementation()!;
+        const wps = vi.fn(async (_url, init) => jsonResponse(init?.method === 'POST'
+            ? { code: 0, data: { aid: 'mock-feedback' } }
+            : { code: 0, data: { token: 'mock-token', setting: { baseSetting: { commitConfig: { options: [{ id: 'mock-option' }] } } } } }));
+        vi.mocked(global.fetch).mockImplementation((url, init) => String(url).startsWith('https://f-api.wps.cn/')
+            ? wps(url, init) : defaultFetch(url, init));
+        serverHandle = await startHttpMcpServer({ host: '127.0.0.1', port: await getAvailablePort(), path: '/mcp', serverFactory: createSiYuanServer });
+        const client = new Client({ name: 'feedback-regression', version: '1.0.0' }, { versionNegotiation: { mode: 'auto' } });
+        const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serverHandle.port}/mcp`));
+        clients.push(client);
+        transports.push(transport);
+        await client.connect(transport);
+        const tools = await client.listTools();
+        const feedback = tools.tools.find(tool => tool.name === 'feedback')!;
+        expect(feedback.inputSchema.properties).not.toHaveProperty('validateOnly');
+        const args = { action: 'submit', description: 'isolated mock feedback' };
+        const preflight = await client.callTool({ name: 'feedback', arguments: { ...args, validateOnly: true } });
+        expect(parseToolResultText(preflight)).toMatchObject({
+            writeExecuted: false, error: { code: 'preflight_unavailable', hint: expect.stringContaining('without validateOnly') },
+        });
+        expect(wps).not.toHaveBeenCalled();
+        const result = await client.callTool({ name: 'feedback', arguments: args });
+        expect(parseToolResultText(result)).toMatchObject({ success: true, safety: { writeSafetyGuaranteed: false } });
+        expect(wps.mock.calls.map(([, init]) => init.method)).toEqual(['GET', 'POST']);
+    });
+
     it.each([
         null,
         { method: 'elicitation/create', result: { action: 'accept', content: { confirm: true } } },

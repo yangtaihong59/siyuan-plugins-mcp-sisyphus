@@ -1042,18 +1042,20 @@ describe('write safety coordinator', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
-    it('never treats validateOnly as permission to execute an external side effect', async () => {
+    it.each(['feedback', 'system'] as const)('never treats validateOnly as permission to execute an external side effect (%s)', async (category) => {
         const execute = vi.fn();
         const result = parseResult(await new WriteSafetyCoordinator({} as never).run({
             client: {} as never,
             permMgr: createMockPermissionManager(),
-            category: 'system',
-            action: 'perform_sync',
-            args: { action: 'perform_sync', validateOnly: true },
+            category,
+            action: category === 'feedback' ? 'submit' : 'perform_sync',
+            args: { action: category === 'feedback' ? 'submit' : 'perform_sync', validateOnly: true },
             strictMode: true,
             execute,
         }));
         expect(result.error.code).toBe('preflight_unavailable');
+        expect(result.error.hint).toContain('without validateOnly');
+        expect(result.safety.writeSafetyGuaranteed).toBe(false);
         expect(execute).not.toHaveBeenCalled();
     });
 

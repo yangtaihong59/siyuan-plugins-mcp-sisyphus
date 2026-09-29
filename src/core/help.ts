@@ -167,6 +167,7 @@ export const MASCOT_GUIDANCE: string[] = [
 
 export const FEEDBACK_GUIDANCE: string[] = [
     'feedback submits plain-text product feedback to the developer through the configured WPS form channel.',
+    'After user authorization, submit without validateOnly, requestId or hash credentials, even in strict mode. External feedback has no strict state preflight or replay guarantee; do not automatically retry an uncertain submission.',
     'Use feedback(action="submit") when the user asks you to pass along feedback, or when an AI client needs to report MCP tool friction after explaining what will be sent.',
     'Prefer GitHub Issue-style feedback for bugs, confusing names/parameters/help/errors, or rough workflows encountered during an AI session.',
     'Put the full issue-style body in description with these headings when useful: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix.',
@@ -342,7 +343,7 @@ export const MASCOT_ACTION_HINTS: Partial<Record<MascotAction, string>> = {
 };
 
 export const FEEDBACK_ACTION_HINTS: Partial<Record<FeedbackAction, string>> = {
-    submit: 'Sends plain-text feedback. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.',
+    submit: 'Sends plain-text feedback after user authorization, without validateOnly, requestId or hash credentials even in strict mode. External submissions have no strict replay guarantee; do not automatically retry an uncertain submission. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.',
 };
 
 export const EXTENSION_ACTION_HINTS: Partial<Record<string, string>> = {

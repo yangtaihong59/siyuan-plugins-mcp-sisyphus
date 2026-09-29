@@ -2,6 +2,12 @@
 
 `feedback` 工具用于向插件开发者提交纯文本产品反馈。
 
+## 严格模式下的提交
+
+用户确认发送内容后，直接调用 `submit`，不传 `validateOnly`、`requestId` 或哈希凭证。反馈发送到外部 WPS 表单，不适用笔记状态预检与幂等重放保证，响应中的 `safety.writeSafetyGuaranteed` 为 `false`。
+
+误传 `validateOnly: true` 时不会发送任何反馈，返回 `preflight_unavailable` 和 `error.hint`，说明如何继续提交。若正式提交超时或响应丢失，不能确定是否已发送，请勿自动重试。
+
 ## 动作
 
 | 动作 | 用途 |
