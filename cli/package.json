@@ -8,7 +8,8 @@
   },
   "files": [
     "dist/cli.cjs",
-    "dist/skills/**",
+    "dist/skills/siyuan-mcp/**",
+    "dist/skills/siyuan-sisyphus/**",
     "README.md"
   ],
   "engines": {
