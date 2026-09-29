@@ -19,7 +19,7 @@ const read = (): ActionSafetyPolicy => ({ mode: 'read' });
 const external = (): ActionSafetyPolicy => ({ mode: 'external' });
 const mutation = (
     precondition: WritePrecondition = 'none',
-    validateOnly = precondition !== 'none',
+    validateOnly = true,
 ): ActionSafetyPolicy => ({ mode: 'mutation', precondition, validateOnly });
 
 /**

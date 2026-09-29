@@ -134,7 +134,10 @@ function createTextResult(result: ToolResult, value: unknown): ToolResult {
 }
 
 function shouldBypassSlimming(ctx: SlimContext): boolean {
-    return ctx.category === 'extension'
+    // AV arrays contain semantic content (select options, assets and cell values),
+    // not generic search-result summaries. Preserve the native payload verbatim.
+    return ctx.category === 'av'
+        || ctx.category === 'extension'
         || ctx.category === 'timeline'
         || (ctx.category === 'file' && ctx.action === 'read_image')
         || (ctx.category === 'search' && ctx.action === 'query_sql')

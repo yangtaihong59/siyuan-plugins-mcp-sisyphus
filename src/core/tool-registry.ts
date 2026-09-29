@@ -199,12 +199,12 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
     const properties = { ...(inputSchema.properties ?? {}) };
     properties.requestId = {
         type: 'string',
-        pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
-        description: 'Fresh UUIDv7. Required when executing any strict write; omit for validateOnly preflight.',
+        pattern: '^[a-f0-9]{4,64}$',
+        description: 'Server-issued request ID (4+ hex characters). Copy from validateOnly preflight; reuse unchanged for retries. Do not generate or truncate it.',
     };
     properties.validateOnly = {
         type: 'boolean',
-        description: 'Preflight only. Returns a temporary in-memory hash credential and never executes the write.',
+        description: 'Preflight only. Returns a server-issued requestId and, when required, a bare short hash credential. Never executes the mutation.',
     };
     for (const field of Object.values(PRECONDITION_FIELD)) {
         properties[field] = {
@@ -259,7 +259,7 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
 
     return {
         ...descriptor,
-        description: `${descriptor.description ?? ''}\n\nStrict safe writes are enabled. Run a mutation with validateOnly=true to obtain a temporary in-memory hash credential, then execute with a fresh requestId and that credential before its lease expires.`,
+        description: `${descriptor.description ?? ''}\n\nStrict safe writes are enabled. Run every mutation with validateOnly=true to obtain requestId and any required short hash credential, then copy both into execution before expiry. Reuse requestId unchanged for retries.`,
         inputSchema,
     };
 }

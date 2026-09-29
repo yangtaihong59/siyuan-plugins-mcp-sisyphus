@@ -2101,7 +2101,7 @@ describe('av tool', () => {
     it('returns the AV payload for get', async () => {
         const result = await callAvTool(client, {
             action: 'get',
-            id: 'av-1',
+            avID: 'av-1',
         }, enabledActions('get'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toMatchObject({
@@ -2131,7 +2131,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'get',
-            id: 'av-empty',
+            avID: 'av-empty',
             blockID: 'db-block-empty',
         }, enabledActions('get'), permMgr);
 
@@ -2160,7 +2160,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'get',
-            id: 'av-empty',
+            avID: 'av-empty',
         }, enabledActions('get'), permMgr);
 
         expect(vi.mocked(searchApi.querySQL).mock.calls[0][1]).toContain("type = 'av'");
@@ -2208,7 +2208,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'get',
-            id: 'av-misaligned',
+            avID: 'av-misaligned',
         }, enabledActions('get'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({
@@ -2268,7 +2268,7 @@ describe('av tool', () => {
                 kernel: 'attribute_view_name_or_kernel_candidates',
                 fallback: 'primary_key_values',
             },
-            results: [{ id: 'av-a', avID: 'av-a', renderArgs: { action: 'render', id: 'av-a' } }],
+            results: [{ id: 'av-a', avID: 'av-a', renderArgs: { action: 'render', avID: 'av-a' } }],
             unresolvedResults: [],
             rawResultCount: 2,
             filteredOutCount: 1,
@@ -2342,7 +2342,7 @@ describe('av tool', () => {
                 id: 'av-a',
                 avName: '测试',
                 blockID: 'db-block-1',
-                renderArgs: { action: 'render', id: 'av-a' },
+                renderArgs: { action: 'render', avID: 'av-a' },
             }],
             unresolvedResults: [],
             rawResultCount: 1,
@@ -2390,7 +2390,7 @@ describe('av tool', () => {
                 avName: '测试',
                 blockID: 'row-block-1',
                 blockIDs: ['row-block-1'],
-                renderArgs: { action: 'render', id: '20260407011715-lmkb6df' },
+                renderArgs: { action: 'render', avID: '20260407011715-lmkb6df' },
                 rows: { values: [{ id: 'row-1', blockID: 'item-1', block: { id: 'row-block-1', content: 'av row seed' } }] },
                 matchedRowCount: 1,
                 matchSource: 'primary_key',
@@ -3827,7 +3827,7 @@ describe('av tool', () => {
     it('renders an attribute view with optional context', async () => {
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-1',
+            avID: 'av-1',
             viewID: 'view-1',
             page: 2,
         }, enabledActions('render'), permMgr);
@@ -3934,7 +3934,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-1',
+            avID: 'av-1',
             page: 3,
         }, enabledActions('render'), permMgr);
 
@@ -3968,7 +3968,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-1',
+            avID: 'av-1',
             pageSize: -1,
         }, enabledActions('render'), permMgr);
 
@@ -4022,7 +4022,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-1',
+            avID: 'av-1',
         }, enabledActions('render'), permMgr);
 
         const parsed = JSON.parse(result.content[0].text);
@@ -4066,7 +4066,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-1',
+            avID: 'av-1',
         }, enabledActions('render'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toMatchObject({
@@ -4077,7 +4077,7 @@ describe('av tool', () => {
         });
     });
 
-    it('requires id when createIfNotExist is not enabled', async () => {
+    it('requires avID when createIfNotExist is not enabled', async () => {
         const avApi = await import('@/api/av');
         const result = await callAvTool(client, {
             action: 'render',
@@ -4089,7 +4089,7 @@ describe('av tool', () => {
                 type: 'internal_error',
                 tool: 'av',
                 action: 'render',
-                message: 'av(action="render") requires id unless createIfNotExist=true is provided.',
+                message: 'av(action="render") requires avID unless createIfNotExist=true is provided.',
             },
         });
         expect(vi.mocked(avApi.renderAttributeView)).not.toHaveBeenCalled();
@@ -4130,7 +4130,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-new',
+            avID: 'av-new',
             blockID: 'target-doc',
             createIfNotExist: true,
         }, enabledActions('render'), permMgr);
@@ -4280,7 +4280,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-missing',
+            avID: 'av-missing',
             blockID: 'target-doc',
             createIfNotExist: true,
         }, enabledActions('render'), permMgr);
@@ -4328,7 +4328,7 @@ describe('av tool', () => {
 
             const pending = callAvTool(client, {
                 action: 'render',
-                id: 'av-stuck',
+                avID: 'av-stuck',
                 blockID: 'target-doc',
                 createIfNotExist: true,
             }, enabledActions('render'), permMgr);
@@ -4381,7 +4381,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-new',
+            avID: 'av-new',
             blockID: 'blocked-doc',
             createIfNotExist: true,
         }, enabledActions('render'), permMgr);
@@ -4404,7 +4404,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'render',
-            id: 'av-new',
+            avID: 'av-new',
             createIfNotExist: true,
         }, enabledActions('render'), permMgr);
 
@@ -4420,14 +4420,16 @@ describe('av tool', () => {
     });
 
     it('returns attribute view keys', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: { id: 'av-1', keyValues: [{ key: { id: 'k1', name: 'Title', type: 'block' }, values: [{ block: { id: 'block-1' }, blockID: 'row-1' }] }] } });
         const result = await callAvTool(client, {
             action: 'get_attribute_view_keys',
-            id: 'av-1',
+            avID: 'av-1',
         }, enabledActions('get_attribute_view_keys'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({
             avID: 'av-1',
-            keys: [{ id: 'k1', name: 'Title' }],
+            keys: [{ id: 'k1', name: 'Title', type: 'block' }],
         });
     });
 
@@ -4446,7 +4448,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'get_attribute_view_keys',
-            id: 'av-1',
+            avID: 'av-1',
         }, enabledActions('get_attribute_view_keys'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({
@@ -4462,7 +4464,7 @@ describe('av tool', () => {
         const avApi = await import('@/api/av');
         const result = await callAvTool(client, {
             action: 'get_attribute_view_filter_sort',
-            id: 'av-1',
+            avID: 'av-1',
             blockID: 'block-av-1',
         }, enabledActions('get_attribute_view_filter_sort'), permMgr);
 
@@ -4482,7 +4484,7 @@ describe('av tool', () => {
         const avApi = await import('@/api/av');
         const result = await callAvTool(client, {
             action: 'get_attribute_view_filter_sort',
-            id: 'av-1',
+            avID: 'av-1',
         }, enabledActions('get_attribute_view_filter_sort'), permMgr);
 
         expect(result.isError).toBeUndefined();
@@ -4630,7 +4632,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'get',
-            id: 'av-stale',
+            avID: 'av-stale',
         }, enabledActions('get'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({
@@ -4664,7 +4666,7 @@ describe('av tool', () => {
 
         const result = await callAvTool(client, {
             action: 'get',
-            id: 'av-row-stale',
+            avID: 'av-row-stale',
         }, enabledActions('get'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({

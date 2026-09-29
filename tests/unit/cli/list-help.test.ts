@@ -43,6 +43,8 @@ describe('cli/list-help', () => {
         Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: false });
         vi.spyOn(pluginCheck, 'ensureRequiredPluginInstalled').mockResolvedValue(undefined);
         vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue('');
+        // Extension discovery must not probe the user's running kernel or reuse its CLI profile token.
+        vi.spyOn(SiYuanClient.prototype, 'requestRead').mockRejectedValue(new Error('Live API access is disabled in CLI help unit tests'));
         delete process.env.SIYUAN_API_URL;
         delete process.env.SIYUAN_TOKEN;
     });

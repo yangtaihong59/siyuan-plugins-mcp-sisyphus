@@ -20,10 +20,10 @@ describe('MCP App documentation preview source contract', () => {
         expect(appSource).toContain("label: '猫猫皇冠'");
     });
 
-    it('preflights App mutations and executes them with UUIDv7 idempotency', () => {
+    it('preflights App mutations and executes them with server-issued idempotency', () => {
         expect(appSource).toContain('arguments: { ...args, validateOnly: true }');
-        expect(appSource).toContain('requestId: createUuidV7()');
+        expect(appSource).toContain('requestId: payload.requestId');
         expect(appSource).toContain("toolErrorCode(preflight) === 'strict_mode_disabled'");
-        expect(appSource).toContain('bytes[6] = 0x70');
+        expect(appSource).toContain("typeof payload?.requestId !== 'string'");
     });
 });

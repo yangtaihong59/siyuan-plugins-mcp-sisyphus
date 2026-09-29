@@ -38,6 +38,13 @@ const blockSchema = {
 };
 
 describe('cli/flag-mapper', () => {
+    it('preserves the help topic flag instead of silently falling back to the tool index', () => {
+        const result = mapFlagsToArgs(['--topic', 'ai-layout-guide'], {
+            properties: { action: { type: 'string' }, topic: { type: 'string' } },
+        }, { category: 'fs', action: 'help' });
+        expect(result).toEqual({ args: { topic: 'ai-layout-guide' }, warnings: [] });
+    });
+
     it.each(['--block-start', '--block_start', '--blockStart'])(
         'maps %s to the canonical blockStart window parameter',
         (flag) => {
@@ -246,7 +253,7 @@ describe('cli/flag-mapper', () => {
             type: 'object',
             properties: {
                 action: { type: 'string' },
-                id: { type: 'string' },
+                avID: { type: 'string' }, id: { type: 'string' },
             },
         };
         const blockSchema = {
@@ -258,7 +265,7 @@ describe('cli/flag-mapper', () => {
         };
 
         expect(mapFlagsToArgs(['--av-id', 'av-1'], avSchema, { category: 'av', action: 'render' }).args)
-            .toEqual({ id: 'av-1' });
+            .toEqual({ avID: 'av-1' });
         expect(mapFlagsToArgs(['--id', 'block-1'], blockSchema, { category: 'block', action: 'word_count' }).args)
             .toEqual({ ids: ['block-1'] });
     });

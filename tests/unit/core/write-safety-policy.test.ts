@@ -62,6 +62,12 @@ describe('write safety action policy', () => {
         const strictBlock = listAllTools(strict).find((tool) => tool.name === 'block')!;
         expect(strictBlock.inputSchema.properties).toHaveProperty('requestId');
         expect(strictBlock.inputSchema.properties).toHaveProperty('expectedStateHash');
+        const requestPattern = new RegExp((strictBlock.inputSchema.properties as any).requestId.pattern);
+        expect(requestPattern.test('b72f')).toBe(true);
+        expect(requestPattern.test('b72f0')).toBe(true);
+        expect(requestPattern.test('abc')).toBe(false);
+        expect(requestPattern.test('019c1234-5678-7abc-8def-0123456789ab')).toBe(false);
+        expect(getActionSafetyPolicy('block', 'append')).toMatchObject({ validateOnly: true });
         const credentialPattern = new RegExp((strictBlock.inputSchema.properties as any).expectedStateHash.pattern);
         expect(credentialPattern.test('sha256:v1:8ac2')).toBe(true);
         expect(credentialPattern.test('8AC2')).toBe(true);

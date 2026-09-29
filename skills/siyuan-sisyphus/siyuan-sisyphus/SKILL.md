@@ -47,6 +47,14 @@ siyuan-sisyphus fs tree --path '/Notebook' --max-depth '3' --json
 siyuan-sisyphus fs read --path '/Notebook/Folder/Doc' --block-start '0' --block-limit '50' --token-budget '2000' --json
 ```
 
+## Help without MCP Resources
+
+The complete layout guide is available through the help action below, using the same content as the MCP layout resource. Never pass a help URI to the document read action.
+
+```bash
+siyuan-sisyphus fs help --topic 'ai-layout-guide' --json
+```
+
 ## Shared invariants
 
 - Read `/AGENTS.md` through `fs` before workspace-aware tasks when it exists.

@@ -311,25 +311,18 @@ async function callServerToolSafely(
     const preconditionField = typeof payload?.preconditionField === 'string'
         ? payload.preconditionField
         : undefined;
-    const hashFieldByPrecondition: Record<string, string> = {
-        expectedStateHash: 'stateHash',
-        expectedStructureHash: 'structureHash',
-        expectedValueHash: 'valueHash',
-        expectedManifestHash: 'manifestHash',
-        expectedSourceHash: 'sourceHash',
-    };
-    const hashField = preconditionField ? hashFieldByPrecondition[preconditionField] : undefined;
-    const currentHash = hashField && typeof payload?.[hashField] === 'string'
-        ? payload[hashField]
+    const currentHash = preconditionField && typeof payload?.[preconditionField] === 'string'
+        ? payload[preconditionField]
         : undefined;
     if (preconditionField && !currentHash) {
-        throw new Error(`安全预检没有返回 ${hashField ?? '状态 Hash'}。`);
+        throw new Error(`安全预检没有返回 ${preconditionField}。`);
     }
+    if (typeof payload?.requestId !== 'string') throw new Error('安全预检没有返回 requestId。');
     return app.callServerTool({
         name,
         arguments: {
             ...args,
-            requestId: createUuidV7(),
+            requestId: payload.requestId,
             ...(preconditionField && currentHash ? { [preconditionField]: currentHash } : {}),
         },
     });
@@ -365,20 +358,6 @@ function previewResult(payload: JsonObject) {
         content: [{ type: 'text', text: JSON.stringify(payload) }],
         structuredContent: payload,
     };
-}
-
-function createUuidV7() {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    let timestamp = Date.now();
-    for (let index = 5; index >= 0; index -= 1) {
-        bytes[index] = timestamp & 0xff;
-        timestamp = Math.floor(timestamp / 256);
-    }
-    bytes[6] = 0x70 | (bytes[6] & 0x0f);
-    bytes[8] = 0x80 | (bytes[8] & 0x3f);
-    const hex = [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function confirmTimelineAction(key: string, message: string) {

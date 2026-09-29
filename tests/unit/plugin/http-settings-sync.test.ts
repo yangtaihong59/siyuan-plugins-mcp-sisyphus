@@ -250,6 +250,18 @@ describe('HTTP settings sync', () => {
     let eventBusOn: ReturnType<typeof vi.fn>;
     let eventBusOff: ReturnType<typeof vi.fn>;
 
+    it('handles runtime data changes without reloading the plugin or stopping HTTP', async () => {
+        const onload = vi.spyOn(plugin, 'onload');
+        const onunload = vi.spyOn(plugin, 'onunload');
+        expect(Object.prototype.hasOwnProperty.call(SiyuanMCP.prototype, 'onDataChanged')).toBe(true);
+        for (let i = 0; i < 5; i++) await plugin.onDataChanged();
+        expect(onload).not.toHaveBeenCalled();
+        expect(onunload).not.toHaveBeenCalled();
+        expect(launcherStart).not.toHaveBeenCalled();
+        expect(launcherStop).not.toHaveBeenCalled();
+        expect(saveData).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
         resetToolConfigWarningStateForTests();
         vi.mocked(showMessage).mockClear();

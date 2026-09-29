@@ -86,6 +86,8 @@ Cherry Studio 使用 `streamableHttp`：
 
 ## stdio 模式
 
+插件生成的 stdio 配置固定使用 `http://127.0.0.1:6806`，避免保存重启后可能变化的随机端口。桌面端该端口属于第一个启动的工作空间；API Token 必须与该工作空间一致。要连接其他工作空间，请使用各工作空间配置的 HTTP MCP 地址。
+
 让客户端把 `mcp-server.cjs` 作为子进程运行，并连接思源 API。
 
 ```json

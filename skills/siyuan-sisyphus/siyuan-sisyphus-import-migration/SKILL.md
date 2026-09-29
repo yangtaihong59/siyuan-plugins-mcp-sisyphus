@@ -65,10 +65,10 @@ siyuan-sisyphus document lookup --id '<returned-document-id>' --include-json '["
 siyuan-sisyphus file upload-asset --assets-dir-path '<approved-assets-dir>' --local-file-path '<approved-staged-file>' --json
 ```
 ```bash
-siyuan-sisyphus av get --id '<av-id>' --block-id '<database-block-id>' --json
+siyuan-sisyphus av get --av-id '<av-id>' --block-id '<database-block-id>' --json
 ```
 ```bash
-siyuan-sisyphus av get-attribute-view-keys --id '<av-id>' --json
+siyuan-sisyphus av get-attribute-view-keys --av-id '<av-id>' --json
 ```
 
 Create missing documents only after approval. Generated target IDs are recorded; this action set cannot preserve source IDs or force remapping. On lost acknowledgement, perform one identity-fixed read and classify the outcome; never resend blindly.
@@ -121,10 +121,10 @@ siyuan-sisyphus block get-attrs --id '<reviewed-block-id>' --json
 siyuan-sisyphus file get-doc-assets --id '<returned-document-id>' --asset-type 'all' --json
 ```
 ```bash
-siyuan-sisyphus av get --id '<av-id>' --json
+siyuan-sisyphus av get --av-id '<av-id>' --json
 ```
 ```bash
-siyuan-sisyphus av render --id '<av-id>' --view-id '<view-id>' --page '1' --page-size '50' --json
+siyuan-sisyphus av render --av-id '<av-id>' --view-id '<view-id>' --page '1' --page-size '50' --json
 ```
 
 Check exact notebook/path, document/block identity, parent/sibling order, list containment, tables/images/references, typed AV values, and relation endpoints. Observe whether a callout is `NodeCallout` or `NodeBlockquote`; if conversion is needed, report the known gap. `file.extract_doc` and `file.export_md` supplement evidence but cannot prove exact .sy or UI state.

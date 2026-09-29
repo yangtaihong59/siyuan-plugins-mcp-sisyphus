@@ -1,3 +1,4 @@
+import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { acceptedContent, inputRequired, ProtocolError, ProtocolErrorCode, Server, type CallToolResult, type Tool } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
@@ -532,6 +533,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                     action,
                     args: args ?? {},
                     strictMode: config.writeSafety.strictMode,
+                    validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
                     execute: (safeArgs) => appActionConfig
                         ? module.callTool(client, safeArgs, appActionConfig, permMgr, officialMcpRuntime)
                         : module.callTool(client, safeArgs, config[category], permMgr, officialMcpRuntime),

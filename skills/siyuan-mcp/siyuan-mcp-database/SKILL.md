@@ -8,10 +8,10 @@ description: MCP playbook for SiYuan attribute views. Use to inspect database me
 Never guess attribute-view identifiers. Inspect the AV and its views before changing rows or cells.
 
 ```text
-av(action="get", id="<av-id>")
+av(action="get", avID="<av-id>")
 ```
 ```text
-av(action="render", id="<av-id>", page=1, pageSize=50)
+av(action="render", avID="<av-id>", page=1, pageSize=50)
 ```
 ```text
 av(action="search", keyword="project")

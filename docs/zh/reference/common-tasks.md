@@ -1,5 +1,7 @@
 # 常见任务
 
+客户端不支持 MCP Resources 时，可调用 `fs(action="help", topic="ai-layout-guide")`，CLI 使用 `siyuan-sisyphus fs help --topic ai-layout-guide`，获取与 `siyuan://help/ai-layout-guide` 完全相同的完整排版指南。不要将资源 URI 传给 `fs.read`。
+
 这个页面把常见目标映射到 MCP 参数和 CLI 命令。
 
 适用场景：你已经知道要做什么，但还不知道该用哪个工具。
@@ -11,7 +13,7 @@
 
 ## 修改前先选择正确的路径
 
-对于 Sisyphus 自有的修改型 action，应保持“严格安全写入”开启；当 action 的 Schema 暴露前置条件时，先用完全相同的 action 执行 `validateOnly=true`。提交时使用返回的短凭据和新的 UUIDv7 `requestId`；成功结果会通过有界读回和只保存元数据的幂等账本验证。这是进程级协调协议，不是思源内核事务，也不会自动回滚。思源界面、其他插件、直接调用内核、导出、同步、通知、反馈以及官方 `extension` 调用都不在这项保证内。
+对于 Sisyphus 自有的修改型 action，应保持“严格安全写入”开启；先用完全相同的 action 执行 `validateOnly=true`。提交时使用返回的短凭据和预检返回的 `requestId`；成功结果会通过有界读回和只保存元数据的幂等账本验证。这是进程级协调协议，不是思源内核事务，也不会自动回滚。思源界面、其他插件、直接调用内核、导出、同步、通知、反馈以及官方 `extension` 调用都不在这项保证内。
 
 通过插件 HTTP 服务进入的 MCP/Agent 调用直接使用协调器。stdio 或独立 CLI 收到的严格修改会转交同一个插件内置协调器，不会另建本地队列或租约池。如果插件 HTTP 协调器不可用，应先修复这条路径，不要改走未协调的写入再重试。只读 action 和外部副作用 action 各自遵循自己的路径。
 
@@ -119,7 +121,7 @@ siyuan search fulltext --query "TODO"
 ```
 
 ```bash
-siyuan av get --id <attribute-view-id>
+siyuan av get --av-id <attribute-view-id>
 ```
 
 ## 比较并恢复文档时间线

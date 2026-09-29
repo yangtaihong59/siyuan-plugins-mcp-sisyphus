@@ -45,6 +45,12 @@ Classify the requested operation before choosing a surface: **R** is read or dis
 {{call tree}}
 {{call read}}
 
+## Help without MCP Resources
+
+The complete layout guide is available through the help action below, using the same content as the MCP layout resource. Never pass a help URI to the document read action.
+
+{{call layoutHelp}}
+
 ## Shared invariants
 
 - Read \`/AGENTS.md\` through \`fs\` before workspace-aware tasks when it exists.
@@ -58,6 +64,7 @@ Classify the requested operation before choosing a surface: **R** is read or dis
 - Obtain explicit approval before deletes, moves, bulk replacement, permission changes, local upload/export, or sensitive workspace disclosure.
 `,
         calls: {
+            layoutHelp: call('fs', 'help', { topic: 'ai-layout-guide' }),
             version: call('system', 'get_version'),
             notebooks: call('notebook', 'list'),
             tree: call('fs', 'tree', { path: '/Notebook', maxDepth: 3 }),
@@ -139,7 +146,7 @@ Discovery identifies candidates; it does not authorize a write. Before changing 
 
 ## Protected writes and readback
 
-For a mutation covered by strict safe writes, call the same action and business arguments with \`validateOnly=true\`, use the returned precondition field, and submit one fresh UUIDv7 \`requestId\`. Never invent or recycle a hash credential. After the write, reread the exact stable ID or resolved path with enough bounded fields to prove the intended change and continue until the response is complete.
+For a mutation covered by strict safe writes, call the same action and business arguments with \`validateOnly=true\`, use the returned precondition field, and submit the server-issued \`requestId\`. Never invent or recycle a hash credential. After the write, reread the exact stable ID or resolved path with enough bounded fields to prove the intended change and continue until the response is complete.
 
 If the connection fails after execution may have started, or the result says \`outcome_unknown\` or \`readback_mismatch\`, do not retry with a new request ID. Inspect the target and resolve the outcome first. A CLI command, raw MCP payload, or Agent-generated call is not by itself evidence that this coordinator path or its guarantees applied; use the current safety response and runtime help.
 
@@ -253,8 +260,8 @@ Before writing cells, render the current view and map column names to column IDs
 Treat a successful mutation response as provisional until the same view and affected rows/cells are read back. Keep the render and readback paginated, continue while more data is advertised, and compare the intended cell values by stable row and column IDs. A raw MCP or CLI success message does not establish that strict-write coordination or complete readback occurred.
 `,
         calls: {
-            get: call('av', 'get', { id: '<av-id>' }),
-            render: call('av', 'render', { id: '<av-id>', page: 1, pageSize: 50 }),
+            get: call('av', 'get', { avID: '<av-id>' }),
+            render: call('av', 'render', { avID: '<av-id>', page: 1, pageSize: 50 }),
             search: call('av', 'search', { keyword: 'project' }),
             column: call('av', 'add_column', { avID: '<av-id>', keyName: 'Status', keyType: 'select' }),
             rows: call('av', 'add_rows', { avID: '<av-id>', viewID: '<view-id>', blockIDs: ['<block-id>'] }),
@@ -395,8 +402,8 @@ Schema/data PASS never implies functional or presentation completion. Without li
             create: call('document', 'create', { notebook: '<notebook-id>', path: '<target-document-path>', markdown: '<preprocessed-markdown>' }),
             lookupCreated: call('document', 'lookup', { id: '<returned-document-id>', include: ['id', 'path', 'hpath', 'docInfo'] }),
             upload: call('file', 'upload_asset', { assetsDirPath: '<approved-assets-dir>', localFilePath: '<approved-staged-file>' }),
-            av: call('av', 'get', { id: '<av-id>', blockID: '<database-block-id>' }),
-            avKeys: call('av', 'get_attribute_view_keys', { id: '<av-id>' }),
+            av: call('av', 'get', { avID: '<av-id>', blockID: '<database-block-id>' }),
+            avKeys: call('av', 'get_attribute_view_keys', { avID: '<av-id>' }),
             append: call('block', 'append', { parentID: '<resolved-parent-id>', dataType: 'markdown', data: '<one-reviewed-block>' }),
             insert: call('block', 'insert', { blocks: [{ previousID: '<resolved-previous-id>', dataType: 'markdown', data: '<one-reviewed-block>' }] }),
             update: call('block', 'update', { items: [{ id: '<reviewed-leaf-block-id>', dataType: 'markdown', data: '<replacement-block-content>' }] }),
@@ -409,8 +416,8 @@ Schema/data PASS never implies functional or presentation completion. Without li
             dom: call('block', 'dom', { id: '<written-block-id>' }),
             attrsRead: call('block', 'get_attrs', { id: '<reviewed-block-id>' }),
             assetsRead: call('file', 'get_doc_assets', { id: '<returned-document-id>', assetType: 'all' }),
-            avRead: call('av', 'get', { id: '<av-id>' }),
-            avRender: call('av', 'render', { id: '<av-id>', viewID: '<view-id>', page: 1, pageSize: 50 }),
+            avRead: call('av', 'get', { avID: '<av-id>' }),
+            avRender: call('av', 'render', { avID: '<av-id>', viewID: '<view-id>', page: 1, pageSize: 50 }),
         },
     },
     {

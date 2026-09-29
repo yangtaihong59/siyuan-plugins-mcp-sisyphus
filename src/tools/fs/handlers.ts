@@ -601,6 +601,9 @@ const handleTree: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
 };
 
 const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
+    if (typeof rawArgs.path === 'string' && rawArgs.path.startsWith('siyuan://help/')) {
+        throw new Error('This is an MCP help resource URI, not a document path. Use resources/read; for the layout guide call fs(action="help", topic="ai-layout-guide").');
+    }
     const parsed = FsReadSchema.parse(rawArgs);
     const windowOptions = {
         blockStart: parsed.blockStart,

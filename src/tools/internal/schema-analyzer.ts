@@ -29,9 +29,11 @@ export function mergePropertySchemas<Action extends string>(
     const enums = new Map<string, Set<unknown>>();
     const requiredBy = new Map<string, Set<string>>();
     const optionalIn = new Map<string, Set<string>>();
+    const conditionalIn = new Map<string, Set<string>>();
 
     for (const variant of variants) {
         const variantRequired = new Set(getSchemaRequired(variant.schema));
+        const conditionalRequired = new Set<string>((variant.schema.oneOf ?? variant.schema.anyOf ?? []).flatMap(getSchemaRequired));
         for (const [propertyName, propertySchema] of Object.entries(getSchemaProperties(variant.schema))) {
             if (propertyName === 'action' || !propertySchema || typeof propertySchema !== 'object') continue;
 
@@ -54,7 +56,8 @@ export function mergePropertySchemas<Action extends string>(
                 enums.set(propertyName, values);
             }
 
-            const targetMap = variantRequired.has(propertyName) ? requiredBy : optionalIn;
+            const targetMap = variantRequired.has(propertyName) ? requiredBy
+                : conditionalRequired.has(propertyName) ? conditionalIn : optionalIn;
             const set = targetMap.get(propertyName) ?? new Set<string>();
             set.add(variant.action);
             targetMap.set(propertyName, set);
@@ -70,6 +73,7 @@ export function mergePropertySchemas<Action extends string>(
         const annotations = [
             ...(required.length > 0 ? [`Required by: ${required.join(', ')}`] : []),
             ...(optional.length > 0 ? [`Optional in: ${optional.join(', ')}`] : []),
+            ...(conditionalIn.has(propertyName) ? [`Required in a parameter combination: ${[...conditionalIn.get(propertyName)!].sort().join(', ')}`] : []),
         ];
         const annotationText = annotations.length > 0 ? `[${annotations.join('; ')}]` : '';
 

@@ -22,17 +22,17 @@ describe('write preflight lease pool', () => {
     it('issues four digits, extends collisions, and rejects late ambiguity', () => {
         const pool = new WritePreflightLeasePool();
         const first = pool.issue(baseScope, full('8ac2f'), 1);
-        expect(first).toMatchObject({ credential: 'sha256:v1:8ac2', hashPrefixLength: 4 });
+        expect(first).toMatchObject({ credential: '8ac2', hashPrefixLength: 4 });
 
         const second = pool.issue(baseScope, full('8ac29', '1'), 2);
-        expect(second).toMatchObject({ credential: 'sha256:v1:8ac29', hashPrefixLength: 5 });
+        expect(second).toMatchObject({ credential: '8ac29', hashPrefixLength: 5 });
         expect(pool.resolve(baseScope, '8ac2', 3)).toEqual({
             status: 'ambiguous',
             minimumRequiredLength: 5,
         });
 
         const refreshed = pool.issue(baseScope, full('8ac2f'), 4);
-        expect(refreshed).toMatchObject({ credential: 'sha256:v1:8ac2f', hashPrefixLength: 5 });
+        expect(refreshed).toMatchObject({ credential: '8ac2f', hashPrefixLength: 5 });
         expect(pool.resolve(baseScope, '8ac2f', 5)).toMatchObject({ status: 'ok' });
         expect(pool.resolve(baseScope, full('8ac2f').slice('sha256:v1:'.length), 5)).toMatchObject({ status: 'ok' });
     });

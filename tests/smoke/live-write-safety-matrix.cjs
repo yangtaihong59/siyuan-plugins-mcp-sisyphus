@@ -22,7 +22,6 @@ const httpSettingsPath = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpHtt
 const runStamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
 const testNotebookName = `Sisyphus-全写入实测-${runStamp}`;
 const results = [];
-let requestSequence = 1;
 let nodeSequence = 1;
 
 const actionsByCategory = {
@@ -49,20 +48,6 @@ const expectedFieldByPrecondition = {
     manifest: 'expectedManifestHash',
     source: 'expectedSourceHash',
 };
-
-const hashFieldByPrecondition = {
-    state: 'stateHash',
-    structure: 'structureHash',
-    value: 'valueHash',
-    manifest: 'manifestHash',
-    source: 'sourceHash',
-};
-
-function uuidV7() {
-    const timestamp = Date.now().toString(16).padStart(12, '0');
-    const suffix = String(requestSequence++).padStart(12, '0');
-    return `${timestamp.slice(0, 8)}-${timestamp.slice(8)}-7000-8000-${suffix}`;
-}
 
 function siyuanNodeId() {
     return `${runStamp}-${(nodeSequence++).toString(36).padStart(7, '0')}`;
@@ -139,18 +124,18 @@ async function mutate(tool, action, args, precondition = 'none', options = {}) {
         let payload;
         for (let attempt = 0; attempt < 3; attempt += 1) {
             const executionArgs = { ...args };
+            const preflight = await callCli(tool, action, { ...args, validateOnly: true }, options);
+            assertNoError(preflight, `${label} preflight`);
             if (precondition !== 'none') {
-                const preflight = await callCli(tool, action, { ...args, validateOnly: true }, options);
-                assertNoError(preflight, `${label} preflight`);
-                const hashField = hashFieldByPrecondition[precondition];
+                const hashField = expectedFieldByPrecondition[precondition];
                 credential = preflight[hashField];
                 prefixLength = preflight.hashPrefixLength;
-                if (typeof credential !== 'string' || !/^sha256:v1:[0-9a-f]{4,64}$/i.test(credential)) {
+                if (typeof credential !== 'string' || !/^[0-9a-f]{4,64}$/i.test(credential)) {
                     throw new Error(`${label} preflight did not return a valid lease credential in ${hashField}`);
                 }
                 executionArgs[expectedFieldByPrecondition[precondition]] = credential;
             }
-            executionArgs.requestId = uuidV7();
+            executionArgs.requestId = preflight.requestId;
             payload = await callCli(tool, action, executionArgs, options);
             if (['state_changed', 'preflight_lease_invalid', 'ambiguous_hash_prefix'].includes(payload?.error?.code)
                 && payload?.writeAttempted === false

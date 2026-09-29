@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：**`v0.6.5` — 修复多工作区连接配置，使用当前思源地址与配套凭据，并正确处理本机 HTTPS 内核端口；修复数据库筛选 Schema、批量预检计数和属性改动状态校验；优化大文档读取与续读。CLI 同步提升至 `v0.2.7`。
+> **最新版本：** `v0.6.7` — 简化预检凭证与服务端请求 ID，统一 AV 参数并修复列查询和写后校验，补齐文档创建与无 Resources 客户端帮助。CLI 同步更新至 `v0.2.8`。
 
 > **v0.6.4：**`v0.6.4` — 扩展受保护的 AV 配置能力，新增可审计 Markdown 快照、图片引用审计、权限受控的视觉图片读取、扩展诊断与更清晰的路径语义。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。CLI 提升至 `v0.2.6`。
 
@@ -222,7 +222,7 @@ Sisyphus 自有工具的默认设计是让用户明确控制 AI 的操作范围�
 
 - 每个笔记本都可以设为只读、可写、可删除，或完全隐藏；
 - 删除、移动、替换、上传资源等危险动作会被单独处理；
-- “设置 → MCP → 设置与调试”中的“严格安全写入”默认开启：修改型 action 必须先以 `validateOnly=true` 获取当前状态哈希，再携带新的 UUIDv7 `requestId` 和对应 `expected*Hash` 提交；
+- “设置 → MCP → 设置与调试”中的“严格安全写入”默认开启：修改型 action 必须先以 `validateOnly=true` 获取当前状态哈希，再携带预检返回的 `requestId` 和对应 `expected*Hash` 提交；
 - 写请求在网络层只发送一次，超时或断线后返回 `outcome_unknown`，不会用一次盲目重试冒险制造重复写入；同一 `requestId` 的已提交请求会从元数据账本返回重放结果；
 - 严格模式不创建思源数据快照。它使用目标状态哈希、串行协调、提交后读回和仅含哈希/ID 的幂等账本；通知、同步、导出和第三方 Tool 等不可读回的外部副作用会明确标记为“不提供严格保证”；
 - MCP 与 CLI 共用核心行为，切换入口不会产生第二套权限模型；

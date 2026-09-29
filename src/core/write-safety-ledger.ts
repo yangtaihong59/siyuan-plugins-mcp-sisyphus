@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';
 import type { SiYuanClient } from '../api/client';
 import { hashWriteState } from './write-safety-hash';
 import type { ToolCategory } from './config';
@@ -7,6 +9,7 @@ export const WRITE_SAFETY_LEDGER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const WRITE_SAFETY_LEDGER_MAX_ENTRIES = 2048;
 
 export type WriteLedgerState =
+    | 'issued'
     | 'preparing'
     | 'executing'
     | 'committed'
@@ -28,16 +31,47 @@ export interface WriteLedgerEntry {
 interface LedgerFile {
     version: 1;
     entries: WriteLedgerEntry[];
+    reservedRequestIds?: string[];
 }
 
 export class WriteSafetyLedger {
     private readonly client: SiYuanClient;
     private loaded = false;
+    // Never recycle an issued short ID, even after its result expires.
+    private reservedRequestIds = new Set<string>();
     private entries = new Map<string, WriteLedgerEntry>();
     private serial: Promise<void> = Promise.resolve();
 
     constructor(client: SiYuanClient) {
         this.client = client;
+    }
+
+    async issue(tool: ToolCategory, action: string, args: Record<string, unknown>): Promise<{ requestId: string; requestIdExpiresAt: number }> {
+        return this.exclusive(async () => {
+            await this.ensureLoaded();
+            const now = Date.now();
+            this.prune(now);
+            if (this.entries.size >= WRITE_SAFETY_LEDGER_MAX_ENTRIES) {
+                throw safetyError('write_ledger_capacity', 'The write-safety ledger is full. No write was attempted.');
+            }
+            const digest = randomBytes(32).toString('hex');
+            let length = 4;
+            while (length <= digest.length && this.reservedRequestIds.has(digest.slice(0, length))) length += 1;
+            if (length > digest.length) throw safetyError('request_id_collision', 'Could not issue a unique requestId. Run preflight again.');
+            const requestId = digest.slice(0, length);
+            this.reservedRequestIds.add(requestId);
+            this.entries.set(requestId, {
+                requestId, tool, action, argsHash: hashWriteState(stripSafetyFields(args)),
+                targetIds: [], state: 'issued', createdAt: now, updatedAt: now,
+            });
+            try {
+                await this.persist();
+            } catch (error) {
+                this.entries.delete(requestId);
+                throw error;
+            }
+            return { requestId, requestIdExpiresAt: now + WRITE_PREFLIGHT_LEASE_TTL_MS };
+        });
     }
 
     async inspect(
@@ -46,17 +80,31 @@ export class WriteSafetyLedger {
         action: string,
         args: Record<string, unknown>,
     ): Promise<{ argsHash: string; entry?: WriteLedgerEntry }> {
-        assertFreshUuidV7(requestId);
+        if (!/^[a-f0-9]{4,64}$/.test(requestId)) {
+            throw safetyError('invalid_request_id', 'Copy the complete server-issued requestId from validateOnly preflight.');
+        }
         await this.ensureLoaded();
+        this.prune(Date.now());
         const argsHash = hashWriteState(stripSafetyFields(args));
         const entry = this.entries.get(requestId);
-        if (!entry) return { argsHash };
-        if (entry.tool !== tool || entry.action !== action || entry.argsHash !== argsHash) {
+        if (!entry) throw safetyError('request_id_expired', 'requestId is unknown or expired. Run validateOnly preflight again.');
+        // Older render requests were hashed before avID -> id normalization.
+        // Only equivalent, unambiguous old shapes may reuse a persisted request.
+        let matchesArgs = entry.argsHash === argsHash;
+        if (!matchesArgs && tool === 'av' && action === 'render' && typeof args.avID === 'string') {
+            const legacy = stripSafetyFields(args);
+            delete legacy.avID;
+            legacy.id = args.avID;
+            matchesArgs = entry.argsHash === hashWriteState(legacy)
+                || entry.argsHash === hashWriteState({ ...legacy, avID: args.avID });
+        }
+        if (entry.tool !== tool || entry.action !== action || !matchesArgs) {
             throw safetyError(
                 'idempotency_conflict',
                 `requestId ${requestId} has already been used for a different operation.`,
             );
         }
+        if (entry.state === 'issued') return { argsHash };
         return { argsHash, entry: { ...entry, targetIds: [...entry.targetIds] } };
     }
 
@@ -113,8 +161,16 @@ export class WriteSafetyLedger {
                 if (parsed.version !== 1 || !Array.isArray(parsed.entries)) {
                     throw new Error('Unsupported or malformed write-safety ledger.');
                 }
+                if (parsed.reservedRequestIds !== undefined && (!Array.isArray(parsed.reservedRequestIds)
+                    || parsed.reservedRequestIds.some(id => typeof id !== 'string'))) {
+                    throw new Error('Malformed request ID reservations.');
+                }
+                this.reservedRequestIds = new Set(parsed.reservedRequestIds ?? []);
                 for (const entry of parsed.entries) {
-                    if (isLedgerEntry(entry)) this.entries.set(entry.requestId, entry);
+                    if (isLedgerEntry(entry)) {
+                        this.entries.set(entry.requestId, entry);
+                        this.reservedRequestIds.add(entry.requestId);
+                    }
                 }
             }
         } catch (error) {
@@ -129,13 +185,14 @@ export class WriteSafetyLedger {
 
     private prune(now: number): void {
         for (const [requestId, entry] of this.entries) {
-            if (now - entry.createdAt > WRITE_SAFETY_LEDGER_TTL_MS) this.entries.delete(requestId);
+            if (now - entry.createdAt >= (entry.state === 'issued' ? WRITE_PREFLIGHT_LEASE_TTL_MS : WRITE_SAFETY_LEDGER_TTL_MS)) this.entries.delete(requestId);
         }
     }
 
     private async persist(): Promise<void> {
         const payload: LedgerFile = {
             version: 1,
+            reservedRequestIds: [...this.reservedRequestIds],
             entries: [...this.entries.values()].sort((a, b) => a.createdAt - b.createdAt),
         };
         await this.client.writeFile(WRITE_SAFETY_LEDGER_PATH, JSON.stringify(payload));
@@ -186,18 +243,6 @@ export function stripSafetyFields(args: Record<string, unknown>): Record<string,
 
 export function safetyError(code: string, message: string): Error & { code: string } {
     return Object.assign(new Error(message), { name: 'WriteSafetyError', code });
-}
-
-function assertFreshUuidV7(requestId: string): void {
-    const match = /^([0-9a-f]{8})-([0-9a-f]{4})-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(requestId);
-    if (!match) {
-        throw safetyError('invalid_request_id', 'requestId must be a UUIDv7 value.');
-    }
-    const timestamp = Number.parseInt(`${match[1]}${match[2]}`, 16);
-    const age = Date.now() - timestamp;
-    if (!Number.isFinite(timestamp) || age > WRITE_SAFETY_LEDGER_TTL_MS || age < -5 * 60 * 1000) {
-        throw safetyError('request_id_expired', 'requestId timestamp is expired or unreasonably far in the future.');
-    }
 }
 
 function isLedgerEntry(value: unknown): value is WriteLedgerEntry {

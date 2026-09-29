@@ -2,7 +2,6 @@ import type { ToolCategory } from './config';
 import {
     WRITE_HASH_DIGEST_LENGTH,
     WRITE_HASH_PREFIX_MIN_LENGTH,
-    WRITE_STATE_HASH_VERSION,
     hashWriteState,
     writeHashDigest,
 } from './write-safety-hash';
@@ -68,7 +67,7 @@ export class WritePreflightLeasePool {
             this.leases.filter((item) => item.scopeKey === scopeKey).map((item) => item.fullHash),
         );
         return {
-            credential: `${WRITE_STATE_HASH_VERSION}:${writeHashDigest(fullHash).slice(0, prefixLength)}`,
+            credential: writeHashDigest(fullHash).slice(0, prefixLength),
             hashPrefixLength: prefixLength,
             leaseExpiresAt: lease.expiresAt,
             lease: cloneLease(lease),

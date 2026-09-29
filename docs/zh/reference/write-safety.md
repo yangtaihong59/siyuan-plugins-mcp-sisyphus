@@ -22,14 +22,15 @@
 {
   "validateOnly": true,
   "writeAttempted": false,
+  "requestId": "b72f",
   "preconditionField": "expectedStateHash",
-  "stateHash": "sha256:v1:8ac2",
+  "expectedStateHash": "8ac2",
   "hashPrefixLength": 4,
   "leaseExpiresAt": 1786543200000
 }
 ```
 
-随后生成一个新的 UUIDv7，并提交一次真实写入：
+凭证字段名与正式写入参数一致，可直接复制该字段和值；正式执行时移除 `validateOnly`（或设为 `false`），并复制预检返回的 `requestId`：
 
 ```json
 {
@@ -37,12 +38,14 @@
   "id": "20260812120000-abcdefg",
   "dataType": "markdown",
   "data": "新内容",
-  "requestId": "019c1234-5678-7abc-8def-0123456789ab",
-  "expectedStateHash": "sha256:v1:8ac2"
+  "requestId": "b72f",
+  "expectedStateHash": "8ac2"
 }
 ```
 
-不同 action 可能返回 `expectedStateHash`、`expectedStructureHash`、`expectedManifestHash` 或 `expectedSourceHash`。调用方应读取 `preconditionField`，不要自行猜测字段。纯新增 action 不需要状态哈希，但真实执行仍要求新的 UUIDv7 `requestId`。
+`requestId` 由预检签发，从 4 位十六进制开始，遇到已签发 ID 冲突时自动加长。请完整复制，不要自行生成、截短或改名；重试必须沿用同一个 ID。首次执行有效期为 10 分钟（`requestIdExpiresAt`），已执行结果最多保留 7 天。服务器持久保留已用 ID 标记，过期 ID 不会再次签发；标记不含笔记正文，存储量随签发次数增长。纯新增操作也必须先预检领取 ID。
+
+不同 action 可能返回 `expectedStateHash`、`expectedStructureHash`、`expectedManifestHash` 或 `expectedSourceHash`。调用方应读取 `preconditionField`，不要自行猜测字段。纯新增 action 不需要状态哈希，但真实执行仍要求预检返回的 `requestId`。
 
 凭据接受 `sha256:v1:<4～64 位十六进制>` 或裸 `<4～64 位十六进制>`，不区分大小写。4 位只是租约查找键，不是把正确性降低为 16 bit 比较：正式写入会按 `tool + action + 业务参数摘要 + 排序后的目标 ID` 查找唯一活动租约，取出其中的完整 256-bit SHA-256，重新读取实时状态并做完整比较。即使提交 64 位完整值，也必须能解析到活动租约，不能绕过预检。
 

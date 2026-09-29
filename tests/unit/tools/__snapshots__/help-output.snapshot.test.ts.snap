@@ -25,7 +25,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -60,7 +60,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -97,7 +97,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -139,7 +139,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -183,7 +183,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -224,7 +224,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -259,7 +259,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -295,7 +295,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -314,7 +314,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "get",
         "example": {
           "action": "get",
-          "id": "20240318112233-abc123",
+          "avID": "<avID>",
         },
         "fullDocResource": "siyuan://help/action/av/get",
         "guidance": [
@@ -329,17 +329,17 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
-        "hint": "Use an attribute view ID. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
+        "hint": "Call av(action="get", avID="<av-id>"); id is a deprecated alias. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
         "requiredFields": [
-          "id",
+          "avID",
         ],
         "requiresConfirmation": false,
         "shapes": [
-          "id",
+          "avID",
         ],
         "tool": "av",
       },
@@ -347,7 +347,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "get_attribute_view_filter_sort",
         "example": {
           "action": "get_attribute_view_filter_sort",
-          "id": "20240318112233-abc123",
+          "avID": "<avID>",
         },
         "fullDocResource": "siyuan://help/action/av/get_attribute_view_filter_sort",
         "guidance": [
@@ -362,17 +362,17 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
-        "hint": "Use id + blockID to return the filters and sorts applied to that database block view.",
+        "hint": "Use avID + blockID to return the filters and sorts applied to that database block view.",
         "requiredFields": [
-          "id",
+          "avID",
         ],
         "requiresConfirmation": false,
         "shapes": [
-          "id",
+          "avID",
         ],
         "tool": "av",
       },
@@ -380,7 +380,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "get_attribute_view_keys",
         "example": {
           "action": "get_attribute_view_keys",
-          "id": "20240318112233-abc123",
+          "avID": "<avID>",
         },
         "fullDocResource": "siyuan://help/action/av/get_attribute_view_keys",
         "guidance": [
@@ -395,17 +395,17 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
-        "hint": "Use id to return database keys/columns for a block-bound attribute view.",
+        "hint": "Use avID to return the database column definitions.",
         "requiredFields": [
-          "id",
+          "avID",
         ],
         "requiresConfirmation": false,
         "shapes": [
-          "id",
+          "avID",
         ],
         "tool": "av",
       },
@@ -428,7 +428,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -461,7 +461,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -497,7 +497,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -519,10 +519,10 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         },
         "examples": [
           {
-            "description": "av.search results include renderArgs; pass id or the compatibility alias avID.",
+            "description": "av.search results include renderArgs with canonical avID.",
             "mcp": {
               "action": "render",
-              "id": "20240318112233-abc123",
+              "avID": "20240318112233-abc123",
               "page": 1,
               "pageSize": 20,
             },
@@ -533,7 +533,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
               "action": "render",
               "avID": "20240318112233-abc123",
             },
-            "title": "Render with avID compatibility alias",
+            "title": "Render an existing AV",
           },
         ],
         "fullDocResource": "siyuan://help/action/av/render",
@@ -549,11 +549,11 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
-        "hint": "Use id (the AV ID; avID is accepted as a compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if id is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.",
+        "hint": "Use avID (id is a deprecated compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if avID is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.",
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
@@ -580,7 +580,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -613,7 +613,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -652,11 +652,11 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
-        "hint": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
+        "hint": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
         "requiredFields": [
           "avID",
           "keyID",
@@ -692,7 +692,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -732,7 +732,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -774,7 +774,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -815,7 +815,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -858,7 +858,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -900,7 +900,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -944,7 +944,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
           "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
           "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+          "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
@@ -964,15 +964,15 @@ exports[`tool description and help outputs > matches the locked snapshot for all
     },
     "description": "🗃️ Grouped attribute-view (database) operations. Use the "action" field to select the operation.
 
-Common actions: get, render, get_attribute_view_keys, get_attribute_view_filter_sort, search, get_primary_key_values. Required fields: get: id; render: no additional fields; get_attribute_view_keys: id; get_attribute_view_filter_sort: id; search: keyword; get_primary_key_values: avID.
+Common actions: get, render, get_attribute_view_keys, get_attribute_view_filter_sort, search, get_primary_key_values. Required fields: get: avID; render: no additional fields; get_attribute_view_keys: avID; get_attribute_view_filter_sort: avID; search: keyword; get_primary_key_values: avID.
 
 Additional actions: add_rows, remove_rows, add_column, remove_column, set_cells, set_column_options, duplicate_rows, duplicate, add_view, set_filters, set_sorts, set_group, set_column_visibility, set_column_order, set_new_item_templates, create_from_template, configure_two_way_relation, configure_rollup, set_relation. Read siyuan://help/action/av/{action} for details, or call action="help" if resources are unavailable.
 
 Parameter contract per action (fields outside the action's optional list should not be sent):
-av.get: required [id] | optional [blockID]
-av.render: required [] | optional [id, blockID, viewID, page, pageSize, query, groupPaging, createIfNotExist]
-av.get_attribute_view_keys: required [id] | optional []
-av.get_attribute_view_filter_sort: required [id] | optional [blockID]
+av.get: required [avID] | optional [blockID, id]
+av.render: required [] | optional [avID, blockID, viewID, page, pageSize, query, groupPaging, createIfNotExist, id]
+av.get_attribute_view_keys: required [avID] | optional [id]
+av.get_attribute_view_filter_sort: required [avID] | optional [blockID, id]
 av.search: required [keyword] | optional [excludes]
 av.add_rows: required [avID] | optional [blockIDs, primaryKeyTexts, blockID, viewID, groupID, previousID, ignoreDefaultFill]
 av.remove_rows: required [avID, srcIDs] | optional [blockID]
@@ -1006,16 +1006,16 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "create_from_template": "Dangerous native creation using an existing template. itemID in the result is the AV row identity; blockID is the separate bound block/document identity. MCP preflights all default fields and relation targets, then reads every requested default back. Document templates require an explicit saveLocation so the target notebook can be authorized; inherited global document location is intentionally not guessed.",
         "duplicate": "Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.",
         "duplicate_rows": "Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.",
-        "get": "Use an attribute view ID. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
-        "get_attribute_view_filter_sort": "Use id + blockID to return the filters and sorts applied to that database block view.",
-        "get_attribute_view_keys": "Use id to return database keys/columns for a block-bound attribute view.",
+        "get": "Call av(action="get", avID="<av-id>"); id is a deprecated alias. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
+        "get_attribute_view_filter_sort": "Use avID + blockID to return the filters and sorts applied to that database block view.",
+        "get_attribute_view_keys": "Use avID to return the database column definitions.",
         "get_primary_key_values": "Returns the AV name plus primary-key rows, with optional keyword/page/pageSize filtering.",
         "remove_column": "Use avID + keyID, and optionally blockID to target a specific registered database block. removeRelationDest only matters for relation columns.",
         "remove_rows": "Use avID + srcIDs to remove rows from the AV. Optional blockID pins a specific registered database block when you need explicit block-view context.",
-        "render": "Use id (the AV ID; avID is accepted as a compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if id is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.",
+        "render": "Use avID (id is a deprecated compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if avID is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.",
         "search": "Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.",
         "set_cells": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell.",
-        "set_column_options": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
+        "set_column_options": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
         "set_column_order": "Provide avID + exact carrier blockID + its current viewID + every current keyID exactly once in desired order. Partial lists are refused. First run validateOnly=true.",
         "set_column_visibility": "Provide avID + exact carrier blockID + its current viewID + keyID + hidden. keyID must exist in that view layout. First run validateOnly=true.",
         "set_filters": "Provide avID + exact carrier blockID + its current viewID + the complete typed recursive filter tree. [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.",
@@ -1058,15 +1058,15 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
           "requiresConfirmation": true,
         },
         "get": {
-          "hint": "Use an attribute view ID. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
+          "hint": "Call av(action="get", avID="<av-id>"); id is a deprecated alias. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.",
           "requiresConfirmation": false,
         },
         "get_attribute_view_filter_sort": {
-          "hint": "Use id + blockID to return the filters and sorts applied to that database block view.",
+          "hint": "Use avID + blockID to return the filters and sorts applied to that database block view.",
           "requiresConfirmation": false,
         },
         "get_attribute_view_keys": {
-          "hint": "Use id to return database keys/columns for a block-bound attribute view.",
+          "hint": "Use avID to return the database column definitions.",
           "requiresConfirmation": false,
         },
         "get_primary_key_values": {
@@ -1082,7 +1082,7 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
           "requiresConfirmation": false,
         },
         "render": {
-          "hint": "Use id (the AV ID; avID is accepted as a compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if id is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.",
+          "hint": "Use avID (id is a deprecated compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if avID is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.",
           "requiresConfirmation": false,
         },
         "search": {
@@ -1094,7 +1094,7 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
           "requiresConfirmation": false,
         },
         "set_column_options": {
-          "hint": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
+          "hint": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
           "requiresConfirmation": true,
         },
         "set_column_order": {
@@ -1168,7 +1168,7 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.",
         "av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.",
         "For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.",
-        "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
+        "These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.",
         "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
         "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
       ],
@@ -1186,6 +1186,9 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "configure_two_way_relation",
         "configure_rollup",
         "set_relation",
+      ],
+      "sharedTopics": [
+        "ai-layout-guide",
       ],
       "tool": "av",
     },
@@ -2015,6 +2018,9 @@ block(action="prepend") or block(action="append") with a document ID targets the
         "delete",
         "move",
       ],
+      "sharedTopics": [
+        "ai-layout-guide",
+      ],
       "tool": "block",
     },
   },
@@ -2025,6 +2031,7 @@ block(action="prepend") or block(action="append") with a document ID targets the
         "example": {
           "action": "create",
           "notebook": "20210808180117-czj9bvb",
+          "path": "/Folder/Weekly Note",
         },
         "examples": [
           {
@@ -2080,11 +2087,20 @@ block(action="prepend") or block(action="append") with a document ID targets the
         ],
         "hint": "Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.",
         "requiredFields": [
-          "notebook",
+          [
+            "notebook",
+            "path",
+          ],
+          [
+            "notebook",
+            "parentPath",
+            "title",
+          ],
         ],
         "requiresConfirmation": false,
         "shapes": [
-          "notebook",
+          "notebook + path",
+          "notebook + parentPath + title",
         ],
         "tool": "document",
       },
@@ -2225,7 +2241,7 @@ block(action="prepend") or block(action="append") with a document ID targets the
           "For recently created documents, document(action="lookup", hpath=...) may briefly lag behind create because it depends on SiYuan indexing; retry if needed.",
           "document(action="lookup", id=...) may hit the same short indexing delay right after create; MCP retries briefly and then returns a timing-specific hint if indexing still has not settled.",
         ],
-        "hint": "Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with a fresh UUIDv7 requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.",
+        "hint": "Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.",
         "requiredFields": [
           "notebook",
           "parentId",
@@ -2700,12 +2716,12 @@ block(action="prepend") or block(action="append") with a document ID targets the
     },
     "description": "📝 Grouped document operations. Use the "action" field to select the operation.
 
-Common actions: create, lookup, rename, get_child_blocks, get_child_docs, search_docs, get_doc, get_outline. Required fields: create: notebook; lookup: no additional fields; rename: title; get_child_blocks: id; get_child_docs: id; search_docs: notebook, query; get_doc: id; get_outline: id.
+Common actions: create, lookup, rename, get_child_blocks, get_child_docs, search_docs, get_doc, get_outline. Required fields: create: notebook, path | notebook, parentPath, title; lookup: no additional fields; rename: title; get_child_blocks: id; get_child_docs: id; search_docs: notebook, query; get_doc: id; get_outline: id.
 
 Additional actions: ensure_link_targets, remove, move, reorder, set_attr, list_tree, create_daily_note, duplicate, heading_to_doc, doc_to_heading. Read siyuan://help/action/document/{action} for details, or call action="help" if resources are unavailable.
 
 Parameter contract per action (fields outside the action's optional list should not be sent):
-document.create: required [notebook] | optional [path, parentPath, title, markdown, sorts, icon]
+document.create: required [notebook, path] OR [notebook, parentPath, title] | optional [markdown, sorts, icon]
 document.lookup: required [] | optional [id, notebook, path, hpath, hPath, include]
 document.ensure_link_targets: required [notebook, parentId, mode, targets] | optional [markdown, dryRun]
 document.rename: required [title] | optional [id, notebook, path]
@@ -2731,7 +2747,7 @@ For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"writ
         "create_daily_note": "Use a notebook ID and optionally pass app for downstream SiYuan event routing. When the user asks for a diary, journal entry, daily log, or today’s note in a notebook, prefer this action over manually creating a path and then appending content.",
         "doc_to_heading": "requires: srcID, targetID",
         "duplicate": "requires: id",
-        "ensure_link_targets": "Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with a fresh UUIDv7 requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.",
+        "ensure_link_targets": "Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.",
         "get_child_blocks": "Use a document ID. Returns direct child blocks only.",
         "get_child_docs": "Use a document ID. Returns direct child documents only.",
         "get_doc": "Use a document ID. mode="markdown" tries full clean Markdown by default, bounded to 256 KiB UTF-8 and 2000 complete blocks, with a window-scoped outline and nextWindow; totalBlocks is null until EOF; use blockStart/blockLimit/tokenBudget and optionally includeBlockIds. page/pageSize character pagination was removed. mode="html" uses the current focus view.",
@@ -2762,7 +2778,7 @@ For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"writ
           "requiresConfirmation": false,
         },
         "ensure_link_targets": {
-          "hint": "Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with a fresh UUIDv7 requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.",
+          "hint": "Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.",
           "requiresConfirmation": false,
         },
         "get_child_blocks": {
@@ -2867,6 +2883,9 @@ For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"writ
       "requiresConfirmation": [
         "remove",
         "move",
+      ],
+      "sharedTopics": [
+        "ai-layout-guide",
       ],
       "tool": "document",
     },
@@ -3102,6 +3121,9 @@ feedback submits plain-text product feedback to the developer through the config
         "siyuan://help/tool-overview",
         "siyuan://help/examples",
         "siyuan://help/ai-layout-guide",
+      ],
+      "sharedTopics": [
+        "ai-layout-guide",
       ],
       "tool": "feedback",
     },
@@ -4057,6 +4079,9 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "remove_unused_assets",
         "delete_asset",
       ],
+      "sharedTopics": [
+        "ai-layout-guide",
+      ],
       "tool": "file",
     },
   },
@@ -4349,6 +4374,9 @@ flashcard actions cover review-first flashcard workflows and deck discovery. lis
       ],
       "requiresConfirmation": [
         "remove_card",
+      ],
+      "sharedTopics": [
+        "ai-layout-guide",
       ],
       "tool": "flashcard",
     },
@@ -4797,6 +4825,9 @@ Use fs first for ordinary document file operations: list, tree, read, write, mov
         "rm",
         "mv",
       ],
+      "sharedTopics": [
+        "ai-layout-guide",
+      ],
       "tool": "fs",
     },
   },
@@ -4914,6 +4945,9 @@ mascot actions operate on the cat’s spendable balance. Every successful MCP to
         "siyuan://help/tool-overview",
         "siyuan://help/examples",
         "siyuan://help/ai-layout-guide",
+      ],
+      "sharedTopics": [
+        "ai-layout-guide",
       ],
       "tool": "mascot",
     },
@@ -5290,6 +5324,9 @@ Use notebook IDs for set_open_state, rename, get_conf, and set_conf. notebook(ac
         "remove",
         "set_permission",
       ],
+      "sharedTopics": [
+        "ai-layout-guide",
+      ],
       "tool": "notebook",
     },
   },
@@ -5642,6 +5679,9 @@ All search actions are read-only except find_replace, which modifies content and
       "requiresConfirmation": [
         "find_replace",
       ],
+      "sharedTopics": [
+        "ai-layout-guide",
+      ],
       "tool": "search",
     },
   },
@@ -5940,6 +5980,9 @@ Most system actions in this tool are read-only; perform_sync is the mutating exc
         "workspace_info",
         "perform_sync",
       ],
+      "sharedTopics": [
+        "ai-layout-guide",
+      ],
       "tool": "system",
     },
   },
@@ -6068,6 +6111,9 @@ Tag actions operate across the whole workspace rather than a single notebook. Th
       ],
       "requiresConfirmation": [
         "remove",
+      ],
+      "sharedTopics": [
+        "ai-layout-guide",
       ],
       "tool": "tag",
     },
@@ -6300,6 +6346,9 @@ timeline manages named document and global snapshot nodes, compares one document
         "delete_node",
         "rollback_document",
         "rollback_block",
+      ],
+      "sharedTopics": [
+        "ai-layout-guide",
       ],
       "tool": "timeline",
     },

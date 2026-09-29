@@ -1,3 +1,4 @@
+import { withAvIdWarning } from './av-id-warning';
 import type { z } from 'zod';
 
 import { SiYuanClient } from '../../api/client';
@@ -60,6 +61,14 @@ export interface DefinedTool<Action extends string> {
     ): Promise<ToolResult>;
 }
 
+const actionValidators = new Map<ToolCategory, ActionVariant<string>[]>();
+
+/** Reuse the handler's Zod contract before issuing a write preflight credential. */
+export function validateRegisteredToolArguments(category: ToolCategory, args: Record<string, unknown>): void {
+    const normalized = normalizeToolArguments(category, args);
+    actionValidators.get(category)?.find((variant) => variant.action === normalized.action)?.validate?.(normalized);
+}
+
 /**
  * Collapse the repeated "variants + handler map + dispatcher" skeleton that
  * every tool file hand-writes (help routing, enabled check, action schema
@@ -77,6 +86,7 @@ export interface DefinedTool<Action extends string> {
  */
 export function defineTool<Action extends string>(options: DefineToolOptions<Action>): DefinedTool<Action> {
     const { name, description, variants, handlers, actionSchema, aggregateOptions } = options;
+    actionValidators.set(name, variants);
 
     return {
         listTools(config) {
@@ -120,7 +130,7 @@ export function defineTool<Action extends string>(options: DefineToolOptions<Act
                     );
                 }
 
-                return await handler({ client, rawArgs: normalizedArgs, permMgr });
+                return withAvIdWarning(await handler({ client, rawArgs: normalizedArgs, permMgr }), name, rawArgs);
             } catch (error) {
                 return createErrorResult(error, { tool: name, action: normalizedAction ?? rawAction, rawArgs: normalizedArgs });
             }

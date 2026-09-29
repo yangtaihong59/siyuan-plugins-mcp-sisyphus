@@ -127,22 +127,32 @@ export function buildExampleValue(fieldName: string, schema: JsonSchema): unknow
     return `<${fieldName}>`;
 }
 
+function requiredFieldAlternatives(schema: JsonSchema): string[][] {
+    const base = getSchemaRequiredWithoutAction(schema);
+    const branches = Array.isArray(schema.oneOf) ? schema.oneOf
+        : Array.isArray(schema.anyOf) ? schema.anyOf.filter((branch: JsonSchema) =>
+            !((branch.required as string[]) ?? []).some((key: string) => schema.properties?.[key]?.deprecated)) : [];
+    return branches.length > 0
+        ? branches.map((branch) => [...new Set([...base, ...getSchemaRequiredWithoutAction(branch)])])
+        : [base];
+}
+
 export function buildActionExampleObjects<Action extends string>(
     variants: ActionVariant<Action>[],
     action: string,
 ): Record<string, unknown>[] {
     const matching = variants.filter((variant) => variant.action === action);
 
-    return matching.map((variant) => {
+    return matching.flatMap((variant) => requiredFieldAlternatives(variant.schema).map((required) => {
         const properties = getSchemaProperties(variant.schema);
         const example: Record<string, unknown> = { action };
 
-        for (const field of getSchemaRequiredWithoutAction(variant.schema)) {
+        for (const field of required) {
             example[field] = buildExampleValue(field, (properties[field] ?? {}) as JsonSchema);
         }
 
         return example;
-    });
+    }));
 }
 
 export function getCuratedActionExamples(category: ToolCategory, action: string): HelpExample[] {
@@ -155,10 +165,8 @@ export function buildActionShapes<Action extends string>(
 ): string[] {
     return variants
         .filter((variant) => variant.action === action)
-        .map((variant) => {
-            const fields = getSchemaRequiredWithoutAction(variant.schema);
-            return fields.length > 0 ? fields.join(' + ') : 'action only';
-        });
+        .flatMap((variant) => requiredFieldAlternatives(variant.schema)
+            .map((fields) => fields.length > 0 ? fields.join(' + ') : 'action only'));
 }
 
 function formatFieldList(fields: string[]): string {
@@ -169,9 +177,7 @@ export function buildActionUsageSummary<Action extends string>(variants: ActionV
     const actionShapes = new Map<string, string[]>();
 
     for (const variant of variants) {
-        const shape = formatFieldList(
-            getSchemaFieldNames(variant.schema, true),
-        );
+        const shape = requiredFieldAlternatives(variant.schema).map(formatFieldList).join(' | ');
         const shapes = actionShapes.get(variant.action) ?? [];
         if (!shapes.includes(shape)) shapes.push(shape);
         actionShapes.set(variant.action, shapes);
@@ -189,10 +195,11 @@ export function buildParameterContract<Action extends string>(
         if (seen.has(variant.action)) return [];
         seen.add(variant.action);
 
-        const required = getSchemaFieldNames(variant.schema, true);
-        const optional = getSchemaFieldNames(variant.schema, false);
+        const alternatives = requiredFieldAlternatives(variant.schema);
+        const required = alternatives.flat();
+        const optional = getSchemaFieldNames(variant.schema, false).filter((field) => !required.includes(field));
 
-        return [`${category}.${variant.action}: required ${required.length > 0 ? `[${required.join(', ')}]` : '[]'} | optional ${optional.length > 0 ? `[${optional.join(', ')}]` : '[]'}`];
+        return [`${category}.${variant.action}: required ${required.length > 0 ? alternatives.map((fields) => `[${fields.join(', ')}]`).join(' OR ') : '[]'} | optional ${optional.length > 0 ? `[${optional.join(', ')}]` : '[]'}`];
     }).join('\n');
 }
 
@@ -223,6 +230,7 @@ export function buildHelpIndex<Action extends string>(
     return {
         tool: category,
         commonActions: tierGroups.basic,
+        sharedTopics: ['ai-layout-guide'],
         advancedActions: tierGroups.advanced,
         guidance: TOOL_GUIDANCE_BY_CATEGORY[category] ?? [],
         actions,
@@ -244,10 +252,10 @@ export function buildActionHelp<Action extends string>(
     enabledVariants: ActionVariant<Action>[],
 ): Record<string, unknown> {
     const matching = enabledVariants.filter((variant) => variant.action === action);
-    const requiredFieldSets = matching.map((variant) => getSchemaFieldNames(variant.schema, true));
+    const requiredFieldSets = matching.flatMap((variant) => requiredFieldAlternatives(variant.schema));
     const generatedExamples = buildActionExampleObjects(matching, action);
     const curatedExamples = getCuratedActionExamples(category, action);
-    const example = generatedExamples.length === 1 ? generatedExamples[0] : generatedExamples;
+    const example = matching.length === 1 ? generatedExamples[0] : generatedExamples;
 
     return {
         tool: category,

@@ -23,7 +23,7 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.5` — Fixes multi-workspace connection configuration using the current SiYuan endpoint and matching credentials, including local HTTPS kernel ports; repairs database filter schemas, batch preflight counts, and attribute-change state checks; improves large-document reads and continuation. CLI is now `v0.2.7`.
+> **Latest:** `v0.6.7` — Simplifies preflight credentials and server-issued request IDs, unifies AV parameters, fixes column lookup and write verification, and improves document creation and help without Resources. CLI is now `v0.2.8`.
 
 > **v0.6.4:** `v0.6.4` — Expands guarded AV configuration, adds auditable Markdown snapshots, image-reference auditing, permission-scoped visual image delivery, extension diagnostics, and clearer path semantics. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58). CLI is now `v0.2.6`.
 
@@ -218,7 +218,7 @@ Sisyphus-owned tools are designed around explicit user control:
 
 - each notebook can be read-only, writable, deletable, or hidden from AI;
 - dangerous actions such as delete, move, replace, and asset upload are treated separately;
-- Strict Safe Writes is enabled by default under Settings → MCP → Settings & Debug. A mutation first uses `validateOnly=true` to obtain the current-state hash, then submits a fresh UUIDv7 `requestId` with the matching `expected*Hash`;
+- Strict Safe Writes is enabled by default under Settings → MCP → Settings & Debug. A mutation first uses `validateOnly=true` to obtain the current-state hash, then submits the server-issued `requestId` with the matching `expected*Hash`;
 - write transport is attempted once. A timeout or disconnect returns `outcome_unknown` instead of risking a duplicate through a blind retry; a committed `requestId` is replayed from the metadata ledger;
 - strict mode creates no SiYuan data snapshots. It relies on target-state hashes, serial coordination, post-write readback, and a hash/ID-only idempotency ledger; notifications, sync, exports, and third-party tools that cannot be read back are explicitly marked as not strictly guaranteed;
 - MCP and CLI share the same core behavior, so switching entry points does not create a second permission model;

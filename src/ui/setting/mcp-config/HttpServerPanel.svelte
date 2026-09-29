@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { getWorkspaceApiUrl } from "@/shared/workspace-api-url";
     import { onDestroy, onMount } from "svelte";
     import { showMessage } from "siyuan";
 
@@ -119,7 +118,8 @@
     let httpUnsubLogs: (() => void) | null = null;
     let httpUnsubLifecycleLogs: (() => void) | null = null;
     let selectedMcpClientPreset: McpClientPresetId = "claude-code";
-    let selectedMcpTransport: McpTransportId = "stdio";
+    let preferredMcpTransport: McpTransportId | null = null;
+    $: selectedMcpTransport = preferredMcpTransport ?? (httpStatus.running ? "http" : "stdio");
     let changelogExpanded = false;
     $: changelogTitle = getLabel("toolSettingsChangelogTitle", "更新日志");
     $: changelogText = getLabel("toolSettingsChangelogText", "连接设置现按 MCP / CLI 分组，MCP 下再区分 HTTP/HTTPS 与 stdio。");
@@ -236,7 +236,7 @@
             command: "node",
             args: [getWorkspaceScriptPath()],
             env: {
-                SIYUAN_API_URL: getSiYuanApiUrl(),
+                SIYUAN_API_URL: "http://127.0.0.1:6806",
                 SIYUAN_TOKEN: getSiYuanApiToken(),
             },
         };
@@ -388,10 +388,6 @@
         return transport
             ? getLabel(transport.titleKey, transport.titleFallback)
             : selectedMcpTransport;
-    }
-
-    function getSiYuanApiUrl(): string {
-        return getWorkspaceApiUrl(window?.location?.origin);
     }
 
     function generateMcpAiSetupPrompt(): string {
@@ -666,7 +662,7 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                         </label>
                         <label class="mcp-client-preset-select">
                             <span class="http-label">{getLabel("mcpTransportSelectLabel", "连接方式")}</span>
-                            <select class="b3-select" bind:value={selectedMcpTransport}>
+                            <select class="b3-select" value={selectedMcpTransport} on:change={(event) => preferredMcpTransport = event.currentTarget.value === "http" ? "http" : "stdio"}>
                                 {#each MCP_TRANSPORT_PRESETS as transport}
                                     <option value={transport.id}>{getLabel(transport.titleKey, transport.titleFallback)}</option>
                                 {/each}
@@ -676,6 +672,7 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                             {getLabel("mcpClientPresetCopy", "复制配置")}
                         </button>
                     </div>
+                    <div class="http-note">{getLabel("mcpTransportRecommendation", "Prefer HTTP/HTTPS when available: its fixed MCP address automatically follows the current workspace’s changing kernel port. Give each workspace a different MCP port. stdio uses port 6806, which belongs to the first workspace started, so it cannot reliably select another workspace; its API token must match that workspace.")}</div>
                     <pre>{generatePresetSnippet(httpSettings, selectedMcpClientPreset, selectedMcpTransport)}</pre>
                     <div class="http-note">
                         {#each MCP_CLIENT_PRESETS as preset}

@@ -6,7 +6,7 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.7` fixes recursive AV filter schemas, batch preflight target counts, and persistent inline-attribute state checks, and improves bounded large-document reads with continuation.
+> **Latest:** `v0.2.8` unifies AV parameters and preflight credentials, verifies writes, and adds `--topic ai-layout-guide` help.
 
 > **v0.2.6:** `v0.2.6` exposes the expanded guarded AV, snapshot, image-audit, image-reading, extension-diagnostic, and link-resolution workflows, and preserves mixed text/image results in JSON output. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58).
 
@@ -29,9 +29,13 @@ siyuan-sisyphus search fulltext --query "keyword" --page-size 10 --json | jq '.d
 
 ## Strict safe writes
 
-Strict safe writes are enabled by default in the plugin under Settings → MCP → Settings & Debug. Mutation commands first run the action with `validateOnly=true`, then submit a fresh UUIDv7 `requestId` and the returned `expected*Hash`. The returned value is a temporary in-memory lease credential, normally beginning with four hexadecimal characters; it is never used as a 16-bit state comparison because the HTTP coordinator resolves it to the leased full SHA-256 and compares that full hash with a fresh read before writing.
+Strict safe writes are enabled by default in the plugin under Settings → MCP → Settings & Debug. Mutation commands first run the action with `validateOnly=true`, then copy the server-issued `requestId` and the returned `expected*Hash` (when present) unchanged; additive actions also require preflight to obtain a request ID. The returned value is a temporary in-memory lease credential, normally beginning with four hexadecimal characters; it is never used as a 16-bit state comparison because the HTTP coordinator resolves it to the leased full SHA-256 and compares that full hash with a fresh read before writing.
 
 Keep the plugin-hosted MCP HTTP server enabled while using strict CLI mutations. The CLI forwards these writes to that single coordinator so CLI, stdio, and HTTP do not create independent lease pools. Expired, consumed, or restart-invalidated leases require a new preflight. Turning strict writes off restores the legacy direct-call contract without hash concurrency checks, request idempotency, or post-write verification.
+
+Request IDs and state credentials start at four hexadecimal characters. Copy them completely; do not generate or truncate them. Upgrade the plugin to v0.6.7 alongside this CLI and obtain fresh preflight credentials. The legacy AV `id` input remains accepted with a deprecation warning; use `avID` for new calls.
+
+Clients without MCP Resources can run `siyuan-sisyphus av help --topic ai-layout-guide` for the complete layout guide.
 
 ## Install
 

@@ -65,10 +65,10 @@ document(action="lookup", id="<returned-document-id>", include=["id","path","hpa
 file(action="upload_asset", assetsDirPath="<approved-assets-dir>", localFilePath="<approved-staged-file>")
 ```
 ```text
-av(action="get", id="<av-id>", blockID="<database-block-id>")
+av(action="get", avID="<av-id>", blockID="<database-block-id>")
 ```
 ```text
-av(action="get_attribute_view_keys", id="<av-id>")
+av(action="get_attribute_view_keys", avID="<av-id>")
 ```
 
 Create missing documents only after approval. Generated target IDs are recorded; this action set cannot preserve source IDs or force remapping. On lost acknowledgement, perform one identity-fixed read and classify the outcome; never resend blindly.
@@ -121,10 +121,10 @@ block(action="get_attrs", id="<reviewed-block-id>")
 file(action="get_doc_assets", id="<returned-document-id>", assetType="all")
 ```
 ```text
-av(action="get", id="<av-id>")
+av(action="get", avID="<av-id>")
 ```
 ```text
-av(action="render", id="<av-id>", viewID="<view-id>", page=1, pageSize=50)
+av(action="render", avID="<av-id>", viewID="<view-id>", page=1, pageSize=50)
 ```
 
 Check exact notebook/path, document/block identity, parent/sibling order, list containment, tables/images/references, typed AV values, and relation endpoints. Observe whether a callout is `NodeCallout` or `NodeBlockquote`; if conversion is needed, report the known gap. `file.extract_doc` and `file.export_md` supplement evidence but cannot prove exact .sy or UI state.

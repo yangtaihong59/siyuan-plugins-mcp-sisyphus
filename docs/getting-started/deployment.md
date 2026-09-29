@@ -86,6 +86,8 @@ Notes:
 
 ## stdio Mode
 
+Generated stdio configurations use the fixed endpoint `http://127.0.0.1:6806` so they do not retain a random port that may change after restart. On desktop, this port belongs to the first workspace started; the API token must match that workspace. To connect to other workspaces, use their configured HTTP MCP endpoints.
+
 Use `mcp-server.cjs` as a subprocess and point it at the SiYuan API.
 
 ```json

@@ -86,7 +86,7 @@ export const AV_GUIDANCE: string[] = [
     'av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.',
     'av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.',
     'For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.',
-    'These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit a fresh requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.',
+    'These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.',
     'set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.',
     'add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.',
 ];
@@ -196,7 +196,7 @@ export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
 export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     create: 'Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.',
     lookup: 'Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths.',
-    ensure_link_targets: 'Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with a fresh UUIDv7 requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.',
+    ensure_link_targets: 'Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.',
     rename: 'Use either id + title or notebook + path + title.',
     remove: 'Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + storage path.',
     move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.',
@@ -232,17 +232,17 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
 };
 
 export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
-    get: 'Use an attribute view ID. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.',
-    render: 'Use id (the AV ID; avID is accepted as a compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if id is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.',
-    get_attribute_view_keys: 'Use id to return database keys/columns for a block-bound attribute view.',
-    get_attribute_view_filter_sort: 'Use id + blockID to return the filters and sorts applied to that database block view.',
+    get: 'Call av(action="get", avID="<av-id>"); id is a deprecated alias. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution.',
+    render: 'Use avID (id is a deprecated compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if avID is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction.',
+    get_attribute_view_keys: 'Use avID to return the database column definitions.',
+    get_attribute_view_filter_sort: 'Use avID + blockID to return the filters and sorts applied to that database block view.',
     search: 'Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.',
     add_rows: 'Use avID + blockIDs to add existing blocks as bound rows, or avID + primaryKeyTexts to add detached rows whose primary key is plain text. Optional blockID/viewID/groupID/previousID refine the insertion target and preserve the intended database-block view/group defaults. MCP polls briefly after insertion and only reports success when each new row resolves to a writable rowID. To add initial non-primary-key cell values, follow add_rows with av(action="set_cells", avID, cells=[{rowID, columnID, valueType, ...}, ...]); reuse the rowID returned by add_rows.',
     remove_rows: 'Use avID + srcIDs to remove rows from the AV. Optional blockID pins a specific registered database block when you need explicit block-view context.',
     add_column: 'Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.',
     remove_column: 'Use avID + keyID, and optionally blockID to target a specific registered database block. removeRelationDest only matters for relation columns.',
     set_cells: 'Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell.',
-    set_column_options: 'Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and a fresh requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.',
+    set_column_options: 'Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.',
     duplicate_rows: 'Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.',
     duplicate: 'Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.',
     get_primary_key_values: 'Returns the AV name plus primary-key rows, with optional keyword/page/pageSize filtering.',
@@ -475,16 +475,16 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         render: [
             {
                 title: 'Render an AV returned by search',
-                description: 'av.search results include renderArgs; pass id or the compatibility alias avID.',
+                description: 'av.search results include renderArgs with canonical avID.',
                 mcp: {
                     action: 'render',
-                    id: '20240318112233-abc123',
+                    avID: '20240318112233-abc123',
                     page: 1,
                     pageSize: 20,
                 },
             },
             {
-                title: 'Render with avID compatibility alias',
+                title: 'Render an existing AV',
                 mcp: {
                     action: 'render',
                     avID: '20240318112233-abc123',

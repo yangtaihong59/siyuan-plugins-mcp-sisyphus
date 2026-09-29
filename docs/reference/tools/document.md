@@ -1,5 +1,7 @@
 # document
 
+In every mode, creation requires `notebook + path` or `notebook + parentPath + title`; use `parentPath="/"` for the notebook root. `notebook + title` alone is invalid and preflight rejects it without issuing a credential. After changing business arguments, preflight again for a new `requestId`; reuse an ID only to retry the same request.
+
 This tool covers document CRUD, tree navigation, metadata, and daily-note oriented document operations.
 
 When to read this page: you need to create, move, query, or convert documents.
@@ -23,7 +25,7 @@ Related pages:
 - `create` takes either a human-readable `path`, or `parentPath` + `title`; omit `markdown` to create an empty document. Prefer `path` for child documents. The `parentPath` + `title` mode accepts either a human-readable parent path or a storage path ending in `.sy` returned by `lookup`.
 - `lookup` resolves by `id`, storage `path`, or human-readable `hpath` / `hPath`; use `include` to request `id`, `ids`, `path`, `hpath`, or `docInfo`.
 - `ensure_link_targets` provisions a reusable import link map inside one exact scope: `notebook` + direct-parent `parentId`. `resolve` and `reuse` accept only explicit direct-child document IDs. `create` accepts explicit new titles, but never treats a matching existing title as identity: it reports `same_title_child_requires_explicit_id` in `unresolved` instead. Every resolved or created output includes exact `id`, notebook, storage `path`, and `hPath` readback.
-- `ensure_link_targets(dryRun=true)` is valid only for `mode="create"`; it inspects and reports `wouldCreate` without mutation. `resolve` and `reuse` are read-only discovery operations. A real `create` follows the normal two-call contract: preflight with `validateOnly=true`, then exactly one request with a fresh UUIDv7 `requestId` and returned `expectedStructureHash`. Do not retry after an unknown transport outcome: inspect or reuse the original request ID. The action never automatically removes documents it created.
+- `ensure_link_targets(dryRun=true)` is valid only for `mode="create"`; it inspects and reports `wouldCreate` without mutation. `resolve` and `reuse` are read-only discovery operations. A real `create` follows the normal two-call contract: preflight with `validateOnly=true`, then exactly one request with the server-issued `requestId` and returned `expectedStructureHash`. Do not retry after an unknown transport outcome: inspect or reuse the original request ID. The action never automatically removes documents it created.
 - The returned `idPath` includes available `id` / `ids`. When several documents share the same hpath, `include: ["ids"]` returns all matching IDs; the tool includes a SQL fallback.
 - `rename`, `remove`, and `move` often need a storage path if you are not using document IDs.
 - `reorder` takes a notebook or parent-document `parentID` plus `orderedIDs`. The array must contain every visible direct child document ID exactly once. It enables custom notebook sorting (`sortMode: 6`) and does not move, rename, or edit any document.
@@ -79,7 +81,7 @@ MCP:
 }
 ```
 
-For a new target, call the same action first with `mode: "create"` and `validateOnly: true`, then commit exactly once using the returned `expectedStructureHash`, a fresh UUIDv7 `requestId`, and an explicit title target. A same-title child is an unresolved result, not an implicit reuse.
+For a new target, call the same action first with `mode: "create"` and `validateOnly: true`, then commit exactly once using the returned `expectedStructureHash`, the server-issued `requestId`, and an explicit title target. A same-title child is an unresolved result, not an implicit reuse.
 
 CLI:
 

@@ -1,5 +1,15 @@
 # av 工具
 
+## ID 与回读约定
+
+| 动作 | AV ID 参数 |
+| --- | --- |
+| `get`、`get_attribute_view_keys`、`get_attribute_view_filter_sort` | `avID` |
+| `render`（读取已有 AV） | `avID`；`id` 为弃用别名 |
+| `get_primary_key_values`、`set_cells` 等写入动作 | `avID` |
+
+`get` 的 `blockID` 是可选数据库块上下文，不替代 `avID`。AV 响应保留原生单元格、选项和资源字段，不使用通用内容裁剪。批量写入相同新单选选项可以一次提交；严格模式逐格核对请求值，回读不符返回 `readback_mismatch`，应检查目标后再决定后续操作。
+
 这个工具覆盖属性视图与数据库式操作。
 
 适用场景：你需要查看或修改真实的思源属性视图，而不是用 Markdown 表格模拟数据库。
@@ -8,6 +18,8 @@
 
 - [常见任务](../common-tasks.md)
 - [权限模型](../permissions.md)
+
+四个读取/渲染动作接受 `id` 弃用别名，并返回 `warnings`。同时提供不同的 `id`/`avID` 会被拒绝；预检和重放统一使用规范参数，切换别名不会变成另一笔操作。原生响应中的 ID 字段保持不变。列查询直接读取已校验权限的 AV 列定义，不查询绑定块属性；未明确开启创建时，`render` 向内核发送 `createIfNotExist=false`。
 
 ## 常见动作
 
@@ -25,7 +37,7 @@
 ## 参数与语义
 
 - `render` 在 `createIfNotExist=true` 且传入 `blockID` 时，也可创建并实体化 AV。此时 `blockID` 表示目标父级 / 插入上下文，MCP 会通过思源风格的 spun AV block DOM 与 transaction 完成插入。
-- 渲染已有 AV 时，规范参数名是 `id`，值为 AV ID。为了减少 Agent 从 `search` 到 `render` 的参数转换，`render` 也接受 `avID` 作为兼容别名，且 `av.search` 结果会包含可复用的 `renderArgs`。
+- 渲染已有 AV 时，规范参数名是 `avID`。上述四个读取/渲染动作保留 `id` 弃用别名，两者同时传入必须相同，且 `av.search` 结果会包含可复用的 `renderArgs`。
 - 保留 `render(createIfNotExist=true)` 返回的 `blockID`。后续 AV 读写通常只需要 `avID`；MCP 会从行绑定块、镜像数据库块，或 blocks 表中的 AV 块记录自动解析 owning database block。需要固定某个数据库块视图、存在多个镜像候选，或需要为刚创建的空 AV 提供显式兜底时，再传 `blockID`。
 - `set_cells` 由 `valueType` 决定值类型，既支持单格字段，也支持 `cells` / `items` 数组。但它会明确拒绝 `valueType="relation"`；Relation 必须用 `set_relation` 整体写入，MCP 才能校验目标 AV 的写权限和双向反向单元格。
 - `rowID` 与 `set_relation.itemID` 指 AV 行 item ID，不是源块或绑定文档块 ID。思源底层 Relation 虽把数组命名为 `blockIDs`，`set_relation.relatedItemIDs` 传入的仍是目标 AV 行 item ID。
@@ -48,7 +60,7 @@
 - 结构化数据应使用 `av`，不要在 Markdown 中模拟数据库行为。
 - `set_column_options` 与 `duplicate_rows` 都是危险的 W2 写入：执行前需要用户明确确认，并先使用 `validateOnly=true` 做严格预检。`duplicate_rows` 还要求源 AV carrier 和每个已解析的反向 relation 目标 carrier 均具有 `rw` 或 `rwd` 权限。
 - 如果任一 action 返回 `outcome_unknown` 或 `readback_mismatch`，不要自动重试；先检查精确的源 AV 和 relation 目标。
-- 上述六项视图配置都是严格写入：先以 `validateOnly: true` 调用，再使用返回的 `expectedStateHash` 和新的 UUIDv7 `requestId` 重复提交。Sisyphus 只发起一次 HTTP 写入，再用 raw `/api/av/getAttributeView` 与 carrier attrs/DOM 读回；不会用 `renderAttributeView` 作为持久化证明，响应未知时也不会自动重试。
+- 上述六项视图配置都是严格写入：先以 `validateOnly: true` 调用，再使用返回的 `expectedStateHash` 和预检返回的 `requestId` 重复提交。Sisyphus 只发起一次 HTTP 写入，再用 raw `/api/av/getAttributeView` 与 carrier attrs/DOM 读回；不会用 `renderAttributeView` 作为持久化证明，响应未知时也不会自动重试。
 - `set_new_item_templates`、`create_from_template`、`configure_two_way_relation`、`configure_rollup` 与 `set_relation` 都是危险动作，需要用户确认和当前 strict-write 预检 hash。
 - 模板、Relation 与 Rollup 的读回一律使用 `getAttributeView`，不会把 `renderAttributeView` 当作读路径。响应未知时不会盲目重试写入。
 
@@ -97,7 +109,7 @@ MCP：
 CLI：
 
 ```bash
-siyuan av get --id <attribute-view-id>
+siyuan av get --av-id <attribute-view-id>
 siyuan av render --av-id <attribute-view-id>
 siyuan av add-column --av-id <attribute-view-id> --key-name Status --key-type select
 siyuan av add-rows --av-id <attribute-view-id> --block-ids <block-id>

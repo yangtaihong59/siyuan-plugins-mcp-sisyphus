@@ -22,14 +22,15 @@ The preflight reads without mutating, computes a complete SHA-256 digest, and cr
 {
   "validateOnly": true,
   "writeAttempted": false,
+  "requestId": "b72f",
   "preconditionField": "expectedStateHash",
-  "stateHash": "sha256:v1:8ac2",
+  "expectedStateHash": "8ac2",
   "hashPrefixLength": 4,
   "leaseExpiresAt": 1786543200000
 }
 ```
 
-Generate a fresh UUIDv7 and submit the real write once with that field:
+The credential field name matches the write parameter, so copy that field and value directly. Remove `validateOnly` (or set it to `false`) and copy the returned `requestId`:
 
 ```json
 {
@@ -37,12 +38,14 @@ Generate a fresh UUIDv7 and submit the real write once with that field:
   "id": "20260812120000-abcdefg",
   "dataType": "markdown",
   "data": "New content",
-  "requestId": "019c1234-5678-7abc-8def-0123456789ab",
-  "expectedStateHash": "sha256:v1:8ac2"
+  "requestId": "b72f",
+  "expectedStateHash": "8ac2"
 }
 ```
 
-Actions may use `expectedStateHash`, `expectedStructureHash`, `expectedManifestHash`, or `expectedSourceHash`. Read `preconditionField` instead of guessing. Additive actions have no state hash but still require a fresh UUIDv7 for execution.
+Preflight issues `requestId` starting at four hex digits, extending it when an already-issued ID collides. Copy the complete value; never generate or truncate it, and reuse it unchanged for retries. First execution expires after 10 minutes (`requestIdExpiresAt`); executed results remain for up to seven days. Persistent ID reservations prevent reuse after expiry, contain no note bodies, and grow with issuance count. Additive operations also require preflight to obtain an ID.
+
+Actions may use `expectedStateHash`, `expectedStructureHash`, `expectedManifestHash`, or `expectedSourceHash`. Read `preconditionField` instead of guessing. Additive actions have no state hash but still require the preflight-issued request ID for execution.
 
 Credentials accept either `sha256:v1:<4-64 hex digits>` or bare `<4-64 hex digits>`, case-insensitively. Four digits are only a lease lookup key, not a 16-bit correctness check. The real write resolves the credential within `tool + action + business-argument digest + sorted target IDs`, retrieves the lease's complete 256-bit SHA-256, rereads current state, and compares the complete digests. Even a 64-digit credential must resolve to an active lease and cannot bypass preflight.
 

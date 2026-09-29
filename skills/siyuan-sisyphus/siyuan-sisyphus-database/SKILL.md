@@ -8,10 +8,10 @@ description: CLI-only playbook for SiYuan attribute views with siyuan-sisyphus. 
 Never guess attribute-view identifiers. Inspect the AV and its views before changing rows or cells.
 
 ```bash
-siyuan-sisyphus av get --id '<av-id>' --json
+siyuan-sisyphus av get --av-id '<av-id>' --json
 ```
 ```bash
-siyuan-sisyphus av render --id '<av-id>' --page '1' --page-size '50' --json
+siyuan-sisyphus av render --av-id '<av-id>' --page '1' --page-size '50' --json
 ```
 ```bash
 siyuan-sisyphus av search --keyword 'project' --json

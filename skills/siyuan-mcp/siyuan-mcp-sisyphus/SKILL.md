@@ -47,6 +47,14 @@ fs(action="tree", path="/Notebook", maxDepth=3)
 fs(action="read", path="/Notebook/Folder/Doc", blockStart=0, blockLimit=50, tokenBudget=2000)
 ```
 
+## Help without MCP Resources
+
+The complete layout guide is available through the help action below, using the same content as the MCP layout resource. Never pass a help URI to the document read action.
+
+```text
+fs(action="help", topic="ai-layout-guide")
+```
+
 ## Shared invariants
 
 - Read `/AGENTS.md` through `fs` before workspace-aware tasks when it exists.

@@ -5,11 +5,6 @@ import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';
 
-function uuidV7(now = Date.now(), suffix = '000000000002') {
-    const timestamp = now.toString(16).padStart(12, '0');
-    return `${timestamp.slice(0, 8)}-${timestamp.slice(8)}-7000-8000-${suffix}`;
-}
-
 function success(payload: Record<string, unknown>) {
     return {
         content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
@@ -188,9 +183,9 @@ async function assertStableCrossObjectActionThenRejectDrift(
         action,
         args: {
             ...args,
-            requestId: uuidV7(Date.now(), `${suffix.slice(0, 10)}01`),
+            requestId: stablePreflight.requestId,
             [action === 'duplicate_rows' ? 'expectedManifestHash' : 'expectedStateHash']:
-                action === 'duplicate_rows' ? stablePreflight.manifestHash : stablePreflight.stateHash,
+                action === 'duplicate_rows' ? stablePreflight.expectedManifestHash : stablePreflight.expectedStateHash,
         },
         strictMode: true,
         execute: stableExecute,
@@ -221,16 +216,16 @@ async function assertStableCrossObjectActionThenRejectDrift(
         action,
         args: {
             ...args,
-            requestId: uuidV7(Date.now(), `${suffix.slice(0, 10)}02`),
+            requestId: stalePreflight.requestId,
             [action === 'duplicate_rows' ? 'expectedManifestHash' : 'expectedStateHash']:
-                action === 'duplicate_rows' ? stalePreflight.manifestHash : stalePreflight.stateHash,
+                action === 'duplicate_rows' ? stalePreflight.expectedManifestHash : stalePreflight.expectedStateHash,
         },
         strictMode: true,
         execute: staleExecute,
     }));
     expect(staleResult.error).toMatchObject({
         code: 'state_changed',
-        expectedHash: action === 'duplicate_rows' ? stalePreflight.manifestHash : stalePreflight.stateHash,
+        expectedHash: action === 'duplicate_rows' ? stalePreflight.expectedManifestHash : stalePreflight.expectedStateHash,
     });
     expect(staleExecute).not.toHaveBeenCalled();
 }
@@ -282,7 +277,7 @@ describe('write safety coordinator', () => {
         });
         const result = parseResult(await coordinator.run({
             client, permMgr, category: 'block', action: 'update', strictMode: true,
-            args: { ...args, requestId: uuidV7(), expectedStateHash: preflight.stateHash }, execute,
+            args: { ...args, requestId: preflight.requestId, expectedStateHash: preflight.expectedStateHash }, execute,
         }));
         if (scenario === 'drift') {
             expect(result.error.code).toBe('state_changed');
@@ -293,6 +288,31 @@ describe('write safety coordinator', () => {
             if (scenario === 'commit') expect(result.safety.previousHash).not.toBe(result.safety.resultHash);
             else expect(result.safety.previousHash).toBe(result.safety.resultHash);
         }
+    });
+
+    it.each([true, false])('verifies each set_cells postimage before commit (retained=%s)', async (retained) => {
+        const fixture = createCrossObjectAvFixture();
+        const { sourceAvID: avID, sourceBlockID: blockID, sourceItemID: rowID, sourceKeyID: columnID } = fixture.ids;
+        fixture.sourceAv.keyValues[1] = {
+            key: { id: columnID, type: 'select' },
+            values: [{ blockID: rowID, mSelect: [{ content: 'Before', color: '' }] }],
+        };
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const args = { action: 'set_cells', avID, blockID, cells: [{ rowID, columnID, valueType: 'select', option: 'After' }] };
+        const context = { client: fixture.client, permMgr: fixture.permMgr, category: 'av' as const, action: 'set_cells', strictMode: true };
+        const preflight = parseResult(await coordinator.run({ ...context, args: { ...args, validateOnly: true }, execute: vi.fn() }));
+        expect(preflight.error).toBeUndefined();
+        const result = parseResult(await coordinator.run({
+            ...context,
+            args: { ...args, requestId: preflight.requestId, expectedManifestHash: preflight.expectedManifestHash },
+            execute: async () => {
+                fixture.sourceAv.revision += 1;
+                fixture.sourceAv.keyValues[1].values[0].mSelect = [retained ? { content: 'After', color: '13' } : { color: '' }];
+                return success({ updated: 1 });
+            },
+        }));
+        if (retained) expect(result.safety.transactionState).toBe('committed');
+        else { expect(result.error.code).toBe('readback_mismatch'); expect(result.writeExecuted).not.toBe(true); }
     });
 
     it('rejects a set_relation destination AV drift before dispatch', async () => {
@@ -313,14 +333,14 @@ describe('write safety coordinator', () => {
             client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000101'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute,
         }));
 
-        expect(result.error).toMatchObject({ code: 'state_changed', expectedHash: preflight.stateHash });
+        expect(result.error).toMatchObject({ code: 'state_changed', expectedHash: preflight.expectedStateHash });
         expect(execute).not.toHaveBeenCalled();
     });
 
@@ -355,8 +375,8 @@ describe('write safety coordinator', () => {
             client: fixture.client, permMgr: fixture.permMgr, category: 'av', action: 'set_relation',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000151'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute,
@@ -497,7 +517,7 @@ describe('write safety coordinator', () => {
         }));
 
         expect(result).toMatchObject({ validateOnly: true, writeAttempted: false });
-        expect(result.stateHash).toMatch(/^sha256:v1:/);
+        expect(result.expectedStateHash).toMatch(/^[a-f0-9]{4,64}$/);
         expect(permMgr.canWrite).toHaveBeenCalledWith('nb-rw');
         expect(permMgr.canDelete).not.toHaveBeenCalled();
     });
@@ -529,7 +549,7 @@ describe('write safety coordinator', () => {
         }));
 
         expect(result).toMatchObject({ action: 'configure_two_way_relation', validateOnly: true, writeAttempted: false });
-        expect(result.stateHash).toMatch(/^sha256:v1:/);
+        expect(result.expectedStateHash).toMatch(/^[a-f0-9]{4,64}$/);
     });
 
     it('observes timeline rollback changes through live document markdown', async () => {
@@ -568,8 +588,8 @@ describe('write safety coordinator', () => {
             client, permMgr, category: 'timeline', action: 'rollback_document',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000011'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute: vi.fn(async () => {
@@ -601,7 +621,15 @@ describe('write safety coordinator', () => {
         });
         permMgr.getAll = vi.fn(() => ({ 'nb-existing': 'rwd' }));
 
-        const result = parseResult(await new WriteSafetyCoordinator(client).run({
+        const coordinator = new WriteSafetyCoordinator(client);
+        const execute = vi.fn(async () => success({ id: notebookID, name: 'New Notebook' }));
+        const execution = { client, permMgr, category: 'notebook' as const, action: 'create',
+            args: { action: 'create', name: 'New Notebook' }, strictMode: true, execute };
+        const preflight = parseResult(await coordinator.run({ ...execution, args: { ...execution.args, validateOnly: true } }));
+        expect(preflight.requestId).toMatch(/^[a-f0-9]{4,64}$/);
+        expect(preflight).not.toHaveProperty('expectedStateHash');
+        expect(execute).not.toHaveBeenCalled();
+        const result = parseResult(await coordinator.run({
             client,
             permMgr,
             category: 'notebook',
@@ -609,10 +637,10 @@ describe('write safety coordinator', () => {
             args: {
                 action: 'create',
                 name: 'New Notebook',
-                requestId: uuidV7(Date.now(), '000000000001'),
+                requestId: preflight.requestId,
             },
             strictMode: true,
-            execute: vi.fn(async () => success({ id: notebookID, name: 'New Notebook' })),
+            execute,
         }));
 
         expect(result.safety).toMatchObject({
@@ -622,6 +650,14 @@ describe('write safety coordinator', () => {
         });
         expect(result.safety.resultHash).toMatch(/^sha256:v1:/);
         expect(permMgr.canWrite).not.toHaveBeenCalledWith(notebookID);
+        const replay = parseResult(await coordinator.run({ ...execution, args: { ...execution.args, requestId: preflight.requestId } }));
+        expect(replay.replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+        const next = parseResult(await coordinator.run({ ...execution, args: { ...execution.args, validateOnly: true } }));
+        expect(next.requestId).not.toBe(preflight.requestId);
+        await coordinator.run({ ...execution, args: { ...execution.args, requestId: next.requestId } });
+        expect(execute).toHaveBeenCalledTimes(2);
+
     });
 
     it('allows set_permission to bootstrap a notebook without an existing permission entry', async () => {
@@ -661,8 +697,8 @@ describe('write safety coordinator', () => {
             action: 'set_permission',
             args: {
                 ...baseArgs,
-                requestId: uuidV7(Date.now(), '000000000009'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute: vi.fn(async () => {
@@ -671,7 +707,7 @@ describe('write safety coordinator', () => {
             }),
         }));
 
-        expect(preflight.stateHash).toMatch(/^sha256:v1:/);
+        expect(preflight.expectedStateHash).toMatch(/^[a-f0-9]{4,64}$/);
         expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
         expect(permMgr.canWrite).not.toHaveBeenCalled();
         expect(permMgr.canDelete).not.toHaveBeenCalled();
@@ -705,8 +741,8 @@ describe('write safety coordinator', () => {
             client, permMgr, category: 'document', action: 'duplicate',
             args: {
                 ...baseArgs,
-                requestId: uuidV7(Date.now(), '000000000010'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute: vi.fn(async () => success({ success: true, sourceID, id: duplicateID })),
@@ -742,7 +778,10 @@ describe('write safety coordinator', () => {
             execute: vi.fn(),
         }));
         expect(preflight.writeExecuted).toBe(false);
-        expect(preflight.stateHash).toMatch(/^sha256:v1:[a-f0-9]{4}$/);
+        expect(preflight.expectedStateHash).toMatch(/^[a-f0-9]{4}$/);
+        expect(preflight.preconditionField).toBe('expectedStateHash');
+        expect(preflight[preflight.preconditionField]).toBe(preflight.expectedStateHash);
+        expect(preflight).not.toHaveProperty('stateHash');
         expect(preflight.hashPrefixLength).toBe(4);
         expect(preflight.leaseExpiresAt).toBeGreaterThan(Date.now());
 
@@ -750,8 +789,8 @@ describe('write safety coordinator', () => {
             updated = '20260812020202';
             return success({ success: true, action: 'update' });
         });
-        const requestId = uuidV7();
-        const bareUppercaseCredential = String(preflight.stateHash).replace('sha256:v1:', '').toUpperCase();
+        const requestId = preflight.requestId;
+        const bareUppercaseCredential = String(preflight.expectedStateHash).replace('sha256:v1:', '').toUpperCase();
         const committed = parseResult(await coordinator.run({
             client,
             permMgr,
@@ -769,7 +808,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'block',
             action: 'update',
-            args: { ...baseArgs, requestId, expectedStateHash: preflight.stateHash },
+            args: { ...baseArgs, requestId, expectedStateHash: preflight.expectedStateHash },
             strictMode: true,
             execute,
         }));
@@ -781,7 +820,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'block',
             action: 'update',
-            args: { ...baseArgs, requestId: uuidV7(Date.now(), '000000000003'), expectedStateHash: preflight.stateHash },
+            args: { ...baseArgs, requestId: (await coordinator['ledger'].issue('block', 'update', { ...baseArgs })).requestId, expectedStateHash: preflight.expectedStateHash },
             strictMode: true,
             execute,
         }));
@@ -817,7 +856,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'block',
             action: 'update',
-            args: { ...args, requestId: uuidV7(Date.now(), '000000000020'), expectedStateHash: preflight.stateHash },
+            args: { ...args, requestId: preflight.requestId, expectedStateHash: preflight.expectedStateHash },
             strictMode: true,
             execute: vi.fn(async () => ({
                 content: [{ type: 'text' as const, text: JSON.stringify({ error: { type: 'permission_denied' } }) }],
@@ -831,7 +870,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'block',
             action: 'update',
-            args: { ...args, requestId: uuidV7(Date.now(), '000000000021'), expectedStateHash: preflight.stateHash },
+            args: { ...args, requestId: (await coordinator['ledger'].issue('block', 'update', { ...args })).requestId, expectedStateHash: preflight.expectedStateHash },
             strictMode: true,
             execute: vi.fn(async () => { throw new Error('connection dropped'); }),
         }));
@@ -842,7 +881,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'block',
             action: 'update',
-            args: { ...args, requestId: uuidV7(Date.now(), '000000000022'), expectedStateHash: preflight.stateHash },
+            args: { ...args, requestId: (await coordinator['ledger'].issue('block', 'update', { ...args })).requestId, expectedStateHash: preflight.expectedStateHash },
             strictMode: true,
             execute: vi.fn(),
         }));
@@ -852,6 +891,7 @@ describe('write safety coordinator', () => {
     it('rejects malformed credentials before probing or executing', async () => {
         const client = {
             readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(),
             requestRead: vi.fn(),
         } as never;
         const coordinator = new WriteSafetyCoordinator(client);
@@ -865,7 +905,7 @@ describe('write safety coordinator', () => {
                 args: {
                     action: 'update',
                     id: '20260812000000-abcdefg',
-                    requestId: uuidV7(Date.now(), String(index + 30).padStart(12, '0')),
+                    requestId: (await coordinator['ledger'].issue('block', 'update', { action: 'update', id: '20260812000000-abcdefg' })).requestId,
                     expectedStateHash: credential,
                 },
                 strictMode: true,
@@ -885,7 +925,7 @@ describe('write safety coordinator', () => {
             readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => {
                 ledgerWrites += 1;
-                if (ledgerWrites === 2) throw new Error('ledger storage unavailable');
+                if (ledgerWrites === 3) throw new Error('ledger storage unavailable');
             }),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/block/checkBlockExist') return true;
@@ -913,7 +953,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'block',
             action: 'update',
-            args: { ...args, requestId: uuidV7(Date.now(), '000000000025'), expectedStateHash: preflight.stateHash },
+            args: { ...args, requestId: preflight.requestId, expectedStateHash: preflight.expectedStateHash },
             strictMode: true,
             execute,
         }));
@@ -925,7 +965,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'block',
             action: 'update',
-            args: { ...args, requestId: uuidV7(Date.now(), '000000000026'), expectedStateHash: preflight.stateHash },
+            args: { ...args, requestId: (await coordinator['ledger'].issue('block', 'update', { ...args })).requestId, expectedStateHash: preflight.expectedStateHash },
             strictMode: true,
             execute,
         }));
@@ -963,7 +1003,7 @@ describe('write safety coordinator', () => {
                 permMgr,
                 category: 'block',
                 action: 'update',
-                args: { ...args, requestId: uuidV7(Date.now(), '000000000027'), expectedStateHash: preflight.stateHash },
+                args: { ...args, requestId: preflight.requestId, expectedStateHash: preflight.expectedStateHash },
                 strictMode: true,
                 execute,
             });
@@ -976,7 +1016,7 @@ describe('write safety coordinator', () => {
                 permMgr,
                 category: 'block',
                 action: 'update',
-                args: { ...args, requestId: uuidV7(Date.now(), '000000000028'), expectedStateHash: preflight.stateHash },
+                args: { ...args, requestId: (await coordinator['ledger'].issue('block', 'update', { ...args })).requestId, expectedStateHash: preflight.expectedStateHash },
                 strictMode: true,
                 execute,
             }));
@@ -1059,7 +1099,7 @@ describe('write safety coordinator', () => {
             permMgr,
             category: 'fs',
             action: 'replace',
-            args: { ...args, requestId: uuidV7(Date.now(), '000000000004'), expectedManifestHash: preflight.manifestHash },
+            args: { ...args, requestId: preflight.requestId, expectedManifestHash: preflight.expectedManifestHash },
             strictMode: true,
             execute,
         }));
@@ -1108,8 +1148,8 @@ describe('write safety coordinator', () => {
             action: 'write',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000005'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute,
@@ -1117,7 +1157,7 @@ describe('write safety coordinator', () => {
 
         expect(result.error).toMatchObject({
             code: 'state_changed',
-            expectedHash: preflight.stateHash,
+            expectedHash: preflight.expectedStateHash,
         });
         expect(result.error.currentHash).toMatch(/^sha256:v1:/);
         expect(execute).not.toHaveBeenCalled();
@@ -1129,8 +1169,8 @@ describe('write safety coordinator', () => {
             action: 'write',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000023'),
-                expectedStateHash: preflight.stateHash,
+                requestId: (await coordinator['ledger'].issue('fs', 'write', { ...args })).requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute,
@@ -1172,8 +1212,8 @@ describe('write safety coordinator', () => {
                 action: 'find_replace',
                 args: {
                     ...args,
-                    requestId: uuidV7(Date.now(), '000000000006'),
-                    expectedManifestHash: preflight.manifestHash,
+                    requestId: preflight.requestId,
+                    expectedManifestHash: preflight.expectedManifestHash,
                 },
                 strictMode: true,
                 execute: vi.fn(async () => success({ success: true, replaced: true, ids: [id] })),
@@ -1194,8 +1234,8 @@ describe('write safety coordinator', () => {
                 action: 'find_replace',
                 args: {
                     ...args,
-                    requestId: uuidV7(Date.now(), '000000000024'),
-                    expectedManifestHash: preflight.manifestHash,
+                    requestId: (await coordinator['ledger'].issue('search', 'find_replace', { ...args })).requestId,
+                    expectedManifestHash: preflight.expectedManifestHash,
                 },
                 strictMode: true,
                 execute: vi.fn(),
@@ -1241,7 +1281,7 @@ describe('write safety coordinator', () => {
             execute: vi.fn(),
         }));
 
-        expect(second.stateHash).toBe(first.stateHash);
+        expect(second.expectedStateHash).toBe(first.expectedStateHash);
     });
 
     it('fails closed when a live block probe cannot be read', async () => {
@@ -1282,7 +1322,8 @@ describe('write safety coordinator', () => {
         } as never;
         const permMgr = createMockPermissionManager({ canWrite: (box) => box !== '' });
         permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rwd' }));
-        const result = parseResult(await new WriteSafetyCoordinator(client).run({
+        const coordinator = new WriteSafetyCoordinator(client);
+        const result = parseResult(await coordinator.run({
             client,
             permMgr,
             category: 'flashcard',
@@ -1291,7 +1332,7 @@ describe('write safety coordinator', () => {
                 action: 'create_card',
                 deckID: '20230218211946-2kw8jgx',
                 blockIDs: [blockID],
-                requestId: uuidV7(Date.now(), '000000000007'),
+                requestId: (await coordinator['ledger'].issue('flashcard', 'create_card', { action: 'create_card', deckID: '20230218211946-2kw8jgx', blockIDs: [blockID] })).requestId,
             },
             strictMode: true,
             execute: vi.fn(async () => success({ success: true, created: true })),
@@ -1334,7 +1375,7 @@ describe('write safety coordinator', () => {
             execute: vi.fn(),
         }));
 
-        expect(second.stateHash).toBe(first.stateHash);
+        expect(second.expectedStateHash).toBe(first.expectedStateHash);
     });
 
     it('marks a digest-verified upload as committed even when source and destination hashes match', async () => {
@@ -1364,8 +1405,8 @@ describe('write safety coordinator', () => {
             action: 'upload_asset',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000008'),
-                expectedSourceHash: preflight.sourceHash,
+                requestId: preflight.requestId,
+                expectedSourceHash: preflight.expectedSourceHash,
             },
             strictMode: true,
             execute: vi.fn(async () => success({ succMap: { 'source.txt': 'assets/source.txt' } })),
@@ -1425,8 +1466,8 @@ describe('write safety coordinator', () => {
             client, permMgr, category: 'av', action: 'set_filters',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000031'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute,
@@ -1488,8 +1529,8 @@ describe('write safety coordinator', () => {
             client, permMgr, category: 'av', action: 'add_view',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000032'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute,
@@ -1537,8 +1578,8 @@ describe('write safety coordinator', () => {
             client, permMgr, category: 'av', action: 'add_view',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000033'),
-                expectedStateHash: preflight.stateHash,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
             },
             strictMode: true,
             execute: vi.fn(async () => {
@@ -1605,14 +1646,14 @@ describe('write safety coordinator', () => {
             args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
         }));
         expect(preflight.preconditionField).toBe('expectedStructureHash');
-        expect(preflight.structureHash).toMatch(/^sha256:v1:/);
+        expect(preflight.expectedStructureHash).toMatch(/^[a-f0-9]{4,64}$/);
 
         // A new sibling changes the full authority scope, so the create is
         // stopped before dispatch rather than deciding by a title search.
         children = [...children, { id: '20260813020104-child003', name: 'Concurrent target', path: `/${parentId}/20260813020104-child003.sy`, hPath: '/Imports/Concurrent target' }];
         const blocked = parseResult(await coordinator.run({
             client, permMgr, category: 'document', action: 'ensure_link_targets',
-            args: { ...args, requestId: uuidV7(Date.now(), '000000000041'), expectedStructureHash: preflight.structureHash },
+            args: { ...args, requestId: preflight.requestId, expectedStructureHash: preflight.expectedStructureHash },
             strictMode: true, execute: vi.fn(),
         }));
         expect(blocked.error.code).toBe('state_changed');
@@ -1629,10 +1670,10 @@ describe('write safety coordinator', () => {
                 linkMap: { new: { id: createdId, notebook: 'nb-1', path: `/${parentId}/${createdId}.sy`, hPath: '/Imports/New target' } },
             });
         });
-        const requestId = uuidV7(Date.now(), '000000000042');
+        const requestId = fresh.requestId;
         const committed = parseResult(await coordinator.run({
             client, permMgr, category: 'document', action: 'ensure_link_targets',
-            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            args: { ...args, requestId, expectedStructureHash: fresh.expectedStructureHash },
             strictMode: true, execute,
         }));
         expect(committed.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true });
@@ -1640,7 +1681,7 @@ describe('write safety coordinator', () => {
 
         const replayed = parseResult(await coordinator.run({
             client, permMgr, category: 'document', action: 'ensure_link_targets',
-            args: { ...args, requestId, expectedStructureHash: fresh.structureHash },
+            args: { ...args, requestId, expectedStructureHash: fresh.expectedStructureHash },
             strictMode: true, execute,
         }));
         expect(replayed.replayed).toBe(true);
@@ -1655,10 +1696,10 @@ describe('write safety coordinator', () => {
             args: { ...unknownArgs, validateOnly: true }, strictMode: true, execute: vi.fn(),
         }));
         const uncertainExecute = vi.fn(async () => { throw new Error('connection dropped after create dispatch'); });
-        const unknownRequestId = uuidV7(Date.now(), '000000000043');
+        const unknownRequestId = unknownPreflight.requestId;
         const unknown = parseResult(await coordinator.run({
             client, permMgr, category: 'document', action: 'ensure_link_targets',
-            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.expectedStructureHash },
             strictMode: true, execute: uncertainExecute,
         }));
         expect(unknown).toMatchObject({
@@ -1668,7 +1709,7 @@ describe('write safety coordinator', () => {
 
         const unknownReplay = parseResult(await coordinator.run({
             client, permMgr, category: 'document', action: 'ensure_link_targets',
-            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.structureHash },
+            args: { ...unknownArgs, requestId: unknownRequestId, expectedStructureHash: unknownPreflight.expectedStructureHash },
             strictMode: true, execute: uncertainExecute,
         }));
         expect(unknownReplay.error.code).toBe('outcome_unknown');
@@ -1722,7 +1763,7 @@ describe('write safety coordinator', () => {
             writeExecuted: false,
             preconditionField: 'expectedStructureHash',
         });
-        expect(firstPreflight.structureHash).toMatch(/^sha256:v1:[a-f0-9]{4,}$/);
+        expect(firstPreflight.expectedStructureHash).toMatch(/^[a-f0-9]{4,}$/);
 
         fixture.setOrder([fixture.docs[1].id, fixture.docs[0].id, fixture.docs[2].id]);
         const staleExecute = vi.fn();
@@ -1730,8 +1771,8 @@ describe('write safety coordinator', () => {
             client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000041'),
-                expectedStructureHash: firstPreflight.structureHash,
+                requestId: firstPreflight.requestId,
+                expectedStructureHash: firstPreflight.expectedStructureHash,
             },
             strictMode: true,
             execute: staleExecute,
@@ -1749,17 +1790,17 @@ describe('write safety coordinator', () => {
             fixture.setSortMode(6);
             return success({ success: true, changed: true, order: targetOrder });
         });
-        const requestId = uuidV7(Date.now(), '000000000042');
+        const requestId = preflight.requestId;
         const committed = parseResult(await coordinator.run({
             client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
-            args: { ...args, requestId, expectedStructureHash: preflight.structureHash }, strictMode: true, execute,
+            args: { ...args, requestId, expectedStructureHash: preflight.expectedStructureHash }, strictMode: true, execute,
         }));
         expect(committed.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed', replayed: false });
         expect(execute).toHaveBeenCalledTimes(1);
 
         const replayed = parseResult(await coordinator.run({
             client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
-            args: { ...args, requestId, expectedStructureHash: preflight.structureHash }, strictMode: true, execute,
+            args: { ...args, requestId, expectedStructureHash: preflight.expectedStructureHash }, strictMode: true, execute,
         }));
         expect(replayed.replayed).toBe(true);
         expect(execute).toHaveBeenCalledTimes(1);
@@ -1778,8 +1819,8 @@ describe('write safety coordinator', () => {
             client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'reorder',
             args: {
                 ...args,
-                requestId: uuidV7(Date.now(), '000000000043'),
-                expectedStructureHash: preflight.structureHash,
+                requestId: (await coordinator['ledger'].issue('document', 'reorder', { ...args })).requestId,
+                expectedStructureHash: preflight.expectedStructureHash,
             },
             strictMode: true,
             execute: vi.fn(async () => {

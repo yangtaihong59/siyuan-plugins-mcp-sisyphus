@@ -30,7 +30,7 @@ import { DOCUMENT_ACTION_HANDLERS } from './handlers';
 export const DOCUMENT_TOOL_NAME = 'document';
 
 export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
-    createZodActionVariant('create', DocumentCreateSchema, 'Create a new document. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.'),
+    createZodActionVariant('create', DocumentCreateSchema, 'Create a new document. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.'),
     createZodActionVariant('lookup', DocumentLookupSchema, 'Look up document IDs, storage paths, human-readable paths, and document metadata from one document reference.'),
     createZodActionVariant('ensure_link_targets', DocumentEnsureLinkTargetsSchema, 'Resolve, reuse, or create explicitly scoped direct-child document link targets. Existing targets require IDs; titles are never guessed as identities.'),
     createZodActionVariant('rename', DocumentRenameSchema, 'Rename a document'),
@@ -48,6 +48,11 @@ export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
     createZodActionVariant('duplicate', DocumentDuplicateSchema, 'Duplicate a document'),
     createZodActionVariant('heading_to_doc', DocumentHeadingToDocSchema, 'Convert a heading to a separate document'),
     createZodActionVariant('doc_to_heading', DocumentDocToHeadingSchema, 'Merge a document into another as a heading'),
+];
+
+DOCUMENT_VARIANTS.find((variant) => variant.action === 'create')!.schema.oneOf = [
+    { required: ['path'], not: { anyOf: [{ required: ['parentPath'] }, { required: ['title'] }] } },
+    { required: ['parentPath', 'title'], not: { required: ['path'] } },
 ];
 
 const documentTool = defineTool<DocumentAction>({

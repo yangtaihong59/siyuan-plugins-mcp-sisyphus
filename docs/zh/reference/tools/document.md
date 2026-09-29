@@ -1,5 +1,7 @@
 # document 工具
 
+创建文档在所有模式下都必须使用 `notebook + path` 或 `notebook + parentPath + title`；根目录可用 `parentPath="/"`。仅 `notebook + title` 无效，预检会直接拒绝且不签发凭证。修改业务参数后需重新预检取得新 `requestId`；只有同一请求的重试才复用原 ID。
+
 这个工具覆盖文档 CRUD、树结构查询、元数据，以及与日记/转换相关的文档操作。
 
 适用场景：你需要创建、移动、查询或转换文档。
@@ -23,7 +25,7 @@
 - `create` 支持人类可读 `path`，也支持 `parentPath` + `title`；省略 `markdown` 即创建空文档。创建子文档时优先使用 `path`。`parentPath` + `title` 可传人类可读父路径，也可传 `lookup` 返回的 `.sy` 结尾 storage path。
 - `lookup` 可按 `id`、存储 `path`、人类可读 `hpath` / `hPath` 查找；用 `include` 请求 `id`、`ids`、`path`、`hpath` 或 `docInfo`。
 - `ensure_link_targets` 在一个精确范围内建立可复用的导入 link map：范围必须是 `notebook` + 直属父文档 `parentId`。`resolve` 与 `reuse` 只接受明确的直属子文档 ID。`create` 只接受明确的新标题；即使当前范围已有同名子文档，也绝不把标题当身份复用，而是把它以 `same_title_child_requires_explicit_id` 放进 `unresolved`。每个解析或新建结果都带有精确 `id`、笔记本、storage `path` 和 `hPath` 读回。
-- `ensure_link_targets(dryRun=true)` 只适用于 `mode="create"`，只检查并返回 `wouldCreate`，不写入。`resolve` 与 `reuse` 都是纯只读发现操作。真正的 `create` 使用普通两段式合同：先 `validateOnly=true` 预检，再用新的 UUIDv7 `requestId` 和返回的 `expectedStructureHash` 只提交一次。传输结果未知时不得重发，必须检查或继续使用原 request ID。该 action 不会自动删除自己创建的文档。
+- `ensure_link_targets(dryRun=true)` 只适用于 `mode="create"`，只检查并返回 `wouldCreate`，不写入。`resolve` 与 `reuse` 都是纯只读发现操作。真正的 `create` 使用普通两段式合同：先 `validateOnly=true` 预检，再用预检返回的 `requestId` 和返回的 `expectedStructureHash` 只提交一次。传输结果未知时不得重发，必须检查或继续使用原 request ID。该 action 不会自动删除自己创建的文档。
 - `lookup` 返回的 `idPath` 会包含可用的 `id` / `ids`。当同一 hpath 有多个同名文档时，`include: ["ids"]` 会返回全部匹配 ID；内部已包含 SQL 兜底。
 - `rename`、`remove`、`move` 在非 ID 模式下通常需要存储路径。
 - `reorder` 接收笔记本或父文档 `parentID` 与 `orderedIDs`。数组必须把全部可见直属子文档 ID 各包含一次。它会启用笔记本自定义排序（`sortMode: 6`），但不会移动、重命名或修改文档正文。
@@ -79,7 +81,7 @@ MCP：
 }
 ```
 
-要新建目标时，用 `mode: "create"` 和 `validateOnly: true` 先预检；随后带返回的 `expectedStructureHash`、新的 UUIDv7 `requestId` 和明确 title target 只提交一次。遇到同名直属子文档时，结果是 unresolved，不会隐式复用。
+要新建目标时，用 `mode: "create"` 和 `validateOnly: true` 先预检；随后带返回的 `expectedStructureHash`、预检返回的 `requestId` 和明确 title target 只提交一次。遇到同名直属子文档时，结果是 unresolved，不会隐式复用。
 
 CLI：
 

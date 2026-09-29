@@ -34,10 +34,6 @@ const report = {
 let client, server;
 const save = () => fs.writeFileSync(path.join(reportDir, 'report.json'), JSON.stringify(report, null, 2));
 function passed(name, evidence = {}) { report.checks.push({ name, status: 'covered', ...evidence }); save(); console.log(JSON.stringify({ check: name, ...evidence })); }
-function uuid() {
-    const time = Date.now().toString(16).padStart(12, '0');
-    return `${time.slice(0, 8)}-${time.slice(8)}-7${crypto.randomBytes(2).toString('hex').slice(1)}-8${crypto.randomBytes(2).toString('hex').slice(1)}-${crypto.randomBytes(6).toString('hex')}`;
-}
 async function api(endpoint, body = {}) {
     const response = await fetch(apiUrl + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Token ${token}` } : {}) }, body: JSON.stringify(body) });
     assert(response.ok, `${endpoint}: HTTP ${response.status}`);
@@ -59,28 +55,33 @@ async function call(tool, args, connection = client, allowError = false) {
 async function preflight(tool, args, connection = client) {
     const p = await call(tool, { ...args, validateOnly: true }, connection);
     assert.equal(p.writeAttempted, false);
-    assert.match(p[p.preconditionField.replace(/^expected/, '').replace(/^./, x => x.toLowerCase())], /^sha256:v1:[a-f0-9]{4,64}$/);
-    assert(p.hashPrefixLength >= 4 && p.leaseExpiresAt > Date.now());
+    assert.match(p.requestId, /^[a-f0-9]{4,64}$/);
+    assert(p.requestIdExpiresAt > Date.now());
+    if (p.preconditionField) {
+        assert.match(p[p.preconditionField], /^[a-f0-9]{4,64}$/);
+        assert(p.hashPrefixLength >= 4 && p.leaseExpiresAt > Date.now());
+    }
     return p;
 }
 function executionArgs(args, p) {
-    const key = p.preconditionField.replace(/^expected/, '').replace(/^./, x => x.toLowerCase());
-    return { ...args, requestId: uuid(), [p.preconditionField]: p[key] };
+    const key = p.preconditionField;
+    return { ...args, requestId: p.requestId, ...(key ? { [key]: p[key] } : {}) };
 }
 async function mutate(tool, args, { expectedCount, expectedState = 'committed', additive = false, label = `${tool}.${args.action}`, connection = client } = {}) {
-    const p = additive ? null : await preflight(tool, args, connection);
+    const p = await preflight(tool, args, connection);
+    const spare = p.preconditionField ? await preflight(tool, args, connection) : null;
     if (expectedCount !== undefined) assert.equal(p.targetCount, expectedCount);
-    const actual = p ? executionArgs(args, p) : { ...args, requestId: uuid() };
+    const actual = executionArgs(args, p);
     const result = await call(tool, actual, connection);
     assert.equal(result.safety?.writeSafetyGuaranteed, true, JSON.stringify(result));
     assert.equal(result.safety.transactionState, expectedState, JSON.stringify(result));
     const replay = await call(tool, actual, connection);
     assert.equal(replay.safety?.replayed ?? replay.replayed, true, JSON.stringify(replay));
-    if (p) {
-        const consumed = await call(tool, { ...actual, requestId: uuid() }, connection, true);
+    if (spare) {
+        const consumed = await call(tool, { ...actual, requestId: spare.requestId }, connection, true);
         assert.equal(consumed.error?.code, 'preflight_lease_invalid', JSON.stringify(consumed));
     }
-    passed(label, { targetCount: p?.targetCount, transactionState: result.safety.transactionState, replay: true, leaseConsumed: !!p, previousHash: result.safety.previousHash, resultHash: result.safety.resultHash });
+    passed(label, { targetCount: p?.targetCount, transactionState: result.safety.transactionState, replay: true, leaseConsumed: !!spare, previousHash: result.safety.previousHash, resultHash: result.safety.resultHash });
     return result;
 }
 function validateReferences(tools, transport) {

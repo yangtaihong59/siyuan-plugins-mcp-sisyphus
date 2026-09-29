@@ -1,3 +1,4 @@
+import { renderAiLayoutGuide } from '../../core/ai-layout-guide';
 import { z, ZodError, type ZodIssue } from 'zod';
 
 import { getActionTier, getEnabledActions, isDangerousAction, type CategoryToolConfig, type ToolCategory } from '../../core/config';
@@ -39,6 +40,7 @@ export type JsonSchema = Record<string, any>;
 export interface ActionVariant<Action extends string> {
     action: Action;
     schema: JsonSchema;
+    validate?: (args: Record<string, unknown>) => void;
 }
 
 export const ACTION_SCHEMA_BRANCHES_KEY = 'x-sisyphus-actionSchemas';
@@ -99,6 +101,7 @@ export function createZodActionVariant<Action extends string>(
     return {
         action,
         schema: normalizeJsonSchema(jsonSchema),
+        validate: (args) => { schema.parse(args); },
     };
 }
 
@@ -214,8 +217,8 @@ function buildHelpActionSchema(enabledActions: string[]): JsonSchema {
             },
             topic: {
                 type: 'string',
-                enum: ['overview', ...enabledActions],
-                description: 'Optional action name to inspect; omit or use "overview" for the action index.',
+                enum: ['overview', 'ai-layout-guide', 'ai_layout_guide', ...enabledActions],
+                description: 'Action name or ai-layout-guide for the complete layout guide; omit or use "overview" for the action index.',
             },
         },
         required: ['action'],
@@ -454,6 +457,9 @@ export function tryHandleHelpAction<Action extends string>(
     const rawTopic = typeof rawArgs.topic === 'string' ? rawArgs.topic.trim() : '';
     const topic = rawTopic && rawTopic !== 'overview' ? rawTopic : null;
 
+    if (topic === 'ai-layout-guide' || topic === 'ai_layout_guide') {
+        return createJsonResult({ uri: 'siyuan://help/ai-layout-guide', mimeType: 'text/markdown', text: renderAiLayoutGuide() });
+    }
     if (topic) {
         if (!enabledSet.has(topic as Action)) {
             return toErrorText({
@@ -462,7 +468,7 @@ export function tryHandleHelpAction<Action extends string>(
                     message: `Unknown help topic "${topic}" for tool "${category}".`,
                     tool: category,
                     topic,
-                    validTopics: [...enabledActions],
+                    validTopics: ['ai-layout-guide', ...enabledActions],
                     hint: `Call ${category}(action="help") without topic to see the action index.`,
                 },
             });

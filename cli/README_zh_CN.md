@@ -6,7 +6,7 @@
 
 这是一个用于直接通过命令行操作 [SiYuan Note](https://b3log.org/siyuan) 的 CLI。你可以把它理解成思源版的 `obsidian-cli`：每个 MCP 工具（`fs`、`block`、`document`、`notebook`、`av`、`search`、`tag`、`file`、`timeline`、`system`、`flashcard`、`extension`、`mascot`、`feedback`）都会暴露成可在 shell 中直接调用的子命令。
 
-> **最新版本：**`v0.2.7` 修复 AV 递归筛选 Schema、批量预检目标计数和持久化行内属性状态校验，并优化有大小上限的大文档读取与续读。
+> **最新版本：**`v0.2.8` 统一 AV 参数、预检凭证和写后校验，并补齐 `--topic ai-layout-guide` 帮助。
 
 > **v0.2.6：**`v0.2.6` 开放扩展后的 AV 严格配置、快照、图片审计、图片读取、扩展诊断和链接解析工作流，并在 JSON 输出中保留混合文本/图片结果。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。
 
@@ -29,9 +29,13 @@ siyuan-sisyphus search fulltext --query "keyword" --page-size 10 --json | jq '.d
 
 ## 严格安全写入
 
-插件默认在“设置 → MCP → 设置与调试”开启严格安全写入。变更命令需要先以 `validateOnly=true` 调用对应 action，再提交新的 UUIDv7 `requestId` 和预检返回的 `expected*Hash`。返回值是仅存在于内存中的临时租约凭据，通常从 4 位十六进制开始；它不会被当作 16 bit 状态值直接比较，HTTP 协调器会先解析租约中的完整 SHA-256，再与写入前重新读取的完整状态哈希比较。
+插件默认在“设置 → MCP → 设置与调试”开启严格安全写入。变更命令需要先以 `validateOnly=true` 调用对应 action，再原样回传预检签发的 `requestId` 和返回的 `expected*Hash`（若有）；纯新增动作也需预检领取请求 ID。返回值是仅存在于内存中的临时租约凭据，通常从 4 位十六进制开始；它不会被当作 16 bit 状态值直接比较，HTTP 协调器会先解析租约中的完整 SHA-256，再与写入前重新读取的完整状态哈希比较。
 
 执行严格 CLI 写入时必须保持插件内置 MCP HTTP 服务开启。CLI 会把写入转交同一个协调器，避免 CLI、stdio 与 HTTP 各自产生独立租约池。租约过期、已消费或插件重启后必须重新预检。关闭严格写入会恢复旧版直接调用协议，不再提供哈希并发校验、请求幂等和写后验证。
+
+`requestId` 与状态凭证均从 4 位十六进制起步，必须完整复制，不能自行生成或截短。请同时升级插件至 v0.6.7，重新预检后执行；AV 的旧 `id` 入参继续可用并返回弃用提示，新调用使用 `avID`。
+
+不支持 MCP Resources 的客户端可运行 `siyuan-sisyphus av help --topic ai-layout-guide` 获取完整排版指南。
 
 ## 安装
 

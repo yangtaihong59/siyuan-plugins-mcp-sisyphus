@@ -1145,7 +1145,7 @@ async function ensurePermissionForRender(
     client: SiYuanClient,
     permMgr: PermissionManager,
     parsed: {
-        id?: string;
+        avID?: string;
         blockID?: string;
         createIfNotExist?: boolean;
     },
@@ -1179,8 +1179,8 @@ async function ensurePermissionForRender(
         }
     }
 
-    if (!parsed.id) {
-        throw new Error('av(action="render") requires id unless createIfNotExist=true is provided.');
+    if (!parsed.avID) {
+        throw new Error('av(action="render") requires avID unless createIfNotExist=true is provided.');
     }
 
     try {
@@ -2145,11 +2145,11 @@ function createAvFieldValidationResult(
 
 async function handleGet({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvGetSchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.id, 'read', { blockID: parsed.blockID, action: 'get' });
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read', { blockID: parsed.blockID, action: 'get' });
     if (denied) return denied;
     const rowLookup = extractAvRowLookup(avData);
     return createJsonResult({
-        id: parsed.id,
+        id: parsed.avID,
         av: avData,
         ...(rowLookup.rows.length > 0 ? {
             resolvedRows: rowLookup.rows.map((row) => ({
@@ -2192,7 +2192,7 @@ async function handleSearch({ client, permMgr, rawArgs }: ToolHandlerContext): P
             ...record,
             id: avID,
             avID,
-            renderArgs: { action: 'render', id: avID },
+            renderArgs: { action: 'render', avID },
         };
     });
     return createJsonResult({
@@ -2222,8 +2222,8 @@ async function handleSearch({ client, permMgr, rawArgs }: ToolHandlerContext): P
 async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvRenderSchema.parse(rawArgs);
     const creationTime = new Date();
-    const idWasGenerated = !parsed.id;
-    const effectiveAvID = parsed.id ?? generateSiYuanNodeId(creationTime);
+    const idWasGenerated = !parsed.avID;
+    const effectiveAvID = parsed.avID ?? generateSiYuanNodeId(creationTime);
     const permission = await ensurePermissionForRender(client, permMgr, parsed, effectiveAvID, idWasGenerated);
     if (permission.denied) return permission.denied;
 
@@ -2235,7 +2235,7 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
         pageSize: parsed.pageSize,
         query: parsed.query,
         groupPaging: parsed.groupPaging,
-        createIfNotExist: parsed.createIfNotExist,
+        createIfNotExist: parsed.createIfNotExist === true,
     });
 
     let materializedBlockID: string | undefined;
@@ -2334,35 +2334,28 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
 
 async function handleGetAttributeViewKeys({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvGetAttributeViewKeysSchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.id, 'read');
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read');
     if (denied) return denied;
 
-    const raw = await avApi.getAttributeViewKeys(client, parsed.id);
-    const keysArray =
-        raw && typeof raw === 'object' && !Array.isArray(raw) &&
-        Array.isArray((raw as Record<string, unknown>).keys)
-            ? (raw as Record<string, unknown>).keys
-            : Array.isArray(raw) && raw.length > 0
-                ? raw
-                : extractAttributeViewKeysFromData(avData);
+    const keysArray = extractAttributeViewKeysFromData(avData);
     return createJsonResult({
-        avID: parsed.id,
+        avID: parsed.avID,
         keys: keysArray,
     });
 }
 
 async function handleGetAttributeViewFilterSort({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvGetAttributeViewFilterSortSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForAvId(client, permMgr, parsed.id, 'read');
+    const { denied } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read');
     if (denied) return denied;
 
     const response = await avApi.getAttributeViewFilterSort(client, {
-        id: parsed.id,
+        id: parsed.avID,
         blockID: parsed.blockID ?? '',
     });
 
     return createJsonResult({
-        avID: parsed.id,
+        avID: parsed.avID,
         ...(parsed.blockID ? { blockID: parsed.blockID } : {}),
         ...response,
     });

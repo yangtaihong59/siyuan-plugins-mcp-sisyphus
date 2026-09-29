@@ -25,7 +25,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
     const booleanKeys = new Set<string>();
     const stringKeys = new Set<string>();
     for (const [name, schema] of Object.entries(props)) {
-        if (name === 'action' || name === 'topic') continue;
+        if (name === 'action') continue;
         const aliases = getFlagAliases(name);
         for (const alias of aliases) canonicalByLower.set(alias.toLowerCase(), name);
         const type = inferType(schema);
@@ -55,7 +55,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
     // starting with a brace or bracket aren't eaten as the next flag.
     const jsonSidecarKeys: string[] = [];
     for (const name of Object.keys(props)) {
-        if (name === 'action' || name === 'topic') continue;
+        if (name === 'action') continue;
         for (const alias of getFlagAliases(name)) jsonSidecarKeys.push(`${alias}-json`);
     }
 

@@ -229,7 +229,7 @@ export const DocumentCreateSchema = z.object({
     notebook: z.string().describe("Notebook ID"),
     path: z.string().optional().describe("Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Parent paths must already exist."),
     parentPath: z.string().optional().describe("Parent path for title-based creation, relative to the notebook root. Accepts a human-readable path (must start with /, MUST NOT include the notebook name) or a storage path ending in .sy returned by document(action=\"lookup\")."),
-    title: z.string().optional().describe("Document title when creating under parentPath"),
+    title: z.string().optional().describe("Required together with parentPath when create omits path; notebook + title alone is invalid"),
     markdown: z.string().optional().describe("Markdown content, defaults to empty. Do not include a leading # Title; a matching H1 is stripped automatically."),
     sorts: z.array(z.string()).optional().describe("Compatibility option retained for older callers; title-based creation now uses the reliable path flow"),
     icon: z.string().optional().describe("Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character."),
@@ -830,13 +830,13 @@ const AvSelectOptionSchema = z.object({
 
 export const AvGetSchema = z.object({
     action: z.literal("get"),
-    id: z.string().describe("Attribute view ID"),
+    avID: z.string().describe("Attribute view ID"),
     blockID: z.string().optional().describe("Optional database block ID for exact context or fallback permission resolution"),
 });
 
 export const AvRenderSchema = z.object({
     action: z.literal("render"),
-    id: z.string().optional().describe("Attribute view ID for render/get-style operations; use id here, not avID. Omit only with createIfNotExist=true to let MCP generate one"),
+    avID: z.string().optional().describe("Attribute view ID; use avID. Omit only with createIfNotExist=true to let MCP generate one"),
     blockID: z.string().optional().describe("Optional database block ID; required when creating a new AV"),
     viewID: z.string().optional().describe("Optional target view ID"),
     page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
@@ -848,12 +848,12 @@ export const AvRenderSchema = z.object({
 
 export const AvGetAttributeViewKeysSchema = z.object({
     action: z.literal("get_attribute_view_keys"),
-    id: z.string().describe("Attribute view ID"),
+    avID: z.string().describe("Attribute view ID"),
 });
 
 export const AvGetAttributeViewFilterSortSchema = z.object({
     action: z.literal("get_attribute_view_filter_sort"),
-    id: z.string().describe("Attribute view ID"),
+    avID: z.string().describe("Attribute view ID"),
     blockID: z.string().optional().describe("Database block ID (optional)"),
 });
 

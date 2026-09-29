@@ -69,11 +69,19 @@ function normalizeFsReplaceArgs(args: Record<string, unknown>): void {
     delete args.replaceAll;
 }
 
-function normalizeAvRenderArgs(args: Record<string, unknown>): void {
-    if (!hasOwn(args, 'id') && nonEmptyString(args.avID)) {
-        args.id = args.avID;
+export const AV_ID_ALIAS_ACTIONS = ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort'];
+
+export function normalizeAvIdArgs(args: Record<string, unknown>): Record<string, unknown> {
+    if (!AV_ID_ALIAS_ACTIONS.includes(String(args.action))) return args;
+    const normalized = { ...args };
+    if (hasOwn(args, 'id')) {
+        if (hasOwn(args, 'avID') && args.avID !== args.id) {
+            throw new Error('Conflicting id and avID. Supply one attribute view ID using avID.');
+        }
+        if (!hasOwn(args, 'avID')) normalized.avID = args.id;
+        delete normalized.id;
     }
-    delete args.avID;
+    return normalized;
 }
 
 function normalizeBlockWordCountArgs(args: Record<string, unknown>): void {
@@ -118,7 +126,7 @@ export function normalizeToolArguments(category: ToolCategory, rawArgs: Record<s
     normalizeHelpTopic(category, args);
 
     if (category === 'fs' && action === 'replace') normalizeFsReplaceArgs(args);
-    if (category === 'av' && action === 'render') normalizeAvRenderArgs(args);
+    if (category === 'av') return normalizeAvIdArgs(args);
     if (category === 'block' && action === 'word_count') normalizeBlockWordCountArgs(args);
     if (category === 'flashcard' && (action === 'create_card' || action === 'remove_card')) normalizeFlashcardBlockIdsArgs(args);
     if (category === 'file' && action === 'upload_asset') normalizeFileUploadAssetArgs(args);
@@ -147,11 +155,6 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
         ];
     }
 
-    if (context.category === 'av' && action === 'render') {
-        return [
-            { canonical: 'id', aliases: ['avID', 'av-id', 'av_id'], schema: STRING_SCHEMA },
-        ];
-    }
 
     // document combines actions that use both parentID and parentId in one
     // aggregated CLI schema. Their kebab/snake aliases collide, so pin this

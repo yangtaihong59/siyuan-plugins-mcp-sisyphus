@@ -1,3 +1,4 @@
+import { AV_ID_ALIAS_ACTIONS } from '../../core/argument-aliases';
 import type { SiYuanClient } from '../../api/client';
 import type { AvAction, CategoryToolConfig } from '../../core/config';
 import { AV_ACTION_HINTS, AV_GUIDANCE } from '../../core/help';
@@ -37,8 +38,8 @@ import { AV_ACTION_HANDLERS } from './handlers';
 export const AV_TOOL_NAME = 'av';
 
 export const AV_VARIANTS: ActionVariant<AvAction>[] = [
-    createZodActionVariant('get', AvGetSchema, 'Get the full attribute view payload by AV ID; blockID is an optional exact database-block context.'),
-    createZodActionVariant('render', AvRenderSchema, 'Render an attribute view by id (AV ID, not avID) with optional paging/filtering; with createIfNotExist=true, materialize a SiYuan-style AV block under blockID.'),
+    createZodActionVariant('get', AvGetSchema, 'Get the full attribute view payload using avID; blockID is an optional exact database-block context.'),
+    createZodActionVariant('render', AvRenderSchema, 'Render an attribute view by avID with optional paging/filtering; with createIfNotExist=true, materialize a SiYuan-style AV block under blockID.'),
     createZodActionVariant('get_attribute_view_keys', AvGetAttributeViewKeysSchema, 'Get the column (key) definitions of an attribute view.'),
     createZodActionVariant('get_attribute_view_filter_sort', AvGetAttributeViewFilterSortSchema, 'Get filter and sort settings for an attribute view.'),
     createZodActionVariant('search', AvSearchSchema, 'Search attribute views by name or primary-key values.'),
@@ -63,6 +64,18 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('configure_rollup', AvConfigureRollupSchema, 'Configure an existing rollup key from an existing relation key and destination key using native RollupCalc data.'),
     createZodActionVariant('set_relation', AvSetRelationSchema, 'Set or clear one relation cell by AV item IDs, then verify the two-way reverse cell when configured.'),
 ];
+
+for (const variant of AV_VARIANTS) {
+    if (!AV_ID_ALIAS_ACTIONS.includes(variant.action)) continue;
+    variant.schema.properties.id = {
+        type: 'string', deprecated: true,
+        description: 'Deprecated alias of avID. Use avID. If both are supplied they must match.',
+    };
+    if (variant.schema.required?.includes('avID')) {
+        variant.schema.required = variant.schema.required.filter((key: string) => key !== 'avID');
+        variant.schema.anyOf = [{ required: ['avID'] }, { required: ['id'] }];
+    }
+}
 
 const avTool = defineTool<AvAction>({
     name: 'av',

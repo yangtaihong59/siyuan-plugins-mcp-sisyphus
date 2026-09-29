@@ -9,7 +9,7 @@ Read the target first, choose the highest-level action that preserves intent, pe
 
 ## Protected writes and readback
 
-For a mutation covered by strict safe writes, call the same action and business arguments with `validateOnly=true`, use the returned precondition field, and submit one fresh UUIDv7 `requestId`. Never invent or recycle a hash credential. After the write, reread the exact stable ID or resolved path with enough bounded fields to prove the intended change and continue until the response is complete.
+For a mutation covered by strict safe writes, call the same action and business arguments with `validateOnly=true`, use the returned precondition field, and submit the server-issued `requestId`. Never invent or recycle a hash credential. After the write, reread the exact stable ID or resolved path with enough bounded fields to prove the intended change and continue until the response is complete.
 
 If the connection fails after execution may have started, or the result says `outcome_unknown` or `readback_mismatch`, do not retry with a new request ID. Inspect the target and resolve the outcome first. A CLI command, raw MCP payload, or Agent-generated call is not by itself evidence that this coordinator path or its guarantees applied; use the current safety response and runtime help.
 

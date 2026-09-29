@@ -1,3 +1,5 @@
+import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { buildDefaultToolConfig } from '@/core/config';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -92,7 +94,12 @@ describe('core/skills', () => {
     it('keeps every structured example aligned with the live action schemas', () => {
         for (const scenario of scenarios) {
             for (const [callName, call] of Object.entries(scenario.calls) as Array<[string, { tool: string; action: string; args: Record<string, unknown> }]>) {
-                const variant = variantsByTool[call.tool]?.find((item) => item.action === call.action);
+                const helpSchema = call.action === 'help'
+                    ? TOOL_REGISTRY[call.tool].listTools(buildDefaultToolConfig()[call.tool])[0]
+                        .inputSchema['x-sisyphus-actionSchemas'].find((schema) => schema.properties?.action?.const === 'help')
+                    : undefined;
+                const variant = helpSchema ? { schema: helpSchema } : variantsByTool[call.tool]?.find((item) => item.action === call.action);
+                if (helpSchema) expect(helpSchema.properties.topic.enum).toContain(call.args.topic);
                 expect(variant, `${scenario.id}.${callName} action`).toBeDefined();
 
                 const properties = variant?.schema.properties ?? {};

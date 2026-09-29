@@ -1,3 +1,6 @@
+import { normalizeAvIdArgs } from './argument-aliases';
+import { withAvIdWarning } from '../tools/internal/av-id-warning';
+import { verifyAvCellsReadback } from './av-cell-readback';
 import fs from 'node:fs';
 
 import type { SiYuanClient } from '../api/client';
@@ -6,7 +9,7 @@ import { normalizeTemplatePath, readTemplateSource } from '../api/template';
 import { readPuppyStats } from './puppy-state';
 import { readLinkTargetScope } from './document-link-targets';
 import type { PermissionManager } from './permissions';
-import type { ToolResult } from '../tools/internal/shared';
+import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 import {
     listDocumentBlocksInTreeOrder,
     readDocumentEditableMarkdown,
@@ -48,6 +51,7 @@ export interface WriteSafetyExecution {
     action: string;
     args: Record<string, unknown>;
     strictMode: boolean;
+    validateArgs?: (args: Record<string, unknown>) => void;
     execute(args: Record<string, unknown>): Promise<ToolResult>;
 }
 
@@ -83,8 +87,23 @@ export class WriteSafetyCoordinator {
     }
 
     async run(execution: WriteSafetyExecution): Promise<ToolResult> {
+        const rawArgs = execution.args;
+        try {
+            if (execution.category === 'av') execution = { ...execution, args: normalizeAvIdArgs(rawArgs) };
+        } catch (error) {
+            return createErrorResult(error, { tool: execution.category, action: execution.action, rawArgs });
+        }
+        return withAvIdWarning(await this.runNormalized(execution), execution.category, rawArgs);
+    }
+
+    private async runNormalized(execution: WriteSafetyExecution): Promise<ToolResult> {
         const policy = getActionSafetyPolicy(execution.category, execution.action, execution.args);
         if (policy.mode === 'read') return execution.execute(execution.args);
+        try {
+            execution.validateArgs?.(stripSafetyFields(execution.args));
+        } catch (error) {
+            return createErrorResult(error, { tool: execution.category, action: execution.action, rawArgs: execution.args });
+        }
         if (policy.mode === 'external') {
             if (execution.args.validateOnly === true) {
                 return writeSafetyFailure(
@@ -125,7 +144,7 @@ export class WriteSafetyCoordinator {
 
         if (!validateOnly) {
             if (!requestId) {
-                return writeSafetyFailure('precondition_required', 'requestId is required for every strict write and must be a fresh UUIDv7.');
+                return writeSafetyFailure('precondition_required', 'requestId is required for every strict write. Copy it from validateOnly preflight.');
             }
             try {
                 inspected = await this.ledger.inspect(requestId, category, action, args);
@@ -159,6 +178,12 @@ export class WriteSafetyCoordinator {
                 targetIds: before.targetIds,
             };
             if (validateOnly) {
+                let request;
+                try {
+                    request = await this.ledger.issue(category, action, args);
+                } catch (error) {
+                    return fromSafetyError(error);
+                }
                 const issued = this.preflightLeases.issue(leaseScope, before.hash);
                 return jsonResult({
                     action,
@@ -166,8 +191,9 @@ export class WriteSafetyCoordinator {
                     writeSafetyMode: 'strict',
                     writeAttempted: false,
                     writeExecuted: false,
+                    ...request,
                     preconditionField: expectedField,
-                    [hashResultField(policy.precondition)]: issued.credential,
+                    [expectedField]: issued.credential,
                     hashPrefixLength: issued.hashPrefixLength,
                     leaseExpiresAt: issued.leaseExpiresAt,
                     targetCount: before.targetIds.length,
@@ -198,13 +224,19 @@ export class WriteSafetyCoordinator {
                 });
             }
         } else if (validateOnly) {
+            let request;
+            try {
+                request = await this.ledger.issue(category, action, args);
+            } catch (error) {
+                return fromSafetyError(error);
+            }
             return jsonResult({
                 action,
                 validateOnly: true,
                 writeSafetyMode: 'strict',
                 writeAttempted: false,
                 writeExecuted: false,
-                requestIdRequired: true,
+                ...request,
             });
         }
 
@@ -430,11 +462,11 @@ function derivePostWriteProbeArgs(
             .flatMap((value) => isRecord(value) && typeof value.id === 'string' ? [value.id] : []);
         return { ...args, resolvedTargetIds };
     }
-    if (category === 'av' && action === 'duplicate' && payload && typeof payload.avID === 'string') {
+    if (category === 'av' && (action === 'duplicate' || action === 'render') && payload && typeof payload.avID === 'string') {
         return {
             ...args,
             avID: payload.avID,
-            ...(typeof payload.blockID === 'string' ? { blockID: payload.blockID } : {}),
+            ...(typeof payload.blockID === 'string' ? { blockID: payload.blockID } : action === 'render' ? { blockID: undefined } : {}),
         };
     }
     return args;
@@ -568,6 +600,18 @@ async function probeCurrentState(
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
         state.av = await client.requestRead('/api/av/getAttributeView', { id: args.avID });
+        if (action === 'render') {
+            const definition = extractRawAvDefinition(state.av);
+            if (definition.id !== args.avID) throw safetyError('readback_mismatch', 'Rendered AV identity was not persisted.');
+            const blockID = typeof args.blockID === 'string' ? args.blockID : '';
+            if (blockID) {
+                const carrier = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: blockID });
+                if (!carrier.dom?.includes('data-type="NodeAttributeView"') || !carrier.dom.includes(`data-av-id="${args.avID}"`)) {
+                    throw safetyError('readback_mismatch', 'Rendered AV carrier does not bind the returned AV identity.');
+                }
+                state.avCarrier = { blockID, dom: canonicalizeAvCarrierDom(carrier.dom) };
+            }
+        }
         if (action === 'set_column_options' || isCrossObjectAvMutation(action)) {
             const inspectedAv = await inspectHighRiskAvMutation(
                 client,
@@ -1055,6 +1099,10 @@ async function verifyPostWriteSemanticState(
         if (state.sortMode !== 6 || currentIDs.length !== requestedIDs.length || currentIDs.some((id, index) => id !== requestedIDs[index])) {
             throw safetyError('readback_mismatch', 'The document tree did not retain the requested complete order in custom sorting mode.');
         }
+        return;
+    }
+    if (category === 'av' && action === 'set_cells') {
+        verifyAvCellsReadback(args, extractRawAvDefinition(after?.state?.av));
         return;
     }
     if (category === 'av' && AV_VIEW_CONFIGURATION_ACTIONS.has(action)) {
@@ -2060,14 +2108,6 @@ function collectStateSelectors(args: Record<string, unknown>): Record<string, un
 
 function sqlString(value: string): string {
     return `'${value.replace(/'/g, "''")}'`;
-}
-
-function hashResultField(precondition: string): string {
-    if (precondition === 'structure') return 'structureHash';
-    if (precondition === 'value') return 'valueHash';
-    if (precondition === 'manifest') return 'manifestHash';
-    if (precondition === 'source') return 'sourceHash';
-    return 'stateHash';
 }
 
 function replayLedgerEntry(entry: WriteLedgerEntry): ToolResult {

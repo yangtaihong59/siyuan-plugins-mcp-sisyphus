@@ -1,5 +1,7 @@
 # Common Tasks
 
+Clients without MCP Resources can call `fs(action="help", topic="ai-layout-guide")`, or `siyuan-sisyphus fs help --topic ai-layout-guide` from the CLI, to retrieve the same complete layout guide as `siyuan://help/ai-layout-guide`. Do not pass resource URIs to `fs.read`.
+
 This page maps common goals to MCP payloads and CLI commands.
 
 When to read this page: you know the task but not the tool name yet.
@@ -11,7 +13,7 @@ Related pages:
 
 ## Choose the write path before editing
 
-For Sisyphus-owned mutations, keep Strict Safe Writes enabled and use the same action with `validateOnly=true` first when its schema exposes a precondition. Submit the returned short credential with a fresh UUIDv7 `requestId`; a successful response is verified by bounded readback and a metadata-only idempotency ledger. This is a process-level coordination protocol, not a SiYuan kernel transaction or automatic rollback. The UI, another plugin, direct kernel calls, exports, sync, notifications, feedback, and official `extension` calls remain outside that guarantee.
+For Sisyphus-owned mutations, keep Strict Safe Writes enabled and use the same action with `validateOnly=true` first. Submit the returned short credential with the server-issued `requestId`; a successful response is verified by bounded readback and a metadata-only idempotency ledger. This is a process-level coordination protocol, not a SiYuan kernel transaction or automatic rollback. The UI, another plugin, direct kernel calls, exports, sync, notifications, feedback, and official `extension` calls remain outside that guarantee.
 
 MCP/Agent calls over the plugin HTTP server use the coordinator directly. Strict mutation calls received over stdio or from the standalone CLI are forwarded to that same plugin-hosted coordinator; they do not get a second local queue or lease pool. If the plugin HTTP coordinator is unavailable, stop and repair that path rather than retrying the mutation through an uncoordinated route. Read-only actions and external-effect actions follow their own paths.
 
@@ -114,7 +116,7 @@ siyuan search fulltext --query "TODO"
 ```
 
 ```bash
-siyuan av get --id <attribute-view-id>
+siyuan av get --av-id <attribute-view-id>
 ```
 
 ## Compare and restore a document timeline

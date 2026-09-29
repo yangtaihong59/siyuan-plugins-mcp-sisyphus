@@ -412,6 +412,14 @@ export default class SiyuanMCP extends Plugin {
         return undefined;
     }
 
+    onDataChanged(): void {
+        // SiYuan 3.8.3 reloads plugins that inherit the default data-change hook.
+        // MCP calls persist stats, events and the write ledger under petal storage;
+        // reloading here kills the HTTP worker (and its active write leases).
+        // Runtime data is read through the API/pollers; settings UI changes use
+        // their explicit update methods. Storage notifications must not restart us.
+    }
+
     async onunload() {
         appendHttpLifecycleLog("[plugin] onunload begin");
         this.layoutReady = false;
