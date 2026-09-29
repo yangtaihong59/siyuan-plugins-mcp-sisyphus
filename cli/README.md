@@ -85,6 +85,7 @@ siyuan-sisyphus list [tool]                          List tools or a tool's acti
 siyuan-sisyphus help <tool> [action]                 Detailed help for a tool or action
 siyuan-sisyphus init                                 Interactive config setup
 siyuan-sisyphus config list|get|set|use ...          Manage saved SiYuan profiles
+siyuan-sisyphus instances                            List running local SiYuan kernel APIs
 siyuan-sisyphus skill list|read|install [--bundle cli|mcp|all]
                                                      Inspect or install agent skills
 siyuan-sisyphus --help | -h                          Top-level help

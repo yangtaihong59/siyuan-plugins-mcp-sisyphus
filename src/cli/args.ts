@@ -2,7 +2,7 @@ import minimist from 'minimist';
 
 import { CLI_COMMAND_ALIAS, PRIMARY_CLI_COMMAND } from '../shared/constants';
 
-export type Command = 'dispatch' | 'list' | 'help' | 'init' | 'config' | 'skill' | 'show-help' | 'version';
+export type Command = 'dispatch' | 'list' | 'help' | 'init' | 'config' | 'skill' | 'instances' | 'show-help' | 'version';
 export type ConfigCommandAction = 'list' | 'get' | 'set' | 'use';
 export type SkillCommandAction = 'list' | 'read' | 'install' | 'uninstall';
 export type SkillBundle = 'cli' | 'mcp' | 'all';
@@ -44,6 +44,7 @@ Commands:
   ${PRIMARY_CLI_COMMAND} help <tool> [action]                 Show terminal-friendly help
   ${PRIMARY_CLI_COMMAND} init                                 Create ~/.siyuan-sisyphus/config.json
   ${PRIMARY_CLI_COMMAND} config <action> ...                  Manage saved SiYuan profiles
+  ${PRIMARY_CLI_COMMAND} instances                            List running local SiYuan kernel APIs
   ${PRIMARY_CLI_COMMAND} skill install [--bundle cli|mcp|all] Install bundled agent skills
   ${PRIMARY_CLI_COMMAND} skill list [--bundle cli|mcp|all]    List bundled agent skills
   ${PRIMARY_CLI_COMMAND} --help | -h                          Show this help
@@ -92,6 +93,12 @@ Config precedence:
 
 Environment:
   SIYUAN_API_URL, SIYUAN_TOKEN
+  SIYUAN_DISCOVER=0  Do not scan local SiYuan-Kernel processes
+
+Desktop kernels listen on a new --port each launch. For a saved loopback
+profile URL, the CLI follows the running kernel whose workspace API token
+matches and updates that profile. --url and SIYUAN_API_URL are not changed.
+The publish-service port is not the kernel API.
 
 Flag naming:
   Use kebab-case or camelCase freely: --parent-id, --parentID, --parentId all work.
@@ -124,6 +131,19 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (first === 'init') {
         return {
             command: 'init',
+            rest: [],
+            configPath: parsed.config || undefined,
+            profile: parsed.profile || undefined,
+            url: parsed.url || undefined,
+            token: parsed.token || undefined,
+            json: Boolean(parsed.json),
+            debug: Boolean(parsed.debug),
+        };
+    }
+
+    if (first === 'instances') {
+        return {
+            command: 'instances',
             rest: [],
             configPath: parsed.config || undefined,
             profile: parsed.profile || undefined,
