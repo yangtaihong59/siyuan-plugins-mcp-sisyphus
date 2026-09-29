@@ -578,6 +578,42 @@ describe('HTTP settings sync', () => {
         }));
     });
 
+    it.each([false, true])('starts HTTP with timeline disabled and missing dock buttons (stale registry: %s)', async (staleRegistry) => {
+        const startSpy = vi.spyOn(HttpServerLauncher.prototype, 'start').mockResolvedValue(undefined);
+        plugin.httpLauncher = null;
+        loadData.mockImplementation(async (storageName: string) => (
+            storageName === 'versionControlSettings' ? { enabled: false } : undefined
+        ));
+        const { leftDock, rightDock } = (globalThis as any).window.siyuan.layout;
+        if (!staleRegistry) {
+            leftDock.data = {};
+            rightDock.data = {};
+            (plugin as any).docks = {};
+        }
+        for (const dock of [leftDock, rightDock]) {
+            // SiYuan reads the button's getAttribute without checking for null.
+            dock.toggleModel.mockImplementation((type: string) => {
+                document.querySelector(`.dock__item[data-type="${type}"]`)!.getAttribute('data-index');
+            });
+            // remove() also calls toggleModel internally.
+            dock.remove.mockImplementation((type: string) => dock.toggleModel(type));
+        }
+
+        await expect(plugin.onload()).resolves.toBeUndefined();
+        expect(() => plugin.onLayoutReady()).not.toThrow();
+        expect(() => plugin.onLayoutReady()).not.toThrow();
+
+        expect(plugin.httpLauncher).toBeInstanceOf(HttpServerLauncher);
+        expect(startSpy).toHaveBeenCalledTimes(1);
+        expect(addDock).not.toHaveBeenCalled();
+        for (const dock of [leftDock, rightDock]) {
+            expect(dock.toggleModel).not.toHaveBeenCalled();
+            expect(dock.remove).not.toHaveBeenCalled();
+            expect(dock.data).toEqual({});
+        }
+        expect((plugin as any).docks).toEqual({});
+    });
+
     it('shows a one-time warning when persisted tool config uses the legacy format', async () => {
         delete (globalThis as any).window.siyuan.config.system.workspaceDir;
         loadData.mockImplementation(async (storageName: string) => {
@@ -826,10 +862,8 @@ describe('HTTP settings sync', () => {
         expect(eventBusOn).not.toHaveBeenCalled();
         expect(snapshotPanelInstances).toHaveLength(0);
         expect(diffPanelInstances).toHaveLength(0);
-        expect(leftDock.remove).toHaveBeenCalledWith(SNAPSHOT_REGISTERED_DOCK_TYPE);
-        expect(leftDock.remove).toHaveBeenCalledWith(SNAPSHOT_DOCK_TYPE);
-        expect(rightDock.remove).toHaveBeenCalledWith(TIMELINE_REGISTERED_DOCK_TYPE);
-        expect(rightDock.remove).toHaveBeenCalledWith(TIMELINE_DOCK_TYPE);
+        expect(leftDock.remove).not.toHaveBeenCalled();
+        expect(rightDock.remove).not.toHaveBeenCalled();
         expect(rightDock.toggleModel).not.toHaveBeenCalledWith(TIMELINE_REGISTERED_DOCK_TYPE, true, false, false, true);
         expect(showMessage).toHaveBeenCalledWith('文档时间树已关闭');
     });
@@ -859,9 +893,10 @@ describe('HTTP settings sync', () => {
         expect(eventBusOff).toHaveBeenCalledTimes(3);
         expect(snapshotPanelInstances[0].$destroy).toHaveBeenCalledTimes(1);
         expect(diffPanelInstances[0].$destroy).toHaveBeenCalledTimes(1);
-        expect(leftDock.remove).toHaveBeenCalledWith(SNAPSHOT_REGISTERED_DOCK_TYPE);
-        expect(rightDock.remove).toHaveBeenCalledWith(TIMELINE_REGISTERED_DOCK_TYPE);
-        expect(rightDock.remove).toHaveBeenCalledWith(TIMELINE_DOCK_TYPE);
+        expect(leftDock.remove).not.toHaveBeenCalled();
+        expect(rightDock.remove).not.toHaveBeenCalled();
+        expect(leftDock.data).toEqual({});
+        expect(rightDock.data).toEqual({});
     });
 
     it('does not stop a running HTTP server when timeline is disabled', async () => {
@@ -905,10 +940,40 @@ describe('HTTP settings sync', () => {
         const rightDock = (globalThis as any).window.siyuan.layout.rightDock;
         expect(rightDock.toggleModel).toHaveBeenCalledWith(TIMELINE_REGISTERED_DOCK_TYPE, false, true, true, true);
         expect(rightDock.remove).toHaveBeenCalledWith(TIMELINE_REGISTERED_DOCK_TYPE);
+        expect(rightDock.toggleModel).toHaveBeenCalledTimes(1);
+        expect(rightDock.remove).toHaveBeenCalledTimes(1);
         expect((plugin as any).docks[TIMELINE_REGISTERED_DOCK_TYPE]).toBeUndefined();
         expect(rightDock.data[TIMELINE_REGISTERED_DOCK_TYPE]).toBeUndefined();
         expect(document.querySelector(`[data-type="${TIMELINE_REGISTERED_DOCK_TYPE}"]`)).toBeNull();
         expect((globalThis as any).window.siyuan.config.uiLayout.right.data).toEqual([]);
+
+        await plugin.updateVersionControlSettings({ enabled: false, showDebugMeta: false });
+        expect(rightDock.toggleModel).toHaveBeenCalledTimes(1);
+        expect(rightDock.remove).toHaveBeenCalledTimes(1);
+
+        await plugin.updateVersionControlSettings({ enabled: true, showDebugMeta: false });
+        expect(addDock).toHaveBeenCalledTimes(4);
+    });
+
+    it('cleans up an unmounted dock button without calling remove on a missing model', async () => {
+        delete (globalThis as any).window.siyuan.config.system.workspaceDir;
+        const button = document.createElement('button');
+        button.className = 'dock__item';
+        button.setAttribute('data-type', TIMELINE_REGISTERED_DOCK_TYPE);
+        document.body.appendChild(button);
+        const rightDock = (globalThis as any).window.siyuan.layout.rightDock;
+        rightDock.data = {};
+        rightDock.remove.mockImplementation(() => {
+            throw new TypeError('Cannot read properties of undefined (reading parent)');
+        });
+
+        await plugin.onload();
+        await plugin.updateVersionControlSettings({ enabled: false, showDebugMeta: false });
+
+        expect(rightDock.toggleModel).toHaveBeenCalledTimes(1);
+        expect(rightDock.toggleModel).toHaveBeenCalledWith(TIMELINE_REGISTERED_DOCK_TYPE, false, true, true, true);
+        expect(rightDock.remove).not.toHaveBeenCalled();
+        expect(button.isConnected).toBe(false);
     });
 
     it('removes timeline sidebar buttons identified only by the timeline icon', async () => {

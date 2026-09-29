@@ -19,6 +19,12 @@ Check these first:
 - If using stdio, is the `mcp-server.cjs` path correct and readable from the MCP client machine?
 - In Docker setups, do not use a container-only path like `/siyuan/workspace/data/plugins/.../mcp-server.cjs` unless that path is mounted on the client machine. Copy `mcp-server.cjs` to a client-side path or extract it from the release package.
 
+## HTTP start button is disabled after turning off document snapshots and Diff
+
+On SiYuan 3.8.1 with plugin 0.6.7, startup errors containing `removeDockFromPosition`, `toggleModel`, and `Cannot read properties of null (reading 'getAttribute')` indicate that dock cleanup tried to access a missing button. This interrupts plugin loading before the HTTP launcher is initialized.
+
+To recover temporarily, enable document snapshots and Diff, then reload the plugin. Versions containing this fix check that the button and model exist before calling SiYuan's dock methods, allowing HTTP initialization with the feature disabled.
+
 ## Tools Not Visible
 
 - Confirm the client is connected to the MCP endpoint

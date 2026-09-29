@@ -19,6 +19,12 @@
 - 如果使用 stdio，`mcp-server.cjs` 路径是否正确，并且是否能被 MCP 客户端所在机器读取
 - Docker 场景下，不要直接使用 `/siyuan/workspace/data/plugins/.../mcp-server.cjs` 这类仅容器内可见的路径，除非该路径也挂载到了客户端机器。请把 `mcp-server.cjs` 复制到客户端侧路径，或从 release package 中解压
 
+## 关闭文档快照与 Diff 后，HTTP 启动按钮变灰
+
+在思源 3.8.1、插件 0.6.7 中，如果启动日志包含 `removeDockFromPosition`、`toggleModel` 和 `Cannot read properties of null (reading 'getAttribute')`，说明插件在清理不存在的 dock 按钮时抛错，导致后续 HTTP 启动器未完成初始化。
+
+临时恢复：启用「文档快照与 Diff」，再重新加载插件。包含此修复的版本会先检查按钮和 model 是否存在，再调用思源的 dock 接口；关闭该功能也能正常初始化 HTTP 服务。
+
 ## 工具不可见
 
 - 确认客户端真的连上了 MCP 端点
