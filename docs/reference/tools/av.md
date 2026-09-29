@@ -36,6 +36,8 @@ The four read/render actions accept `id` as a deprecated alias and return a `war
 
 ## Parameters and Semantics
 
+`set_filters` publishes three explicitly typed filter levels without recursive schema references for provider compatibility. Deeper filter objects remain supported and are validated recursively on the server before preflight and execution; they are never truncated. Invalid deep fields are rejected.
+
 - `render` can also create and materialize an AV when `createIfNotExist=true` and `blockID` is provided. In this mode, `blockID` is the target parent/insertion context, and MCP inserts a SiYuan-style spun AV block through a transaction.
 - To render an existing AV, pass the AV ID as `avID`. For smoother Agent workflows, the four read/render actions also accept deprecated `id`, and `av.search` results include reusable `renderArgs`.
 - Keep the `blockID` returned by `render(createIfNotExist=true)`. Later AV reads and writes usually only need `avID`; MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record. Pass `blockID` when you need an exact database-block view context, when multiple mirrors are possible, or as an explicit fallback for a brand-new empty AV.

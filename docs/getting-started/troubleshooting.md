@@ -75,6 +75,8 @@ Errors mentioning `unresolvable $ref`, `$defs`, or `filters/items` can occur whi
 
 If schema loading succeeds but `set_filters` intermittently returns `state_changed` after preflight, older code may also mistake DOM attribute serialization order for a content change. View-configuration preflights now normalize carrier attribute order while preserving attribute values and database bindings; actual state drift still rejects the write.
 
+If the provider reports `recursive $ref cannot be inlined`, it rejects recursive schemas even when all references resolve. Versions containing this fix publish three explicit filter levels while retaining recursive validation on the server. Update the MCP Server actually used by the client and refresh its tool list. Temporarily disabling `av.set_filters` also removes the problematic schema.
+
 ## Desktop kernel is running but MCP returns kernel_unreachable
 
 A desktop workspace may use `https://127.0.0.1:<dynamic-port>`. Electron can accept its local certificate while the MCP Node child rejects it with `fetch failed`. For loopback origins, the launcher uses the kernel HTTP interface on the same workspace port; remote HTTPS origins keep TLS verification. After updating dev artifacts, disable and re-enable Sisyphus in plugin settings so the launcher rereads the address.

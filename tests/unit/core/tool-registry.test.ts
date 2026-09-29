@@ -2,8 +2,43 @@ import { describe, expect, it } from 'vitest';
 
 import { ACTIONS_BY_CATEGORY, buildDefaultToolConfig, TOOL_CATEGORIES } from '@/core/config';
 import { AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER, listAllTools, USER_RULES_TOOL_DESCRIPTION_REMINDER } from '@/core/tool-registry';
+import { validateRegisteredToolArguments } from '@/tools/internal/define-tool';
 
 describe('tool registry', () => {
+    it.each([false, true])('publishes acyclic filter schemas while validating deeper filters at runtime (strict: %s)', (strict) => {
+        const config = buildDefaultToolConfig();
+        config.writeSafety.strictMode = strict;
+        for (const category of TOOL_CATEGORIES) {
+            config[category].enabled = true;
+            for (const action of ACTIONS_BY_CATEGORY[category]) config[category].actions[action] = true;
+        }
+        for (const tool of listAllTools(config)) {
+            const root = JSON.parse(JSON.stringify(tool.inputSchema));
+            const visit = (node: any, ancestors = new Set<object>()) => {
+                if (!node || typeof node !== 'object') return;
+                expect(ancestors.has(node), `${tool.name}: recursive schema`).toBe(false);
+                const next = new Set(ancestors).add(node);
+                if (typeof node.$ref === 'string') {
+                    const target = node.$ref === '#' ? root : node.$ref.slice(2).split('/').reduce(
+                        (value: any, key: string) => value?.[key.replace(/~1/g, '/').replace(/~0/g, '~')], root,
+                    );
+                    expect(target).toBeDefined();
+                    visit(target, next);
+                }
+                Object.values(node).forEach(value => visit(value, next));
+            };
+            visit(root);
+            if (tool.name === 'av') expect(JSON.stringify(root).length).toBeLessThan(100_000);
+        }
+        const leaf = { column: 'key-status', operator: '=', value: { type: 'text', text: { content: 'ready' } } };
+        let filter: any = leaf;
+        for (let depth = 0; depth < 6; depth++) filter = { combination: depth % 2 ? 'and' : 'or', filters: [filter] };
+        const args = { action: 'set_filters', avID: 'av-1', blockID: 'block-1', viewID: 'view-1', filters: [filter] };
+        expect(() => validateRegisteredToolArguments('av', args)).not.toThrow();
+        delete leaf.column;
+        expect(() => validateRegisteredToolArguments('av', args)).toThrow('A leaf filter requires column and operator.');
+    });
+
     it.each([false, true])('keeps every local schema reference resolvable with strict writes %s', (strict) => {
         const config = buildDefaultToolConfig();
         config.writeSafety.strictMode = strict;

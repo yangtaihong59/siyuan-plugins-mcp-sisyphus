@@ -1031,7 +1031,7 @@ const AvRelativeDateSchema = z.object({
     unit: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
     direction: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
 }).strict();
-const AvFilterSchema = z.lazy(() => z.object({
+const AvFilterFields = {
     column: z.string().min(1).optional().describe('Existing AV key ID for a leaf filter'),
     quantifier: z.enum(['Any', 'All', 'None']).optional(),
     operator: z.enum(['=', '!=', '>', '>=', '<', '<=', 'Contains', 'Does not contains', 'Is empty', 'Is not empty', 'Starts with', 'Ends with', 'Is between', 'Is true', 'Is false']).optional(),
@@ -1039,6 +1039,9 @@ const AvFilterSchema = z.lazy(() => z.object({
     relativeDate: AvRelativeDateSchema.optional(),
     relativeDate2: AvRelativeDateSchema.optional(),
     combination: z.enum(['and', 'or']).optional(),
+};
+const AvFilterSchema = z.lazy(() => z.object({
+    ...AvFilterFields,
     filters: z.array(AvFilterSchema).optional(),
 }).strict().superRefine((filter, ctx) => {
     const group = filter.combination !== undefined || filter.filters !== undefined;
@@ -1062,6 +1065,19 @@ export const AvSetFiltersSchema = z.object({
     blockID: AvCarrierBlockIDSchema,
     viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
     filters: z.array(AvFilterSchema).describe('Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root.'),
+});
+
+// Publish three typed levels without recursive $refs. Deeper objects are still
+// validated by AvSetFiltersSchema before preflight and execution.
+let avFilterToolSchema: z.ZodType = z.object({}).loose().describe('Deeper filter node with the same leaf/group fields; validated recursively by the server.');
+for (let depth = 0; depth < 3; depth++) {
+    avFilterToolSchema = z.object({
+        ...AvFilterFields,
+        filters: z.array(avFilterToolSchema).optional(),
+    }).strict();
+}
+export const AvSetFiltersToolSchema = AvSetFiltersSchema.extend({
+    filters: z.array(avFilterToolSchema).describe('Complete replacement filter tree. [] clears filters. Three typed levels are shown; deeper nodes follow the same rules.'),
 });
 
 export const AvSetSortsSchema = z.object({
