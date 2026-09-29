@@ -6,7 +6,7 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.8` unifies AV parameters and preflight credentials, verifies writes, and adds `--topic ai-layout-guide` help.
+> **Latest:** `v0.2.9` removes recursive references from published filter schemas and clarifies feedback submission in strict mode.
 
 > **v0.2.6:** `v0.2.6` exposes the expanded guarded AV, snapshot, image-audit, image-reading, extension-diagnostic, and link-resolution workflows, and preserves mixed text/image results in JSON output. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58).
 
@@ -33,7 +33,9 @@ Strict safe writes are enabled by default in the plugin under Settings → MCP �
 
 Keep the plugin-hosted MCP HTTP server enabled while using strict CLI mutations. The CLI forwards these writes to that single coordinator so CLI, stdio, and HTTP do not create independent lease pools. Expired, consumed, or restart-invalidated leases require a new preflight. Turning strict writes off restores the legacy direct-call contract without hash concurrency checks, request idempotency, or post-write verification.
 
-Request IDs and state credentials start at four hexadecimal characters. Copy them completely; do not generate or truncate them. Upgrade the plugin to v0.6.7 alongside this CLI and obtain fresh preflight credentials. The legacy AV `id` input remains accepted with a deprecation warning; use `avID` for new calls.
+Request IDs and state credentials start at four hexadecimal characters. Copy them completely; do not generate or truncate them. Upgrade the plugin to v0.6.8 alongside this CLI and obtain fresh preflight credentials. The legacy AV `id` input remains accepted with a deprecation warning; use `avID` for new calls.
+
+`feedback.submit` is an external operation: after user authorization, submit business parameters directly without `validateOnly`, `requestId`, or hash credentials. A mistaken preflight sends nothing and returns a hint. Feedback does not provide strict state verification or idempotent replay; do not automatically retry an unknown outcome.
 
 Clients without MCP Resources can run `siyuan-sisyphus av help --topic ai-layout-guide` for the complete layout guide.
 
