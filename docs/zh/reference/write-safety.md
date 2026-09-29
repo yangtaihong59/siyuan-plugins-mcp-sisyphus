@@ -79,6 +79,8 @@
 
 ## 边界
 
+MCP 2026-07-28 高危操作确认会区分 `confirmation_declined`（客户端明确拒绝或 `confirm=false`）、`confirmation_cancelled`（客户端明确取消）和 `confirmation_invalid`（响应格式无效、字段缺失或类型错误）。只有明确取消才返回 `cancelled=true`。无效响应不代表用户撤回授权；应检查客户端的 elicitation 支持，不能跳过确认。确认通过后仍执行原有权限与严格预检校验。
+
 `extension` 转发的第三方或思源原生 Tool 不在 Sisyphus 的控制范围内，因此不会宣称严格写入保证。本地导出、通知、同步和反馈等外部副作用也无法通过思源状态读回验证：`validateOnly` 会拒绝且保证不执行；真实调用仍保持单次传输，但响应会明确给出 `writeSafetyGuaranteed: false`。
 
 严格保证只适用于安全策略标为 `mutation`、并由 Sisyphus 自己拥有的修改型 action。通过插件 HTTP 服务直接发来的 MCP/Agent 请求会进入进程级协调器；stdio 和独立 CLI 的严格修改也会转交同一个插件内置 HTTP 协调器，不会各自创建租约池、互斥锁或账本。协调器不可用时，调用会返回 `write_coordinator_unavailable`，不会静默退回未协调的写入。只读 action 不需要经过这条写入路径。`extension` 是另一条官方 MCP 桥接路径，因此它转发的插件或原生 Tool 即使恰好修改了笔记，也属于外部副作用，不会获得上述严格保证。

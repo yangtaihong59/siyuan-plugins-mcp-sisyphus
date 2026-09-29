@@ -79,6 +79,8 @@ If active hashes in the same operation scope share four digits, a new preflight 
 
 ## Boundaries
 
+MCP 2026-07-28 confirmation distinguishes `confirmation_declined` (explicit client refusal or `confirm=false`), `confirmation_cancelled` (explicit client cancellation), and `confirmation_invalid` (malformed, missing, or incorrectly typed content). Only explicit cancellation sets `cancelled=true`. Invalid content does not mean the user withdrew authorization: check client elicitation support without bypassing confirmation. Accepted confirmation still passes through permission and strict preflight checks.
+
 Third-party and native SiYuan tools forwarded through `extension` are outside Sisyphus control and do not receive this guarantee. Local exports, notifications, sync, and feedback are also external side effects that cannot be verified through SiYuan state readback: `validateOnly` rejects without executing, while a real call still uses single-attempt transport and returns `writeSafetyGuaranteed: false`.
 
 The guarantee applies only to mutations owned by Sisyphus and classified as `mutation` by its safety policy. A direct MCP/Agent call over the plugin HTTP server enters the process-wide coordinator. Strict mutations arriving through stdio or the standalone CLI are forwarded to that same plugin-hosted HTTP coordinator; they do not create an independent lease pool, mutex, or ledger. If that coordinator is unavailable, the call fails with `write_coordinator_unavailable` rather than silently falling back to an uncoordinated write. Read-only actions do not need this path. `extension` is a separate official-MCP bridge, so its forwarded plugin/native calls are external side effects even when the downstream tool happens to edit notes.

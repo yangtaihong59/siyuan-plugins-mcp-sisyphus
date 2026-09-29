@@ -1,5 +1,5 @@
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
-import { acceptedContent, inputRequired, ProtocolError, ProtocolErrorCode, Server, type CallToolResult, type Tool } from '@modelcontextprotocol/server';
+import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server, type CallToolResult, type Tool } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
@@ -450,12 +450,11 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 ctx.mcpReq.inputResponses ?? {},
                 confirmationKey,
             );
-            const confirmation = acceptedContent<{ confirm?: boolean }>(
-                ctx.mcpReq.inputResponses,
-                confirmationKey,
-            );
+            const droppedResponse = ctx.mcpReq.droppedInputResponseKeys?.includes(confirmationKey) === true;
+            const response = inputResponse(ctx.mcpReq.inputResponses, confirmationKey);
 
-            if (!hasResponse) {
+            if (!hasResponse && !droppedResponse) {
+                console.error('[MCP][confirmation]', JSON.stringify({ requestId: ctx.mcpReq.id, tool: name, action, decision: 'requested' }));
                 const argumentPreview = JSON.stringify(args ?? {});
                 return inputRequired({
                     inputRequests: {
@@ -482,14 +481,37 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 });
             }
 
-            if (confirmation?.confirm !== true) {
+            const confirmation = response.kind === 'elicit' && response.action === 'accept'
+                ? z.object({ confirm: z.boolean() }).strict().safeParse(response.content)
+                : undefined;
+            const decision = response.kind === 'elicit' && response.action === 'cancel'
+                ? 'cancelled'
+                : (response.kind === 'elicit' && response.action === 'decline') || (confirmation?.success && confirmation.data.confirm === false)
+                    ? 'declined'
+                    : confirmation?.success && confirmation.data.confirm === true ? 'accepted' : 'invalid';
+            // Log only protocol metadata, never business arguments or response content.
+            console.error('[MCP][confirmation]', JSON.stringify({
+                requestId: ctx.mcpReq.id, tool: name, action, responseKind: response.kind,
+                responseAction: response.kind === 'elicit' ? response.action : undefined,
+                confirmType: response.kind === 'elicit' ? typeof response.content?.confirm : undefined,
+                droppedResponse, decision,
+            }));
+            if (decision !== 'accepted') {
+                const message = decision === 'invalid'
+                    ? 'No valid confirmation response was received. Nothing was executed; this does not indicate user cancellation. Check client elicitation support and retry with a valid response after user approval.'
+                    : decision === 'cancelled'
+                        ? 'The client returned an explicit cancellation response. Nothing was executed.'
+                        : 'The client explicitly declined execution or returned confirm=false. Nothing was executed.';
                 const declined = {
                     content: [{
                         type: 'text' as const,
                         text: JSON.stringify({
                             success: false,
-                            cancelled: true,
-                            message: `High-risk action ${name}(action="${action}") was not executed because confirmation was declined or cancelled.`,
+                            cancelled: decision === 'cancelled',
+                            writeAttempted: false,
+                            writeExecuted: false,
+                            error: { code: `confirmation_${decision}`, message },
+                            message,
                         }, null, 2),
                     }],
                     isError: true,

@@ -318,6 +318,75 @@ describe('HTTP MCP concurrency', () => {
         expect(vi.mocked(global.fetch).mock.calls.some(([url]) => String(url).includes('/api/sync/performSync'))).toBe(true);
     });
 
+    it.each([
+        ['decline', { action: 'decline' }, 'confirmation_declined', false],
+        ['cancel', { action: 'cancel' }, 'confirmation_cancelled', true],
+        ['unchecked', { action: 'accept', content: { confirm: false } }, 'confirmation_declined', false],
+        ['missing content', { action: 'accept' }, 'confirmation_invalid', false],
+        ['missing checkbox', { action: 'accept', content: {} }, 'confirmation_invalid', false],
+        ['string checkbox', { action: 'accept', content: { confirm: 'true' } }, 'confirmation_invalid', false],
+        ['extra content', { action: 'accept', content: { confirm: true, unexpected: 1 } }, 'confirmation_invalid', false],
+    ])('reports %s without attributing invalid responses to user cancellation', async (_name, response, code, cancelled) => {
+        serverHandle = await startHttpMcpServer({ host: '127.0.0.1', port: await getAvailablePort(), path: '/mcp', serverFactory: createSiYuanServer });
+        const client = new Client({ name: 'confirmation-regression', version: '1.0.0' }, {
+            capabilities: { elicitation: {} }, versionNegotiation: { mode: 'auto' },
+        });
+        const confirm = vi.fn().mockResolvedValue(response);
+        const diagnostics = vi.spyOn(console, 'error').mockImplementation(() => {});
+        client.setRequestHandler('elicitation/create', confirm);
+        const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serverHandle.port}/mcp`));
+        clients.push(client);
+        transports.push(transport);
+        await client.connect(transport);
+
+        const result = await client.callTool({ name: 'block', arguments: { action: 'move', id: 'source', parentID: 'doc', previousID: 'previous' } });
+        expect(result.isError).toBe(true);
+        expect(parseToolResultText(result)).toMatchObject({
+            success: false, cancelled, writeAttempted: false, writeExecuted: false,
+            error: { code },
+        });
+        expect(confirm).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(global.fetch).mock.calls.some(([url]) => String(url).includes('/api/block/moveBlock'))).toBe(false);
+        const logs = diagnostics.mock.calls.filter(([label]) => label === '[MCP][confirmation]').map(([, data]) => JSON.parse(String(data)));
+        expect(logs.map(log => log.decision)).toEqual(['requested', String(code).replace('confirmation_', '')]);
+        expect(JSON.stringify(logs)).not.toContain('previousID');
+    });
+
+    it.each([
+        null,
+        { method: 'elicitation/create', result: { action: 'accept', content: { confirm: true } } },
+        { error: { code: -32601, message: 'unsupported' } },
+    ])('rejects malformed wire confirmation %j without looping', async (wireResponse) => {
+        serverHandle = await startHttpMcpServer({ host: '127.0.0.1', port: await getAvailablePort(), path: '/mcp', serverFactory: createSiYuanServer });
+        const defaultFetch = vi.mocked(global.fetch).getMockImplementation()!;
+        let replaced = false;
+        vi.mocked(global.fetch).mockImplementation((url, init) => {
+            if (String(url).endsWith(`${serverHandle!.port}/mcp`) && typeof init?.body === 'string') {
+                const request = JSON.parse(init.body);
+                if (request.params?.inputResponses) {
+                    request.params.inputResponses['dangerous-action-confirmation'] = wireResponse;
+                    init = { ...init, body: JSON.stringify(request) };
+                    replaced = true;
+                }
+            }
+            return defaultFetch(url, init);
+        });
+        const client = new Client({ name: 'malformed-confirmation', version: '1.0.0' }, {
+            capabilities: { elicitation: {} }, versionNegotiation: { mode: 'auto' },
+        });
+        const confirm = vi.fn().mockResolvedValue({ action: 'accept', content: { confirm: true } });
+        client.setRequestHandler('elicitation/create', confirm);
+        const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serverHandle.port}/mcp`));
+        clients.push(client);
+        transports.push(transport);
+        await client.connect(transport);
+        const result = await client.callTool({ name: 'block', arguments: { action: 'move', id: 'source', parentID: 'doc' } });
+        expect(replaced).toBe(true);
+        expect(parseToolResultText(result)).toMatchObject({ cancelled: false, writeExecuted: false, error: { code: 'confirmation_invalid' } });
+        expect(confirm).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(global.fetch).mock.calls.some(([url]) => String(url).includes('/api/block/moveBlock'))).toBe(false);
+    });
+
     it('rejects untrusted browser origins before MCP dispatch', async () => {
         const port = await getAvailablePort();
         serverHandle = await startHttpMcpServer({
