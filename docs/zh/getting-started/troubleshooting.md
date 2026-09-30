@@ -75,7 +75,7 @@
 
 若 Schema 已正常加载，但 `set_filters` 预检后仍偶发返回 `state_changed`，旧代码也可能把思源输出 DOM 属性的顺序变化当作内容变化。修复后的视图配置预检会规范化数据库载体的属性顺序，同时保留属性值与数据库绑定校验；真正的状态变化仍会拒绝写入。
 
-若 provider 报 `recursive $ref cannot be inlined`，这是递归 schema 兼容性问题，与上面的引用丢失不同。包含修复的版本对外展开三层筛选器 schema，服务端继续递归校验深层输入。更新实际 MCP Server 并刷新工具列表；暂时无法更新时，可禁用 `av.set_filters` 后重新连接。
+若 provider 报 `recursive $ref cannot be inlined`，这是递归 schema 兼容性问题，与上面的引用丢失不同。包含修复的版本统一公开 Schema 和运行时校验，最多允许四层筛选组后接叶子节点，与内核限制一致。更新实际 MCP Server 并刷新工具列表；暂时无法更新时，可禁用 `av.set_filters` 后重新连接。
 
 ## 桌面内核正常但 MCP 返回 kernel_unreachable
 

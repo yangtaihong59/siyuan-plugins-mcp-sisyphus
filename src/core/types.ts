@@ -1031,24 +1031,33 @@ const AvRelativeDateSchema = z.object({
     unit: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
     direction: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
 }).strict();
-const AvFilterFields = {
+// Upstream tool-schema inliners (e.g. GLM/ZAI) reject recursive $refs, so the
+// filter tree must be depth-bounded instead of z.lazy-recursive to keep
+// z.toJSONSchema output fully inlineable (no $defs / $ref).
+// 5 node levels mirror the kernel's own guard: MaxFilterNestingDepth = 3
+// (kernel/av/av_fix.go) counts group levels, groups allowed at depths 0-3
+// and depth-4 nodes must be leaf-only, so the deepest node level here is
+// leaf-only (no combination/filters).
+export const AV_FILTER_MAX_DEPTH = 5;
+
+const buildAvFilterSchema = (depth: number) => z.object({
     column: z.string().min(1).optional().describe('Existing AV key ID for a leaf filter'),
     quantifier: z.enum(['Any', 'All', 'None']).optional(),
     operator: z.enum(['=', '!=', '>', '>=', '<', '<=', 'Contains', 'Does not contains', 'Is empty', 'Is not empty', 'Starts with', 'Ends with', 'Is between', 'Is true', 'Is false']).optional(),
     value: AvFilterValueSchema.nullable().optional(),
     relativeDate: AvRelativeDateSchema.optional(),
     relativeDate2: AvRelativeDateSchema.optional(),
-    combination: z.enum(['and', 'or']).optional(),
-};
-const AvFilterSchema = z.lazy(() => z.object({
-    ...AvFilterFields,
-    filters: z.array(AvFilterSchema).optional(),
+    ...(depth < AV_FILTER_MAX_DEPTH ? {
+        combination: z.enum(['and', 'or']).optional(),
+        filters: z.array(buildAvFilterSchema(depth + 1)).optional().describe(`Nested group filters; group nesting is capped at ${AV_FILTER_MAX_DEPTH - 1} levels.`),
+    } : {}),
 }).strict().superRefine((filter, ctx) => {
     const group = filter.combination !== undefined || filter.filters !== undefined;
     if (!group && (!filter.column || !filter.operator)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A leaf filter requires column and operator.', path: ['column'] });
     }
-}));
+});
+const AvFilterSchema = buildAvFilterSchema(1);
 
 export const AvAddViewSchema = z.object({
     action: z.literal('add_view'),
@@ -1064,20 +1073,7 @@ export const AvSetFiltersSchema = z.object({
     avID: z.string().min(1).describe('Attribute view ID'),
     blockID: AvCarrierBlockIDSchema,
     viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
-    filters: z.array(AvFilterSchema).describe('Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root.'),
-});
-
-// Publish three typed levels without recursive $refs. Deeper objects are still
-// validated by AvSetFiltersSchema before preflight and execution.
-let avFilterToolSchema: z.ZodType = z.object({}).loose().describe('Deeper filter node with the same leaf/group fields; validated recursively by the server.');
-for (let depth = 0; depth < 3; depth++) {
-    avFilterToolSchema = z.object({
-        ...AvFilterFields,
-        filters: z.array(avFilterToolSchema).optional(),
-    }).strict();
-}
-export const AvSetFiltersToolSchema = AvSetFiltersSchema.extend({
-    filters: z.array(avFilterToolSchema).describe('Complete replacement filter tree. [] clears filters. Three typed levels are shown; deeper nodes follow the same rules.'),
+    filters: z.array(AvFilterSchema).describe(`Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root. Group nesting is capped at ${AV_FILTER_MAX_DEPTH - 1} levels.`),
 });
 
 export const AvSetSortsSchema = z.object({

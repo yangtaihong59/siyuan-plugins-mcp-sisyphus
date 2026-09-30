@@ -75,7 +75,7 @@ Errors mentioning `unresolvable $ref`, `$defs`, or `filters/items` can occur whi
 
 If schema loading succeeds but `set_filters` intermittently returns `state_changed` after preflight, older code may also mistake DOM attribute serialization order for a content change. View-configuration preflights now normalize carrier attribute order while preserving attribute values and database bindings; actual state drift still rejects the write.
 
-If the provider reports `recursive $ref cannot be inlined`, it rejects recursive schemas even when all references resolve. Versions containing this fix publish three explicit filter levels while retaining recursive validation on the server. Update the MCP Server actually used by the client and refresh its tool list. Temporarily disabling `av.set_filters` also removes the problematic schema.
+If the provider reports `recursive $ref cannot be inlined`, it rejects recursive schemas even when all references resolve. Versions containing this fix publish a bounded filter schema matching runtime validation and the kernel limit of four nested groups followed by a leaf. Update the MCP Server actually used by the client and refresh its tool list. Temporarily disabling `av.set_filters` also removes the problematic schema.
 
 ## Desktop kernel is running but MCP returns kernel_unreachable
 

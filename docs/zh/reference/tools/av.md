@@ -36,7 +36,7 @@
 
 ## 参数与语义
 
-`set_filters` 对外 schema 显式展示三层筛选节点，不包含递归引用，以兼容会展开 schema 的 provider。更深层筛选仍可传入，服务端会在预检和执行前递归校验所有节点，不会截断；深层非法字段仍会被拒绝。
+`set_filters` 的公开 Schema 与运行时校验使用同一定义：最多四层筛选组，后接叶子节点，与思源内核限制一致，不包含递归引用。超深筛选组和非法叶子字段会在执行前被拒绝。
 
 - `render` 在 `createIfNotExist=true` 且传入 `blockID` 时，也可创建并实体化 AV。此时 `blockID` 表示目标父级 / 插入上下文，MCP 会通过思源风格的 spun AV block DOM 与 transaction 完成插入。
 - 渲染已有 AV 时，规范参数名是 `avID`。上述四个读取/渲染动作保留 `id` 弃用别名，两者同时传入必须相同，且 `av.search` 结果会包含可复用的 `renderArgs`。
