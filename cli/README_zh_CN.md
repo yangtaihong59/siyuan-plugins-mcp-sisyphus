@@ -87,6 +87,7 @@ siyuan-sisyphus list [tool]                          列出所有工具，或某
 siyuan-sisyphus help <tool> [action]                 查看某个工具或 action 的详细帮助
 siyuan-sisyphus init                                 交互式初始化配置
 siyuan-sisyphus config list|get|set|use ...          管理已保存的 SiYuan profile
+siyuan-sisyphus instances                            列出本机正在运行的思源内核 API
 siyuan-sisyphus skill list|read|install [--bundle cli|mcp|all]
                                                      查看或安装 Agent Skill
 siyuan-sisyphus --help | -h                          显示顶层帮助

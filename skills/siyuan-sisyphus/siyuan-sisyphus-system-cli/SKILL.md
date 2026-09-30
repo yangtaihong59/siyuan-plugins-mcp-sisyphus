@@ -55,4 +55,4 @@ CLI execution is an explicit command, but that consent does not prove strict saf
 
 ## CLI setup
 
-Use `siyuan-sisyphus init` and `siyuan-sisyphus config list|get|set|use` to manage profiles. Configuration precedence is command flags, environment variables, active profile, then defaults. Use `--json` for scripts. The CLI treats execution as confirmation, so the agent must still ask the user before risky commands.
+Use `siyuan-sisyphus init` and `siyuan-sisyphus config list|get|set|use` to manage profiles. `siyuan-sisyphus instances` lists running local kernel API ports. A saved loopback profile follows the kernel whose workspace API token matches; the publish-service port is not that API. `--url` and `SIYUAN_API_URL` are not rewritten, and `SIYUAN_DISCOVER=0` disables the scan. Configuration precedence is command flags, environment variables, active profile, then defaults. Use `--json` for scripts. The CLI treats execution as confirmation, so the agent must still ask the user before risky commands.
