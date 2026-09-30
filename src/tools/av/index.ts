@@ -79,7 +79,7 @@ for (const variant of AV_VARIANTS) {
 
 const avTool = defineTool<AvAction>({
     name: 'av',
-    description: '\ud83d\uddc3\ufe0f Grouped attribute-view (database) operations.',
+    description: '🗃️ Real SiYuan databases (attribute views, not Markdown tables): read, create, rows, columns, cells, views, filters, sorts, relations. Never edit database rows through fs/block; get avID from fs.read/block results (avToolHint) or av.search.',
     variants: AV_VARIANTS,
     actionSchema: AvActionSchema,
     aggregateOptions: {

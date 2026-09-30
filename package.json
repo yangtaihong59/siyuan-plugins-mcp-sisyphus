@@ -28,6 +28,7 @@
     "test:smoke": "node tests/smoke/live_mcp_smoke.cjs",
     "test:repro-index": "node scripts/repro-index-error.cjs",
     "test:repro-index-mcp": "node scripts/repro-index-error-mcp.cjs",
+    "analyze:mcp": "node scripts/analyze-description-tokens.mjs",
     "api:audit": "node scripts/api-audit.mjs",
     "api:audit:check": "node scripts/api-audit.mjs --check",
     "skills:generate": "node scripts/generate-skills.mjs",

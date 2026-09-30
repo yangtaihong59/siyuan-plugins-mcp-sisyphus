@@ -261,7 +261,7 @@ describe('buildAggregatedTool', () => {
 
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe('notebook');
-        expect(result[0].inputSchema.properties?.action?.description).toContain('list, create');
+        expect(result[0].inputSchema.properties?.action?.enum).toEqual(['list', 'create', 'help']);
     });
 
     it('should include description with action list', () => {
@@ -297,13 +297,14 @@ describe('buildAggregatedTool', () => {
         expect(branches?.[2].properties?.action?.const).toBe('help');
     });
 
-    it('should handle guidance option', () => {
+    it('serves guidance through help instead of the mount-time description', () => {
         const options = {
             guidance: ['Note: Be careful with this tool.'],
         };
         const result = buildAggregatedTool('notebook', 'Test tool', mockConfig, variants, options);
 
-        expect(result[0].description).toContain('Be careful');
+        expect(result[0].description).not.toContain('Be careful');
+        expect(result[0].description).toContain('action="help"');
     });
 
     it('should include confirmation note for dangerous actions', () => {
@@ -313,8 +314,10 @@ describe('buildAggregatedTool', () => {
         };
         const result = buildAggregatedTool('notebook', 'Test tool', configWithDangerous, variants);
 
-        expect(result[0].description).toContain('confirmation');
-        expect(result[0].description).toContain('remove');
+        expect(result[0].description).toContain('remove*(value)');
+        expect(result[0].description).toContain('* = ask the user to confirm first.');
+        const safe = buildAggregatedTool('notebook', 'Test tool', mockConfig, variants);
+        expect(safe[0].description).not.toContain('confirm');
     });
 
     it('should preserve nested array item schemas', () => {
@@ -401,13 +404,15 @@ describe('mergePropertySchemas annotations', () => {
         expect(schema['x-sisyphus-actionSchemas']?.[1].properties?.data).toBeDefined();
     });
 
-    it('includes Parameter contract block in tool description', () => {
+    it('lists compact required-field signatures in the tool description', () => {
         const variants: ActionVariant<string>[] = [
             { action: 'create', schema: { type: 'object', properties: { name: { type: 'string' }, icon: { type: 'string' } }, required: ['name'] } },
+            { action: 'list', schema: { type: 'object', properties: {} } },
         ];
-        const result = buildAggregatedTool('notebook', 'Manage notebooks.', { enabled: true, actions: { create: true } }, variants);
-        expect(result[0].description).toContain('Parameter contract per action');
-        expect(result[0].description).toContain('notebook.create: required [name] | optional [icon]');
+        const result = buildAggregatedTool('notebook', 'Manage notebooks.', { enabled: true, actions: { create: true, list: true } }, variants);
+        expect(result[0].description).toContain('Actions (required fields): create(name) · list()');
+        expect(result[0].description).not.toContain('icon');
+        expect(result[0].inputSchema.properties?.icon).toBeDefined();
     });
 });
 

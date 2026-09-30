@@ -186,6 +186,31 @@ export function buildActionUsageSummary<Action extends string>(variants: ActionV
     return [...actionShapes.entries()].map(([action, shapes]) => `${action}: ${shapes.join(' | ')}`).join('; ');
 }
 
+/**
+ * Compact per-action call signatures for tool descriptions, e.g.
+ * `read(path) · write(path, markdown) · rm*(path)`. Only required fields are
+ * listed (alternatives joined by `|`); `*` marks actions that need explicit
+ * user confirmation. Optional fields live in the schema and in action help.
+ */
+export function buildActionSignatures<Action extends string>(
+    category: ToolCategory,
+    variants: ActionVariant<Action>[],
+): string {
+    const shapesByAction = new Map<string, string[]>();
+    for (const variant of variants) {
+        const shapes = shapesByAction.get(variant.action) ?? [];
+        for (const fields of requiredFieldAlternatives(variant.schema)) {
+            const shape = fields.join(', ');
+            if (!shapes.includes(shape)) shapes.push(shape);
+        }
+        shapesByAction.set(variant.action, shapes);
+    }
+    return [...shapesByAction.entries()].map(([action, shapes]) => {
+        const marker = isDangerousAction(category, action) ? '*' : '';
+        return `${action}${marker}(${shapes.filter(Boolean).join(' | ')})`;
+    }).join(' · ');
+}
+
 export function buildParameterContract<Action extends string>(
     category: ToolCategory,
     variants: ActionVariant<Action>[],
@@ -263,6 +288,7 @@ export function buildActionHelp<Action extends string>(
         ...(TOOL_ACTION_HINTS[category]?.[action] ? { hint: TOOL_ACTION_HINTS[category][action] } : {}),
         shapes: requiredFieldSets.map((fields) => fields.length > 0 ? fields.join(' + ') : 'action only'),
         requiredFields: requiredFieldSets.length === 1 ? requiredFieldSets[0] : requiredFieldSets,
+        parameters: matching.length === 1 ? matching[0].schema : matching.map((variant) => variant.schema),
         example,
         ...(curatedExamples.length > 0 ? { examples: curatedExamples } : {}),
         guidance: TOOL_GUIDANCE_BY_CATEGORY[category] ?? [],
@@ -300,10 +326,8 @@ export function buildShapeSummaryMarkdown<Action extends string>(
 ): string[] {
     return variants
         .filter((variant) => variant.action === action)
-        .map((variant) => {
-            const fields = getSchemaRequiredWithoutAction(variant.schema);
-            return fields.length > 0 ? `- \`${fields.join(' + ')}\`` : '- `action` only';
-        });
+        .flatMap((variant) => requiredFieldAlternatives(variant.schema)
+            .map((fields) => fields.length > 0 ? `- \`${fields.join(' + ')}\`` : '- `action` only'));
 }
 
 export type { ToolCategory };

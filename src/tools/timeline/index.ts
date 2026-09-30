@@ -30,7 +30,7 @@ export const TIMELINE_VARIANTS: ActionVariant<TimelineAction>[] = [
 
 const timelineTool = defineTool<TimelineAction>({
     name: TIMELINE_TOOL_NAME,
-    description: '🕓 Grouped document timeline, snapshot diff, and rollback operations.',
+    description: '🕓 Document and global snapshot nodes: list, create, compare a document against a node, and (when enabled) delete nodes or roll back.',
     variants: TIMELINE_VARIANTS,
     actionSchema: TimelineActionSchema,
     aggregateOptions: {

@@ -59,43 +59,45 @@ notebook(action="rename")
 
 ## 2. 渐进式披露
 
-### 问题背景
+### 挂载时只提供选择工具和构造常见调用所需的信息
 
-不同用户对帮助信息的需求不同：
-- **AI Agent（LLM）**：需要简洁的 tool description，说明常见 action 和参数
-- **人类开发者**：需要详细的 API 映射、参数形态、示例代码
-- **终端用户（CLI）**：需要快速上手的命令示例
+保留 14 个聚合工具和现有 action API，不把每个 action 拆成独立工具。各层职责如下：
 
-### 做出的选择
+| 层级 | 内容 |
+| --- | --- |
+| initialize `instructions` | 跨工具路由、路径区别、用户规则与记忆优先级、危险操作确认、严格写入预检 |
+| `tool.description` | 工具用途和边界、紧凑的 `action(必填字段)` 签名；`*` 标记需确认的 action |
+| `inputSchema` | 可用 action 的 enum、字段类型与约束、每字段一份说明；复杂嵌套结构按需展开 |
+| `action="help", topic="<action>"` | 完整原始参数 schema、必填字段组合、示例、领域指导与确认要求 |
+| `siyuan://help/action/{tool}/{action}` | 同一 action 的完整参数 schema 和 Markdown 帮助；客户端不支持资源时使用 help action |
+| `siyuan://skills/*` 和文档 | 多步工作流、排版与领域规则、完整参考 |
 
-设计三层信息暴露策略：
+全局规则不再逐工具复制。App 交接规则保留在对应 App 工具描述及响应中。相同参数不再拼接所有 action 的说明，也不同时重复 “Parameter contract” 和 “Required by” 列表。别名仍在运行时接受，但挂载时优先展示规范字段名。
 
-```
-Layer 1: 工具描述（MCP tool.description）
-    → 只包含最常见 action 的简要说明
-    → 面向 LLM，控制 token 成本
+合并后的嵌套字段 schema 超过 600 字符时，仅在 `tools/list` 中保留容器类型及 help 指引；短结构、标量类型和枚举保留。**原始 action schema、Zod 校验、CLI 内部 action 分支、写入预检和权限机制不变。** help 返回完整 schema 根，保留 `required`、组合约束和 `$ref` 目标。调用者遇到复杂对象先读取对应 action 帮助，不应猜参数；这会为少数复杂任务增加一次帮助调用。
 
-Layer 2: 动作帮助（MCP 资源动态请求）
-    → siyuan://help/action/{tool}/{action}
-    → 包含可接受参数形态、必填字段、示例
-    → LLM 按需读取
+### 实测与防回退
 
-Layer 3: 完整参考文档（docs/ 站点）
-    → 每个 tool 独立页面
-    → 包含所有 action 的详细说明、参数表、返回值、CLI 示例
-    → 面向人类开发者
-```
+使用 `npm run analyze:mcp`（或 `pnpm analyze:mcp`）直接加载真实注册表，测量 `instructions.trim().length + JSON.stringify({ tools }).length`，不再维护一份容易过时的手写工具清单。可通过 `--root PATH` 测量另一份源码。
 
-### 拒绝的替代方案
+| 默认配置 | 精简前（dev HEAD） | 精简后 |
+| --- | ---: | ---: |
+| instructions | 20,988 字符 | 3,216 字符 |
+| tools/list（14 个工具） | 133,583 字符 | 57,720 字符 |
+| 合计 | 154,571 字符 | 60,936 字符 |
+| 按字符数 / 4 估算 token | 38,643 | 15,234 |
+| 其中 av 工具 | 42,515 字符 | 11,231 字符 |
 
-- **方案 A：把所有帮助塞进工具描述**：会导致描述过长，消耗大量 LLM 上下文。
-- **方案 B：只有静态文档，没有 MCP 资源**：LLM 无法动态获取特定动作的详细帮助。
+合计减少约 **60.6%**。口径为默认配置、空用户规则与记忆、没有动态发现的第三方工具或可选 MCP Apps；实际客户端加载的额外描述另计。token 是估算，不是 Claude/OpenAI tokenizer 实测。用户规则与记忆不为满足预算而截断。
 
-### 当前结果
+`tests/unit/core/mcp-payload.test.ts` 限制默认负载低于 64,000 字符、全静态 action 启用时低于 66,000 字符，另约束 instructions 和 AV，并验证 help 完整性、嵌套校验和禁用动作。运行 `npm test` 验证。
 
-- `tool.description` 保持在 200~500 tokens
-- LLM 遇到不确定的动作时，可通过 `ReadResourceRequest` 获取详细帮助
-- 人类用户可在 VitePress 文档站点查阅完整参考
+### 参考与边界
+
+- [OpenAI 元数据设计指南](https://developers.openai.com/plugins/guides/optimize-metadata)：明确用途与适用边界，参数说明和受限值应准确，工具注解必须反映真实行为。
+- [OpenAI Tool search](https://developers.openai.com/api/docs/guides/tools-tool-search)：客户端可按需加载工具以减少常驻上下文。`defer_loading` 属于客户端 API 配置，不能作为通用 MCP 服务端字段强加给所有客户端。
+
+本项目用已有 help/resources 实现兼容客户端的渐进披露；600 字符阈值和预算是本项目的设计选择，并非官方 MCP 标准。尚未通过真实模型 A/B 测试量化错误率；单元/集成测试验证的是协议、参数和安全行为。
 
 ---
 

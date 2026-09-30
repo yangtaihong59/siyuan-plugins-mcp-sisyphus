@@ -32,7 +32,7 @@ export const SYSTEM_VARIANTS: ActionVariant<SystemAction>[] = [
 
 const systemTool = defineTool<SystemAction>({
     name: 'system',
-    description: '🖥️ Grouped system and notification operations.',
+    description: '🖥️ SiYuan system info and utilities: version, current time, network, masked config, notifications, plugin changelog, sync.',
     variants: SYSTEM_VARIANTS,
     actionSchema: SystemActionSchema,
     aggregateOptions: {

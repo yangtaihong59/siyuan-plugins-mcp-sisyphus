@@ -38,7 +38,7 @@ export const NOTEBOOK_VARIANTS: ActionVariant<NotebookAction>[] = [
 
 const notebookTool = defineTool<NotebookAction>({
     name: 'notebook',
-    description: '📚 Grouped notebook operations.',
+    description: '📚 Notebooks by notebook ID: list, create, open/close, rename, icon, config, root child docs, and MCP read/write permissions.',
     variants: NOTEBOOK_VARIANTS,
     actionSchema: NotebookActionSchema,
     aggregateOptions: {

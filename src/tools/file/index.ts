@@ -57,7 +57,7 @@ export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
 function createFileTool(thresholdMB: number, largeUploadThresholdBytes: number) {
     return defineTool<FileAction>({
         name: 'file',
-        description: '📁 Grouped file and asset operations.',
+        description: '📁 Assets, templates, and exports: upload/rename/delete assets, read images for vision (read_image), templates, Markdown/ZIP exports, unused-asset cleanup.',
         variants: FILE_VARIANTS,
         actionSchema: FileActionSchema,
         aggregateOptions: {

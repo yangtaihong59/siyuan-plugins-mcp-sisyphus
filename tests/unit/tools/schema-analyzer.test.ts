@@ -33,19 +33,60 @@ describe('schema-analyzer helpers', () => {
         expect(variants[0].schema.properties.set_filters.$ref).toBe('#/$defs/__schema0');
     });
 
-    it('merges property descriptions and annotations without changing nested schemas', () => {
+    it('keeps one description per merged property without changing small nested schemas', () => {
         const merged = mergePropertySchemas([
             createActionSchema('append', {
                 parentID: { type: 'string', description: 'Parent ID' },
                 items: { type: 'array', items: { type: 'string' }, description: 'Values' },
             }, ['parentID']),
             createActionSchema('update', {
-                parentID: { type: 'string', description: 'Parent ID' },
+                parentID: { type: 'string', description: 'Parent block ID for update' },
             }, []),
         ].map((schema, index) => ({ action: index === 0 ? 'append' : 'update', schema })));
 
-        expect((merged.parentID as Record<string, unknown>).description).toBe('Parent ID [Required by: append; Optional in: update]');
+        expect((merged.parentID as Record<string, unknown>).description).toBe('Parent ID');
         expect((merged.items as Record<string, unknown>).items).toEqual({ type: 'string' });
+    });
+
+    it('hides deprecated and pure alias properties from the merged schema', () => {
+        const merged = mergePropertySchemas([{
+            action: 'lookup',
+            schema: createActionSchema('lookup', {
+                hpath: { type: 'string', description: 'Human path' },
+                hPath: { type: 'string', description: 'Alias for hpath' },
+                id: { type: 'string', deprecated: true },
+                orderBy: { type: 'number', description: 'Legacy numeric sort order' },
+                mode: { type: 'string', description: 'Compatibility option.' },
+            }, []),
+        }]);
+
+        expect(Object.keys(merged)).toEqual(['hpath']);
+    });
+
+    it('collapses large nested property schemas to a help pointer', () => {
+        const leaf = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`field${i}`, { type: 'string' }]));
+        const merged = mergePropertySchemas([{
+            action: 'set_filters',
+            schema: createActionSchema('set_filters', {
+                filters: { type: 'array', description: 'Filter tree.', items: { type: 'object', properties: leaf } },
+                mixed: { anyOf: [{ type: 'string' }, { type: 'object', properties: leaf }] },
+            }, ['filters']),
+        }]);
+
+        expect(merged.filters).toEqual({
+            type: 'array',
+            items: { type: 'object' },
+            description: 'Filter tree. Nested shape: action="help" with topic=<action>.',
+        });
+        expect(merged.mixed).toEqual({ description: 'Nested shape: action="help" with topic=<action>.' });
+    });
+
+    it('does not drop scalar types or enums when their descriptions are long', () => {
+        const mode = { type: 'string', enum: ['a', 'b'], description: 'long '.repeat(200) };
+        const count = { type: 'integer', minimum: 1, description: 'long '.repeat(200) };
+        const merged = mergePropertySchemas([{ action: 'read', schema: createActionSchema('read', { mode, count }, []) }]);
+        expect(merged.mode).toEqual(mode);
+        expect(merged.count).toEqual(count);
     });
 
     it('normalizes nested array item schemas', () => {

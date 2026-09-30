@@ -38,7 +38,6 @@ src/
 │   │   ├── types.ts          # 工具层共享类型
 │   │   ├── define-tool.ts    # 工具工厂
 │   │   ├── shared.ts         # 共享基础设施
-│   │   ├── schema-builder.ts # 聚合 ToolDescriptor schema 拼装
 │   │   ├── schema-analyzer.ts# schema 分析与描述裁剪
 │   │   ├── result-factory.ts # 标准结果工厂
 │   │   ├── pagination.ts     # 分页工具

@@ -10,17 +10,17 @@ describe('document tool extended actions', () => {
     it('exposes filetree enhancement actions in the grouped schema', () => {
         const config = buildDefaultToolConfig();
         const [tool] = listDocumentTools(config.document);
-        const actionDescription = tool.inputSchema.properties.action.description;
-        expect(actionDescription).toContain('lookup');
-        expect(actionDescription).toContain('duplicate');
-        expect(actionDescription).not.toContain('create_empty');
-        expect(actionDescription).not.toContain('get_path');
-        expect(actionDescription).not.toContain('get_hpath');
-        expect(actionDescription).not.toContain('get_ids');
-        expect(actionDescription).toContain('heading_to_doc');
-        expect(actionDescription).toContain('doc_to_heading');
-        expect(actionDescription).toContain('get_outline');
-        expect(actionDescription).toContain('ensure_link_targets');
+        const actionEnum = tool.inputSchema.properties.action.enum;
+        expect(actionEnum).toContain('lookup');
+        expect(actionEnum).toContain('duplicate');
+        expect(actionEnum).not.toContain('create_empty');
+        expect(actionEnum).not.toContain('get_path');
+        expect(actionEnum).not.toContain('get_hpath');
+        expect(actionEnum).not.toContain('get_ids');
+        expect(actionEnum).toContain('heading_to_doc');
+        expect(actionEnum).toContain('doc_to_heading');
+        expect(actionEnum).toContain('get_outline');
+        expect(actionEnum).toContain('ensure_link_targets');
     });
 });
 

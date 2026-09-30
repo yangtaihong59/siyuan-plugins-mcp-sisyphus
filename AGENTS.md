@@ -154,7 +154,7 @@ siyuan-plugins-mcp-sisyphus/
 │   ├── make_dev_link.js         # 创建 dev 目录到思源插件目录的符号链接
 │   ├── make_install.js          # 构建后安装到思源插件目录
 │   ├── update_version.js        # 同步 version 到 plugin.json 与 cli/package.json
-│   ├── analyze-description-tokens.ts # 工具描述 token 分析
+│   ├── analyze-description-tokens.mjs # 真实 instructions + tools/list 成本分析
 │   └── repro-index-error*.cjs   # 索引问题复现脚本
 │
 ├── public/i18n/                 # 国际化源文件（JSON 格式，build 时自动复制到 dist）
@@ -317,7 +317,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 为控制上下文 token 占用，项目采用三层复杂度隔离：
 
-1. **Tool Description 层**：高频 action 给出详细描述和必填字段；低频/高危 action 仅列名称，指向按需文档。
+1. **Tool Description 层**：给出工具用途、边界和各 action 的紧凑必填字段签名；复杂参数与领域说明通过 help/resources 按需读取。
 2. **Help 层**：每个 action 的详细文档在 `siyuan://help/action/{tool}/{action}` 资源中；调用 `action: "help"` 可获取内联帮助。
 3. **Response 层**：大结果集自动摘要/截断（如 search >20 条、query_sql >50 行、get_doc >8000 字符），并提示翻页或细化查询。
 

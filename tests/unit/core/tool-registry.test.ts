@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { ACTIONS_BY_CATEGORY, buildDefaultToolConfig, TOOL_CATEGORIES } from '@/core/config';
-import { AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER, listAllTools, USER_RULES_TOOL_DESCRIPTION_REMINDER } from '@/core/tool-registry';
+import { listAllTools } from '@/core/tool-registry';
+import { buildServerInstructions } from '@/core/server-instructions';
 import { validateRegisteredToolArguments } from '@/tools/internal/define-tool';
 import { ACTION_SCHEMA_BRANCHES_KEY } from '@/tools/internal/shared';
 import { getPossibleActionSafetyPolicies, PRECONDITION_FIELD } from '@/core/write-safety-policy';
@@ -32,9 +33,14 @@ describe('tool registry', () => {
                 expect('validateOnly' in branch.properties, `${category}.${action}`).toBe(needsPreflight);
             }
         }
+        // The strict-write flow (including the external-action exception) is
+        // stated once in server instructions rather than in every tool.
         const feedback = listAllTools(config).find(tool => tool.name === 'feedback')!;
-        expect(feedback.description).toContain('without validateOnly');
-        expect(feedback.description).not.toContain('Run every mutation');
+        expect(feedback.description).not.toContain('validateOnly');
+        const instructions = buildServerInstructions({ writeSafety: config.writeSafety });
+        expect(instructions).toContain('validateOnly=true');
+        expect(instructions).toContain('External submissions (feedback) skip preflight');
+        expect(buildServerInstructions({ writeSafety: { strictMode: false } })).not.toContain('validateOnly');
         for (const action of ACTIONS_BY_CATEGORY.av) config.av.actions[action] = false;
         config.av.actions.get = true;
         expect(listAllTools(config).find(tool => tool.name === 'av')!.inputSchema.properties).not.toHaveProperty('requestId');
@@ -98,35 +104,18 @@ describe('tool registry', () => {
         }
     });
 
-    it('omits the user rules reminder when no user rules are configured', () => {
+    it('keeps session-wide reminders out of tool descriptions', () => {
         const config = buildDefaultToolConfig();
-        config.userRulesText = '';
-
-        const tools = listAllTools(config);
-
-        expect(tools.length).toBeGreaterThan(0);
-        expect(tools.every((tool) => !tool.description?.includes(USER_RULES_TOOL_DESCRIPTION_REMINDER))).toBe(true);
-    });
-
-    it('always adds a light agent memory reminder without embedding memory content', () => {
-        const config = buildDefaultToolConfig();
-        config.userRulesText = '';
+        config.userRulesText = 'Always set icons.';
         config.agentSiyuanMemoryText = 'Workspace has Inbox and Projects notebooks.';
 
         const tools = listAllTools(config);
 
         expect(tools.length).toBeGreaterThan(0);
-        expect(tools.every((tool) => tool.description?.includes(AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER))).toBe(true);
-        expect(tools.every((tool) => !tool.description?.includes('Workspace has Inbox and Projects notebooks.'))).toBe(true);
-    });
-
-    it('adds a light user rules reminder when user rules are configured', () => {
-        const config = buildDefaultToolConfig();
-        config.userRulesText = 'Always set icons.';
-
-        const tools = listAllTools(config);
-
-        expect(tools.length).toBeGreaterThan(0);
-        expect(tools.every((tool) => tool.description?.includes(USER_RULES_TOOL_DESCRIPTION_REMINDER))).toBe(true);
+        for (const tool of tools) {
+            expect(tool.description).not.toContain('/USER_RULES.md');
+            expect(tool.description).not.toContain('/AGENTS.md');
+            expect(tool.description).not.toContain('Workspace has Inbox and Projects notebooks.');
+        }
     });
 });

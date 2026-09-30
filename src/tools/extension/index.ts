@@ -14,12 +14,9 @@ import {
 } from './package-validator';
 
 const EXTENSION_DESCRIPTION = [
-    'Bridge tools exposed through the official SiYuan /mcp endpoint.',
-    'Plugin tools are included by default; native SiYuan tools are included only when includeNativeTools is enabled.',
-    'Use action="list" to inspect discovery status; while native tools are disabled, it returns counts only and omits tool details.',
-    'Every exposed tool keeps its official name as the action.',
-    'Pass downstream parameters inside arguments={...}. Tools without readOnlyHint=true may mutate data and require explicit user confirmation.',
-    'validate_package and diagnose_plugin_mcp are local read-only diagnostics; neither installs, enables, trusts, reloads, nor invokes an extension.',
+    '🧩 Call tools from the official SiYuan /mcp endpoint (plugin tools; native tools only if includeNativeTools is on).',
+    'action="list" shows discovery status; call a discovered tool with action="<official name>", arguments={...}.',
+    'Confirm with the user before any tool lacking readOnlyHint=true. validate_package and diagnose_plugin_mcp are read-only diagnostics.',
 ].join(' ');
 // The aggregate owns these names. Filtering them prevents a discovered
 // official tool from silently being routed to a different local action.
