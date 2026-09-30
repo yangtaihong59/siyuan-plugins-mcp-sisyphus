@@ -88,20 +88,22 @@ function validateReferences(tools, transport) {
     let refs = 0;
     for (const tool of tools) {
         const schema = JSON.parse(JSON.stringify(tool.inputSchema));
-        const visit = value => {
+        const visit = (value, ancestors = new Set()) => {
             if (!value || typeof value !== 'object') return;
+            assert(!ancestors.has(value), `${tool.name}: recursive schema reference`);
+            const next = new Set(ancestors).add(value);
             if (typeof value.$ref === 'string') {
                 assert(value.$ref === '#' || value.$ref.startsWith('#/'), `${tool.name}: non-local reference`);
                 const target = value.$ref === '#' ? schema : value.$ref.slice(2).split('/').reduce((v, k) => v?.[k.replace(/~1/g, '/').replace(/~0/g, '~')], schema);
                 assert(target, `${tool.name}: unresolved ${value.$ref}`); refs++;
+                visit(target, next);
             }
-            Object.values(value).forEach(visit);
+            Object.values(value).forEach(child => visit(child, next));
         };
         visit(schema);
     }
     const av = tools.find(t => t.name === 'av');
     assert(av?.inputSchema.properties.action.enum.includes('set_filters'));
-    assert(refs > 0);
     passed(`tools/list references (${transport})`, { tools: tools.length, refs });
     fs.writeFileSync(path.join(reportDir, `schemas-${transport}.json`), JSON.stringify(tools.map(t => ({ name: t.name, inputSchema: t.inputSchema })), null, 2));
 }

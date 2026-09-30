@@ -40,6 +40,11 @@ export function getWritableConfigPath(configPath?: string): string {
     return configPath ?? getDefaultConfigPath();
 }
 
+/** Path loadFileConfig actually reads, including the legacy ~/.siyuan-mcp fallback. */
+export function getReadableConfigPath(configPath?: string): string {
+    return resolveReadableConfigPath(configPath);
+}
+
 export function loadFileConfig(configPath?: string): FileConfig {
     const resolved = resolveReadableConfigPath(configPath);
     if (!existsSync(resolved)) return {};

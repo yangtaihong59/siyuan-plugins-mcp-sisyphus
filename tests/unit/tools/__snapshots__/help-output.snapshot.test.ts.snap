@@ -757,7 +757,9 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "avID": "<avID>",
           "blockID": "<blockID>",
           "filters": [
-            "<filtersItem>",
+            {
+              "column": "<column>",
+            },
           ],
           "viewID": "<viewID>",
         },
@@ -778,7 +780,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.",
           "add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.",
         ],
-        "hint": "Provide avID + exact carrier blockID + its current viewID + the complete typed recursive filter tree. [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.",
+        "hint": "Provide avID + exact carrier blockID + its current viewID + the complete typed filter tree (at most 4 nested groups followed by a leaf). [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.",
         "requiredFields": [
           "avID",
           "blockID",
@@ -1018,7 +1020,7 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
         "set_column_options": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
         "set_column_order": "Provide avID + exact carrier blockID + its current viewID + every current keyID exactly once in desired order. Partial lists are refused. First run validateOnly=true.",
         "set_column_visibility": "Provide avID + exact carrier blockID + its current viewID + keyID + hidden. keyID must exist in that view layout. First run validateOnly=true.",
-        "set_filters": "Provide avID + exact carrier blockID + its current viewID + the complete typed recursive filter tree. [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.",
+        "set_filters": "Provide avID + exact carrier blockID + its current viewID + the complete typed filter tree (at most 4 nested groups followed by a leaf). [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.",
         "set_group": "Provide avID + exact carrier blockID + its current viewID + group. field="" clears grouping; numeric range method requires range. First run validateOnly=true.",
         "set_new_item_templates": "Dangerous complete replacement of ordered native new-item templates. Pass every template and defaultTemplateID, not a patch. MCP captures a canonical complete-template preimage, validates each key and select/mSelect option against the raw AV, performs one native transaction, and verifies order, default, and all remaining template fields through getAttributeView. Missing options are rejected rather than added or silently pruned.",
         "set_relation": "Dangerous complete replacement of one relation cell. blockID is the verified source database carrier; itemID and relatedItemIDs are AV row item IDs, never bound document block IDs. An empty relatedItemIDs array clears the relation. MCP authorizes destination writes and verifies source plus two-way reverse cells without retrying an unknown response.",
@@ -1106,7 +1108,7 @@ AV actions operate on real SiYuan attribute views (database blocks), not Markdow
           "requiresConfirmation": false,
         },
         "set_filters": {
-          "hint": "Provide avID + exact carrier blockID + its current viewID + the complete typed recursive filter tree. [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.",
+          "hint": "Provide avID + exact carrier blockID + its current viewID + the complete typed filter tree (at most 4 nested groups followed by a leaf). [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.",
           "requiresConfirmation": false,
         },
         "set_group": {
@@ -3068,13 +3070,14 @@ Currently exposed actions: help, list, validate_package, diagnose_plugin_mcp.",
         "fullDocResource": "siyuan://help/action/feedback/submit",
         "guidance": [
           "feedback submits plain-text product feedback to the developer through the configured WPS form channel.",
+          "After user authorization, submit without validateOnly, requestId or hash credentials, even in strict mode. External feedback has no strict state preflight or replay guarantee; do not automatically retry an uncertain submission.",
           "Use feedback(action="submit") when the user asks you to pass along feedback, or when an AI client needs to report MCP tool friction after explaining what will be sent.",
           "Prefer GitHub Issue-style feedback for bugs, confusing names/parameters/help/errors, or rough workflows encountered during an AI session.",
           "Put the full issue-style body in description with these headings when useful: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix.",
           "Use impact for a one- or two-sentence impact summary, and suggestion for the most direct improvement idea without repeating the full description.",
           "Do not include secrets, private note content, API tokens, or sensitive document paths in feedback.",
         ],
-        "hint": "Sends plain-text feedback. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
+        "hint": "Sends plain-text feedback after user authorization, without validateOnly, requestId or hash credentials even in strict mode. External submissions have no strict replay guarantee; do not automatically retry an uncertain submission. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
         "requiredFields": [
           "description",
         ],
@@ -3092,14 +3095,14 @@ Common actions: submit. Required fields: submit: description.
 Parameter contract per action (fields outside the action's optional list should not be sent):
 feedback.submit: required [description] | optional [impact, suggestion, agent, source]
 
-feedback submits plain-text product feedback to the developer through the configured WPS form channel. Use feedback(action="submit") when the user asks you to pass along feedback, or when an AI client needs to report MCP tool friction after explaining what will be sent.",
+feedback submits plain-text product feedback to the developer through the configured WPS form channel. After user authorization, submit without validateOnly, requestId or hash credentials, even in strict mode. External feedback has no strict state preflight or replay guarantee; do not automatically retry an uncertain submission.",
     "overview": {
       "actionSummaries": {
-        "submit": "Sends plain-text feedback. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
+        "submit": "Sends plain-text feedback after user authorization, without validateOnly, requestId or hash credentials even in strict mode. External submissions have no strict replay guarantee; do not automatically retry an uncertain submission. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
       },
       "actions": {
         "submit": {
-          "hint": "Sends plain-text feedback. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
+          "hint": "Sends plain-text feedback after user authorization, without validateOnly, requestId or hash credentials even in strict mode. External submissions have no strict replay guarantee; do not automatically retry an uncertain submission. Put a GitHub Issue-style report in description when reporting bugs, confusing behavior, or rough workflows. Recommended headings: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix. impact should be a short impact summary; suggestion should be the direct fix idea. Avoid private note content and secrets.",
           "requiresConfirmation": false,
         },
       },
@@ -3110,6 +3113,7 @@ feedback submits plain-text product feedback to the developer through the config
       "detailsHint": "Call feedback(action="help", topic="<actionName>") for required fields, shapes, and a minimal example.",
       "guidance": [
         "feedback submits plain-text product feedback to the developer through the configured WPS form channel.",
+        "After user authorization, submit without validateOnly, requestId or hash credentials, even in strict mode. External feedback has no strict state preflight or replay guarantee; do not automatically retry an uncertain submission.",
         "Use feedback(action="submit") when the user asks you to pass along feedback, or when an AI client needs to report MCP tool friction after explaining what will be sent.",
         "Prefer GitHub Issue-style feedback for bugs, confusing names/parameters/help/errors, or rough workflows encountered during an AI session.",
         "Put the full issue-style body in description with these headings when useful: ## Summary, ## What happened, ## Expected behavior, ## Steps or context, ## Impact, ## Suggested fix.",
@@ -3384,7 +3388,7 @@ feedback submits plain-text product feedback to the developer through the config
           "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
           "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
-        "hint": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
+        "hint": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. With the kernel coordinator enabled, CLI/Node request delivery=download and save the ZIP locally without overwriting existing files; direct kernel clients can use the returned downloadPath through the authenticated getFile API. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
         "requiredFields": [
           "paths",
         ],
@@ -3430,7 +3434,7 @@ feedback submits plain-text product feedback to the developer through the config
           "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
           "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
-        "hint": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.",
+        "hint": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. With the kernel coordinator enabled, CLI/Node download the manifest into a fresh document directory, preserve existing siblings and reject an existing destination. Direct kernel clients can request delivery=download and save the returned Markdown and asset paths themselves. Without kernel delegation, the existing Node extraction behavior clears the entire output root first and skips unreadable assets. The returned extractedDir is an absolute path ready for direct file access.",
         "requiredFields": [
           "id",
         ],
@@ -3844,7 +3848,6 @@ feedback submits plain-text product feedback to the developer through the config
         "example": {
           "action": "upload_asset",
           "assetsDirPath": "/assets/",
-          "localFilePath": "<localFilePath>",
         },
         "examples": [
           {
@@ -3883,26 +3886,25 @@ feedback submits plain-text product feedback to the developer through the config
           "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
           "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
-        "hint": "Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
+        "hint": "Use assetsDirPath + exactly one of localFilePath or uploadSource. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
         "requiredFields": [
           "assetsDirPath",
-          "localFilePath",
         ],
         "requiresConfirmation": true,
         "shapes": [
-          "assetsDirPath + localFilePath",
+          "assetsDirPath",
         ],
         "tool": "file",
       },
     },
     "description": "📁 Grouped file and asset operations. Use the "action" field to select the operation.
 
-Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, export_markdown_snapshot, get_doc_assets, audit_image_refs, read_image, extract_doc. Required fields: upload_asset: assetsDirPath, localFilePath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; export_markdown_snapshot: notebookID; get_doc_assets: id; audit_image_refs: id, expectedRefs; read_image: path; extract_doc: id.
+Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, export_markdown_snapshot, get_doc_assets, audit_image_refs, read_image, extract_doc. Required fields: upload_asset: assetsDirPath; list_templates: no additional fields; read_template: path; create_template: path, markdown; update_template: path, markdown; save_doc_as_template: id, name; export_md: id; export_markdown_snapshot: notebookID; get_doc_assets: id; audit_image_refs: id, expectedRefs; read_image: path; extract_doc: id.
 
 Additional actions: delete_template, render, export_resources, list_unused_assets, get_image_ocr_text, remove_unused_assets, rename_asset, delete_asset. Read siyuan://help/action/file/{action} for details, or call action="help" if resources are unavailable.
 
 Parameter contract per action (fields outside the action's optional list should not be sent):
-file.upload_asset: required [assetsDirPath, localFilePath] | optional [confirmLargeFile]
+file.upload_asset: required [assetsDirPath] | optional [localFilePath, uploadSource, confirmLargeFile]
 file.list_templates: required [] | optional [query, page, pageSize]
 file.read_template: required [path] | optional [offset, limit]
 file.create_template: required [path, markdown] | optional [overwrite]
@@ -3912,7 +3914,7 @@ file.save_doc_as_template: required [id, name] | optional [overwrite]
 file.render: required [engine] | optional [id, path, template, preview]
 file.export_md: required [id] | optional []
 file.export_markdown_snapshot: required [notebookID] | optional [roots, documentIDs, limit, cursor]
-file.export_resources: required [paths] | optional [name, outputPath]
+file.export_resources: required [paths] | optional [delivery, name, outputPath]
 file.list_unused_assets: required [] | optional []
 file.get_doc_assets: required [id] | optional [assetType]
 file.audit_image_refs: required [id, expectedRefs] | optional []
@@ -3921,7 +3923,7 @@ file.get_image_ocr_text: required [] | optional [path]
 file.remove_unused_assets: required [] | optional []
 file.rename_asset: required [oldPath, newName] | optional []
 file.delete_asset: required [path] | optional []
-file.extract_doc: required [id] | optional [outputDir]
+file.extract_doc: required [id] | optional [delivery, outputDir]
 
 file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution. If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true. Requires user confirmation before: upload_asset, delete_template, remove_unused_assets, delete_asset.",
     "overview": {
@@ -3932,8 +3934,8 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "delete_template": "Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.",
         "export_markdown_snapshot": "Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.",
         "export_md": "requires: id",
-        "export_resources": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
-        "extract_doc": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.",
+        "export_resources": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. With the kernel coordinator enabled, CLI/Node request delivery=download and save the ZIP locally without overwriting existing files; direct kernel clients can use the returned downloadPath through the authenticated getFile API. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
+        "extract_doc": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. With the kernel coordinator enabled, CLI/Node download the manifest into a fresh document directory, preserve existing siblings and reject an existing destination. Direct kernel clients can request delivery=download and save the returned Markdown and asset paths themselves. Without kernel delegation, the existing Node extraction behavior clears the entire output root first and skips unreadable assets. The returned extractedDir is an absolute path ready for direct file access.",
         "get_doc_assets": "Use a document ID to list assets directly referenced by the current document tree after read-permission checks. This does not expand query embed blocks; when the user needs to inspect the full document content and assets, guide them to file(action="extract_doc") instead. Use assetType="image" to return only direct image assets.",
         "get_image_ocr_text": "Use an asset path to read OCR text already stored by SiYuan. This action does not run OCR. Empty stored text returns available=false and points vision-capable clients to read_image.",
         "list_templates": "Searches SiYuan data/templates via the kernel template picker endpoint. Empty query lists all visible Markdown templates. Results include readArgs and renderArgsTemplate for reuse.",
@@ -3945,7 +3947,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
         "render": "Use engine="template" with id + path for a workspace template; that engine uses .action{...} delimiters and exposes limited document fields such as id/title/name/alias. Set preview=true for SiYuan preview DOM. Use engine="sprig" with inline template for {{...}} syntax; Sprig has functions but no document context.",
         "save_doc_as_template": "Use id + name to save a document as a root-level template through SiYuan’s docSaveAsTemplate API. Slashes are rejected; pass overwrite=true to replace an existing root template.",
         "update_template": "Use path + markdown to replace an existing Markdown template. The template must resolve through list_templates first; otherwise MCP returns template_not_found.",
-        "upload_asset": "Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
+        "upload_asset": "Use assetsDirPath + exactly one of localFilePath or uploadSource. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
       },
       "actions": {
         "audit_image_refs": {
@@ -3971,11 +3973,11 @@ file(action="upload_asset") reads a local file path and uploads that file into S
           "requiresConfirmation": false,
         },
         "export_resources": {
-          "hint": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
+          "hint": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. With the kernel coordinator enabled, CLI/Node request delivery=download and save the ZIP locally without overwriting existing files; direct kernel clients can use the returned downloadPath through the authenticated getFile API. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
           "requiresConfirmation": false,
         },
         "extract_doc": {
-          "hint": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. Clears the entire output root directory first to prevent accumulation from previous exports. The returned extractedDir is an absolute path ready for direct file access.",
+          "hint": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. With the kernel coordinator enabled, CLI/Node download the manifest into a fresh document directory, preserve existing siblings and reject an existing destination. Direct kernel clients can request delivery=download and save the returned Markdown and asset paths themselves. Without kernel delegation, the existing Node extraction behavior clears the entire output root first and skips unreadable assets. The returned extractedDir is an absolute path ready for direct file access.",
           "requiresConfirmation": false,
         },
         "get_doc_assets": {
@@ -4020,7 +4022,7 @@ file(action="upload_asset") reads a local file path and uploads that file into S
           "requiresConfirmation": false,
         },
         "upload_asset": {
-          "hint": "Use assetsDirPath + localFilePath to read a local file and upload it into SiYuan assets. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
+          "hint": "Use assetsDirPath + exactly one of localFilePath or uploadSource. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
           "requiresConfirmation": true,
         },
       },

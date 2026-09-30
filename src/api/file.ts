@@ -15,6 +15,8 @@ export async function uploadAsset(
     fileContent: Uint8Array,
     fileName: string,
 ): Promise<{ errFiles: string[]; succMap: { [key: string]: string } }> {
+    const native = client as SiYuanClient & { uploadAssetBytes?: <T>(dir: string, bytes: Uint8Array, name: string) => Promise<T> };
+    if (native.uploadAssetBytes) return native.uploadAssetBytes(assetsDirPath, fileContent, fileName);
     const formData = new FormData();
     const file = new File([fileContent as Uint8Array<ArrayBuffer>], fileName);
     formData.append('assetsDirPath', assetsDirPath);

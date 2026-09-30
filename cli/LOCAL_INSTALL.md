@@ -232,7 +232,7 @@ siyuan-sisyphus notebook list                # 401 / api_error
 ## 八、常见问题
 
 **`✗ [api_error] fetch failed`**
-SiYuan 没启动，或 `SIYUAN_API_URL` 写错。确认上面那条 `curl` 命令返回 200。
+保存的回环地址没有进程在听，或 `SIYUAN_API_URL` 写错。桌面端内核端口每次启动都会变。运行 `siyuan-sisyphus instances` 查看当前内核 `--port`。profile 里的回环地址会跟着工作空间 API token 匹配到的内核更新；发布服务端口不是内核 API。`SIYUAN_DISCOVER=0` 可关闭这次扫描。
 
 **`Unauthorized` / HTTP 401**
 token 错误。去 SiYuan 设置页重新拷一次。记住 token 是敏感凭据，别 commit 进代码仓库。

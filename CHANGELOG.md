@@ -2,6 +2,18 @@
 
 本文件记录项目的主要版本变更。
 
+## v0.6.8 - 2026-09-30
+
+- 新增可选的思源内核托管 MCP 端点，支持 Docker／远程宿主并统一严格写入协调；内核上传单文件上限为 10 MiB，其他预算与限制见内核端点文档
+- CLI 新增 `instances` 命令，按工作区 Token 发现本机内核端口并更新 loopback profile；显式地址及远程地址保持原有选择
+- 修复关闭文档快照与 Diff 时插件加载中断、HTTP 启动按钮不可用的问题
+- 消除数据库筛选 Schema 的递归引用；区分危险操作的拒绝、取消与异常确认响应，避免将无效响应误报为用户取消
+- 修正严格模式下反馈提交的调用提示，误传预检参数时保持零发送并说明后续调用方式；CLI 同步包含共享工具层修复，版本提升至 v0.2.9
+
+- **感谢 [@atomlong](https://github.com/atomlong) 提交 [PR #66](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/66)**，将筛选树 Schema 与内核深度上限对齐
+- **感谢 [@shado1111w](https://github.com/shado1111w) 提交 [PR #70](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/70)**，贡献内核托管端点、跨入口协调与文件传输桥接
+- **感谢 [@yangmingyuan380](https://github.com/yangmingyuan380) 提交 [PR #71](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/71)**，贡献本机思源内核端口发现
+
 ## v0.6.7 - 2026-09-11
 
 - 简化严格写入凭证：预检直接返回执行所需的 `expected*Hash` 和 4 位起步的服务端 `requestId`

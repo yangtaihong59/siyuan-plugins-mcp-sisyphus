@@ -1,3 +1,4 @@
+import { externalFetch } from './external-fetch';
 import type { SiYuanClient } from '../api/client';
 import {
     ANALYTICS_PATH,
@@ -160,12 +161,15 @@ export async function buildTelemetryPayload(
     };
 }
 
+const telemetryStatus = new WeakMap<SiYuanClient, { lastAttemptAt: number; lastSuccessAt?: number; status: 'sending' | 'sent' | 'failed'; httpStatus?: number }>();
+export function getTelemetryStatus(client: SiYuanClient) { return telemetryStatus.get(client) ?? { status: 'idle' }; }
 export async function maybeSendTelemetry(client: SiYuanClient): Promise<void> {
     const config = await loadTelemetryConfig(client);
     if (!config.enabled || !config.endpoint) {
         return;
     }
 
+    const previous = telemetryStatus.get(client);
     const intervalMs = config.reportIntervalHours * 60 * 60 * 1000;
     const nextReportAt = config.lastReportAt + intervalMs;
     if (Date.now() < nextReportAt) {
@@ -179,23 +183,17 @@ export async function maybeSendTelemetry(client: SiYuanClient): Promise<void> {
         return;
     }
 
+    const attempt = { lastAttemptAt: Date.now(), lastSuccessAt: previous?.lastSuccessAt };
+    telemetryStatus.set(client, { ...attempt, status: 'sending' });
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-        const response = await fetch(config.endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
+        const response = await externalFetch(client)(config.endpoint, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
         });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-            await saveTelemetryConfig(client, { ...config, lastReportAt: Date.now() });
-        }
+        telemetryStatus.set(client, { ...attempt, status: response.ok ? 'sent' : 'failed', httpStatus: response.status,
+            ...(response.ok ? { lastSuccessAt: Date.now() } : {}) });
+        if (response.ok) await saveTelemetryConfig(client, { ...config, lastReportAt: Date.now() });
     } catch {
-        // Silent fail - telemetry must never block tool calls
+        // Diagnostics contain no endpoint, headers or payload.
+        telemetryStatus.set(client, { ...attempt, status: 'failed' });
     }
 }

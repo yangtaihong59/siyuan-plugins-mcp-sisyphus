@@ -1,3 +1,4 @@
+import { normalizeKernelOptions, type KernelOptions } from '../../core/kernel-options';
 import { getLegacyToolConfigWarning, normalizeToolConfig, type ToolConfig } from "./tool-config";
 import {
     TELEMETRY_CONFIG_STORAGE_KEY,
@@ -267,6 +268,10 @@ export interface HttpServerSettings {
     tlsKeyFile: string;
     tlsCaFile: string;
     skillsExtensionEnabled: boolean;
+    /** Expose the write coordinator through the kernel-hosted /plugin/private route.
+     *  Works on Docker/web where no separate MCP HTTP port can be opened. */
+    kernelEndpointEnabled: boolean;
+    kernelOptions?: KernelOptions;
 }
 
 export function hasValidHttpTlsFiles(settings: HttpServerSettings): boolean {
@@ -300,6 +305,8 @@ export function buildDefaultHttpServerSettings(): HttpServerSettings {
         tlsKeyFile: "",
         tlsCaFile: "",
         skillsExtensionEnabled: true,
+        kernelEndpointEnabled: false,
+        kernelOptions: normalizeKernelOptions(undefined),
     };
 }
 
@@ -338,8 +345,13 @@ export function normalizeHttpServerSettings(raw: unknown): HttpServerSettings {
         skillsExtensionEnabled: typeof record.skillsExtensionEnabled === "boolean"
             ? record.skillsExtensionEnabled
             : defaults.skillsExtensionEnabled,
+        kernelOptions: normalizeKernelOptions(record.kernelOptions),
+        kernelEndpointEnabled: typeof record.kernelEndpointEnabled === "boolean"
+            ? record.kernelEndpointEnabled
+            : defaults.kernelEndpointEnabled,
     };
 }
+
 
 export function regenerateHttpServerToken(settings: HttpServerSettings): HttpServerSettings {
     return { ...settings, token: generateRandomToken() };

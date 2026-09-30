@@ -1151,9 +1151,14 @@ export default class SiyuanMCP extends Plugin {
 
     private removeDockFromPosition(layout: any, position: string, dockTypes: string[]) {
         const targetDock = getDockByPosition(layout, position);
+        if (!targetDock || typeof document === "undefined") return;
         for (const dockType of dockTypes) {
-            targetDock?.toggleModel?.(dockType, false, true, true, true);
-            targetDock?.remove?.(dockType);
+            // SiYuan's toggleModel (also called by remove) requires an existing button.
+            const button = document.querySelector(`.dock__item[data-type="${escapeCssAttributeValue(dockType)}"]`);
+            if (!button) continue;
+            targetDock.toggleModel?.(dockType, false, true, true, true);
+            // A registered but unopened dock may not have a model yet.
+            if (targetDock.data?.[dockType]) targetDock.remove?.(dockType);
         }
     }
 

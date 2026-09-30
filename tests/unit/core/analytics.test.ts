@@ -192,7 +192,7 @@ describe('analytics', () => {
             expect(summary.avgDurationMs).toBe(0);
             expect(summary.topActions).toEqual([]);
             expect(summary.dailyTrend).toEqual([]);
-            expect(summary.transportDistribution).toEqual({ cli: 0, stdio: 0, http: 0 });
+            expect(summary.transportDistribution).toEqual({ cli: 0, stdio: 0, http: 0, kernel: 0 });
             expect(summary.tokenUsage).toMatchObject({
                 tokenMode: APPROX_TOKEN_MODE,
                 cliMeasuredCalls: 0,
@@ -219,7 +219,7 @@ describe('analytics', () => {
             expect(summary.topActions[1]).toMatchObject({ tool: 'document', action: 'create', count: 1, errorCount: 1, avgDurationMs: 300 });
             expect(summary.dailyTrend).toHaveLength(1);
             expect(summary.dailyTrend[0]).toMatchObject({ date: '2024-01-15', count: 3, errorCount: 1 });
-            expect(summary.transportDistribution).toEqual({ cli: 1, stdio: 1, http: 1 });
+            expect(summary.transportDistribution).toEqual({ cli: 1, stdio: 1, http: 1, kernel: 0 });
             expect(summary.tokenUsage).toMatchObject({
                 tokenMode: APPROX_TOKEN_MODE,
                 cliMeasuredCalls: 1,

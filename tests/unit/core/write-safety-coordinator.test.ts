@@ -1042,18 +1042,20 @@ describe('write safety coordinator', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
-    it('never treats validateOnly as permission to execute an external side effect', async () => {
+    it.each(['feedback', 'system'] as const)('never treats validateOnly as permission to execute an external side effect (%s)', async (category) => {
         const execute = vi.fn();
         const result = parseResult(await new WriteSafetyCoordinator({} as never).run({
             client: {} as never,
             permMgr: createMockPermissionManager(),
-            category: 'system',
-            action: 'perform_sync',
-            args: { action: 'perform_sync', validateOnly: true },
+            category,
+            action: category === 'feedback' ? 'submit' : 'perform_sync',
+            args: { action: category === 'feedback' ? 'submit' : 'perform_sync', validateOnly: true },
             strictMode: true,
             execute,
         }));
         expect(result.error.code).toBe('preflight_unavailable');
+        expect(result.error.hint).toContain('without validateOnly');
+        expect(result.safety.writeSafetyGuaranteed).toBe(false);
         expect(execute).not.toHaveBeenCalled();
     });
 
@@ -1832,4 +1834,26 @@ describe('write safety coordinator', () => {
         expect(result.error.code).toBe('readback_mismatch');
         expect(result.error.cause).toContain('requested complete order');
     });
+});
+
+it('cancellation before commit does not mark the ledger executing or consume the request', async () => {
+    const files = new Map<string, string>();
+    const client = {
+        readFile: vi.fn(async (path: string) => files.get(path) ?? ''),
+        writeFile: vi.fn(async (path: string, data: string) => { files.set(path, data); }),
+        requestRead: vi.fn(async (path: string) => path === '/api/notebook/lsNotebooks' ? { notebooks: [{ id: 'new-notebook', name: 'cancel-fixture' }] } : {}),
+    } as any;
+    const coord = new WriteSafetyCoordinator(client);
+    const permMgr = createMockPermissionManager({ canWrite: () => true });
+    const args = { action: 'create', name: 'cancel-fixture' };
+    const execute = vi.fn(async () => success({ id: 'new-notebook' }));
+    const common = { client, permMgr, category: 'notebook' as const, action: 'create', strictMode: true, execute };
+    const pre = parseResult(await coord.run({ ...common, args: { ...args, validateOnly: true } }));
+    const commit = { ...args, requestId: pre.requestId };
+    const reject = () => { throw Object.assign(new Error('cancelled'), { code: 'request_cancelled' }); };
+    const cancelled = parseResult(await coord.run({ ...common, args: commit, beforeCommit: reject }));
+    expect(cancelled.error.code).toBe('request_cancelled'); expect(execute).not.toHaveBeenCalled();
+    expect(client.writeFile.mock.calls.some(([, body]) => String(body).includes('"state":"executing"'))).toBe(false);
+    const accepted = parseResult(await coord.run({ ...common, args: commit }));
+    expect(accepted.safety.transactionState).toBe('committed'); expect(execute).toHaveBeenCalledTimes(1);
 });

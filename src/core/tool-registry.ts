@@ -197,6 +197,15 @@ export function listConfiguredToolsForCategory(
 function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescriptor): ToolDescriptor {
     const inputSchema = { ...descriptor.inputSchema } as Record<string, any>;
     const properties = { ...(inputSchema.properties ?? {}) };
+    const actions: string[] = properties.action?.enum ?? [];
+    const mutationActions = actions.filter(action => getPossibleActionSafetyPolicies(category, action).some(policy => policy.mode === 'mutation'));
+    const externalActions = actions.filter(action => getPossibleActionSafetyPolicies(category, action).some(policy => policy.mode === 'external'));
+    const externalGuidance = externalActions.length > 0
+        ? `\n\nExternal actions (${externalActions.join(', ')}): after user authorization, submit without validateOnly, requestId or hash credentials. Strict state preflight and replay guarantees are unavailable; never retry an uncertain external submission automatically.`
+        : '';
+    if (mutationActions.length === 0) return { ...descriptor, description: `${descriptor.description ?? ''}${externalGuidance}` };
+    const preconditions = new Set(mutationActions.flatMap(action => getPossibleActionSafetyPolicies(category, action))
+        .flatMap(policy => policy.mode === 'mutation' && policy.precondition !== 'none' ? [policy.precondition] : []));
     properties.requestId = {
         type: 'string',
         pattern: '^[a-f0-9]{4,64}$',
@@ -206,14 +215,15 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
         type: 'boolean',
         description: 'Preflight only. Returns a server-issued requestId and, when required, a bare short hash credential. Never executes the mutation.',
     };
-    for (const field of Object.values(PRECONDITION_FIELD)) {
+    for (const precondition of preconditions) {
+        const field = PRECONDITION_FIELD[precondition];
         properties[field] = {
             type: 'string',
             pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
             description: 'Temporary preflight credential (4-64 hex characters, optionally sha256:v1: prefixed). It must resolve to an active lease for this exact mutation scope.',
         };
     }
-    properties.expectedHash = {
+    if (preconditions.has('state')) properties.expectedHash = {
         type: 'string',
         pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
         description: 'Alias of expectedStateHash for content-oriented strict writes.',
@@ -259,7 +269,7 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
 
     return {
         ...descriptor,
-        description: `${descriptor.description ?? ''}\n\nStrict safe writes are enabled. Run every mutation with validateOnly=true to obtain requestId and any required short hash credential, then copy both into execution before expiry. Reuse requestId unchanged for retries.`,
+        description: `${descriptor.description ?? ''}\n\nStrict safe writes apply to mutation paths of: ${mutationActions.join(', ')}. Run these mutations with validateOnly=true to obtain requestId and any required short hash credential, then copy both into execution before expiry. Reuse requestId unchanged for retries.${externalGuidance}`,
         inputSchema,
     };
 }

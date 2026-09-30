@@ -1,5 +1,7 @@
+import { withStructuredContent } from './structured-result';
+import { isKernelExport } from '../cli/kernel-file-transfer';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
-import { acceptedContent, inputRequired, ProtocolError, ProtocolErrorCode, Server, type CallToolResult, type Tool } from '@modelcontextprotocol/server';
+import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server, type CallToolResult, type Tool } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
@@ -10,7 +12,7 @@ import { buildDefaultToolConfig, isDangerousAction, loadToolConfigFromApiFileWit
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
 import { getActionSafetyPolicy } from './write-safety-policy';
 import { callCliWriteCoordinator } from '../cli/write-coordinator';
-import type { CliWriteCoordinatorSettings } from '../cli/runtime';
+import { loadWriteCoordinatorSettings } from './write-coordinator-settings';
 import { noopSchemaValidator } from './noops/noop-schema-validator';
 import { OfficialMcpBridge, type OfficialMcpRuntime } from './official-mcp-bridge';
 
@@ -110,23 +112,6 @@ function createInstructionClient(): SiYuanClient {
     return client;
 }
 
-const HTTP_SETTINGS_API_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpHttpSettings';
-
-async function loadRemoteWriteCoordinatorSettings(client: SiYuanClient): Promise<CliWriteCoordinatorSettings | undefined> {
-    try {
-        const raw = JSON.parse(await client.readFile(HTTP_SETTINGS_API_PATH)) as Record<string, unknown>;
-        if (raw.enabled === false) return undefined;
-        const hostValue = typeof raw.host === 'string' ? raw.host : '127.0.0.1';
-        const host = hostValue === '0.0.0.0' || hostValue === '::' ? '127.0.0.1' : hostValue;
-        const port = typeof raw.port === 'number' ? raw.port : 36806;
-        const scheme = raw.tlsEnabled === true ? 'https' : 'http';
-        const token = raw.authEnabled === true && typeof raw.token === 'string' ? raw.token : undefined;
-        return { url: `${scheme}://${host}:${port}/mcp`, token };
-    } catch {
-        return undefined;
-    }
-}
-
 export interface CreateSiYuanServerOptions {
     officialMcpFetch?: typeof fetch;
     runtime?: SiYuanServerRuntime;
@@ -141,6 +126,7 @@ export interface SiYuanServerRuntime {
     officialMcpBridge: OfficialMcpBridge;
     permMgr: PermissionManager;
     writeSafetyCoordinator: WriteSafetyCoordinator;
+    writeCoordinatorOwner?: 'kernel' | 'node';
     getToolConfig(): Promise<ToolConfig>;
     close(): Promise<void>;
 }
@@ -450,12 +436,11 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 ctx.mcpReq.inputResponses ?? {},
                 confirmationKey,
             );
-            const confirmation = acceptedContent<{ confirm?: boolean }>(
-                ctx.mcpReq.inputResponses,
-                confirmationKey,
-            );
+            const droppedResponse = ctx.mcpReq.droppedInputResponseKeys?.includes(confirmationKey) === true;
+            const response = inputResponse(ctx.mcpReq.inputResponses, confirmationKey);
 
-            if (!hasResponse) {
+            if (!hasResponse && !droppedResponse) {
+                console.error('[MCP][confirmation]', JSON.stringify({ requestId: ctx.mcpReq.id, tool: name, action, decision: 'requested' }));
                 const argumentPreview = JSON.stringify(args ?? {});
                 return inputRequired({
                     inputRequests: {
@@ -482,14 +467,37 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 });
             }
 
-            if (confirmation?.confirm !== true) {
+            const confirmation = response.kind === 'elicit' && response.action === 'accept'
+                ? z.object({ confirm: z.boolean() }).strict().safeParse(response.content)
+                : undefined;
+            const decision = response.kind === 'elicit' && response.action === 'cancel'
+                ? 'cancelled'
+                : (response.kind === 'elicit' && response.action === 'decline') || (confirmation?.success && confirmation.data.confirm === false)
+                    ? 'declined'
+                    : confirmation?.success && confirmation.data.confirm === true ? 'accepted' : 'invalid';
+            // Log only protocol metadata, never business arguments or response content.
+            console.error('[MCP][confirmation]', JSON.stringify({
+                requestId: ctx.mcpReq.id, tool: name, action, responseKind: response.kind,
+                responseAction: response.kind === 'elicit' ? response.action : undefined,
+                confirmType: response.kind === 'elicit' ? typeof response.content?.confirm : undefined,
+                droppedResponse, decision,
+            }));
+            if (decision !== 'accepted') {
+                const message = decision === 'invalid'
+                    ? 'No valid confirmation response was received. Nothing was executed; this does not indicate user cancellation. Check client elicitation support and retry with a valid response after user approval.'
+                    : decision === 'cancelled'
+                        ? 'The client returned an explicit cancellation response. Nothing was executed.'
+                        : 'The client explicitly declined execution or returned confirm=false. Nothing was executed.';
                 const declined = {
                     content: [{
                         type: 'text' as const,
                         text: JSON.stringify({
                             success: false,
-                            cancelled: true,
-                            message: `High-risk action ${name}(action="${action}") was not executed because confirmation was declined or cancelled.`,
+                            cancelled: decision === 'cancelled',
+                            writeAttempted: false,
+                            writeExecuted: false,
+                            error: { code: `confirmation_${decision}`, message },
+                            message,
                         }, null, 2),
                     }],
                     isError: true,
@@ -503,9 +511,19 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
 
         const policy = getActionSafetyPolicy(category, action, args ?? {});
         const transportMode = options.transportMode ?? parseTransportMode();
-        const routeToRemoteCoordinator = config.writeSafety.strictMode
-            && policy.mode === 'mutation'
-            && transportMode !== 'http';
+        const coordinatedMutation = config.writeSafety.strictMode && policy.mode === 'mutation';
+        const coordinatorSettings = (coordinatedMutation || isKernelExport(name, args ?? {}))
+            ? await loadWriteCoordinatorSettings(client, process.env.SIYUAN_TOKEN)
+            : undefined;
+        const owner = coordinatorSettings?.owner ?? 'node';
+        // A live authority change invalidates memory leases and ledger caches.
+        // Require a process restart instead of ever resuming a stale local ledger.
+        const ownerChanged = coordinatedMutation && runtime.writeCoordinatorOwner !== undefined
+            && runtime.writeCoordinatorOwner !== owner;
+        if (coordinatedMutation && coordinatorSettings && !ownerChanged) runtime.writeCoordinatorOwner = owner;
+        const routeToRemoteCoordinator = (coordinatedMutation
+            && (transportMode !== 'http' || owner === 'kernel'))
+            || (owner === 'kernel' && isKernelExport(name, args ?? {}));
         const result = await runToolCall(
             {
                 client,
@@ -519,11 +537,22 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 slimResponses: config.debug.slimResponses,
             },
             async () => {
+                if (coordinatedMutation && !coordinatorSettings) {
+                    return callCliWriteCoordinator(undefined, name, args ?? {});
+                }
+                if (ownerChanged) {
+                    return { isError: true, content: [{ type: 'text', text: JSON.stringify({
+                        success: false, writeAttempted: false,
+                        error: { code: 'write_coordinator_changed', message: 'Write coordinator settings changed. Drain pending writes, restart the MCP server, and repeat preflight.' },
+                    }) }] };
+                }
                 if (routeToRemoteCoordinator) {
                     return callCliWriteCoordinator(
-                        await loadRemoteWriteCoordinatorSettings(client),
+                        coordinatorSettings,
                         name,
                         args ?? {},
+                        client,
+                        ctx.mcpReq.signal,
                     );
                 }
                 return writeSafetyCoordinator.run({
@@ -553,21 +582,6 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
     return server;
 }
 
-function withStructuredContent(result: ToolResult): CallToolResult {
-    if (result.structuredContent) return result as CallToolResult;
-
-    const text = result.content.find((item) => item.type === 'text')?.text ?? '';
-    let value: unknown = text;
-    try {
-        value = JSON.parse(text);
-    } catch {
-        // Preserve non-JSON tool responses under a stable object key.
-    }
-    const structuredContent = value !== null && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : { value };
-    return { ...result, structuredContent } as CallToolResult;
-}
 
 function parseTransportMode(): 'stdio' | 'http' {
     if (typeof process === 'undefined') return 'stdio';

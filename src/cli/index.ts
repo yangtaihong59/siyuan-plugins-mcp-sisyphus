@@ -2,6 +2,7 @@ import { getHelpText, parseArgs } from './args';
 import { runConfigCommand } from './config-command';
 import { runDispatch } from './dispatch';
 import { runInit } from './init';
+import { runInstancesCommand } from './instances-command';
 import { runHelp, runList } from './list-help';
 import { renderCliError } from './render';
 import { runSkillCommand } from './skill-command';
@@ -31,6 +32,8 @@ async function main(): Promise<number> {
             return runConfigCommand(cli);
         case 'skill':
             return runSkillCommand(cli);
+        case 'instances':
+            return await runInstancesCommand(cli);
         case 'list':
             return await runList(cli);
         case 'help':

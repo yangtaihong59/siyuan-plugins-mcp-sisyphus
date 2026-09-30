@@ -4,10 +4,10 @@ import { buildDefaultToolConfig } from '../../../src/core/config';
 import {
     APPROX_TOKEN_MODE,
     approximateTokensFromChars,
-    calculateMcpInitialTokenCost,
     measureApproxContent,
     measureApproxText,
 } from '../../../src/core/token-usage';
+import { calculateMcpInitialTokenCost } from '../../../src/core/analytics';
 
 describe('token usage helpers', () => {
     it('converts chars to approximate tokens', () => {

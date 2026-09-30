@@ -1,3 +1,4 @@
+import { usesBakedActionSchemas } from '../../core/action-schema-runtime';
 import { renderAiLayoutGuide } from '../../core/ai-layout-guide';
 import { z, ZodError, type ZodIssue } from 'zod';
 
@@ -30,6 +31,7 @@ export interface ToolImageContent {
 export type ToolContent = ToolTextContent | ToolImageContent;
 
 export interface ToolResult {
+    _meta?: Record<string, unknown>;
     content: ToolContent[];
     isError?: boolean;
     structuredContent?: Record<string, unknown>;
@@ -93,7 +95,11 @@ export function createZodActionVariant<Action extends string>(
     schema: z.ZodType,
     description?: string,
 ): ActionVariant<Action> {
-    const jsonSchema = flattenAllOfObjectSchema(z.toJSONSchema(schema) as JsonSchema);
+    // Reflection is build-time only in goja. defineTool installs the complete
+    // baked schema after the category's variant customizations have run.
+    const jsonSchema = usesBakedActionSchemas
+        ? createActionSchema(action, {}, [], description)
+        : flattenAllOfObjectSchema(z.toJSONSchema(schema) as JsonSchema);
     delete jsonSchema.$schema;
     if (description && !jsonSchema.description) {
         jsonSchema.description = description;

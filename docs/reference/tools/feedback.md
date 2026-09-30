@@ -2,6 +2,12 @@
 
 Use the `feedback` tool to submit plain-text product feedback to the plugin developer.
 
+## Submission in strict mode
+
+After the user authorizes the content, call `submit` without `validateOnly`, `requestId`, or hash credentials. Feedback goes to an external WPS form, so note-state preflight and replay guarantees do not apply. The response reports `safety.writeSafetyGuaranteed: false`.
+
+Passing `validateOnly: true` sends nothing and returns `preflight_unavailable` with an `error.hint` explaining how to proceed. A timeout or lost response after submission leaves delivery uncertain; do not retry automatically.
+
 ## Actions
 
 | Action | Purpose |

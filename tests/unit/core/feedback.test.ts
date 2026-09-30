@@ -56,6 +56,17 @@ function readPackageVersion(): string {
 }
 
 describe('feedback submission', () => {
+    it.each(['timeout', 'http', 'invalid json'])('does not retry a feedback POST after %s', async (failure) => {
+        const fetcher = vi.fn<Parameters<FeedbackFetch>, ReturnType<FeedbackFetch>>()
+            .mockResolvedValueOnce(jsonResponse({ code: 0, data: createMetadata() }));
+        if (failure === 'timeout') fetcher.mockRejectedValueOnce(new Error('request timed out'));
+        else if (failure === 'http') fetcher.mockResolvedValueOnce(new Response('upstream failed', { status: 503 }));
+        else fetcher.mockResolvedValueOnce(new Response('not json'));
+        await expect(submitFeedback({ description: 'isolated mock feedback' }, fetcher)).rejects.toThrow();
+        expect(fetcher).toHaveBeenCalledTimes(2);
+        expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    });
+
     it('builds the WPS payload with discovered token, editVersion, and commit option', () => {
         const payload = buildFeedbackPayload({
             description: '  问题描述  ',

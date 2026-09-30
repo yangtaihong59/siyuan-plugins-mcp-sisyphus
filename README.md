@@ -23,7 +23,7 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.7` — Simplifies preflight credentials and server-issued request IDs, unifies AV parameters, fixes column lookup and write verification, and improves document creation and help without Resources. CLI is now `v0.2.8`.
+> **Latest:** `v0.6.8` — Adds an optional kernel endpoint for Docker and remote hosts and local kernel discovery in the CLI, aligns filter depth validation, and fixes startup, confirmation responses, and feedback submission. CLI is now `v0.2.9`.
 
 > **v0.6.4:** `v0.6.4` — Expands guarded AV configuration, adds auditable Markdown snapshots, image-reference auditing, permission-scoped visual image delivery, extension diagnostics, and clearer path semantics. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58). CLI is now `v0.2.6`.
 

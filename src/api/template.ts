@@ -292,10 +292,11 @@ export async function readTemplateSource(
     path: string,
 ): Promise<TemplateSourceResult> {
     const normalized = normalizeTemplatePath(path);
-    const response = await fetch(`${client.getBaseUrl()}${normalized.staticPath}`, {
-        method: 'GET',
-        headers: client.getAuthHeaders(),
-    });
+    const response = typeof client.requestResource === 'function'
+        ? await client.requestResource(normalized.staticPath)
+        : await fetch(`${client.getBaseUrl()}${normalized.staticPath}`, {
+            method: 'GET', headers: client.getAuthHeaders(),
+        });
     if (!response.ok) {
         const message = `Failed to read template source [${normalized.relativePath}]: HTTP ${response.status} ${response.statusText}`;
         const error = new Error(message);

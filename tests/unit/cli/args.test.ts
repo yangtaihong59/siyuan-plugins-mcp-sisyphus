@@ -28,6 +28,13 @@ describe('cli/args', () => {
         });
     });
 
+    it('parses instances', () => {
+        expect(parseArgs(['instances', '--json'])).toMatchObject({
+            command: 'instances',
+            json: true,
+        });
+    });
+
     it('parses config list', () => {
         expect(parseArgs(['config', 'list'])).toMatchObject({
             command: 'config',
@@ -75,6 +82,8 @@ describe('cli/args', () => {
         expect(help).toContain('Alias:');
         expect(help).toContain('sisyphus');
         expect(help).not.toContain('\n  siyuan                                         Same CLI, shorter command name');
+        expect(help).toContain('instances');
+        expect(help).toContain('SIYUAN_DISCOVER=0');
         expect(help).toContain('list/ls');
         expect(help).toContain('move/mv');
         expect(help).toContain('remove/rm/delete/del');

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
 import { callFileTool, listFileTools } from '@/tools/file';
@@ -905,5 +905,88 @@ describe('file tool asset actions', () => {
         expect(parsed.extractedAssetCount).toBe(1);
         expect(parsed.skippedAssetCount).toBe(0);
         expect(readFileBinary).toHaveBeenCalledWith('data/assets/cover.png');
+    });
+
+    describe('kernel transport', () => {
+        const ORIGINAL_TRANSPORT = process.env.SIYUAN_MCP_TRANSPORT;
+
+        beforeEach(() => {
+            process.env.SIYUAN_MCP_TRANSPORT = 'kernel';
+        });
+
+        afterEach(() => {
+            if (ORIGINAL_TRANSPORT === undefined) delete process.env.SIYUAN_MCP_TRANSPORT;
+            else process.env.SIYUAN_MCP_TRANSPORT = ORIGINAL_TRANSPORT;
+        });
+
+        it('upload_asset returns official multipart API guidance instead of touching fs', async () => {
+            const fs = (await import('node:fs')).default;
+            const existsSpy = vi.spyOn(fs, 'existsSync');
+            const localClient = createMockClient({});
+
+            const result = await callFileTool(localClient, {
+                action: 'upload_asset',
+                localFilePath: '/tmp/pic.png',
+                assetsDirPath: '/assets/',
+            }, config.file, {} as never);
+
+            const parsed = parseResult(result);
+            expect(parsed.success).toBe(false);
+            expect(parsed.transport).toBe('kernel');
+            expect(parsed.reason).toBe('kernel_local_file_unavailable');
+            expect(parsed.transferEndpoint).toBe('/plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload');
+            expect(parsed.nextStep).toContain('uploadSource');
+            expect(existsSpy).not.toHaveBeenCalled();
+        });
+
+        it('export_resources streams the ZIP back as base64 instead of writing to disk', async () => {
+            const fs = (await import('node:fs')).default;
+            const payload = new Uint8Array([1, 2, 3, 4]);
+            const readFileBinary = vi.fn().mockResolvedValue(payload);
+            const localClient = createMockClient({ readFileBinary });
+            const writeSpy = vi.spyOn(fs, 'writeFileSync');
+
+            const result = await callFileTool(localClient, {
+                action: 'export_resources',
+                paths: ['assets/demo.txt'],
+                outputPath: 'tmp/export.zip',
+            }, config.file, {} as never);
+
+            const parsed = parseResult(result);
+            expect(readFileBinary).toHaveBeenCalledWith('/temp/export.zip');
+            expect(parsed.encoding).toBe('base64');
+            expect(parsed.dataBase64).toBe(Buffer.from(payload).toString('base64'));
+            expect(parsed.bytes).toBe(4);
+            expect(parsed.requestedOutputPath).toBe('tmp/export.zip');
+            expect(writeSpy).not.toHaveBeenCalled();
+        });
+
+        it('extract_doc returns markdown + base64 asset manifest without filesystem writes', async () => {
+            const fs = (await import('node:fs')).default;
+            const assetBytes = new Uint8Array([9, 8, 7]);
+            const readFileBinary = vi.fn().mockResolvedValue(assetBytes);
+            const localClient = createMockClient({ readFileBinary });
+            const writeSpy = vi.spyOn(fs, 'writeFileSync');
+            const mkdirSpy = vi.spyOn(fs, 'mkdirSync');
+
+            const result = await callFileTool(localClient, {
+                action: 'extract_doc',
+                id: '20260128210016-dw9cpey',
+            }, config.file, {} as never);
+
+            const parsed = parseResult(result);
+            expect(parsed.success).toBe(true);
+            expect(parsed.transport).toBe('kernel');
+            expect(parsed.markdown).toContain('assets/cover.png');
+            expect(parsed.extractedAssetCount).toBe(1);
+            expect(parsed.assets).toEqual([{
+                path: 'cover.png',
+                bytes: 3,
+                encoding: 'base64',
+                dataBase64: Buffer.from(assetBytes).toString('base64'),
+            }]);
+            expect(writeSpy).not.toHaveBeenCalled();
+            expect(mkdirSpy).not.toHaveBeenCalled();
+        });
     });
 });
