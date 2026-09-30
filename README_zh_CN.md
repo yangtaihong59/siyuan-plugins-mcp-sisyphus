@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：** `v0.6.8` — 修复关闭快照与 Diff 时插件启动失败的问题，消除筛选器 Schema 的递归引用，区分拒绝、取消与异常确认响应，并修正严格模式下的反馈提交提示。CLI 同步更新至 `v0.2.9`。
+> **最新版本：** `v0.6.8` — 新增可选的 Docker／远程内核端点与 CLI 本机端口发现，统一筛选树深度校验，并修复启动、确认响应与反馈提交问题。CLI 同步更新至 `v0.2.9`。
 
 > **v0.6.4：**`v0.6.4` — 扩展受保护的 AV 配置能力，新增可审计 Markdown 快照、图片引用审计、权限受控的视觉图片读取、扩展诊断与更清晰的路径语义。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。CLI 提升至 `v0.2.6`。
 

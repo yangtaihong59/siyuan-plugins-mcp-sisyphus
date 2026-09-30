@@ -36,7 +36,7 @@ The four read/render actions accept `id` as a deprecated alias and return a `war
 
 ## Parameters and Semantics
 
-`set_filters` publishes three explicitly typed filter levels without recursive schema references for provider compatibility. Deeper filter objects remain supported and are validated recursively on the server before preflight and execution; they are never truncated. Invalid deep fields are rejected.
+`set_filters` uses the same bounded schema for tool discovery and runtime validation: at most four nested groups followed by a leaf, matching the SiYuan kernel limit. It contains no recursive references. Deeper groups and invalid leaf fields are rejected before execution.
 
 - `render` can also create and materialize an AV when `createIfNotExist=true` and `blockID` is provided. In this mode, `blockID` is the target parent/insertion context, and MCP inserts a SiYuan-style spun AV block through a transaction.
 - To render an existing AV, pass the AV ID as `avID`. For smoother Agent workflows, the four read/render actions also accept deprecated `id`, and `av.search` results include reusable `renderArgs`.

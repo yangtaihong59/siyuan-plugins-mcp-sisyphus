@@ -1,3 +1,4 @@
+import { queueStorage } from './storage-queue';
 import type { SiYuanClient } from '../api/client';
 
 export const PUPPY_EVENTS_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/puppyEvents.json';
@@ -76,6 +77,10 @@ export async function writePuppyStats(client: SiYuanClient, stats: PuppyStats): 
 }
 
 export async function earnPuppyBalance(client: SiYuanClient, action?: string): Promise<PuppyStats> {
+    return queueStorage(client, 'puppy-stats', () => earnPuppyBalanceUnlocked(client, action));
+}
+
+async function earnPuppyBalanceUnlocked(client: SiYuanClient, action?: string): Promise<PuppyStats> {
     const current = await readPuppyStats(client);
     try {
         return await writePuppyStats(client, {
@@ -90,6 +95,10 @@ export async function earnPuppyBalance(client: SiYuanClient, action?: string): P
 }
 
 export async function spendPuppyBalance(client: SiYuanClient, cost: number, action?: string): Promise<PuppyStats> {
+    return queueStorage(client, 'puppy-stats', () => spendPuppyBalanceUnlocked(client, cost, action));
+}
+
+async function spendPuppyBalanceUnlocked(client: SiYuanClient, cost: number, action?: string): Promise<PuppyStats> {
     const current = await readPuppyStats(client);
     const normalizedCost = normalizeCount(cost);
     if (current.balance < normalizedCost) {
@@ -105,6 +114,10 @@ export async function spendPuppyBalance(client: SiYuanClient, cost: number, acti
 }
 
 export async function writePuppyEvent(client: SiYuanClient, event: Omit<PuppyEvent, 'seq' | 'ts'>): Promise<void> {
+    return queueStorage(client, 'puppy-events', () => writePuppyEventUnlocked(client, event));
+}
+
+async function writePuppyEventUnlocked(client: SiYuanClient, event: Omit<PuppyEvent, 'seq' | 'ts'>): Promise<void> {
     try {
         const now = Date.now();
         // A fast tool can emit `running` and `success` in the same millisecond.

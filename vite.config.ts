@@ -59,7 +59,7 @@ const cliExtraExternals = [
     "node:readline",
 ];
 
-const validTargets = ["renderer", "server", "cli", "mcp-app"] as const;
+const validTargets = ["renderer", "server", "cli", "mcp-app", "kernel"] as const;
 type BuildTarget = typeof validTargets[number];
 const buildTarget: BuildTarget = (validTargets as readonly string[]).includes(env.BUILD_TARGET ?? "")
     ? (env.BUILD_TARGET as BuildTarget)
@@ -76,6 +76,7 @@ export default defineConfig(() => {
         case "server": return createServerConfig();
         case "cli": return createCliConfig();
         case "mcp-app": return createMcpAppConfig();
+        case "kernel": return createKernelConfig();
         default: return createRendererConfig();
     }
 });
@@ -85,6 +86,11 @@ function createRendererConfig() {
         resolve: {
             alias: {
                 "@": resolve(__dirname, "src"),
+                // Node builtins only run in the MCP server / CLI / plugin
+                // CJS runtime; stub them for the renderer bundle.
+                "node:fs": resolve(__dirname, "src/core/node-browser-stub.ts"),
+                "node:path": resolve(__dirname, "src/core/node-browser-stub.ts"),
+                "node:crypto": resolve(__dirname, "src/core/node-browser-stub.ts"),
             },
         },
         plugins: [
@@ -263,6 +269,83 @@ function createServerConfig() {
                 output: {
                     inlineDynamicImports: true,
                     entryFileNames: "mcp-server.cjs",
+                },
+            },
+        },
+    };
+}
+
+
+function createKernelConfig() {
+    // kernel.js runs inside the SiYuan kernel's goja sandbox. No Node builtins,
+    // no DOM, no module system — the siyuan.* globals are injected by the host.
+    // Node builtin imports are aliased to kernel-compatible shims.
+    const kernelShimPath = resolve(__dirname, "src/kernel/node-shims.ts");
+    // Bake the static tool schemas at build time. The manifest module uses
+    // TOOL_REGISTRY + z.toJSONSchema, which is Node-only — so it runs in this
+    // plugin (Node host), writes plain JSON, and kernel.js embeds that JSON.
+    const kernelSchemaCodegen = {
+        name: "kernel-schema-codegen",
+        async buildStart() {
+            const { generateKernelSchemas } = await import("./scripts/gen-kernel-schemas.mjs");
+            const count = await generateKernelSchemas();
+            this.info("kernel-schema-codegen: embedded " + count + " tool schemas");
+        },
+    };
+    const kernelNodeShimPlugin = {
+        name: "kernel-node-shims",
+        enforce: "pre" as const,
+        resolveId(source: string, importer?: string) {
+            if (source.endsWith('/action-schema-runtime')) {
+                return resolve(__dirname, 'src/kernel/baked-action-schemas.ts');
+            }
+            // Intercept bare node:* imports inside the bundled sources and
+            // point them at the goja shims.
+            if (/^(?:node:)?(fs|path|crypto)$/.test(source)) {
+                return kernelShimPath;
+            }
+            // Redirect the indirection layer itself so its own node: imports
+            // (which would re-resolve to node builtins) are replaced wholesale.
+            if (importer && /node-loader\.ts$/.test(importer) === false && source.endsWith("node-loader")) {
+                return kernelShimPath;
+            }
+            if (/node-loader(\.ts)?$/.test(source)) {
+                return kernelShimPath;
+            }
+            return null;
+        },
+    };
+    return {
+        publicDir: false,
+        resolve: {
+            alias: {
+                "@": resolve(__dirname, "src"),
+            },
+        },
+        plugins: [kernelSchemaCodegen, kernelNodeShimPlugin, mcpAppHtmlModule()],
+        define: {
+            "process.env.DEV_MODE": JSON.stringify(isDev),
+            "process.env.NODE_ENV": JSON.stringify(env.NODE_ENV),
+            __PLUGIN_VERSION__: JSON.stringify(pluginVersion),
+        },
+        build: {
+            outDir: outputDir,
+            emptyOutDir: false,
+            minify: true,
+            sourcemap: isSrcmap ? "inline" : false,
+            target: "es2017" as const,
+            lib: {
+                entry: resolve(__dirname, "src/kernel/index.ts"),
+                fileName: () => "kernel",
+                formats: ["iife"] as const,
+                name: "SiyuanKernelPetal",
+            },
+            rollupOptions: {
+                external: ["siyuan"],
+                plugins: [kernelNodeShimPlugin, assertNoLocalRequire("kernel.js")],
+                output: {
+                    inlineDynamicImports: true,
+                    entryFileNames: "kernel.js",
                 },
             },
         },

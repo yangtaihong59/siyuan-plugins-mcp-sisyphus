@@ -61,6 +61,13 @@ export class SiYuanClient {
         return headers;
     }
 
+    /** Authenticated workspace resource read, shared with the kernel adapter. */
+    async requestResource(path: string): Promise<Pick<Response, 'ok' | 'status' | 'statusText' | 'text'>> {
+        return this.fetchWithTimeout(`${this.baseUrl}${path}`, {
+            method: 'GET', headers: this.getAuthHeaders(),
+        }, 'read');
+    }
+
     private async fetchWithTimeout(
         url: string,
         init: RequestInit,
@@ -184,6 +191,57 @@ export class SiYuanClient {
     async readFileBinary(path: string): Promise<Uint8Array> {
         const response = await this.readRemoteFile(path);
         return new Uint8Array(await response.arrayBuffer());
+    }
+
+    /** Caller-side streaming; no filesystem access in the API layer, no replay after bytes are delivered. */
+    async streamFile(path: string, consume: (chunk: Uint8Array) => Promise<void>, options: {
+        signal?: AbortSignal; maxBytes?: number; timeoutMs?: number;
+    } = {}): Promise<number> {
+        const maxBytes = options.maxBytes ?? 512 * 1024 * 1024;
+        const timeoutMs = options.timeoutMs ?? 120_000;
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        const check = () => { if (controller.signal.aborted) throw new Error('Download cancelled or timed out'); };
+        options.signal?.addEventListener('abort', abort, { once: true });
+        if (options.signal?.aborted) abort();
+        const timer = setTimeout(abort, timeoutMs);
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+        const cancelReader = () => { void reader?.cancel().catch(() => {}); };
+        controller.signal.addEventListener('abort', cancelReader);
+        try {
+            check();
+            const response = await fetch(`${this.baseUrl}/api/file/getFile`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+                body: JSON.stringify({ path }), signal: controller.signal,
+            });
+            // getFile errors may be HTTP 202 with a JSON envelope. Never save it as a file.
+            if (response.status !== 200) {
+                await response.body?.cancel().catch(() => {});
+                throw new Error(`File download failed: HTTP ${response.status}`);
+            }
+            if (Number(response.headers.get('content-length')) > maxBytes) {
+                await response.body?.cancel().catch(() => {});
+                throw new ResponseSizeLimitError(maxBytes);
+            }
+            reader = response.body?.getReader();
+            if (!reader) throw new Error('File download has no readable body');
+            let bytes = 0;
+            while (true) {
+                check();
+                const next = await reader.read();
+                check();
+                if (next.done) return bytes;
+                bytes += next.value.byteLength;
+                if (bytes > maxBytes) throw new ResponseSizeLimitError(maxBytes);
+                await consume(next.value);
+            }
+        } finally {
+            clearTimeout(timer);
+            options.signal?.removeEventListener('abort', abort);
+            controller.signal.removeEventListener('abort', cancelReader);
+            await reader?.cancel().catch(() => {});
+            reader?.releaseLock();
+        }
     }
 
     async writeFile(path: string, content: string): Promise<void> {

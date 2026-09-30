@@ -101,7 +101,7 @@ describe('telemetry', () => {
             expect(payload!.aggregates.avgDurationMs).toBe(200);
             expect(payload!.aggregates.actionBreakdown).toHaveLength(2);
             expect(payload!.aggregates.hourlyDistribution).toHaveLength(24);
-            expect(payload!.aggregates.transportDistribution).toEqual({ cli: 1, stdio: 1, http: 1 });
+            expect(payload!.aggregates.transportDistribution).toEqual({ cli: 1, stdio: 1, http: 1, kernel: 0 });
         });
 
         it('reads from rotated file as well', async () => {
@@ -128,7 +128,7 @@ describe('telemetry', () => {
             });
 
             const payload = await buildTelemetryPayload(client, 0);
-            expect(payload!.aggregates.transportDistribution).toEqual({ cli: 0, stdio: 1, http: 0 });
+            expect(payload!.aggregates.transportDistribution).toEqual({ cli: 0, stdio: 1, http: 0, kernel: 0 });
         });
     });
 
@@ -148,4 +148,21 @@ describe('telemetry', () => {
             expect(fetchSpy).not.toHaveBeenCalled();
         });
     });
+});
+
+it('uses the kernel adapter and reports redacted failures', async () => {
+    const { getTelemetryStatus } = await import('@/core/telemetry');
+    const config = { enabled: true, reportIntervalHours: 1, lastReportAt: 0, endpoint: 'https://test.invalid/telemetry' };
+    const client = {
+        readFile: async (path: string) => path === TELEMETRY_CONFIG_PATH ? JSON.stringify(config) : path === ANALYTICS_PATH
+            ? JSON.stringify({ ts: Date.now(), tool: 'system', action: 'get_version', durationMs: 5, status: 'success', transport: 'kernel' }) : '',
+        writeFile: vi.fn(async () => {}),
+        fetchExternal: vi.fn(async () => { throw new Error('secret endpoint'); }),
+    } as any;
+    await maybeSendTelemetry(client);
+    await maybeSendTelemetry(client);
+    expect(client.fetchExternal).toHaveBeenCalledTimes(2);
+    expect(getTelemetryStatus(client)).toMatchObject({ status: 'failed' });
+    expect(JSON.stringify(getTelemetryStatus(client))).not.toContain('secret');
+    expect(client.writeFile).not.toHaveBeenCalled();
 });

@@ -75,10 +75,10 @@
 
 若 Schema 已正常加载，但 `set_filters` 预检后仍偶发返回 `state_changed`，旧代码也可能把思源输出 DOM 属性的顺序变化当作内容变化。修复后的视图配置预检会规范化数据库载体的属性顺序，同时保留属性值与数据库绑定校验；真正的状态变化仍会拒绝写入。
 
-若 provider 报 `recursive $ref cannot be inlined`，这是递归 schema 兼容性问题，与上面的引用丢失不同。包含修复的版本对外展开三层筛选器 schema，服务端继续递归校验深层输入。更新实际 MCP Server 并刷新工具列表；暂时无法更新时，可禁用 `av.set_filters` 后重新连接。
+若 provider 报 `recursive $ref cannot be inlined`，这是递归 schema 兼容性问题，与上面的引用丢失不同。包含修复的版本统一公开 Schema 和运行时校验，最多允许四层筛选组后接叶子节点，与内核限制一致。更新实际 MCP Server 并刷新工具列表；暂时无法更新时，可禁用 `av.set_filters` 后重新连接。
 
 ## 桌面内核正常但 MCP 返回 kernel_unreachable
 
 桌面工作空间可能使用 `https://127.0.0.1:<动态端口>`。Electron 能接受本地证书，但 MCP 的 Node 子进程可能不信任它，从而返回 `fetch failed`。插件对回环地址使用同一端口的 HTTP 内核接口，保留当前工作空间端口；远程 HTTPS 地址仍保留 TLS 校验。更新 dev 产物后，在插件设置中关闭再开启 Sisyphus，使启动器重新获取地址。
 
-多工作空间同时运行时，连接面板生成的 stdio 配置与“复制给 AI”使用各自窗口的内核地址，并与该工作空间的脚本路径及 Token 配对，不再固定为 6806。已有客户端配置不会自动更新，需重新复制；内核动态端口变化后也需更新配置。若同时启用两套 MCP HTTP 服务，请为它们选择不同的 MCP 监听端口。
+多工作空间同时运行时，连接面板生成的 stdio 配置与“复制给 AI”使用各自窗口的内核地址，并与该工作空间的脚本路径及 Token 配对，不再固定为 6806。已有客户端配置不会自动更新，需重新复制；内核动态端口变化后也需更新配置。若同时启用两套 MCP HTTP 服务，请为它们选择不同的 MCP 监听端口。CLI 的 `siyuan-sisyphus instances` 会列出每个正在运行的内核 `--port`。已保存的回环 profile 会跟着工作空间 API token 匹配到的内核；发布服务端口不是内核 API。

@@ -45,7 +45,7 @@ After `export_md`, check the returned document identity fields and content rathe
 - `delete_template`, `delete_asset`, and `remove_unused_assets` require confirmation. `delete_template` is disabled by default.
 - Template writes use SiYuan's workspace file API for `/data/templates/...`; they do not write the local filesystem directly.
 - `export_resources` with a local output path should be treated carefully.
-- `extract_doc` writes to the local filesystem (default `~/siyuan-extracted/`) and clears the entire output directory before each export to prevent accumulation of old extracts. Results include `outputRoot` and `defaultOutputDirUsed`; pass `outputDir` explicitly for predictable paths such as `/private/tmp/...`.
+- `extract_doc`: without kernel delegation, Node saves to the local filesystem (default `~/siyuan-extracted/`), clears the output root, and skips unreadable assets. Results include `outputRoot` and `defaultOutputDirUsed`; use a dedicated `outputDir`. Kernel delegation streams into a new document directory, preserves siblings, rejects existing destinations and removes only its own output on failure. Direct kernel clients receive a manifest and must save files themselves.
 - `read_image` accepts only referenced `assets/...` paths from an authorized document tree, identifies PNG/JPEG/WebP/GIF by file signature, and rejects images larger than 20 MiB. URLs, local paths, path traversal, and unreferenced assets are rejected.
 
 ## Examples
@@ -221,8 +221,11 @@ The default CLI rendering shows image metadata only. `--json` also includes the 
 - `rename_asset`
 - `delete_asset`
 - `extract_doc`
+
 ### `export_markdown_snapshot`
 
 `file(action="export_markdown_snapshot")` returns one deterministic page of a Markdown snapshot without writing the host filesystem or starting a background job. The request must include an explicit `notebookID` and exactly one of `roots` (notebook-local storage paths, such as `/`) or `documentIDs`. Use `limit` and the opaque `cursor` for resumable batches.
 
 Each returned document includes the API-resolved ID, title, hPath, storage path, a safe relative `.md` path, canonical metadata plus `sha256:v1:` metadata/content hashes. Root inventories are ordered by the enumerated hPath and ID; explicit `documentIDs` are ordered by ID. Only the requested page is permission-resolved and exported. Root-tree path collisions are planned across the complete lightweight inventory, while explicit-ID filenames always include the document ID so documents on different pages cannot overwrite each other. Case-insensitive collisions and API/export mismatches are reported in `conflicts`/`errors` rather than guessed away. The response is a page, not a completed workspace backup; callers decide whether and where to persist it.
+
+See [kernel options](../kernel-options.md) for image/template budgets and file delivery details.

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { nodeCrypto } from './node-loader';
 
 import indexSkill from '../../skills/siyuan-mcp/siyuan-mcp-sisyphus/SKILL.md?raw';
 import browseReadSkill from '../../skills/siyuan-mcp/siyuan-mcp-browse-read/SKILL.md?raw';
@@ -103,7 +103,7 @@ function skillFileUri(skill: McpSkillDefinition, path: string): string {
 }
 
 function digest(text: string): string {
-    return `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
+    return `sha256:${nodeCrypto().createHash('sha256').update(text, 'utf8').digest('hex')}`;
 }
 
 function toSepSkillEntry(skill: McpSkillDefinition): SepSkillEntry {

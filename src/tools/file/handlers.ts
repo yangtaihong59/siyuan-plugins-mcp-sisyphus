@@ -1,5 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { getStagedUpload } from '../../core/upload-source';
+import { nodeFs, nodePath } from '../../core/node-loader';
+import { getInvocationTransport } from '../../core/runtime';
 import type { SiYuanClient } from '../../api/client';
 import * as fileApi from '../../api/file';
 import * as templateApi from '../../api/template';
@@ -51,6 +52,33 @@ import {
 export const FILE_TOOL_NAME = 'file';
 export const DEFAULT_LARGE_UPLOAD_THRESHOLD_MB = 10;
 export const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
+const KERNEL_BASE64_PAYLOAD_BYTES = 8 * 1024 * 1024;
+
+const KERNEL_OFFICIAL_API_DOC = 'https://github.com/siyuan-note/siyuan/blob/master/API.md';
+
+function bytesToBase64(data: Uint8Array): string {
+    return Buffer.from(data).toString('base64');
+}
+
+function kernelEndpointResult(reason: string, details: Record<string, unknown>): ToolResult {
+    return createJsonResult({
+        success: false,
+        transport: 'kernel',
+        reason,
+        hint: 'The kernel endpoint cannot access the caller filesystem. Use CLI/Node file transfer or the authenticated transfer/download API.',
+        officialApiDoc: KERNEL_OFFICIAL_API_DOC,
+        ...details,
+    });
+}
+
+function kernelUploadAssetGuidance(parsed: { localFilePath: string; assetsDirPath?: string }): ToolResult {
+    return kernelEndpointResult('kernel_local_file_unavailable', {
+        requestedLocalFilePath: parsed.localFilePath,
+        assetsDirPath: parsed.assetsDirPath ?? '/assets/',
+        transferEndpoint: '/plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload',
+        nextStep: 'POST {fileName,dataBase64} to the authenticated transfer endpoint, then preflight upload_asset with uploadSource instead of localFilePath. CLI/Node handle staging automatically; maximum 10 MiB.',
+    });
+}
 
 interface NormalizedImageAssetPath {
     assetPath: string;
@@ -141,11 +169,11 @@ function normalizeResourcePaths(paths: string[]): string[] {
 }
 
 function resolveLocalOutputPath(outputPath: string): string {
-    return path.isAbsolute(outputPath) ? outputPath : path.resolve(process.cwd(), outputPath);
+    return nodePath().isAbsolute(outputPath) ? outputPath : nodePath().resolve(process.cwd(), outputPath);
 }
 
 function resolveLocalInputPath(inputPath: string): string {
-    return path.isAbsolute(inputPath) ? inputPath : path.resolve(process.cwd(), inputPath);
+    return nodePath().isAbsolute(inputPath) ? inputPath : nodePath().resolve(process.cwd(), inputPath);
 }
 
 function isWorkspaceTemplatePathError(error: unknown): error is Error {
@@ -191,7 +219,7 @@ function isTemplateNotFoundError(error: unknown): boolean {
 }
 
 function getTemplateName(relativePath: string): string {
-    return path.basename(relativePath).replace(/\.md$/i, '');
+    return nodePath().basename(relativePath).replace(/\.md$/i, '');
 }
 
 function buildTemplateListItem(item: { path: string; content: string }) {
@@ -250,11 +278,20 @@ async function resolveTemplateAfterWrite(
 const handleUploadAsset = (thresholdMB: number, largeUploadThresholdBytes: number): ToolActionHandler =>
     async ({ client, rawArgs }) => {
         const parsed = FileUploadAssetSchema.parse(rawArgs);
-        const localFilePath = resolveLocalInputPath(parsed.localFilePath);
-        if (!fs.existsSync(localFilePath)) {
+        if (parsed.uploadSource) {
+            const source = getStagedUpload(client, parsed.uploadSource);
+            if (source.bytes.byteLength > largeUploadThresholdBytes && parsed.confirmLargeFile !== true) {
+                return createJsonResult({ success: false, requiresConfirmation: true, reason: 'file_too_large', fileSizeBytes: source.bytes.byteLength, thresholdMB });
+            }
+            const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, source.bytes, source.fileName);
+            return createJsonResult({ ...result, uploadedFileName: source.fileName, uploadSource: parsed.uploadSource });
+        }
+        if (getInvocationTransport() === 'kernel') return kernelUploadAssetGuidance({ localFilePath: parsed.localFilePath! });
+        const localFilePath = resolveLocalInputPath(parsed.localFilePath!);
+        if (!nodeFs().existsSync(localFilePath)) {
             throw new Error(`Local file does not exist: ${localFilePath}`);
         }
-        const stat = fs.statSync(localFilePath);
+        const stat = nodeFs().statSync(localFilePath);
         if (!stat.isFile()) {
             throw new Error(`Local file path must point to a regular file: ${localFilePath}`);
         }
@@ -270,8 +307,8 @@ const handleUploadAsset = (thresholdMB: number, largeUploadThresholdBytes: numbe
                 message: `File exceeds the large-upload safety threshold (${thresholdMB} MB). Stop the current operation and ask the user for explicit confirmation before retrying with confirmLargeFile=true.`,
             });
         }
-        const fileName = path.basename(localFilePath);
-        const fileBytes = fs.readFileSync(localFilePath);
+        const fileName = nodePath().basename(localFilePath);
+        const fileBytes = nodeFs().readFileSync(localFilePath);
         const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, fileBytes, fileName);
         return createJsonResult({
             ...result,
@@ -707,11 +744,44 @@ const handleExportResources: ToolActionHandler = async ({ client, rawArgs }) => 
         throw new Error(`Failed to export resources. original_paths=${JSON.stringify(parsed.paths)} normalized_paths=${JSON.stringify(normalizedPaths)} cause=${message}`);
     }
 
+    if (getInvocationTransport() === 'kernel' && parsed.delivery === 'download') {
+        return createJsonResult({ ...result, transport: 'kernel', delivery: 'download', downloadPath: result.path });
+    }
+
     if (parsed.outputPath) {
+        if (getInvocationTransport() === 'kernel') {
+            // No host filesystem in the kernel sandbox: the exported ZIP is
+            // reachable via the official getFile endpoint, so stream it back
+            // as base64 for the client to persist (bounded to keep the MCP
+            // response reasonable), or point the client at the official API.
+            const binary = await client.readFileBinary(result.path);
+            if (binary.byteLength > KERNEL_BASE64_PAYLOAD_BYTES) {
+                return kernelEndpointResult('kernel_export_too_large_for_inline', {
+                    ...result,
+                    bytes: binary.byteLength,
+                    inlineLimitBytes: KERNEL_BASE64_PAYLOAD_BYTES,
+                    officialApi: {
+                        endpoint: '/api/file/getFile',
+                        method: 'POST',
+                        body: { path: result.path },
+                        note: 'Response body is the raw ZIP bytes; save them verbatim to the desired output path.',
+                    },
+                    nextStep: 'Fetch the exported ZIP through the official getFile endpoint and write it to disk on the client side.',
+                });
+            }
+            return createJsonResult({
+                ...result,
+                requestedOutputPath: parsed.outputPath,
+                bytes: binary.byteLength,
+                encoding: 'base64',
+                dataBase64: bytesToBase64(binary),
+                nextStep: 'Decode dataBase64 on the client side and write it to the requested output path.',
+            });
+        }
         const localOutputPath = resolveLocalOutputPath(parsed.outputPath);
         const binary = await client.readFileBinary(result.path);
-        fs.mkdirSync(path.dirname(localOutputPath), { recursive: true });
-        fs.writeFileSync(localOutputPath, binary);
+        nodeFs().mkdirSync(nodePath().dirname(localOutputPath), { recursive: true });
+        nodeFs().writeFileSync(localOutputPath, binary);
         return createJsonResult({
             ...result,
             outputPath: localOutputPath,
@@ -867,38 +937,99 @@ const handleExtractDoc: ToolActionHandler = async ({ client, rawArgs }) => {
     const hPath = typeof mdResult.hPath === 'string' ? mdResult.hPath : '';
 
     const docName = hPath.split('/').filter(Boolean).pop()?.replace(/\.sy$/, '') || parsed.id;
+    const assetRefs = [...markdown.matchAll(/\]\(assets\/([^\s)"']+)(?:\s+"[^"]*")?\)/g)];
+
+    if (getInvocationTransport() === 'kernel') {
+        // Same data path as local extraction (exportMdContent + getFile),
+        // but nothing can be written to the host filesystem inside the
+        // kernel sandbox. Return the markdown inline plus an asset manifest
+        // — small assets ride along as base64, large ones carry the exact
+        // official getFile call the client can replay.
+        const assets: Array<Record<string, unknown>> = [];
+        let inlineCount = 0;
+        let pointerCount = 0;
+        let inlineRemaining = KERNEL_BASE64_PAYLOAD_BYTES;
+        for (const match of assetRefs) {
+            const assetRelPath = match[1];
+            const workspacePath = `data/assets/${assetRelPath}`;
+            if (parsed.delivery === 'download' || inlineRemaining <= 0) {
+                assets.push({ path: assetRelPath, encoding: 'official-api' });
+                pointerCount++;
+                continue;
+            }
+            try {
+                const data = await client.readFileBinary(workspacePath);
+                if (data.byteLength <= inlineRemaining) {
+                    inlineRemaining -= data.byteLength;
+                    assets.push({
+                        path: assetRelPath,
+                        bytes: data.byteLength,
+                        encoding: 'base64',
+                        dataBase64: bytesToBase64(data),
+                    });
+                    inlineCount++;
+                } else {
+                    assets.push({
+                        path: assetRelPath,
+                        bytes: data.byteLength,
+                        encoding: 'official-api',
+                        officialApi: { endpoint: '/api/file/getFile', method: 'POST', body: { path: workspacePath } },
+                    });
+                    pointerCount++;
+                }
+            } catch {
+                assets.push({ path: assetRelPath, error: 'unreadable' });
+            }
+        }
+        return createJsonResult({
+            success: assets.every(asset => !asset.error),
+            complete: assets.every(asset => !asset.error),
+            transport: 'kernel',
+            delivery: parsed.delivery ?? 'inline',
+            docId: parsed.id,
+            docName,
+            hPath,
+            markdown,
+            assets,
+            extractedAssetCount: inlineCount,
+            pointerAssetCount: pointerCount,
+            skippedAssetCount: assets.length - inlineCount - pointerCount,
+            nextStep: 'Write markdown to <docName>.md and decode each base64 asset into assets/ on the client side. Assets marked official-api exceed the inline cap — fetch them via the listed official getFile call.',
+        });
+    }
+
+    // Without kernel delegation, retain the existing local export contract.
     const idSuffix = parsed.id.slice(-7);
     const folderName = `${docName}-${idSuffix}`;
 
     const homeDir = process.env.USERPROFILE || process.env.HOME || '';
     const outputRoot = parsed.outputDir
-        ? path.resolve(parsed.outputDir)
-        : path.join(homeDir, 'siyuan-extracted');
+        ? nodePath().resolve(parsed.outputDir)
+        : nodePath().join(homeDir, 'siyuan-extracted');
     const defaultOutputDirUsed = !parsed.outputDir;
-    const targetDir = path.join(outputRoot, folderName);
-    const assetsDir = path.join(targetDir, 'assets');
+    const targetDir = nodePath().join(outputRoot, folderName);
+    const assetsDir = nodePath().join(targetDir, 'assets');
 
-    if (fs.existsSync(outputRoot)) {
-        fs.rmSync(outputRoot, { recursive: true, force: true });
+    if (nodeFs().existsSync(outputRoot)) {
+        nodeFs().rmSync(outputRoot, { recursive: true, force: true });
     }
-    fs.mkdirSync(assetsDir, { recursive: true });
+    nodeFs().mkdirSync(assetsDir, { recursive: true });
 
-    const docMdPath = path.join(targetDir, `${docName}.md`);
-    fs.writeFileSync(docMdPath, markdown, 'utf-8');
+    const docMdPath = nodePath().join(targetDir, `${docName}.md`);
+    nodeFs().writeFileSync(docMdPath, markdown, 'utf-8');
 
-    const assetRefs = [...markdown.matchAll(/\]\(assets\/([^\s)"']+)(?:\s+"[^"]*")?\)/g)];
     const structure = [`${docName}.md`];
     let extractedCount = 0;
     let skippedCount = 0;
 
     for (const match of assetRefs) {
         const assetRelPath = match[1];
-        const assetFullPath = path.join(assetsDir, assetRelPath);
+        const assetFullPath = nodePath().join(assetsDir, assetRelPath);
 
         try {
-            fs.mkdirSync(path.dirname(assetFullPath), { recursive: true });
+            nodeFs().mkdirSync(nodePath().dirname(assetFullPath), { recursive: true });
             const data = await client.readFileBinary(`data/assets/${assetRelPath}`);
-            fs.writeFileSync(assetFullPath, data);
+            nodeFs().writeFileSync(assetFullPath, data);
             structure.push(`assets/${assetRelPath}`);
             extractedCount++;
         } catch {

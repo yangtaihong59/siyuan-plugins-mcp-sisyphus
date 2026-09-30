@@ -285,7 +285,9 @@ describe('tool action contract coverage', () => {
     });
 
     it('covers every file action with a minimal endpoint contract', async () => {
-        await runContracts('file', FILE_VARIANTS, callFileTool as ToolCaller, [
+        const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+        const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'siyuan-contract-extract-'));
+        try { await runContracts('file', FILE_VARIANTS, callFileTool as ToolCaller, [
             { action: 'upload_asset', args: { action: 'upload_asset', assetsDirPath: '/assets/', localFilePath: 'package.json' }, expectedEndpoint: '/api/asset/upload' },
             { action: 'list_templates', args: { action: 'list_templates', query: 'demo' }, expectedEndpoint: '/api/search/searchTemplate' },
             { action: 'read_template', args: { action: 'read_template', path: 'demo.md' }, expectedEndpoint: '/templates/demo.md' },
@@ -305,8 +307,8 @@ describe('tool action contract coverage', () => {
             { action: 'remove_unused_assets', args: { action: 'remove_unused_assets' }, expectedEndpoint: '/api/asset/removeUnusedAssets' },
             { action: 'rename_asset', args: { action: 'rename_asset', oldPath: 'assets/old.png', newName: 'new.png' }, expectedEndpoint: '/api/asset/renameAsset' },
             { action: 'delete_asset', args: { action: 'delete_asset', path: 'assets/old.png' }, expectedEndpoint: '/api/asset/removeUnusedAsset' },
-            { action: 'extract_doc', args: { action: 'extract_doc', id: 'doc-1', outputDir: '/tmp/siyuan-contract-extract' }, expectedEndpoint: '/api/export/exportMdContent' },
-        ]);
+            { action: 'extract_doc', args: { action: 'extract_doc', id: 'doc-1', outputDir }, expectedEndpoint: '/api/export/exportMdContent' },
+        ]); } finally { fs.rmSync(outputDir, { recursive: true, force: true }); }
     });
 
     it('covers every system action with a minimal endpoint contract', async () => {

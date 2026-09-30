@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { nodeCrypto } from './node-loader';
 import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';
 import type { SiYuanClient } from '../api/client';
 import { hashWriteState } from './write-safety-hash';
@@ -54,7 +54,7 @@ export class WriteSafetyLedger {
             if (this.entries.size >= WRITE_SAFETY_LEDGER_MAX_ENTRIES) {
                 throw safetyError('write_ledger_capacity', 'The write-safety ledger is full. No write was attempted.');
             }
-            const digest = randomBytes(32).toString('hex');
+            const digest = nodeCrypto().randomBytes(32).toString('hex');
             let length = 4;
             while (length <= digest.length && this.reservedRequestIds.has(digest.slice(0, length))) length += 1;
             if (length > digest.length) throw safetyError('request_id_collision', 'Could not issue a unique requestId. Run preflight again.');

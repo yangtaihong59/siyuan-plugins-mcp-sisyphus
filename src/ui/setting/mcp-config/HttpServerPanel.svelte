@@ -540,6 +540,15 @@ If the API URL is not reachable from the current host, container, WSL, or remote
         httpDirty = true;
     }
 
+    // The kernel endpoint is served by kernel.js inside the kernel petal and
+    // does not depend on the standalone HTTP server — persist immediately so
+    // the change takes effect without an Apply/Restart.
+    async function onKernelEndpointChange(event: Event) {
+        const target = event.currentTarget as HTMLInputElement;
+        const next = { ...httpSettings, kernelEndpointEnabled: target.checked };
+        await persistHttpSettings(next, false);
+    }
+
     function onSkillsExtensionChange(event: Event) {
         const target = event.currentTarget as HTMLInputElement;
         httpSettings = { ...httpSettings, skillsExtensionEnabled: target.checked };
@@ -716,6 +725,7 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                                 {#if httpSupportReason}
                                     <code>{httpSupportReason}</code>
                                 {/if}
+                                <div class="http-field-hint">{getLabel("kernelEndpointDockerHint", "On Docker/browser the standalone HTTP server is unavailable — enable the Kernel endpoint below to host the write coordinator on the kernel port instead.")}</div>
                             </div>
                         {/if}
 
@@ -733,6 +743,27 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                                 <input type="checkbox" checked={httpSettings.enabled} on:change={onHttpAutoStartChange} />
                                 {getLabel("httpAutoStart", "Auto-start with SiYuan")}
                             </label>
+
+
+                            <section class="experimental-features" aria-labelledby="kernel-endpoint-title">
+                                <div class="experimental-features__header">
+                                    <div>
+                                        <div id="kernel-endpoint-title" class="experimental-features__title">
+                                            {getLabel("kernelEndpointTitle", "Kernel endpoint")}
+                                            <span>{getLabel("experimentalFeatureBadge", "Experimental")}</span>
+                                        </div>
+                                        <p>{getLabel("kernelEndpointDesc", "Serve the write coordinator from inside the kernel via /plugin/private/<plugin>/mcp. Useful on Docker and remote deployments where a separate MCP port cannot be opened.")}</p>
+                                    </div>
+                                    <label class="experimental-features__master">
+                                        <input type="checkbox" checked={httpSettings.kernelEndpointEnabled} on:change={onKernelEndpointChange} />
+                                        {getLabel("kernelEndpointEnabled", "Enable")}
+                                    </label>
+                                </div>
+
+                                <p class="experimental-features__note">
+                                    {getLabel("kernelEndpointHint", "Shares the kernel's own port — no extra listener or firewall rule needed. Remote CLIs auto-detect it when enabled. Takes effect immediately (no restart).")}
+                                </p>
+                            </section>
 
                             <label class="http-field">
                                 <span class="http-label">{getLabel("httpHost", "Host")}</span>

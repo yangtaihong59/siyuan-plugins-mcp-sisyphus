@@ -40,7 +40,7 @@ describe('tool registry', () => {
         expect(listAllTools(config).find(tool => tool.name === 'av')!.inputSchema.properties).not.toHaveProperty('requestId');
     });
 
-    it.each([false, true])('publishes acyclic filter schemas while validating deeper filters at runtime (strict: %s)', (strict) => {
+    it.each([false, true])('publishes acyclic filter schemas with matching runtime depth limits (strict: %s)', (strict) => {
         const config = buildDefaultToolConfig();
         config.writeSafety.strictMode = strict;
         for (const category of TOOL_CATEGORIES) {
@@ -67,7 +67,7 @@ describe('tool registry', () => {
         }
         const leaf = { column: 'key-status', operator: '=', value: { type: 'text', text: { content: 'ready' } } };
         let filter: any = leaf;
-        for (let depth = 0; depth < 6; depth++) filter = { combination: depth % 2 ? 'and' : 'or', filters: [filter] };
+        for (let depth = 0; depth < 4; depth++) filter = { combination: depth % 2 ? 'and' : 'or', filters: [filter] };
         const args = { action: 'set_filters', avID: 'av-1', blockID: 'block-1', viewID: 'view-1', filters: [filter] };
         expect(() => validateRegisteredToolArguments('av', args)).not.toThrow();
         delete leaf.column;

@@ -1,5 +1,4 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { z } from 'zod';
 
 import type { SiYuanClient } from '../api/client';
 import { getVersion } from '../api/system';
@@ -10,51 +9,12 @@ import {
 import type { ToolResult } from '../tools/internal/shared';
 import { noopSchemaValidator } from './noops/noop-schema-validator';
 
-const SELF_PLUGIN_TOOL_PREFIX = 'plugin__siyuan_plugins_mcp_sisyphus__';
-
-const OfficialToolSchema = z.object({
-    name: z.string(),
-    title: z.string().optional(),
-    description: z.string().optional(),
-    inputSchema: z.unknown().optional(),
-    outputSchema: z.unknown().optional(),
-    source: z.string().optional(),
-    readOnlyHint: z.boolean().optional(),
-    effectScope: z.string().optional(),
-}).passthrough();
-const OfficialListToolsResultSchema = z.object({
-    tools: z.array(OfficialToolSchema),
-    nextCursor: z.string().optional(),
-}).passthrough();
-
-export type OfficialMcpToolSource = 'plugin' | 'native';
-
-export interface OfficialMcpTool {
-    name: string;
-    title?: string;
-    description?: string;
-    inputSchema: Record<string, unknown>;
-    outputSchema?: Record<string, unknown>;
-    source: OfficialMcpToolSource;
-    readOnlyHint: boolean;
-    effectScope?: string;
-    schemaDegraded: boolean;
-}
-
-export interface OfficialMcpDiscoverySnapshot {
-    tools: OfficialMcpTool[];
-    connected: boolean;
-    supported?: boolean;
-    siyuanVersion?: string;
-    minSupportedVersion?: string;
-    lastSuccessfulRefreshAt?: string;
-    lastAttemptAt?: string;
-    error?: string;
-    changed: boolean;
-}
+import { OfficialListToolsResultSchema, selectOfficialTools, type OfficialMcpTool, type OfficialMcpDiscoverySnapshot } from './official-mcp-tools';
+export { normalizeOfficialInputSchema, selectOfficialTools } from './official-mcp-tools';
+export type { OfficialMcpTool, OfficialMcpToolSource, OfficialMcpDiscoverySnapshot } from './official-mcp-tools';
 
 export interface OfficialMcpRuntime {
-    bridge: OfficialMcpBridge;
+    bridge: Pick<OfficialMcpBridge, 'getTools' | 'getSnapshot' | 'refresh' | 'callTool'>;
     notifyToolListChanged?: () => Promise<void> | void;
     exposedToolsFingerprint?: string;
     discoveryMode?: 'blocking' | 'background';
@@ -64,63 +24,6 @@ export interface OfficialMcpRuntime {
 export interface OfficialMcpBridgeOptions {
     fetch?: typeof fetch;
     getSiYuanVersion?: () => Promise<string>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-export function normalizeOfficialInputSchema(
-    schema: unknown,
-): { schema: Record<string, unknown>; degraded: boolean } {
-    if (!isRecord(schema)) {
-        return { schema: { type: 'object', additionalProperties: true }, degraded: true };
-    }
-
-    const declaredType = schema.type;
-    const hasComposition = Array.isArray(schema.oneOf)
-        || Array.isArray(schema.anyOf)
-        || Array.isArray(schema.allOf)
-        || typeof schema.$ref === 'string';
-    if (declaredType !== undefined && declaredType !== 'object') {
-        return { schema: { type: 'object', additionalProperties: true }, degraded: true };
-    }
-    if (declaredType === undefined && !hasComposition && !isRecord(schema.properties)) {
-        return { schema: { type: 'object', additionalProperties: true }, degraded: true };
-    }
-
-    return {
-        schema: declaredType === undefined && !hasComposition
-            ? { ...schema, type: 'object' }
-            : { ...schema },
-        degraded: false,
-    };
-}
-
-export function selectOfficialTools(rawTools: unknown[]): OfficialMcpTool[] {
-    const selected = new Map<string, OfficialMcpTool>();
-    for (const rawTool of rawTools) {
-        const parsed = OfficialToolSchema.safeParse(rawTool);
-        if (!parsed.success) continue;
-        const tool = parsed.data;
-        const source = !tool.source ? 'native' : tool.source;
-        if (source !== 'plugin' && source !== 'native') continue;
-        if (tool.name.startsWith(SELF_PLUGIN_TOOL_PREFIX)) continue;
-
-        const normalizedInput = normalizeOfficialInputSchema(tool.inputSchema);
-        selected.set(tool.name, {
-            name: tool.name,
-            title: tool.title,
-            description: tool.description,
-            inputSchema: normalizedInput.schema,
-            outputSchema: isRecord(tool.outputSchema) ? tool.outputSchema : undefined,
-            source,
-            readOnlyHint: tool.readOnlyHint === true,
-            effectScope: tool.effectScope,
-            schemaDegraded: normalizedInput.degraded,
-        });
-    }
-    return [...selected.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function formatError(error: unknown): string {
@@ -287,7 +190,9 @@ export class OfficialMcpBridge {
             cursor = result.nextCursor;
         } while (cursor);
 
-        return selectOfficialTools(rawTools);
+        let capabilities: unknown;
+        try { capabilities = await this.siyuanClient.requestRead('/api/ai/lsCapabilities', {}); } catch { /* older kernels */ }
+        return selectOfficialTools(rawTools, capabilities);
     }
 
     private commitRefresh(
