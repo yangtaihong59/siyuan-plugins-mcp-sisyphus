@@ -8,7 +8,7 @@ import { join } from 'node:path';
 // publish.port only). The publish port is reported and never selected as the API.
 
 const KERNEL_BASENAMES = new Set(['SiYuan-Kernel', 'SiYuan-Kernel.exe']);
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 export interface DiscoveredKernel {
     pid: number;
@@ -98,6 +98,7 @@ export function parseKernelProcessLine(line: string): DiscoveredKernel | undefin
     if (!portText || !/^\d+$/.test(portText)) return undefined;
 
     const port = Number(portText);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
     const workspace = readFlag(args, 'workspace');
     return {
         pid,

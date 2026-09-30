@@ -1,7 +1,8 @@
+import { getStagedUpload } from './upload-source';
 import { normalizeAvIdArgs } from './argument-aliases';
 import { withAvIdWarning } from '../tools/internal/av-id-warning';
 import { verifyAvCellsReadback } from './av-cell-readback';
-import fs from 'node:fs';
+import { nodeFs } from './node-loader';
 
 import type { SiYuanClient } from '../api/client';
 import { WriteOutcomeUnknownError } from '../api/client';
@@ -26,7 +27,7 @@ import {
     USER_RULES_VIRTUAL_PATH,
     type ToolCategory,
 } from './config';
-import { canonicalizeWriteState, hashWriteBytes, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
+import { canonicalizeWriteState, hashWriteBytes, hashWriteBytesAsync, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
 import {
     WritePreflightLeasePool,
     type WritePreflightLease,
@@ -51,6 +52,8 @@ export interface WriteSafetyExecution {
     action: string;
     args: Record<string, unknown>;
     strictMode: boolean;
+    /** Synchronous cancellation barrier before any executing ledger entry or side effect. */
+    beforeCommit?: () => void;
     validateArgs?: (args: Record<string, unknown>) => void;
     execute(args: Record<string, unknown>): Promise<ToolResult>;
 }
@@ -124,6 +127,7 @@ export class WriteSafetyCoordinator {
                     },
                 }, true);
             }
+            execution.beforeCommit?.();
             return addSafetyMetadata(await execution.execute(stripSafetyFields(execution.args)), {
                 writeSafetyMode: execution.strictMode ? 'strict' : 'legacy',
                 writeSafetyGuaranteed: false,
@@ -137,6 +141,7 @@ export class WriteSafetyCoordinator {
                     'Strict safe writes are disabled. The preflight did not execute the mutation.',
                 );
             }
+            execution.beforeCommit?.();
             return addSafetyMetadata(await execution.execute(stripSafetyFields(execution.args)), {
                 writeSafetyMode: 'legacy',
                 writeSafetyGuaranteed: false,
@@ -253,6 +258,7 @@ export class WriteSafetyCoordinator {
             });
         }
 
+        try { execution.beforeCommit?.(); } catch (error) { return fromSafetyError(error); }
         const targetIds = before?.targetIds ?? collectTargetSelectors(args);
         try {
             await this.ledger.record({
@@ -554,7 +560,7 @@ async function probeUploadedResult(client: SiYuanClient, result: ToolResult, sou
         ? uploadedPath
         : `/data/${uploadedPath.replace(/^\/+/, '')}`;
     const bytes = await client.readFileBinary(workspacePath);
-    const uploadedHash = hashWriteBytes(bytes);
+    const uploadedHash = await hashWriteBytesAsync(bytes);
     if (uploadedHash !== source.hash) {
         throw safetyError('readback_mismatch', 'The uploaded asset digest does not match the validated source file.');
     }
@@ -574,9 +580,13 @@ async function probeCurrentState(
     policy: Extract<ActionSafetyPolicy, { mode: 'mutation' }>,
 ): Promise<StateProbe> {
     if (policy.precondition === 'source') {
+        if (typeof args.uploadSource === 'string') {
+            const source = getStagedUpload(client, args.uploadSource);
+            return { hash: source.hash, targetIds: [args.uploadSource], summary: { sourceSize: source.bytes.byteLength } };
+        }
         const localFilePath = typeof args.localFilePath === 'string' ? args.localFilePath : '';
         if (!localFilePath) throw safetyError('precondition_required', 'localFilePath is required to fingerprint the upload source.');
-        const bytes = await fs.promises.readFile(localFilePath);
+        const bytes = await nodeFs().promises.readFile(localFilePath);
         return {
             hash: hashWriteBytes(bytes),
             targetIds: [localFilePath],
@@ -854,6 +864,7 @@ async function appendFileState(
             const source = await readTemplateSource(client, args.path);
             state.template = { path: normalizeTemplatePath(args.path).relativePath, markdown: source.markdown };
         } catch (error) {
+            if ((error as { reason?: string })?.reason !== 'template_not_found') throw error;
             state.template = { path: normalizeTemplatePath(args.path).relativePath, missing: true };
         }
         return;
@@ -863,7 +874,8 @@ async function appendFileState(
         try {
             const source = await readTemplateSource(client, relativePath);
             state.destinationTemplate = { path: relativePath, markdown: source.markdown };
-        } catch {
+        } catch (error) {
+            if ((error as { reason?: string })?.reason !== 'template_not_found') throw error;
             state.destinationTemplate = { path: relativePath, missing: true };
         }
         await appendBlockRows(client, args, state);
@@ -884,7 +896,7 @@ async function appendFileState(
             : `/data/${assetPath.replace(/^\/+/, '')}`;
         try {
             const bytes = await client.readFileBinary(workspacePath);
-            state.asset = { path: workspacePath, hash: hashWriteBytes(bytes), size: bytes.byteLength };
+            state.asset = { path: workspacePath, hash: await hashWriteBytesAsync(bytes), size: bytes.byteLength };
         } catch {
             state.asset = { path: workspacePath, missing: true };
         }

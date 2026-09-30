@@ -1,3 +1,4 @@
+import { getBakedActionSchema, usesBakedActionSchemas } from '../../core/action-schema-runtime';
 import { withAvIdWarning } from './av-id-warning';
 import type { z } from 'zod';
 
@@ -63,6 +64,13 @@ export interface DefinedTool<Action extends string> {
 
 const actionValidators = new Map<ToolCategory, ActionVariant<string>[]>();
 
+/** Build-time manifest source; runtime validators stay attached to the variants. */
+export function getRegisteredActionSchemas(): Record<string, Record<string, unknown>> {
+    return Object.fromEntries([...actionValidators].map(([category, variants]) => [
+        category, Object.fromEntries(variants.map(({ action, schema }) => [action, schema])),
+    ]));
+}
+
 /** Reuse the handler's Zod contract before issuing a write preflight credential. */
 export function validateRegisteredToolArguments(category: ToolCategory, args: Record<string, unknown>): void {
     const normalized = normalizeToolArguments(category, args);
@@ -86,6 +94,9 @@ export function validateRegisteredToolArguments(category: ToolCategory, args: Re
  */
 export function defineTool<Action extends string>(options: DefineToolOptions<Action>): DefinedTool<Action> {
     const { name, description, variants, handlers, actionSchema, aggregateOptions } = options;
+    if (usesBakedActionSchemas) {
+        for (const variant of variants) variant.schema = getBakedActionSchema(name, variant.action)!;
+    }
     actionValidators.set(name, variants);
 
     return {
@@ -151,7 +162,7 @@ function installRequestSemanticsCompatibility(client: SiYuanClient): void {
         requestFormDataRead?: SiYuanClient['requestFormDataRead'];
         requestFormDataWrite?: SiYuanClient['requestFormDataWrite'];
     };
-    const legacyDouble = !(client instanceof SiYuanClient);
+    const legacyDouble = client.getBaseUrl?.() !== 'kernel://localhost' && !(client instanceof SiYuanClient);
     if ((legacyDouble || typeof compatible.requestRead !== 'function') && typeof compatible.request === 'function') {
         compatible.requestRead = compatible.request.bind(compatible);
     }

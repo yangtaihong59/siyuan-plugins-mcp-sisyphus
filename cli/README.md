@@ -6,7 +6,7 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.9` removes recursive references from published filter schemas and clarifies feedback submission in strict mode.
+> **Latest:** `v0.2.9` adds local kernel discovery and an optional kernel coordinator for remote deployments, removes recursive filter schemas, and clarifies feedback submission.
 
 > **v0.2.6:** `v0.2.6` exposes the expanded guarded AV, snapshot, image-audit, image-reading, extension-diagnostic, and link-resolution workflows, and preserves mixed text/image results in JSON output. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58).
 
@@ -223,6 +223,16 @@ The CLI and the SiYuan plugin (`siyuan-plugins-mcp-sisyphus`) share the same too
 If you already used the older config path `~/.siyuan-mcp/config.json`, the CLI still reads it as a fallback until you create a new config under `~/.siyuan-sisyphus/config.json`.
 
 The CLI respects the same plugin UI configuration as MCP clients: disabled tools/actions are hidden from `list`/`help` and cannot be executed. Notebook-level permissions are also enforced by reading the same `/data/storage/petal/...` configuration through the API.
+
+## File transfer with the kernel endpoint
+
+With the kernel coordinator enabled, `file upload_asset --local-file-path ...` automatically stages bytes before strict preflight/commit. Copy the issued requestId and expectedSourceHash from `--validate-only`. Uploads are capped at 10 MiB and staged for 10 minutes. Preflight also returns uploadSource for replay without reading a local file; supply exactly one source. Changed files require new preflight.
+
+`file export_resources --paths-json '["assets/example.png"]' --output-path ./export.zip` and `file extract_doc --id <document-ID> --output-dir ./exports` download and save locally, reporting SHA-256. Existing destinations are refused and siblings preserved. Exports remain external side effects without strict write guarantees; validateOnly does not execute.
+
+Kernel delegation supports cooperative Ctrl-C cancellation: stop before commit; once commit starts, wait for its real outcome. Downloads stream to disk with incremental SHA-256 and clean partial output on cancellation/failure (512 MiB export limit; 120 seconds per file). Uploads reuse matching kernel-verified staging via fingerprint lookup.
+
+Kernel delegation assigns a transport taskId. On a lost response, the CLI queries that task’s short-lived cached result without repeating the business call. If recovery is unavailable, outcome_unknown includes taskId; reconcile using the original business requestId. Ordinary kernel read actions have an aggregate budget of 128 API calls / 8 MiB; narrow queries or use smaller pages when read_budget_exceeded is returned.
 
 ## License
 

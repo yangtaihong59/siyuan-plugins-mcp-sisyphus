@@ -364,6 +364,7 @@ describe('HTTP settings sync', () => {
             tlsKeyFile: '',
             tlsCaFile: '',
             skillsExtensionEnabled: true,
+            kernelEndpointEnabled: false,
         };
 
         await plugin.setHttpServerSettings(next);
@@ -399,6 +400,7 @@ describe('HTTP settings sync', () => {
             tlsKeyFile: '',
             tlsCaFile: '',
             skillsExtensionEnabled: false,
+            kernelEndpointEnabled: false,
         };
 
         await plugin.updateHttpServerSettings(next);
@@ -434,6 +436,7 @@ describe('HTTP settings sync', () => {
             tlsKeyFile: '',
             tlsCaFile: '',
             skillsExtensionEnabled: false,
+            kernelEndpointEnabled: false,
         };
 
         const restarted = await plugin.refreshHttpServerAfterInstructionConfigChange();
@@ -482,6 +485,7 @@ describe('HTTP settings sync', () => {
             tlsKeyFile: '',
             tlsCaFile: '',
             skillsExtensionEnabled: false,
+            kernelEndpointEnabled: false,
         };
 
         await plugin.updateHttpServerSettings(next);
@@ -534,6 +538,7 @@ describe('HTTP settings sync', () => {
             tlsKeyFile: '',
             tlsCaFile: '',
             skillsExtensionEnabled: false,
+            kernelEndpointEnabled: false,
         };
 
         await expect(plugin.startHttpServer()).rejects.toThrow('HTTPS requires both certificate and key file paths.');

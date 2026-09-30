@@ -32,7 +32,7 @@ import { createFileActionHandlers, FILE_TOOL_NAME, DEFAULT_LARGE_UPLOAD_THRESHOL
 export { FILE_TOOL_NAME };
 
 export const FILE_VARIANTS: ActionVariant<FileAction>[] = [
-    createZodActionVariant('upload_asset', FileUploadAssetSchema, 'Read a local file and upload it to the specified assets directory.'),
+    createZodActionVariant('upload_asset', FileUploadAssetSchema, 'Upload a local file or a kernel-staged uploadSource to the specified assets directory.'),
     createZodActionVariant('list_templates', FileListTemplatesSchema, 'List or search SiYuan workspace templates available under data/templates.'),
     createZodActionVariant('read_template', FileReadTemplateSchema, 'Read a Markdown template source through SiYuan’s authenticated template route.'),
     createZodActionVariant('create_template', FileCreateTemplateSchema, 'Create a Markdown template under data/templates through SiYuan’s workspace file API.'),

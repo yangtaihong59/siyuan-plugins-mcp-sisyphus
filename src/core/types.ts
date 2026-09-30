@@ -1214,8 +1214,11 @@ export const AvSetRelationSchema = z.object({
 export const FileUploadAssetSchema = z.object({
     action: z.literal("upload_asset"),
     assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),
-    localFilePath: z.string().describe("Local file path to read and upload into the assets directory"),
+    localFilePath: z.string().optional().describe("Local file path. CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB)."),
+    uploadSource: z.string().regex(/^[a-f0-9]{64}$/).optional().describe("Opaque source returned by the authenticated kernel /transfer/upload endpoint; expires after 10 minutes. Supply instead of localFilePath."),
     confirmLargeFile: z.boolean().optional().describe("Set to true only after the user explicitly confirms uploading a file larger than the configured safety threshold."),
+}).superRefine((value, ctx) => {
+    if (Boolean(value.localFilePath) === Boolean(value.uploadSource)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide exactly one of localFilePath or uploadSource." });
 });
 
 export const FileListTemplatesSchema = z.object({
@@ -1294,6 +1297,7 @@ export const FileExportMarkdownSnapshotSchema = z.object({
 
 export const FileExportResourcesSchema = z.object({
     action: z.literal("export_resources"),
+    delivery: z.enum(["inline", "download"]).optional().describe("Kernel response delivery. download returns a manifest for authenticated client-side saving without embedding binary data."),
     paths: z.array(z.string()).describe("Workspace-relative file paths to export (e.g., /data/20240318112233-abc123.sy/ or /assets/foo.png)"),
     name: z.string().optional().describe("Export file name"),
     outputPath: z.string().optional().describe("Optional local absolute or relative filesystem path to save the exported ZIP"),
@@ -1352,6 +1356,7 @@ export const FileDeleteAssetSchema = z.object({
 
 export const FileExtractDocSchema = z.object({
     action: z.literal("extract_doc"),
+    delivery: z.enum(["inline", "download"]).optional().describe("Kernel response delivery. download returns Markdown and asset paths for client-side saving."),
     id: z.string().describe("Document ID to extract"),
     outputDir: z.string().optional().describe("Output root directory. Defaults to ~/siyuan-extracted/ (resolved to absolute path)."),
 });

@@ -45,7 +45,7 @@ Markdown 中出现 `assets/...` 图片且答案依赖图片内容时，具备视
 - `delete_template`、`delete_asset` 与 `remove_unused_assets` 需要确认。`delete_template` 默认关闭。
 - 模板写入通过思源工作区文件 API 写 `/data/templates/...`，不会直接写本地文件系统。
 - `export_resources` 如果指定本地输出路径，也应谨慎处理。
-- `extract_doc` 将导出文件写入本地文件系统（默认 `~/siyuan-extracted/`），每次导出前会清空整个输出目录，避免旧提取结果无限积累。结果会返回 `outputRoot` 和 `defaultOutputDirUsed`；需要稳定路径时请显式传 `outputDir`，例如 `/private/tmp/...`。
+- `extract_doc`：未委托内核时，Node 写入本地文件系统（默认 `~/siyuan-extracted/`），清空输出根目录并跳过读取失败附件；返回 `outputRoot` 和 `defaultOutputDirUsed`，请显式指定专用 `outputDir`。内核桥接流式保存到新文档目录，保留同级文件、拒绝已有目标，失败只清理本次输出。直连内核客户端获得清单后自行保存。
 - `read_image` 只接受已授权文档树直接引用的 `assets/...` 路径，通过文件签名识别 PNG/JPEG/WebP/GIF，并拒绝超过 20 MiB 的图片。URL、本地路径、路径穿越及未引用资源都会被拒绝。
 
 ## 示例
@@ -221,8 +221,11 @@ CLI 默认只显示图片元数据；显式传 `--json` 时会附带非文本内
 - `rename_asset`
 - `delete_asset`
 - `extract_doc`
+
 ### `export_markdown_snapshot`
 
 `file(action="export_markdown_snapshot")` 通过思源 API 返回一页确定性 Markdown 快照，不写主机文件系统，也不启动后台任务。请求必须明确给出 `notebookID`，并且在 `roots`（例如 `/`）与 `documentIDs` 中二选一；用 `limit` 和不透明的 `cursor` 分批、可续跑地获取结果。
 
 每个文档返回 API 解析出的 ID、标题、hPath、存储路径、安全的相对 `.md` 路径、canonical metadata，以及 `sha256:v1:` 元数据/正文哈希。根目录清单按枚举得到的 hPath 后 ID 排序；显式 `documentIDs` 按 ID 排序。每次只解析权限并导出当前页。根目录模式会用轻量全量清单规划跨页路径冲突；显式 ID 模式则始终在文件名中加入文档 ID，保证不同页面不会互相覆盖。大小写不敏感路径冲突和 API/导出不一致会进入 `conflicts`/`errors`，不会猜测覆盖。这个响应是一页结果，不是已经落盘的整库备份；由调用方决定是否及在哪里保存。
+
+内核预算、20 MiB 图片读取、模板正文上限和文件桥接细节见 [内核高级选项](../kernel-options.md)。

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
     discoverLocalKernels,
+    isLoopbackApiUrl,
     parseKernelProcessLine,
     resolveDiscoveredApiUrl,
     shouldAutoDiscover,
@@ -197,4 +198,12 @@ describe('cli/discover-instances', () => {
             discoverDisabled: true,
         })).toBe(false);
     });
+});
+
+it('recognizes IPv6 loopback and rejects invalid process ports', () => {
+    expect(isLoopbackApiUrl('http://[::1]:6806')).toBe(true);
+    expect(isLoopbackApiUrl('http://[2001:db8::1]:6806')).toBe(false);
+    for (const port of ['0', '65536', '999999999999999999999']) {
+        expect(parseKernelProcessLine(`1 /kernel/SiYuan-Kernel serve --port ${port}`)).toBeUndefined();
+    }
 });

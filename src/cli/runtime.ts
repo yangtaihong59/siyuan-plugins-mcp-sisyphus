@@ -1,5 +1,8 @@
 import { existsSync } from 'node:fs';
 
+import { loadWriteCoordinatorSettings, type CliWriteCoordinatorSettings } from '../core/write-coordinator-settings';
+export { deriveKernelEndpointUrl, loadWriteCoordinatorSettings, selectWriteCoordinatorSettings } from '../core/write-coordinator-settings';
+export type { CliWriteCoordinatorSettings, CliWriteCoordinatorEndpoint } from '../core/write-coordinator-settings';
 import { SiYuanClient } from '../api/client';
 import {
     MCP_TOOLS_CONFIG_API_PATH,
@@ -32,13 +35,6 @@ export interface CliRuntimeState {
     writeCoordinator?: CliWriteCoordinatorSettings;
 }
 
-export interface CliWriteCoordinatorSettings {
-    url: string;
-    token?: string;
-}
-
-const HTTP_SETTINGS_API_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpHttpSettings';
-
 export async function loadCliRuntimeState(
     cli: ParsedArgs,
     options: { loadPermissions?: boolean } = {},
@@ -68,26 +64,9 @@ export async function loadCliRuntimeState(
         discoveryMode: 'blocking',
     };
 
-    const writeCoordinator = toolConfig.writeSafety.strictMode
-        ? await loadWriteCoordinatorSettings(client)
-        : undefined;
+    const writeCoordinator = await loadWriteCoordinatorSettings(client, resolved.token);
 
     return { client, toolConfig, permMgr, officialMcpRuntime, writeCoordinator };
-}
-
-async function loadWriteCoordinatorSettings(client: SiYuanClient): Promise<CliWriteCoordinatorSettings | undefined> {
-    try {
-        const raw = JSON.parse(await client.readFile(HTTP_SETTINGS_API_PATH)) as Record<string, unknown>;
-        if (raw.enabled === false) return undefined;
-        const port = typeof raw.port === 'number' ? raw.port : 36806;
-        const configuredHost = typeof raw.host === 'string' ? raw.host : '127.0.0.1';
-        const host = configuredHost === '0.0.0.0' || configuredHost === '::' ? '127.0.0.1' : configuredHost;
-        const protocol = raw.tlsEnabled === true ? 'https' : 'http';
-        const token = raw.authEnabled === true && typeof raw.token === 'string' ? raw.token : undefined;
-        return { url: `${protocol}://${host}:${port}/mcp`, token };
-    } catch {
-        return undefined;
-    }
 }
 
 async function retargetLoopbackProfile(

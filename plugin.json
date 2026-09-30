@@ -7,6 +7,9 @@
   "backends": [
     "all"
   ],
+  "kernels": [
+    "all"
+  ],
   "frontends": [
     "all"
   ],
