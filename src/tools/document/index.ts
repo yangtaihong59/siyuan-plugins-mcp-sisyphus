@@ -57,15 +57,15 @@ DOCUMENT_VARIANTS.find((variant) => variant.action === 'create')!.schema.oneOf =
 
 const documentTool = defineTool<DocumentAction>({
     name: 'document',
-    description: '📝 Grouped document operations.',
+    description: '📝 Document IDs, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown read/write. create uses notebook + notebook-local path (/Folder/Doc, omit notebook name). lookup accepts id, notebook+hpath, or notebook+path (.sy storage path); reuse returned storage paths for rename/move/remove. Read create help for parentPath + title.',
     variants: DOCUMENT_VARIANTS,
     actionSchema: DocumentActionSchema,
     aggregateOptions: {
         guidance: DOCUMENT_GUIDANCE,
         actionHints: DOCUMENT_ACTION_HINTS,
         propertyDescriptionOverrides: {
-            path: 'Path value. For action="create", use a human-readable target path RELATIVE TO THE NOTEBOOK ROOT (must start with /, MUST NOT include the notebook name; e.g., /Folder/Weekly Note, not /NotebookName/Folder/Weekly Note). For action="lookup", "list_tree", "search_docs", and path-based rename/remove/move, use a storage path returned by document(action="lookup", id=..., include=["path"]) (or / for list_tree notebook root); use hpath for human-readable lookup.',
-            parentPath: 'Parent path for title-based creation, RELATIVE TO THE NOTEBOOK ROOT. Accepts a human-readable path (must start with /, MUST NOT include the notebook name; e.g., /Folder) or a storage path ending in .sy returned by document(action="lookup").',
+            path: 'create: notebook-local human path such as /Folder/Doc, never including the notebook name. lookup/list_tree/search_docs/rename/remove/move: .sy storage path from document(action="lookup").',
+            parentPath: 'Parent for title-based create: notebook-local path (/Folder, no notebook name) or .sy storage path from lookup.',
             fromPaths: 'Source storage paths returned by document(action="lookup").',
             toPath: 'Target storage path. Use the storage path of an existing destination document returned by document(action="lookup").',
         },

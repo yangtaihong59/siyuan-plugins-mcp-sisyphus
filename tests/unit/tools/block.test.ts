@@ -59,13 +59,13 @@ describe('block tool', () => {
     it('exposes merged batch and daily-note actions in the grouped schema', () => {
         const config = buildDefaultToolConfig();
         const [tool] = listBlockTools(config.block);
-        const actionDescription = tool.inputSchema.properties.action.description;
-        expect(actionDescription).toContain('insert');
-        expect(actionDescription).toContain('update');
-        expect(actionDescription).toContain('replace');
-        expect(actionDescription).toContain('batch_kramdown');
-        expect(actionDescription).toContain('add_to_daily_note');
-        expect(actionDescription).toContain('docs_info');
+        const actionEnum = tool.inputSchema.properties.action.enum;
+        expect(actionEnum).toContain('insert');
+        expect(actionEnum).toContain('update');
+        expect(actionEnum).toContain('replace');
+        expect(actionEnum).toContain('batch_kramdown');
+        expect(actionEnum).toContain('add_to_daily_note');
+        expect(actionEnum).toContain('docs_info');
     });
 
     it('limits batch_kramdown to 20 IDs', () => {

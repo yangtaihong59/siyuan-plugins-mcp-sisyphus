@@ -44,8 +44,6 @@ function assertBaseline() {
     if (!fs.existsSync(path.join(SIYUAN, '.git'))) {
         fail(`缺少独立思源源码仓库 ${SIYUAN}；需要 v3.8.0 (${CURRENT_COMMIT}) 及 v3.7.3 Git object。`);
     }
-    const head = git(['rev-parse', 'HEAD']).trim();
-    if (head !== CURRENT_COMMIT) fail(`sample/siyuan HEAD 为 ${head}，预期 ${CURRENT_COMMIT} (${CURRENT_VERSION})。`);
     const currentTag = git(['rev-list', '-n', '1', CURRENT_VERSION]).trim();
     const previousTag = git(['rev-list', '-n', '1', PREVIOUS_VERSION]).trim();
     if (currentTag !== CURRENT_COMMIT) fail(`${CURRENT_VERSION} 指向 ${currentTag}，预期 ${CURRENT_COMMIT}。`);
@@ -520,10 +518,10 @@ function actionEndpointMap(plugin) {
 
 function nativeTools() {
     const tools = [];
-    const root = path.join(SIYUAN, 'kernel/mcp/tools');
-    for (const file of walkFiles(root, { extensions: ['.go'] })) {
-        if (file.endsWith('_test.go')) continue;
-        const source = fs.readFileSync(file, 'utf8');
+    const files = git(['ls-tree', '-r', '--name-only', CURRENT_COMMIT, '--', 'kernel/mcp/tools']).split('\n');
+    for (const file of files) {
+        if (!file.endsWith('.go') || file.endsWith('_test.go')) continue;
+        const source = sourceAt(CURRENT_COMMIT, file);
         for (const match of source.matchAll(/Name:\s*"([^"]+)"/g)) {
             const actionMatch = source.match(/"action":\s*\{[\s\S]*?Enum:\s*\[\]string\{([^}]*)\}/);
             const actions = actionMatch ? [...actionMatch[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]) : [];
@@ -539,7 +537,7 @@ function nativeTools() {
                     }
                 }
             }
-            tools.push({ name: match[1], actions, scope, effects, file: path.relative(SIYUAN, file).replaceAll(path.sep, '/'), line: lineAt(source, match.index) });
+            tools.push({ name: match[1], actions, scope, effects, file, line: lineAt(source, match.index) });
         }
     }
     return tools.sort((a, b) => a.name.localeCompare(b.name));
@@ -557,12 +555,11 @@ function officialApiPaths() {
 }
 
 function frontendApiPaths() {
-    const set = new Set();
-    for (const file of walkFiles(path.join(SIYUAN, 'app/src'), { extensions: ['.ts', '.tsx', '.js', '.svelte'] })) {
-        const source = fs.readFileSync(file, 'utf8');
-        for (const match of source.matchAll(/\/api\/[A-Za-z0-9_/:.-]+/g)) set.add(match[0]);
-    }
-    return set;
+    // Read the same immutable baseline as router.go and native tools, even
+    // when the sample checkout has moved or contains local edits.
+    const matches = git(['grep', '-h', '-o', '-E', '/api/[A-Za-z0-9_/:.-]+', CURRENT_COMMIT, '--',
+        'app/src/*.ts', 'app/src/*.tsx', 'app/src/*.js', 'app/src/*.svelte']);
+    return new Set(matches.split('\n').filter(Boolean));
 }
 
 function md(value) {

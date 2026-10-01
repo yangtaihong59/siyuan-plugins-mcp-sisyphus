@@ -38,7 +38,6 @@ src/
 │   │   ├── types.ts          # Shared types for the tool layer
 │   │   ├── define-tool.ts    # Tool factory
 │   │   ├── shared.ts         # Shared infrastructure
-│   │   ├── schema-builder.ts # Aggregated ToolDescriptor schema assembly
 │   │   ├── schema-analyzer.ts# Schema analysis & description trimming
 │   │   ├── result-factory.ts # Standard result factory (JSON / paginated / error)
 │   │   ├── pagination.ts     # Pagination utilities

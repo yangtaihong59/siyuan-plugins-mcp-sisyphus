@@ -41,13 +41,12 @@ export const SEARCH_VARIANTS: ActionVariant<SearchAction>[] = [
 
 const searchTool = defineTool<SearchAction>({
     name: SEARCH_TOOL_NAME,
-    description: '🔍 Grouped search and query operations.',
+    description: '🔍 Workspace content discovery: fulltext for keywords/syntax/regex, semantic for meaning, query_sql for SELECT queries (add LIMIT; table blocks), backlinks and refs. Use fs.search for Markdown lines under a known path, document.search_docs for titles, av.search for database names. Read matched content before editing; find_replace is the only write.',
     variants: SEARCH_VARIANTS,
     actionSchema: SearchActionSchema,
     aggregateOptions: {
         guidance: SEARCH_GUIDANCE,
         actionHints: SEARCH_ACTION_HINTS,
-        guidanceInlineLimit: 5,
     },
     handlers: SEARCH_ACTION_HANDLERS,
 });

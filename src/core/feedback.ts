@@ -2,7 +2,7 @@ import type { ExternalFetch, ExternalResponse } from './external-fetch';
 export const FEEDBACK_SHARE_ID = 'Uq2KRv7t';
 export const FEEDBACK_API_BASE = 'https://f-api.wps.cn/ksform/api/v3/campaign';
 export const FEEDBACK_FORM_URL = `https://f.wps.cn/ksform/w/write/${FEEDBACK_SHARE_ID}`;
-export const FEEDBACK_PLUGIN_VERSION = '0.6.8';
+export const FEEDBACK_PLUGIN_VERSION = '0.6.9';
 
 import { getInvocationTransport } from './runtime';
 

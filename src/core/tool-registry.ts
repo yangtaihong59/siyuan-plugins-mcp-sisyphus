@@ -1,5 +1,5 @@
 import type { SiYuanClient } from '../api/client';
-import { AGENT_MEMORY_VIRTUAL_PATH, isDangerousAction, TOOL_CATEGORIES, USER_RULES_VIRTUAL_PATH, type ToolCategory, type ToolConfig } from './config';
+import { isDangerousAction, TOOL_CATEGORIES, type ToolCategory, type ToolConfig } from './config';
 import type { PermissionManager } from './permissions';
 import type { ToolResult } from '@/tools/internal/shared';
 import type { OfficialMcpRuntime, OfficialMcpDiscoverySnapshot } from './official-mcp-bridge';
@@ -61,7 +61,6 @@ export interface ToolDescriptor {
 
 export const GENERIC_TOOL_OUTPUT_SCHEMA = {
     type: 'object',
-    description: 'JSON object corresponding to the tool result. Non-object values are wrapped under value.',
     additionalProperties: true,
 } as const;
 
@@ -129,9 +128,6 @@ export const TOOL_REGISTRY: Record<ToolCategory, ToolModule> = {
     mascot: { category: 'mascot', listTools: listMascotTools as ToolModule['listTools'], callTool: callMascotTool as ToolModule['callTool'] },
 };
 
-export const USER_RULES_TOOL_DESCRIPTION_REMINDER = `Active user custom rules apply. Read fs(action="read", path="${USER_RULES_VIRTUAL_PATH}") or siyuan://help/user-rules before choosing actions.`;
-export const AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER = `For SiYuan workspace-aware tasks, first read the virtual memory file with fs(action="read", path="${AGENT_MEMORY_VIRTUAL_PATH}").`;
-
 export function resolveCategory(name: string): ToolCategory | null {
     return TOOL_CATEGORIES.includes(name as ToolCategory) ? (name as ToolCategory) : null;
 }
@@ -174,14 +170,9 @@ export function listAllTools(config: ToolConfig, runtime?: OfficialMcpRuntime): 
         }));
     });
 
-    return tools.map((tool) => ({
-        ...tool,
-        description: [
-            tool.description,
-            AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER,
-            config.userRulesText.trim() ? USER_RULES_TOOL_DESCRIPTION_REMINDER : '',
-        ].filter(Boolean).join('\n\n'),
-    }));
+    // Session-wide guidance (user rules, /AGENTS.md memory, strict-write flow)
+    // lives once in server instructions instead of being repeated per tool.
+    return tools;
 }
 
 export function listConfiguredToolsForCategory(
@@ -199,34 +190,32 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
     const properties = { ...(inputSchema.properties ?? {}) };
     const actions: string[] = properties.action?.enum ?? [];
     const mutationActions = actions.filter(action => getPossibleActionSafetyPolicies(category, action).some(policy => policy.mode === 'mutation'));
-    const externalActions = actions.filter(action => getPossibleActionSafetyPolicies(category, action).some(policy => policy.mode === 'external'));
-    const externalGuidance = externalActions.length > 0
-        ? `\n\nExternal actions (${externalActions.join(', ')}): after user authorization, submit without validateOnly, requestId or hash credentials. Strict state preflight and replay guarantees are unavailable; never retry an uncertain external submission automatically.`
-        : '';
-    if (mutationActions.length === 0) return { ...descriptor, description: `${descriptor.description ?? ''}${externalGuidance}` };
+    if (mutationActions.length === 0) return descriptor;
     const preconditions = new Set(mutationActions.flatMap(action => getPossibleActionSafetyPolicies(category, action))
         .flatMap(policy => policy.mode === 'mutation' && policy.precondition !== 'none' ? [policy.precondition] : []));
     properties.requestId = {
         type: 'string',
         pattern: '^[a-f0-9]{4,64}$',
-        description: 'Server-issued request ID (4+ hex characters). Copy from validateOnly preflight; reuse unchanged for retries. Do not generate or truncate it.',
+        description: 'Server-issued preflight ID; reuse unchanged.',
     };
     properties.validateOnly = {
         type: 'boolean',
-        description: 'Preflight only. Returns a server-issued requestId and, when required, a bare short hash credential. Never executes the mutation.',
+        description: 'true: preflight only, no mutation.',
     };
     for (const precondition of preconditions) {
         const field = PRECONDITION_FIELD[precondition];
         properties[field] = {
             type: 'string',
             pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
-            description: 'Temporary preflight credential (4-64 hex characters, optionally sha256:v1: prefixed). It must resolve to an active lease for this exact mutation scope.',
+            description: 'Preflight-issued hash; copy unchanged.',
         };
     }
-    if (preconditions.has('state')) properties.expectedHash = {
+    // expectedHash stays accepted as an alias of expectedStateHash (see the
+    // per-action branches below) but is not advertised in the merged schema.
+    const expectedHashAlias = {
         type: 'string',
         pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
-        description: 'Alias of expectedStateHash for content-oriented strict writes.',
+        description: 'Alias of expectedStateHash.',
     };
     inputSchema.properties = properties;
 
@@ -256,7 +245,7 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
                 for (const precondition of new Set(preconditions)) {
                     const field = PRECONDITION_FIELD[precondition];
                     branchProperties[field] = properties[field];
-                    if (field === 'expectedStateHash') branchProperties.expectedHash = properties.expectedHash;
+                    if (field === 'expectedStateHash') branchProperties.expectedHash = expectedHashAlias;
                 }
             }
             return { ...branch, properties: branchProperties };
@@ -269,7 +258,6 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
 
     return {
         ...descriptor,
-        description: `${descriptor.description ?? ''}\n\nStrict safe writes apply to mutation paths of: ${mutationActions.join(', ')}. Run these mutations with validateOnly=true to obtain requestId and any required short hash credential, then copy both into execution before expiry. Reuse requestId unchanged for retries.${externalGuidance}`,
         inputSchema,
     };
 }

@@ -20,34 +20,36 @@ export function getSchemaRequired(schema: JsonSchema): string[] {
         : [];
 }
 
+/**
+ * Nested property schemas above this JSON size are collapsed in the merged
+ * (mount-time) schema to their top-level type plus a pointer to action help.
+ * Full validation still runs server-side against each action's Zod schema, and
+ * action help returns the complete nested shape on demand.
+ */
+export const COLLAPSED_PROPERTY_SCHEMA_CHARS = 600;
+
 export function mergePropertySchemas<Action extends string>(
     variants: SchemaVariant<Action>[],
     propertyDescriptionOverrides: Record<string, string> = {},
 ): JsonSchema {
     const mergedProperties: JsonSchema = {};
-    const descriptions = new Map<string, Set<string>>();
+    const descriptions = new Map<string, string>();
     const enums = new Map<string, Set<unknown>>();
-    const requiredBy = new Map<string, Set<string>>();
-    const optionalIn = new Map<string, Set<string>>();
-    const conditionalIn = new Map<string, Set<string>>();
 
     for (const variant of variants) {
-        const variantRequired = new Set(getSchemaRequired(variant.schema));
-        const conditionalRequired = new Set<string>((variant.schema.oneOf ?? variant.schema.anyOf ?? []).flatMap(getSchemaRequired));
         for (const [propertyName, propertySchema] of Object.entries(getSchemaProperties(variant.schema))) {
             if (propertyName === 'action' || !propertySchema || typeof propertySchema !== 'object') continue;
+            // Deprecated / pure alias fields stay accepted at runtime but are not advertised.
+            if (isHiddenAliasProperty(propertySchema as JsonSchema)) continue;
 
             mergedProperties[propertyName] = mergeLoosePropertySchema(
                 mergedProperties[propertyName] as JsonSchema | undefined,
                 propertySchema as JsonSchema,
             );
 
+            // Keep the first action's wording; per-action nuance lives in action help.
             const description = getSchemaDescription(propertySchema as JsonSchema);
-            if (description) {
-                const values = descriptions.get(propertyName) ?? new Set<string>();
-                values.add(description);
-                descriptions.set(propertyName, values);
-            }
+            if (description && !descriptions.has(propertyName)) descriptions.set(propertyName, description);
 
             const enumValues = (propertySchema as JsonSchema).enum;
             if (Array.isArray(enumValues)) {
@@ -55,39 +57,50 @@ export function mergePropertySchemas<Action extends string>(
                 for (const value of enumValues) values.add(value);
                 enums.set(propertyName, values);
             }
-
-            const targetMap = variantRequired.has(propertyName) ? requiredBy
-                : conditionalRequired.has(propertyName) ? conditionalIn : optionalIn;
-            const set = targetMap.get(propertyName) ?? new Set<string>();
-            set.add(variant.action);
-            targetMap.set(propertyName, set);
         }
     }
 
     for (const [propertyName, propertySchema] of Object.entries(mergedProperties)) {
-        const propertyDescriptions = descriptions.get(propertyName);
-        const baseDescription = propertyDescriptionOverrides[propertyName]
-            ?? (propertyDescriptions && propertyDescriptions.size > 0 ? [...propertyDescriptions].join(' / ') : undefined);
-        const required = [...(requiredBy.get(propertyName) ?? [])].sort();
-        const optional = [...(optionalIn.get(propertyName) ?? [])].sort();
-        const annotations = [
-            ...(required.length > 0 ? [`Required by: ${required.join(', ')}`] : []),
-            ...(optional.length > 0 ? [`Optional in: ${optional.join(', ')}`] : []),
-            ...(conditionalIn.has(propertyName) ? [`Required in a parameter combination: ${[...conditionalIn.get(propertyName)!].sort().join(', ')}`] : []),
-        ];
-        const annotationText = annotations.length > 0 ? `[${annotations.join('; ')}]` : '';
-
-        (propertySchema as JsonSchema).description = baseDescription
-            ? (annotationText ? `${baseDescription} ${annotationText}` : baseDescription)
-            : (annotationText || undefined);
+        const description = propertyDescriptionOverrides[propertyName] ?? descriptions.get(propertyName);
+        (propertySchema as JsonSchema).description = description;
+        if (!description) delete (propertySchema as JsonSchema).description;
 
         const enumValues = enums.get(propertyName);
         if (enumValues && enumValues.size > 0) {
             (propertySchema as JsonSchema).enum = [...enumValues];
         }
+
+        mergedProperties[propertyName] = collapseLargePropertySchema(propertySchema as JsonSchema);
     }
 
     return mergedProperties;
+}
+
+const HIDDEN_ALIAS_DESCRIPTION = /^(Alias (of|for) |Compatibility option|Legacy )/;
+
+function isHiddenAliasProperty(schema: JsonSchema): boolean {
+    const description = getSchemaDescription(schema);
+    return schema.deprecated === true || (description !== null && HIDDEN_ALIAS_DESCRIPTION.test(description));
+}
+
+function collapseLargePropertySchema(schema: JsonSchema): JsonSchema {
+    // Long scalar descriptions/enums are not nested structures. Keep their types
+    // and constraints (also used by CLI flag coercion).
+    const nested = schema.type === 'object' || schema.type === 'array'
+        || Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf);
+    if (!nested || JSON.stringify(schema).length <= COLLAPSED_PROPERTY_SCHEMA_CHARS) return schema;
+    const pointer = 'Read action="help", topic="<action>" before constructing this nested value.';
+    const collapsed: JsonSchema = {
+        description: typeof schema.description === 'string' ? `${schema.description} ${pointer}` : pointer,
+    };
+    // Mixed unions (e.g. string | object) keep no type so no valid form is excluded.
+    if (schema.type === 'object') collapsed.type = 'object';
+    if (schema.type === 'array') {
+        collapsed.type = 'array';
+        const itemType = (schema.items as JsonSchema | undefined)?.type;
+        collapsed.items = typeof itemType === 'string' ? { type: itemType } : {};
+    }
+    return collapsed;
 }
 
 function mergeLoosePropertySchema(previous: JsonSchema | undefined, next: JsonSchema): JsonSchema {

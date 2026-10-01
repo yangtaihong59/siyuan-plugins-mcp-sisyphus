@@ -34,12 +34,18 @@ export const FS_VARIANTS: ActionVariant<FsAction>[] = [
 
 const fsTool = defineTool<FsAction>({
     name: 'fs',
-    description: '📂 Simplified filesystem-style document operations.',
+    description: '📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.',
     variants: FS_VARIANTS,
     actionSchema: FsActionSchema,
     aggregateOptions: {
         guidance: FS_GUIDANCE,
         actionHints: FS_ACTION_HINTS,
+        propertyDescriptionOverrides: {
+            path: 'Workspace path such as /Notebook/Folder/Doc (notebook name may be omitted only if unambiguous). / lists notebooks.',
+            from: 'Source workspace path, e.g. /Notebook/Folder/Old.',
+            to: 'Destination workspace path, e.g. /Notebook/Folder/New.',
+            orderedPaths: 'Every visible direct child path under path, each exactly once, in the new order.',
+        },
     },
     handlers: FS_ACTION_HANDLERS,
 });

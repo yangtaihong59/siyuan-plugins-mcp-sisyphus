@@ -79,7 +79,7 @@ for (const variant of AV_VARIANTS) {
 
 const avTool = defineTool<AvAction>({
     name: 'av',
-    description: '\ud83d\uddc3\ufe0f Grouped attribute-view (database) operations.',
+    description: '🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Get avID from fs.read or av.search, then get for schema and resolvedRows before editing; use render for view rows. Reuse column IDs and resolvedRows.rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.',
     variants: AV_VARIANTS,
     actionSchema: AvActionSchema,
     aggregateOptions: {

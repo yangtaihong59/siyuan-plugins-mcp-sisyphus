@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseRouter, runAudit, stripComments } from '../../../scripts/api-audit.mjs';
 
 describe('API audit', () => {
@@ -25,7 +25,21 @@ describe('API audit', () => {
     });
 
     it('matches the fixed SiYuan and plugin baselines with no document drift', () => {
-        const { model } = runAudit({ check: true });
+        const readFile = fs.readFileSync.bind(fs);
+        const sampleRoot = path.resolve('sample/siyuan') + path.sep;
+        const guard = vi.spyOn(fs, 'readFileSync').mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
+            if (typeof args[0] === 'string' && path.resolve(args[0]).startsWith(sampleRoot)) {
+                throw new Error('Audit must read pinned Git objects, not the mutable sample checkout');
+            }
+            return readFile(...args);
+        });
+        let audited: ReturnType<typeof runAudit>;
+        try {
+            audited = runAudit({ check: true });
+        } finally {
+            guard.mockRestore();
+        }
+        const { model } = audited;
         expect(model.routes).toHaveLength(593);
         expect(model.paths.size).toBe(589);
         expect([...model.paths].filter((item) => item.startsWith('/api/'))).toHaveLength(582);

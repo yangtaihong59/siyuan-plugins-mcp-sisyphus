@@ -30,6 +30,14 @@ describe('translateError', () => {
     it('returns null for unrecognised errors', () => {
         expect(translateError(new Error('some random failure'))).toBeNull();
     });
+
+    it('does not mistake invalid JSON or an arbitrary ID mention for a missing block', () => {
+        expect(translateError(new Error('SiYuan API error: -1 - invalid character T'))).toBeNull();
+        expect(translateError(new Error('SiYuan API error: -1 - invalid block ID'))).toBeNull();
+        const error = new Error('SiYuan API error: -1 - read asset references [/data/test.sy] failed: invalid character T');
+        expect(translateError(error)?.code).toBe('asset_reference_scan_failed');
+        expect(isMissingBlockError(error)).toBe(false);
+    });
 });
 
 describe('isMissingBlockError compatibility', () => {

@@ -24,7 +24,7 @@ export const TAG_VARIANTS: ActionVariant<TagAction>[] = [
 
 const tagTool = defineTool<TagAction>({
     name: 'tag',
-    description: '🏷️ Grouped tag operations.',
+    description: '🏷️ Workspace-wide tags: list, rename, remove. There is no create action: write #tag# into Markdown to create a tag.',
     variants: TAG_VARIANTS,
     actionSchema: TagActionSchema,
     aggregateOptions: {

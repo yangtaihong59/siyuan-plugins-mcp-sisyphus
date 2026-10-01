@@ -2,10 +2,10 @@ import { usesBakedActionSchemas } from '../../core/action-schema-runtime';
 import { renderAiLayoutGuide } from '../../core/ai-layout-guide';
 import { z, ZodError, type ZodIssue } from 'zod';
 
-import { getActionTier, getEnabledActions, isDangerousAction, type CategoryToolConfig, type ToolCategory } from '../../core/config';
+import { getEnabledActions, isDangerousAction, type CategoryToolConfig, type ToolCategory } from '../../core/config';
 import { getActionHint } from '../../core/help';
 import { translateError } from './errorTranslation';
-import { buildActionHelp, buildActionUsageSummary, buildHelpIndex, buildParameterContract } from './help-render';
+import { buildActionHelp, buildActionSignatures, buildHelpIndex } from './help-render';
 import {
     getSchemaProperties,
     getSchemaRequired,
@@ -53,7 +53,6 @@ export interface AggregatedToolOptions<Action extends string> {
     guidance?: string[];
     actionHints?: Partial<Record<Action, string>>;
     propertyDescriptionOverrides?: Record<string, string>;
-    guidanceInlineLimit?: number;
 }
 
 interface ToolErrorContext {
@@ -231,29 +230,6 @@ function buildHelpActionSchema(enabledActions: string[]): JsonSchema {
     };
 }
 
-function buildEssentialGuidance<Action extends string>(
-    category: ToolCategory,
-    actionList: Action[],
-    options: AggregatedToolOptions<Action>,
-): string[] {
-    const notes: string[] = [];
-
-    const guidanceInlineLimit = options.guidanceInlineLimit ?? 2;
-
-    // Only include the configured number of top guidance lines (most critical context)
-    const guidance = options.guidance ?? [];
-    notes.push(...guidance.slice(0, guidanceInlineLimit));
-
-    const confirmationActions = actionList.filter((action) => isDangerousAction(category, action));
-    if (confirmationActions.length > 0) {
-        notes.push(`Requires user confirmation before: ${confirmationActions.join(', ')}.`);
-    }
-
-    // Action hints are no longer inlined — available via siyuan://help/action/{tool}/{action}
-
-    return notes;
-}
-
 function formatIssuePath(path: PropertyKey[]): string {
     return path
         .map((segment) => typeof segment === 'number' ? `[${segment}]` : String(segment))
@@ -333,42 +309,23 @@ function includeDebugDetails(): boolean {
     return process.env.SIYUAN_MCP_DEBUG_ERRORS === '1';
 }
 
-function buildTieredDescription<Action extends string>(
+/**
+ * Tool descriptions follow a fixed, token-lean shape: what the tool is for,
+ * then one compact signature per action. Everything else (optional fields,
+ * per-action nuance, guidance, examples) is served on demand through
+ * action="help" / siyuan://help resources, so it is not paid on every mount.
+ */
+function buildToolDescription<Action extends string>(
     category: ToolCategory,
     description: string,
-    enabledActions: Action[],
     enabledVariants: ActionVariant<Action>[],
-    options: AggregatedToolOptions<Action>,
 ): string {
-    const basicActions = enabledActions.filter((a) => getActionTier(category, a) === 'basic');
-    const advancedActions = enabledActions.filter((a) => getActionTier(category, a) === 'advanced');
-
-    const basicVariants = enabledVariants.filter((v) => basicActions.includes(v.action));
-    const basicUsageSummary = buildActionUsageSummary(basicVariants);
-
-    const parts = [
-        `${description} Use the "action" field to select the operation.`,
-    ];
-
-    if (basicActions.length > 0) {
-        parts.push(`Common actions: ${basicActions.join(', ')}. Required fields: ${basicUsageSummary}.`);
-    }
-
-    if (advancedActions.length > 0) {
-        parts.push(`Additional actions: ${advancedActions.join(', ')}. Read siyuan://help/action/${category}/{action} for details, or call action="help" if resources are unavailable.`);
-    }
-
-    const contract = buildParameterContract(category, enabledVariants);
-    if (contract.length > 0) {
-        parts.push(`Parameter contract per action (fields outside the action's optional list should not be sent):\n${contract}`);
-    }
-
-    const guidance = buildEssentialGuidance(category, enabledActions, options);
-    if (guidance.length > 0) {
-        parts.push(guidance.join(' '));
-    }
-
-    return parts.join('\n\n');
+    const hasConfirmation = enabledVariants.some((variant) => isDangerousAction(category, variant.action));
+    return [
+        description,
+        `Actions (required fields): ${buildActionSignatures(category, enabledVariants)}`,
+        `${hasConfirmation ? '* = ask the user to confirm first. ' : ''}action="help" (topic=<action>) returns optional fields, nested shapes, and examples.`,
+    ].join('\n');
 }
 
 export function buildAggregatedTool<Action extends string>(
@@ -385,8 +342,7 @@ export function buildAggregatedTool<Action extends string>(
     const enabledVariants = variants.filter((variant) => enabledActionSet.has(variant.action));
     if (enabledVariants.length === 0) return [];
 
-    const fullDescription = buildTieredDescription(category, description, enabledActions, enabledVariants, options);
-    const confirmationActions = enabledActions.filter((action) => isDangerousAction(category, action));
+    const fullDescription = buildToolDescription(category, description, enabledVariants);
 
     // References are relative to each action's original schema root. Keep that
     // root under an action namespace so recursive definitions survive merging
@@ -415,8 +371,14 @@ export function buildAggregatedTool<Action extends string>(
     if (!('topic' in mergedProperties)) {
         mergedProperties.topic = {
             type: 'string',
-            description: 'Optional. Only used when action="help". Pass an action name (e.g. "create") to get per-action help; omit or use "overview" for the action index.',
+            description: 'Topic for action="help".',
         };
+    }
+    // Collapsed nested fields may no longer point into an action's definitions.
+    const mergedJson = JSON.stringify(mergedProperties);
+    for (const action of Object.keys(definitions)) {
+        const prefix = `#/$defs/${action.replace(/~/g, '~0').replace(/\//g, '~1')}`;
+        if (!mergedJson.includes(`"${prefix}"`) && !mergedJson.includes(`"${prefix}/`)) delete definitions[action];
     }
     const actionBranches = [
         ...enabledVariants.map((variant) => withActionDiscriminator(variant)),
@@ -430,7 +392,7 @@ export function buildAggregatedTool<Action extends string>(
             action: {
                 type: 'string',
                 enum: [...enabledActions, 'help'],
-                description: `Action to perform. Supported values: ${enabledActions.join(', ')}. Use action="help" for the action index, or action="help" with topic="<actionName>" for per-action details.${confirmationActions.length > 0 ? ` User confirmation is required before calling: ${confirmationActions.join(', ')}.` : ''}`,
+                description: 'Operation.',
             },
             ...createLooseInputProperties(mergedProperties),
         },

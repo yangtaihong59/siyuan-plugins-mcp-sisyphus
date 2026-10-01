@@ -957,6 +957,13 @@ async function appendHumanPathState(
             pathState[path] = { notebookID: notebook.id, hpath, missing: true };
             continue;
         }
+        // Path and SQL indexes can still return a document immediately after
+        // deletion. Confirm its live existence before reading the block tree.
+        // Only an explicit false proves absence; transport errors must escape.
+        if (await client.requestRead('/api/block/checkBlockExist', { id: rootID }) === false) {
+            pathState[path] = { notebookID: notebook.id, hpath, missing: true };
+            continue;
+        }
         // The blocks SQL table is asynchronously indexed. Hashing it allowed
         // a write immediately after block.append to reuse a stale hash. Read
         // the live block tree and each block's current kramdown instead; these

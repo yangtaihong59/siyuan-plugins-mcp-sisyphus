@@ -59,43 +59,59 @@ notebook(action="rename")
 
 ## 2. Progressive Disclosure
 
-### Problem Context
+### Keep only routing and common call contracts at mount time
 
-Different users have different help information needs:
-- **AI Agent (LLM)**: Needs concise tool descriptions with common actions and parameters
-- **Human developers**: Need detailed API mappings, parameter shapes, example code
-- **Terminal users (CLI)**: Need quick command examples
+Keep the 14 aggregated tools and their existing action API. Do not split each action into a separate tool.
 
-### Choice Made
+| Layer | Responsibility |
+| --- | --- |
+| Initialize `instructions` | Cross-tool routing, read/edit/verify workflow, partial-read limits, user rules/memory priority, confirmation and strict-write preflight |
+| `tool.description` | Selection criteria, path/ID semantics, edit scope, compact `action(required fields)` signatures; `*` marks confirmation-required actions |
+| `inputSchema` | Enabled action enum, field types and constraints, one description per field; defer large nested shapes |
+| `action="help", topic="<action>"` | Complete original parameter schema, alternative required fields, examples, domain guidance and confirmation requirements |
+| `siyuan://help/action/{tool}/{action}` | The same full parameter schema and Markdown help; use the help action when resources are unavailable |
+| `siyuan://skills/*` and docs | Multi-step workflows, layout/domain guidance and full reference |
 
-Three-tier information exposure strategy:
+Global rules appear once. App handoff rules stay on the relevant App descriptors and responses. Merged fields no longer concatenate every action's description or repeat both parameter-contract and required-by lists. Compatibility aliases remain accepted at runtime while discovery favors canonical names.
 
-```
-Layer 1: Tool Description (MCP tool.description)
-    → Contains only brief descriptions of the most common actions
-    → Targets LLMs, controls token cost
+Nested merged schemas exceeding 600 characters are reduced to container types and help pointers in `tools/list` only. Short shapes, scalar types and enums remain. **Original action schemas, Zod validation, internal CLI action branches, write preflight and permissions remain intact.** Help returns the full schema root, preserving `required`, composition constraints and reference targets. Complex calls should fetch action help first; this adds a help round trip for those tasks.
 
-Layer 2: Action Help (MCP Resource dynamic request)
-    → siyuan://help/action/{tool}/{action}
-    → Contains accepted shapes, required fields, examples
-    → LLM fetches on demand
+### Call workflow and help entrypoints
 
-Layer 3: Complete Reference Docs (docs/ site)
-    → One page per tool
-    → Contains detailed descriptions, parameter tables, return values, CLI examples for all actions
-    → Targets human developers
-```
+Prompt rules use explicit conditions and next steps:
 
-### Rejected Alternatives
+- Read action help before using an unfamiliar action or constructing a collapsed nested value; reuse help already read during the task. The merged schema contains fields for multiple actions, not one universal call shape.
+- Read the target and nearby blocks before editing. Prefer exact replacement for local changes; verify affected content after structural or multi-part edits.
+- Follow returned continuation fields when more context is needed. Search snippets, partial reads and lossy representations cannot establish that original content is absent.
+- Keep path formats, block scope and AV identifier distinctions next to their tools. Read AV schema and resolved row IDs before editing database values.
+- Strict-write execution keeps business arguments unchanged, sets `validateOnly=false`, and copies the returned credentials. Preflight success alone does not execute the write.
 
-- **Option A: Stuff all help into tool description**: Would make descriptions too long, consuming excessive LLM context.
-- **Option B: Static docs only, no MCP Resource**: LLM cannot dynamically fetch specific action details.
+The layout guide is also available through `action="help", topic="ai-layout-guide"`, so clients without resource support can read the same specification. Regression tests follow collapsed-field help pointers through both routes and check their complete schemas without reading notes.
 
-### Current Outcome
+### Measurement and regression budgets
 
-- `tool.description` stays within 200~500 tokens
-- LLM can fetch detailed help via `ReadResourceRequest` when uncertain
-- Human users can consult the complete reference on the VitePress documentation site
+Run `npm run analyze:mcp` (or `pnpm analyze:mcp`). The script loads the actual registry and measures `instructions.trim().length + JSON.stringify({ tools }).length`; it no longer maintains a duplicate hard-coded tool catalog. Pass `--root PATH` to measure another source tree.
+
+| Default configuration | Before (`227985d`) | Compact version (`d49848a`) | With workflow guidance | Shorter repeated field descriptions |
+| --- | ---: | ---: | ---: | ---: |
+| Instructions | 20,988 chars | 3,216 chars | 3,754 chars | 3,754 chars |
+| tools/list (14 tools) | 133,583 chars | 57,720 chars | 58,344 chars | 56,531 chars |
+| Total | 154,571 chars | 60,936 chars | 62,098 chars | 60,285 chars |
+| Approximate tokens (chars / 4) | 38,643 | 15,234 | 15,525 | 15,072 |
+| AV tool within the total | 42,515 chars | 11,231 chars | 11,465 chars | 11,304 chars |
+
+Total reduction from before compaction: **61.0%**. Shortening repeated `action`, `topic`, `validateOnly`, `requestId` and hash descriptions saves **1,813 characters (2.9%)** compared with the workflow-guidance version. Schema description text falls from 19,485 to 17,672 characters. Full global instructions and action contracts stay unchanged; field descriptions still identify server-issued credentials, unchanged reuse and preflight without mutation. Types, enums and validation constraints are preserved.
+
+Scope: default config, no custom user rules or memory, no dynamically discovered third-party tools or optional MCP Apps. Additional client-visible descriptors cost extra. Tokens are estimates, not measurements with a Claude/OpenAI tokenizer. User rules and memory are never truncated to fit the budget.
+
+`tests/unit/core/mcp-payload.test.ts` caps default payloads at 64,000 characters and all-static-actions payloads at 66,000, with separate instructions/AV limits. It also checks full help, nested validation and disabled actions. Run `npm test` to verify.
+
+### Sources and limits
+
+- [OpenAI metadata guidance](https://developers.openai.com/plugins/guides/optimize-metadata): describe tool purpose and scope precisely, document arguments and constrained values, and use truthful annotations.
+- [OpenAI Tool search](https://developers.openai.com/api/docs/guides/tools-tool-search): clients can defer tool loading to reduce persistent context. `defer_loading` is a client API option, not a portable MCP server field.
+
+This project implements disclosure through its existing help/resources for client compatibility. The 600-character threshold and payload budgets are project decisions, not official MCP requirements. Real-model A/B error-rate evaluation has not been performed; unit/integration tests verify protocol, parameter and safety behavior.
 
 ---
 

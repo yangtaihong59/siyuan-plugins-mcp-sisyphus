@@ -20,7 +20,9 @@ import {
     MASCOT_SHOP_APP_ACTION_TOOL_NAME,
 } from '@/core/mcp-apps';
 import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText } from '@/core/server';
-import { AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER, USER_RULES_TOOL_DESCRIPTION_REMINDER } from '@/core/tool-registry';
+import { decorateToolsWithMcpApps } from '@/core/mcp-apps';
+import { buildDefaultToolConfig } from '@/core/config';
+import { BLOCK_GUIDANCE, BLOCK_ACTION_HINTS } from '@/core/help';
 import { scenarios } from '../../skills/source/scenarios.mjs';
 
 const jsonResponse = (payload: unknown): Response => ({
@@ -488,10 +490,10 @@ describe('MCP Server Integration', () => {
             expect(instructions.trimStart().startsWith('# Active user custom rules')).toBe(true);
             expect(instructions).toContain('## Rule list');
             expect(instructions).toContain(userRule);
-            expect(instructions.indexOf('# Active user custom rules')).toBeLessThan(instructions.indexOf('## Help and progressive disclosure'));
-            expect(instructions).toContain('User custom rules do not override safety confirmation requirements, notebook permissions, disabled tools, or disabled actions.');
+            expect(instructions.indexOf('# Active user custom rules')).toBeLessThan(instructions.indexOf('# Help'));
+            expect(instructions).toContain('never confirmation requirements, notebook permissions, or disabled tools/actions.');
             expect(instructions).toContain(`fs(action="read", path="${USER_RULES_VIRTUAL_PATH}")`);
-            expect(instructions).toContain('siyuan://help/user-rules');
+            expect(instructions).toContain('Apply these before choosing tools or writing content.');
             expect(instructions).toContain('siyuan://skills/index');
             expect(instructions).toContain('siyuan://skills/{name}');
         });
@@ -523,13 +525,13 @@ describe('MCP Server Integration', () => {
             expect(instructions).toContain('# Agent siyuan memory');
             expect(instructions).toContain('Status: fresh');
             expect(instructions).toContain('Last updated:');
-            expect(instructions).toContain('Stale threshold: 7 days');
+            expect(instructions).toContain('stale after 7 days');
             expect(instructions).toContain('Config source: api file');
-            expect(instructions).toContain('## What to write in /AGENTS.md');
+            expect(instructions).toContain('Never create or update it without');
             expect(instructions).toContain('Workspace has Inbox and Projects notebooks.');
-            expect(instructions).toContain('lower priority than user requests, active user custom rules, safety confirmation requirements');
+            expect(instructions).toContain('lower priority than user requests, user rules, confirmations, and permissions');
             expect(instructions.indexOf('# Active user custom rules')).toBeLessThan(instructions.indexOf('# Agent siyuan memory'));
-            expect(instructions.indexOf('# Agent siyuan memory')).toBeLessThan(instructions.indexOf('## Help and progressive disclosure'));
+            expect(instructions.indexOf('# Agent siyuan memory')).toBeLessThan(instructions.indexOf('# Help'));
         });
 
         it('prompts agents to ask before initializing missing agent siyuan memory', () => {
@@ -616,69 +618,49 @@ describe('MCP Server Integration', () => {
             await memoryClient.close();
         });
 
-        it('includes block update guidance for multi-line content', () => {
-            const instructions = buildServerInstructions('');
-
-            expect(instructions).toContain('block(action=”update”) is best for single-block replacement');
-            expect(instructions).toContain('A table or fenced code block may contain multiple lines.');
-            expect(instructions).not.toContain('Multi-line markdown may be truncated');
-            expect(instructions).toContain('block(action=”append”), prepend, or insert');
+        it('keeps block update details available in action help', async () => {
+            const result = await client.callTool({ name: 'block', arguments: { action: 'help', topic: 'update' } });
+            const help = JSON.parse((result.content[0] as { text: string }).text);
+            expect(help.guidance).toEqual(BLOCK_GUIDANCE);
+            expect(help.hint).toBe(BLOCK_ACTION_HINTS.update);
+            expect(help.parameters.properties.data).toBeDefined();
         });
 
-        it('makes the MCP App the sole flashcard presentation surface after a review session starts', () => {
-            const instructions = buildServerInstructions('');
-
-            expect(instructions).toContain('`flashcard_review_session` tool is available and succeeds');
-            expect(instructions).toContain('complete prompts and reference answers remain available in structured output');
-            expect(instructions).toContain('MUST NOT list, quote, restate, or reveal them');
-            expect(instructions).toContain(`Reply with exactly “${FLASHCARD_APP_HANDOFF_MESSAGE}” and stop.`);
-            expect(instructions).toContain('ordinary `flashcard` results retain their complete content');
+        it('keeps App handoff and scope rules on the App tools only', () => {
+            const tools = decorateToolsWithMcpApps([], true, buildDefaultToolConfig().mcpApps);
+            const review = tools.find(tool => tool.name === FLASHCARD_REVIEW_SESSION_TOOL_NAME);
+            expect(review?.description).toContain(FLASHCARD_APP_MODEL_INSTRUCTION);
+            expect(review?.description).toContain(FLASHCARD_APP_HANDOFF_MESSAGE);
+            const timeline = tools.find(tool => tool.name === TIMELINE_APP_TOOL_NAME);
+            expect(timeline?.description).toContain('global-only');
+            expect(timeline?.description).toContain('resolve and pass that documentId');
+            expect(buildServerInstructions('')).not.toContain(FLASHCARD_APP_HANDOFF_MESSAGE);
         });
 
-        it('explains that timeline App launches without a document are global-only', () => {
+        it('keeps concise routing, syntax, and safety rules at initialize', () => {
             const instructions = buildServerInstructions('');
-
-            expect(instructions).toContain('Pass its `documentId` before launch');
-            expect(instructions).toContain('the App is global-only and can display only global timeline nodes');
-            expect(instructions).toContain('Omit `documentId` only when the user wants the global timeline');
+            expect(instructions).toContain('Default to `fs`');
+            expect(instructions).toContain('/Notebook/Folder/Doc');
+            expect(instructions).toContain('Reuse paths and IDs from results');
+            expect(instructions).toContain('Search snippets and partial reads are not full documents');
+            expect(instructions).toContain('send only fields supported by the chosen action');
+            expect(instructions).toContain('topic="ai-layout-guide"');
+            expect(instructions).toContain('#tag#');
+            expect(instructions).toContain("((block-id 'anchor text'))");
+            expect(instructions).toContain('Change rows, columns, and cells only with the av tool');
+            expect(instructions).toContain('flashcard(action="create_card")');
+            expect(instructions).toContain('siyuan://help/ai-layout-guide');
+            expect(instructions).toContain('explicit confirmation');
+            expect(instructions).toContain('validateOnly=true');
+            expect(instructions).toContain('set validateOnly=false');
+            expect(instructions).toContain('business arguments unchanged');
         });
 
-        it('directs basic path-style operations to the fs tool first', () => {
-            const instructions = buildServerInstructions('');
-
-            expect(instructions).toContain('For basic path-style notebook and document operations, use `fs`');
-            expect(instructions).toContain('Treat `fs` as the default virtual filesystem interface');
-            expect(instructions).toContain('fs(action="read", path="/Notebook/Folder/Doc")');
-            expect(instructions).toContain('fs(action="write", path="/Notebook/Folder/Doc", markdown="...", overwrite=true)');
-            expect(instructions).toContain('fs(action="mv", from="/Notebook/Old", to="/Notebook/New")');
-            expect(instructions).toContain('Prefer `fs` for basic browse/read/write/edit/search/move/delete workflows.');
-            expect(instructions).toContain(`fs(action="read", path="${USER_RULES_VIRTUAL_PATH}")`);
-        });
-
-        it('documents native SiYuan feature best practices in initialize instructions', () => {
-            const instructions = buildServerInstructions('');
-
-            expect(instructions).toContain('`fs` is a Markdown-oriented convenience layer.');
-            expect(instructions).toContain('database rows and cells, flashcard deck bindings');
-            expect(instructions).toContain('To add tags, write #tag# through fs.write');
-            expect(instructions).toContain('tag(action=”rename”, oldLabel=..., newLabel=...)');
-            expect(instructions).toContain('((block-id \'anchor text\'))');
-            expect(instructions).toContain('search(action=”get_backlinks”|"search_refs")');
-            expect(instructions).toContain('If a tool result includes attributeViews, databaseBlock, or avToolHint');
-            expect(instructions).toContain('av(action=”get”, id=...)');
-            expect(instructions).toContain('write actions such as add_rows, set_cells, remove_rows, add_column, and remove_column use avID');
-            expect(instructions).toContain('flashcard(action=”create_card”, deckID=..., blockIDs=[...])');
-            expect(instructions).toContain('Removing a flashcard binding is separate from deleting the underlying note blocks.');
-        });
-
-        it('formats MCP usage suggestions with type-specific emoji labels', () => {
-            const instructions = buildServerInstructions('');
-
-            expect(instructions).toContain('## Usage semantics');
-            expect(instructions).toContain('Bookmarks🔖: Collect existing blocks through block attributes');
-            expect(instructions).toContain('Tags🏷️: Use inline markdown tokens such as `#tag#`');
-            expect(instructions).toContain('Flashcards🧠: Treat flashcards as review semantics, not layout');
-            expect(instructions).toContain('MCP✍️: Prefer creating final content directly');
+        it('omits strict preflight guidance when disabled but retains external submission safety', () => {
+            const instructions = buildServerInstructions({ writeSafety: { strictMode: false } });
+            expect(instructions).not.toContain('validateOnly=true');
+            expect(instructions).toContain('never retry an uncertain submission automatically');
+            expect(instructions).toContain('explicit confirmation');
         });
 
         it('should list tools with expected names', async () => {
@@ -740,7 +722,7 @@ describe('MCP Server Integration', () => {
             expect((result.content[0] as { text: string }).text).toContain('Tool "document" is disabled.');
         });
 
-        it('adds a light user custom rules reminder to tool descriptions when configured', async () => {
+        it('sends user custom rules once at initialize without repeating them per tool', async () => {
             storedFiles['/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig'] = JSON.stringify({
                 userRulesText: 'Always set document icons.',
             });
@@ -755,15 +737,15 @@ describe('MCP Server Integration', () => {
 
             expect(tools.length).toBeGreaterThan(0);
             for (const tool of tools) {
-                expect(tool.description).toContain(USER_RULES_TOOL_DESCRIPTION_REMINDER);
-                expect(tool.description).toContain(`fs(action="read", path="${USER_RULES_VIRTUAL_PATH}")`);
+                expect(rulesClient.getInstructions()).toContain('Always set document icons.');
+                expect(tool.description).not.toContain(`fs(action="read", path="${USER_RULES_VIRTUAL_PATH}")`);
                 expect(tool.description).not.toContain('Always set document icons.');
             }
 
             await rulesClient.close();
         });
 
-        it('adds a light agent memory reminder to tool descriptions without embedding memory content', async () => {
+        it('sends agent memory once at initialize without repeating it per tool', async () => {
             storedFiles['/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig'] = JSON.stringify({
                 userRulesText: '',
                 agentSiyuanMemoryText: 'Workspace has sensitive project map.',
@@ -780,7 +762,8 @@ describe('MCP Server Integration', () => {
 
             expect(tools.length).toBeGreaterThan(0);
             for (const tool of tools) {
-                expect(tool.description).toContain(AGENT_MEMORY_TOOL_DESCRIPTION_REMINDER);
+                expect(memoryDescriptionClient.getInstructions()).toContain('Workspace has sensitive project map.');
+                expect(tool.description).not.toContain('/AGENTS.md');
                 expect(tool.description).not.toContain('Workspace has sensitive project map.');
             }
 

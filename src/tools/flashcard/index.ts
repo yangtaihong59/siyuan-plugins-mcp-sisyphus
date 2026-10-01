@@ -26,7 +26,7 @@ export const FLASHCARD_VARIANTS: ActionVariant<FlashcardAction>[] = [
 
 const flashcardTool = defineTool<FlashcardAction>({
     name: 'flashcard',
-    description: '🃏 Grouped flashcard review and deck operations.',
+    description: '🃏 Flashcards: list decks and due cards, review with a 1-4 rating, turn content blocks into cards (create_card), remove cards from a deck.',
     variants: FLASHCARD_VARIANTS,
     actionSchema: FlashcardActionSchema,
     aggregateOptions: {

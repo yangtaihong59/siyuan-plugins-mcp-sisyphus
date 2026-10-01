@@ -27,7 +27,7 @@ export const MASCOT_VARIANTS: ActionVariant<MascotAction>[] = [
 
 const mascotTool = defineTool<MascotAction>({
     name: 'mascot',
-    description: '🐾 Grouped mascot balance and care operations. Every successful MCP tool call earns 1 coin for the mascot.',
+    description: '🐾 Mascot coin balance, shop, and purchases. Every successful MCP call earns 1 coin.',
     variants: MASCOT_VARIANTS,
     actionSchema: MascotActionSchema,
     aggregateOptions: {

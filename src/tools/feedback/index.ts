@@ -21,7 +21,7 @@ export const FEEDBACK_VARIANTS: ActionVariant<FeedbackAction>[] = [
 
 const feedbackTool = defineTool<FeedbackAction>({
     name: FEEDBACK_TOOL_NAME,
-    description: '💬 Submit plain-text GitHub Issue-style feedback, suggestions, or experience reports to the plugin developer.',
+    description: '💬 Send plain-text, GitHub-issue-style product feedback to the plugin developer. Never include secrets or private note content.',
     variants: FEEDBACK_VARIANTS,
     actionSchema: FeedbackActionSchema,
     aggregateOptions: {

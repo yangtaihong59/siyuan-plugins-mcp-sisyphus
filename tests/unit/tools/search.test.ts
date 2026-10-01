@@ -242,12 +242,12 @@ describe('search tool filtering', () => {
     it('exposes high-priority search actions in the grouped schema', () => {
         const config = buildDefaultToolConfig();
         const [tool] = listSearchTools(config.search);
-        const actionDescription = tool.inputSchema.properties.action.description;
-        expect(actionDescription).toContain('search_refs');
-        expect(actionDescription).toContain('semantic');
-        expect(actionDescription).toContain('find_replace');
-        expect(actionDescription).toContain('search_assets');
-        expect(actionDescription).toContain('list_invalid_refs');
+        const actionEnum = tool.inputSchema.properties.action.enum;
+        expect(actionEnum).toContain('search_refs');
+        expect(actionEnum).toContain('semantic');
+        expect(actionEnum).toContain('find_replace');
+        expect(actionEnum).toContain('search_assets');
+        expect(actionEnum).toContain('list_invalid_refs');
     });
 
     it('publishes the semantic action contract without fulltext-only sort controls', () => {

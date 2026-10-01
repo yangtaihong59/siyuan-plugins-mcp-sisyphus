@@ -208,6 +208,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 agentSiyuanMemoryConfigSource: initialConfigLoad.source,
                 agentSiyuanMemoryConfigOk: initialConfigLoad.ok,
                 agentSiyuanMemoryConfigError: initialConfigLoad.errorMessage,
+                writeSafety: initialConfig.writeSafety,
             }).trim(),
             jsonSchemaValidator: noopSchemaValidator,
         },

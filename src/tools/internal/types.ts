@@ -23,7 +23,6 @@ export interface AggregatedToolOptions<Action extends string> {
     guidance?: string[];
     actionHints?: Partial<Record<Action, string>>;
     propertyDescriptionOverrides?: Record<string, string>;
-    guidanceInlineLimit?: number;
 }
 
 export interface TruncationMeta {

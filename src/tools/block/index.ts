@@ -56,7 +56,7 @@ export const BLOCK_VARIANTS: ActionVariant<BlockAction>[] = [
 
 const blockTool = defineTool<BlockAction>({
     name: 'block',
-    description: '\ud83e\uddf1 Grouped block operations.',
+    description: '🧱 Native structure and metadata by block ID; prefer fs for ordinary Markdown edits. Read get_kramdown before replace: it matches only that block, not children or a heading section. update is best for one block (a table/code block can be multiline); use insert/append/prepend for sibling blocks.',
     variants: BLOCK_VARIANTS,
     actionSchema: BlockActionSchema,
     aggregateOptions: {
@@ -64,7 +64,8 @@ const blockTool = defineTool<BlockAction>({
         actionHints: BLOCK_ACTION_HINTS,
         propertyDescriptionOverrides: {
             parentID: 'Parent block or document ID. With prepend/append, a document ID targets the document head or tail; a block ID targets that block\'s child list.',
-            previousID: 'Sibling block ID to position after. For block(action="move"), provide previousID, parentID, or both to describe the destination. Successful moves return a structured success object.',
+            previousID: 'Sibling block ID to place after. For move, give previousID, parentID, or both.',
+            ids: 'Block IDs to move as a group, in the desired final order.',
         },
     },
     handlers: BLOCK_ACTION_HANDLERS,
