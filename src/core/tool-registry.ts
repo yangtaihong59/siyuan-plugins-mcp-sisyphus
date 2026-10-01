@@ -196,18 +196,18 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
     properties.requestId = {
         type: 'string',
         pattern: '^[a-f0-9]{4,64}$',
-        description: 'Copy from the validateOnly preflight; resend unchanged, also on retry.',
+        description: 'Server-issued preflight ID; reuse unchanged.',
     };
     properties.validateOnly = {
         type: 'boolean',
-        description: 'Preflight a write without executing it; returns requestId and any required hash.',
+        description: 'true: preflight only, no mutation.',
     };
     for (const precondition of preconditions) {
         const field = PRECONDITION_FIELD[precondition];
         properties[field] = {
             type: 'string',
             pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
-            description: 'Hash credential returned by the validateOnly preflight.',
+            description: 'Preflight-issued hash; copy unchanged.',
         };
     }
     // expectedHash stays accepted as an alias of expectedStateHash (see the

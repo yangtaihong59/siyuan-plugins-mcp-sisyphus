@@ -76,9 +76,9 @@ describe('schema-analyzer helpers', () => {
         expect(merged.filters).toEqual({
             type: 'array',
             items: { type: 'object' },
-            description: 'Filter tree. Nested shape: action="help" with topic=<action>.',
+            description: 'Filter tree. Read action="help", topic="<action>" before constructing this nested value.',
         });
-        expect(merged.mixed).toEqual({ description: 'Nested shape: action="help" with topic=<action>.' });
+        expect(merged.mixed).toEqual({ description: 'Read action="help", topic="<action>" before constructing this nested value.' });
     });
 
     it('does not drop scalar types or enums when their descriptions are long', () => {

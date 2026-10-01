@@ -89,7 +89,7 @@ function collapseLargePropertySchema(schema: JsonSchema): JsonSchema {
     const nested = schema.type === 'object' || schema.type === 'array'
         || Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf);
     if (!nested || JSON.stringify(schema).length <= COLLAPSED_PROPERTY_SCHEMA_CHARS) return schema;
-    const pointer = 'Nested shape: action="help" with topic=<action>.';
+    const pointer = 'Read action="help", topic="<action>" before constructing this nested value.';
     const collapsed: JsonSchema = {
         description: typeof schema.description === 'string' ? `${schema.description} ${pointer}` : pointer,
     };

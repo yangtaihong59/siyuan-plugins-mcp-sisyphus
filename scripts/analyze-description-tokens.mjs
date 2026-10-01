@@ -38,7 +38,7 @@ try {
         for (const action of Object.keys(config[category].actions)) config[category].actions[action] = true;
     }
     console.log(JSON.stringify({
-        scope: '14 aggregated tools, empty user rules/memory, no discovered extension tools or optional MCP Apps',
+        scope: '14 aggregated tools, default user rules, empty memory, no discovered extension tools or optional MCP Apps',
         estimate: 'ceil(serialized characters / 4); not a model tokenizer count',
         defaults, allStaticActions: measure(config),
     }, null, 2));

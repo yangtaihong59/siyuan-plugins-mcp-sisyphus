@@ -371,7 +371,7 @@ export function buildAggregatedTool<Action extends string>(
     if (!('topic' in mergedProperties)) {
         mergedProperties.topic = {
             type: 'string',
-            description: 'Only for action="help": the action to explain.',
+            description: 'Topic for action="help".',
         };
     }
     // Collapsed nested fields may no longer point into an action's definitions.
@@ -392,7 +392,7 @@ export function buildAggregatedTool<Action extends string>(
             action: {
                 type: 'string',
                 enum: [...enabledActions, 'help'],
-                description: 'Operation to run; see the tool description.',
+                description: 'Operation.',
             },
             ...createLooseInputProperties(mergedProperties),
         },

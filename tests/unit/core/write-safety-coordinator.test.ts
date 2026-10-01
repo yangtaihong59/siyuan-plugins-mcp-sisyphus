@@ -1059,6 +1059,48 @@ describe('write safety coordinator', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
+    it.each(['hpath', 'sql', 'existence-error'])('checks fs.rm live existence despite stale indexes (%s)', async (staleIndex) => {
+        let exists = true;
+        const id = '20260812000000-abcdefg';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'nb-1', name: 'Notes' }] };
+                if (endpoint === '/api/filetree/getIDsByHPath') return staleIndex !== 'sql' ? [id] : [];
+                if (endpoint === '/api/query/sql') return [{ id, box: 'nb-1', hpath: '/Doc' }];
+                if (endpoint === '/api/block/checkBlockExist') {
+                    if (!exists && staleIndex === 'existence-error') throw new Error('Request timeout');
+                    return exists;
+                }
+                if (!exists) throw new Error('SiYuan API error: -1 - block not found');
+                if (endpoint === '/api/block/getChildBlocks') return [{ id: '20260812000001-abcdefg', type: 'p' }];
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: 'original' };
+                return [];
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true, canDelete: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rwd' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'rm', path: '/Notes/Doc' };
+        const execute = vi.fn(async () => { exists = false; return success({ success: true }); });
+        const call = (args: Record<string, unknown>) => coordinator.run({
+            client, permMgr, category: 'fs', action: 'rm', args, strictMode: true, execute,
+        });
+        const preflight = parseResult(await call({ ...args, validateOnly: true }));
+        const submission = { ...args, requestId: preflight.requestId, expectedStateHash: preflight.expectedStateHash };
+        const result = parseResult(await call(submission));
+        if (staleIndex === 'existence-error') {
+            expect(result.error.code).toBe('readback_mismatch');
+            expect(result.writeSafetyGuaranteed).not.toBe(true);
+            expect(execute).toHaveBeenCalledTimes(1);
+            return;
+        }
+        expect(result.safety).toMatchObject({ writeSafetyGuaranteed: true, writeExecuted: true, transactionState: 'committed' });
+        expect(parseResult(await call(submission)).replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
     it('fingerprints complete fs documents by human path before compound edits', async () => {
         let markdown = 'old';
         const client = {

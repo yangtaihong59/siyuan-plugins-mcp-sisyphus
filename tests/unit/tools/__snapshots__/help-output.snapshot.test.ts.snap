@@ -4195,7 +4195,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "tool": "av",
       },
     },
-    "description": "🗃️ Real SiYuan databases (attribute views, not Markdown tables): read, create, rows, columns, cells, views, filters, sorts, relations. Never edit database rows through fs/block; get avID from fs.read/block results (avToolHint) or av.search.
+    "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Get avID from fs.read or av.search, then get for schema and resolvedRows before editing; use render for view rows. Reuse column IDs and resolvedRows.rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.
 Actions (required fields): get(avID) · render() · get_attribute_view_keys(avID) · get_attribute_view_filter_sort(avID) · search(keyword) · add_rows(avID) · remove_rows(avID, srcIDs) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · get_primary_key_values(avID) · add_view(avID, blockID, viewID, layout, name) · set_filters(avID, blockID, viewID, filters) · set_sorts(avID, blockID, viewID, sorts) · set_group(avID, blockID, viewID, group) · set_column_visibility(avID, blockID, viewID, keyID, hidden) · set_column_order(avID, blockID, viewID, keyIDs) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {
@@ -5733,7 +5733,7 @@ Actions (required fields): get(avID) · render() · get_attribute_view_keys(avID
         "tool": "block",
       },
     },
-    "description": "🧱 Block-level editing by block ID: insert/prepend/append/update blocks, exact text replace inside one block, move, attributes, folding, kramdown/DOM reads, children, breadcrumbs. Use when fs's Markdown view is not precise enough.
+    "description": "🧱 Native structure and metadata by block ID; prefer fs for ordinary Markdown edits. Read get_kramdown before replace: it matches only that block, not children or a heading section. update is best for one block (a table/code block can be multiline); use insert/append/prepend for sibling blocks.
 Actions (required fields): insert() · prepend(dataType, data, parentID) · append(dataType, data, parentID) · update() · replace(id, edit) · delete*(id) · move*() · set_fold_state(id, folded) · get_kramdown(id) · batch_kramdown(ids) · get_children(id) · transfer_references(fromID, toID) · set_attrs(id, attrs) · get_attrs(id) · info(id) · breadcrumb(id) · dom(id) · recent_updated() · word_count(ids) · add_to_daily_note(notebook, dataType, data, position) · docs_info()
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {
@@ -7233,7 +7233,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "tool": "document",
       },
     },
-    "description": "📝 SiYuan-native document operations by ID or notebook + path: create, lookup, rename, move, reorder, attrs, tree, outline, daily note, heading↔doc conversion. \`path\` is notebook-local for create but a .sy storage path (from lookup) elsewhere; prefer fs for plain path-based read/write.
+    "description": "📝 Document IDs, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown read/write. create uses notebook + notebook-local path (/Folder/Doc, omit notebook name). lookup accepts id, notebook+hpath, or notebook+path (.sy storage path); reuse returned storage paths for rename/move/remove. Read create help for parentPath + title.
 Actions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · ensure_link_targets(notebook, parentId, mode, targets) · rename(title) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {
@@ -10279,7 +10279,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
         "tool": "fs",
       },
     },
-    "description": "📂 Default tool for notes addressed by workspace path (/Notebook/Folder/Doc): browse, read, write, exact-text replace, grep, reorder, move, delete. Works on a Markdown view only; use document/block/av for block IDs, native layout, attributes, or databases.
+    "description": "📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.
 Actions (required fields): ls(path) · tree(path) · read(path) · write(path, markdown) · replace(path, edit) · rm*(path) · mv*(from, to) · reorder(path, orderedPaths) · search(path, query)
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {
@@ -11907,7 +11907,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "tool": "search",
       },
     },
-    "description": "🔍 Find content: fulltext (keyword/syntax/regex), semantic (meaning), query_sql (SELECT only, add LIMIT; table blocks, type codes d/h/p/l/i/b/c/m/t), backlinks and refs, asset search, broken refs, and find_replace (the only write).
+    "description": "🔍 Workspace content discovery: fulltext for keywords/syntax/regex, semantic for meaning, query_sql for SELECT queries (add LIMIT; table blocks), backlinks and refs. Use fs.search for Markdown lines under a known path, document.search_docs for titles, av.search for database names. Read matched content before editing; find_replace is the only write.
 Actions (required fields): fulltext(query) · semantic(query) · query_sql() · get_backlinks(id) · search_refs(id) · find_replace*(k, r, ids) · search_assets() · fulltext_asset_content() · list_invalid_refs()
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {

@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "fs",
-      "description": "📂 Default tool for notes addressed by workspace path (/Notebook/Folder/Doc): browse, read, write, exact-text replace, grep, reorder, move, delete. Works on a Markdown view only; use document/block/av for block IDs, native layout, attributes, or databases.\nActions (required fields): ls(path) · tree(path) · read(path) · write(path, markdown) · replace(path, edit) · rm*(path) · mv*(from, to) · reorder(path, orderedPaths) · search(path, query)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.\nActions (required fields): ls(path) · tree(path) · read(path) · write(path, markdown) · replace(path, edit) · rm*(path) · mv*(from, to) · reorder(path, orderedPaths) · search(path, query)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -20,7 +20,7 @@
               "search",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "path": {
             "type": "string",
@@ -63,7 +63,7 @@
             "type": "boolean"
           },
           "edit": {
-            "description": "One replacement edit or an array of edits to apply sequentially inside editable non-complex Markdown blocks without rebuilding the document Nested shape: action=\"help\" with topic=<action>."
+            "description": "One replacement edit or an array of edits to apply sequentially inside editable non-complex Markdown blocks without rebuilding the document Read action=\"help\", topic=\"<action>\" before constructing this nested value."
           },
           "from": {
             "type": "string",
@@ -107,7 +107,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -147,7 +147,7 @@
               "get_child_docs",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "name": {
             "type": "string",
@@ -219,7 +219,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -239,7 +239,7 @@
     },
     {
       "name": "document",
-      "description": "📝 SiYuan-native document operations by ID or notebook + path: create, lookup, rename, move, reorder, attrs, tree, outline, daily note, heading↔doc conversion. `path` is notebook-local for create but a .sy storage path (from lookup) elsewhere; prefer fs for plain path-based read/write.\nActions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · ensure_link_targets(notebook, parentId, mode, targets) · rename(title) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📝 Document IDs, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown read/write. create uses notebook + notebook-local path (/Folder/Doc, omit notebook name). lookup accepts id, notebook+hpath, or notebook+path (.sy storage path); reuse returned storage paths for rename/move/remove. Read create help for parentPath + title.\nActions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · ensure_link_targets(notebook, parentId, mode, targets) · rename(title) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -266,7 +266,7 @@
               "doc_to_heading",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "notebook": {
             "type": "string",
@@ -332,7 +332,7 @@
             "description": "resolve/reuse accept exact existing IDs without title fallback; create accepts explicit new titles and refuses to adopt same-title children."
           },
           "targets": {
-            "description": "Explicit link targets. keys must be unique; IDs are identities, while titles are only new-document names. Nested shape: action=\"help\" with topic=<action>.",
+            "description": "Explicit link targets. keys must be unique; IDs are identities, while titles are only new-document names. Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
             "items": {
               "type": "object"
@@ -487,7 +487,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -507,7 +507,7 @@
     },
     {
       "name": "block",
-      "description": "🧱 Block-level editing by block ID: insert/prepend/append/update blocks, exact text replace inside one block, move, attributes, folding, kramdown/DOM reads, children, breadcrumbs. Use when fs's Markdown view is not precise enough.\nActions (required fields): insert() · prepend(dataType, data, parentID) · append(dataType, data, parentID) · update() · replace(id, edit) · delete*(id) · move*() · set_fold_state(id, folded) · get_kramdown(id) · batch_kramdown(ids) · get_children(id) · transfer_references(fromID, toID) · set_attrs(id, attrs) · get_attrs(id) · info(id) · breadcrumb(id) · dom(id) · recent_updated() · word_count(ids) · add_to_daily_note(notebook, dataType, data, position) · docs_info()\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🧱 Native structure and metadata by block ID; prefer fs for ordinary Markdown edits. Read get_kramdown before replace: it matches only that block, not children or a heading section. update is best for one block (a table/code block can be multiline); use insert/append/prepend for sibling blocks.\nActions (required fields): insert() · prepend(dataType, data, parentID) · append(dataType, data, parentID) · update() · replace(id, edit) · delete*(id) · move*() · set_fold_state(id, folded) · get_kramdown(id) · batch_kramdown(ids) · get_children(id) · transfer_references(fromID, toID) · set_attrs(id, attrs) · get_attrs(id) · info(id) · breadcrumb(id) · dom(id) · recent_updated() · word_count(ids) · add_to_daily_note(notebook, dataType, data, position) · docs_info()\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -537,7 +537,7 @@
               "docs_info",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "dataType": {
             "description": "Data format",
@@ -639,7 +639,7 @@
             }
           },
           "edit": {
-            "description": "One replacement edit or an array of edits to apply sequentially within the same block kramdown Nested shape: action=\"help\" with topic=<action>."
+            "description": "One replacement edit or an array of edits to apply sequentially within the same block kramdown Read action=\"help\", topic=\"<action>\" before constructing this nested value."
           },
           "ids": {
             "description": "Block IDs to move as a group, in the desired final order.",
@@ -729,7 +729,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -749,7 +749,7 @@
     },
     {
       "name": "av",
-      "description": "🗃️ Real SiYuan databases (attribute views, not Markdown tables): read, create, rows, columns, cells, views, filters, sorts, relations. Never edit database rows through fs/block; get avID from fs.read/block results (avToolHint) or av.search.\nActions (required fields): get(avID) · render() · get_attribute_view_keys(avID) · get_attribute_view_filter_sort(avID) · search(keyword) · add_rows(avID) · remove_rows(avID, srcIDs) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · get_primary_key_values(avID) · add_view(avID, blockID, viewID, layout, name) · set_filters(avID, blockID, viewID, filters) · set_sorts(avID, blockID, viewID, sorts) · set_group(avID, blockID, viewID, group) · set_column_visibility(avID, blockID, viewID, keyID, hidden) · set_column_order(avID, blockID, viewID, keyIDs) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Get avID from fs.read or av.search, then get for schema and resolvedRows before editing; use render for view rows. Reuse column IDs and resolvedRows.rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · render() · get_attribute_view_keys(avID) · get_attribute_view_filter_sort(avID) · search(keyword) · add_rows(avID) · remove_rows(avID, srcIDs) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · get_primary_key_values(avID) · add_view(avID, blockID, viewID, layout, name) · set_filters(avID, blockID, viewID, filters) · set_sorts(avID, blockID, viewID, sorts) · set_group(avID, blockID, viewID, group) · set_column_visibility(avID, blockID, viewID, keyID, hidden) · set_column_order(avID, blockID, viewID, keyIDs) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -783,7 +783,7 @@
               "set_relation",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "avID": {
             "type": "string",
@@ -920,7 +920,7 @@
             "type": "boolean"
           },
           "cells": {
-            "description": "Cell updates Nested shape: action=\"help\" with topic=<action>.",
+            "description": "Cell updates Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
             "items": {
               "type": "object"
@@ -1096,7 +1096,7 @@
             "description": "Name for the new view. Creation and naming are sent in one native transaction and read back together."
           },
           "filters": {
-            "description": "Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root. Group nesting is capped at 4 levels. Nested shape: action=\"help\" with topic=<action>.",
+            "description": "Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root. Group nesting is capped at 4 levels. Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
             "items": {
               "type": "object"
@@ -1130,7 +1130,7 @@
             "description": "Complete replacement sort array; [] clears all sorts."
           },
           "group": {
-            "description": "Nested shape: action=\"help\" with topic=<action>.",
+            "description": "Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "object"
           },
           "hidden": {
@@ -1147,7 +1147,7 @@
             "description": "Complete column key order for the current table, gallery, or kanban layout."
           },
           "templates": {
-            "description": "Complete ordered replacement template array Nested shape: action=\"help\" with topic=<action>.",
+            "description": "Complete ordered replacement template array Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
             "items": {
               "type": "object"
@@ -1226,7 +1226,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -1275,7 +1275,7 @@
               "extract_doc",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "assetsDirPath": {
             "type": "string",
@@ -1444,7 +1444,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -1464,7 +1464,7 @@
     },
     {
       "name": "search",
-      "description": "🔍 Find content: fulltext (keyword/syntax/regex), semantic (meaning), query_sql (SELECT only, add LIMIT; table blocks, type codes d/h/p/l/i/b/c/m/t), backlinks and refs, asset search, broken refs, and find_replace (the only write).\nActions (required fields): fulltext(query) · semantic(query) · query_sql() · get_backlinks(id) · search_refs(id) · find_replace*(k, r, ids) · search_assets() · fulltext_asset_content() · list_invalid_refs()\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🔍 Workspace content discovery: fulltext for keywords/syntax/regex, semantic for meaning, query_sql for SELECT queries (add LIMIT; table blocks), backlinks and refs. Use fs.search for Markdown lines under a known path, document.search_docs for titles, av.search for database names. Read matched content before editing; find_replace is the only write.\nActions (required fields): fulltext(query) · semantic(query) · query_sql() · get_backlinks(id) · search_refs(id) · find_replace*(k, r, ids) · search_assets() · fulltext_asset_content() · list_invalid_refs()\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1482,7 +1482,7 @@
               "list_invalid_refs",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "query": {
             "type": "string",
@@ -1662,7 +1662,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -1694,7 +1694,7 @@
               "remove",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "keyword": {
             "description": "Optional keyword used to search/filter tags",
@@ -1726,7 +1726,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -1761,7 +1761,7 @@
               "rollback_block",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "scope": {
             "type": "string",
@@ -1809,7 +1809,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -1846,7 +1846,7 @@
               "get_current_time",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "mode": {
             "description": "Read mode: \"summary\" returns a navigable overview, \"get\" reads a specific key path",
@@ -1908,7 +1908,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -1943,7 +1943,7 @@
               "remove_card",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "scope": {
             "type": "string",
@@ -2027,7 +2027,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -2059,7 +2059,7 @@
               "buy",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "item_id": {
             "type": "string",
@@ -2067,7 +2067,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true
@@ -2097,7 +2097,7 @@
               "submit",
               "help"
             ],
-            "description": "Operation to run; see the tool description."
+            "description": "Operation."
           },
           "description": {
             "type": "string",
@@ -2127,7 +2127,7 @@
           },
           "topic": {
             "type": "string",
-            "description": "Only for action=\"help\": the action to explain."
+            "description": "Topic for action=\"help\"."
           }
         },
         "additionalProperties": true

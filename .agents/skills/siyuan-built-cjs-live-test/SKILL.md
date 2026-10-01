@@ -16,7 +16,9 @@ description: 使用仓库刚构建的 dist/mcp-server.cjs 与 cli/dist/cli.cjs�
 - 删除、移动、权限变更前重新解析目标 ID，并证明它属于本轮夹具；禁止用模糊路径、全局搜索结果或未解析变量做破坏性操作。
 - 不调用 `/api/repo/*`，不为严格写入创建仓库快照。默认不实测会创建或回滚快照的 timeline action。
 - 默认不执行同步、通知、反馈、第三方 extension 写入或 `mascot.buy` 等外部副作用。只有用户单独授权且后果可接受时才执行，并将其标为“外部副作用测试”，不要宣称具备严格状态校验。
-- 保留用户原有数据和代码改动。测试夹具清理失败时停止扩大清理范围，报告精确 ID 和路径。
+- 保留用户原有数据和代码改动。测试夹具清理失败时停止扩大清理范围，先只读核对结果，报告精确 ID 和路径。
+- 使用既有测试笔记本时，默认排除 `fs.reorder`、`document.reorder`：它们会切换整个笔记本的排序模式。确需测试时，先保存原 `sortMode` 并在结束后恢复；未保存原值时禁止猜测还原。
+- 清理动作已禁用时，先记录限制，避免继续创建无法清理的模板或资源；不要改动用户的动作开关。
 
 ## 1. 建立本轮范围
 
@@ -92,7 +94,7 @@ node .agents/skills/siyuan-built-cjs-live-test/scripts/call-built-mcp.cjs \
   --interactive
 ```
 
-`direct` 会 `require()` 指定 CJS，并用 `createSiYuanServer({ transportMode: 'http' })` 建立进程内 MCP 连接。这样预检租约和正式写入留在同一个、确实来自本轮 bundle 的协调器中。每行输入一条 JSON：
+`direct` 会 `require()` 指定 CJS，并用 `createSiYuanServer({ transportMode: 'http' })` 建立进程内 MCP 连接。实际协调器由工作空间配置选择：启用 kernel endpoint 时，direct 入口也会转发到已安装的内核协调器。必须记录真实路由；修复协调器后，还须构建并验证实际运行的 `kernel.js` 已更新，不能把新入口加旧内核当成新协调器验收。每行输入一条 JSON：
 
 ```json
 {"tool":"system","args":{"action":"get_version"}}
@@ -108,13 +110,13 @@ node .agents/skills/siyuan-built-cjs-live-test/scripts/call-built-mcp.cjs \
 
 1. 使用完整且不含安全字段的业务参数调用 `validateOnly: true`。
 2. 断言 `writeAttempted=false`，读取服务端返回的 `preconditionField`，不要猜字段。
-3. 断言凭据为 `sha256:v1:<至少4位十六进制>`，并包含 `hashPrefixLength` 与 `leaseExpiresAt`。
-4. 用完全相同的业务参数、新 UUIDv7 `requestId`、返回字段和凭据执行正式写入。
+3. 复制预检签发的 `requestId`（4～64 位小写十六进制），以及 `preconditionField` 指定的值；哈希允许裸十六进制或 `sha256:v1:` 前缀，并应包含 `hashPrefixLength` 与 `leaseExpiresAt`。
+4. 用完全相同的业务参数、原样返回的 `requestId` 和凭据执行正式写入，移除 `validateOnly` 或设为 `false`。不要自行生成 requestId。
 5. 断言 `writeSafetyGuaranteed=true`、`transactionState` 为预期终态，并只读回查目标。
-6. 用新 `requestId` 重用已消费凭据，断言 `preflight_lease_invalid` 和 `revalidateRequired=true`。
+6. 用原 `requestId` 配合不同业务参数，断言 `idempotency_conflict`；无效、过期或已消费租约的检查遵循当前实现，不伪造服务端 requestId。
 7. 用原 `requestId` 和相同参数重放，断言不发生第二次写入。
 
-对无前置条件的纯新增 action，直接携带新 `requestId` 写入，随后验证幂等重放和只读回查。
+纯新增 action 也先预检取得服务端签发的 `requestId`，再写入并验证重放和只读回查；仅不需要状态哈希。
 
 每种前置条件类别至少选择一个无破坏夹具执行并发扰动测试：预检后通过另一条合法调用改变目标，再提交旧凭据；必须得到 `state_changed`，原写函数效果不得出现。覆盖 `state`、`structure`、`manifest`、`source`；无法安全制造的类别明确记录原因。
 
@@ -138,11 +140,11 @@ node .agents/skills/siyuan-built-cjs-live-test/scripts/call-built-mcp.cjs \
   --args-json '{"action":"get_version"}'
 ```
 
-严格修改在 stdio 模式下会转发到插件 HTTP 协调器；因此它验证的是 bundle 启动与跨入口路由，不等同于 `direct` 的本地协调器测试。
+严格修改在 stdio 模式下会转发到当前配置的工作空间协调器；因此它验证的是 bundle 启动与跨入口路由。direct 是否转发也取决于同一配置。
 
 ### CLI 与插件 HTTP
 
-使用刚构建的 `cli/dist/cli.cjs` 做只读调用，并选择一个可回滚夹具完成跨入口租约测试：一个入口预检，另一个入口正式提交。验证两者共享插件 HTTP Server 的租约池。不要把 `direct` 进程中的租约拿到 CLI 使用；它们本来就属于不同协调器。
+使用刚构建的 `cli/dist/cli.cjs` 做只读调用，并选择一个可回滚夹具完成跨入口租约测试：一个入口预检，另一个入口正式提交。验证两者是否到达同一个工作空间协调器。kernel endpoint 开启时，direct、stdio 与 CLI 都可共享内核租约；只有实际路由不同才不能跨入口复用。
 
 若要验证服务重启失效，先签发但不消费一个测试租约，经用户允许重启插件 HTTP 服务，再确认短凭据与 64 位值均返回 `preflight_lease_invalid`。
 

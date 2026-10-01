@@ -5,6 +5,7 @@
 
 export type ErrorCode =
     | 'block_not_found'
+    | 'asset_reference_scan_failed'
     | 'notebook_not_found'
     | 'notebook_closed'
     | 'document_not_found'
@@ -35,10 +36,14 @@ const ERROR_RULES: ErrorRule[] = [
         hint: 'Upgrade SiYuan to version 3.7.0 or newer before using search(action="semantic").',
     },
     {
+        code: 'asset_reference_scan_failed',
+        patterns: [/read asset references \[[^\]]+\] failed:/i],
+        hint: 'The kernel could not inspect asset references. Inspect and repair the reported document before retrying; do not bypass the reference check or assume the asset was deleted.',
+    },
+    {
         code: 'block_not_found',
         patterns: [
             /未找到 ID 为 \[[^\]]+\] 的内容块/,
-            /SiYuan API error:\s*-1\b.*(block|id)/i,
             /block not found/i,
         ],
         hint: 'Verify the block ID with block(action="info", id="...") or locate it via search(action="fulltext", query="...").',

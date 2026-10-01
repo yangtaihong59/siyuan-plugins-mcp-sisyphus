@@ -127,7 +127,7 @@ ${formattedUserRules}
                 ? 'Stale. Before relying on it, ask the user whether to refresh `/AGENTS.md`; if they agree, verify the current state first.'
                 : 'Fresh enough to use as startup context; still verify details before high-impact edits.';
     const strictWritesRule = instructionInput.strictWrites
-        ? '\n- Strict safe writes are on: call a write action with validateOnly=true first, then repeat the same call with the returned requestId and hash credential before they expire; reuse requestId unchanged on retries.'
+        ? '\n- Strict safe writes: preflight the intended mutation with validateOnly=true. To execute, keep its business arguments unchanged, set validateOnly=false, and copy the returned requestId and required hash fields before expiry. Reuse requestId for retries; after a conflict or expired preflight, read current state before preparing a new write.'
         : '';
     return `${userRulesSection}# Agent siyuan memory (/AGENTS.md)
 
@@ -140,9 +140,10 @@ ${normalizedAgentMemory || '(not created yet)'}
 
 # Working with SiYuan
 
-- Default to \`fs\` with workspace paths like /Notebook/Folder/Doc. Use document, block, search, or av only for block IDs, native layout, attributes, SQL, backlinks, assets, or databases.
-- Path formats differ: fs takes /Notebook/Folder/Doc; document(action="create") takes a notebook ID plus a notebook-local path without the notebook name (/Folder/Doc); other document path arguments are .sy storage paths returned by document(action="lookup").
-- Copy exact old text from fs.read before fs.replace, or from block(action="get_kramdown") before block.replace (single block only).
+- Default to \`fs\` for Markdown notes at /Notebook/Folder/Doc; use search for workspace content discovery, document/block for IDs and native structure, av for databases, and file for assets.
+- Reuse paths and IDs from results; titles alone are not identities. Each tool's path and ID formats differ.
+- Before editing existing content, read the target and nearby blocks. Prefer exact replacement for local changes; preserve unrelated content, native structures, references, and style. After structural or multi-part edits, read back the affected content to verify it.
+- Search snippets and partial reads are not full documents. Follow returned continuation fields when more context is needed; respect scope and fidelity warnings before concluding content is absent or replacing it.
 - Actions marked * in a tool description need explicit confirmation: say what you will do and wait for the user's yes. The same applies to file(action="export_resources") with outputPath and to uploads over 10 MB (retry with confirmLargeFile=true).${strictWritesRule}
 - External submissions (feedback) skip preflight; send only after user authorization and never retry an uncertain submission automatically.
 
@@ -156,6 +157,6 @@ ${normalizedAgentMemory || '(not created yet)'}
 
 # Help
 
-Every tool accepts action="help" (topic=<action>) for fields, nested shapes, examples, and guidance. Workflow skills: siyuan://skills/index, then siyuan://skills/{name}. Also siyuan://help/tool-overview, siyuan://help/document-path-semantics, siyuan://help/examples. After plugin upgrades: system(action="changelog", fromVersion=...) or ${CHANGELOG_RESOURCE_URI}.
+Aggregated tools accept action="help" for enabled actions and topic="<action>" for the full contract. Read it before constructing a collapsed nested value or using an unfamiliar action. The mounted schema merges fields across actions; send only fields supported by the chosen action. Reuse help already read in this task. For layout syntax, use topic="ai-layout-guide" or siyuan://help/ai-layout-guide. Workflow skills: siyuan://skills/index, then siyuan://skills/{name}. After plugin upgrades: system(action="changelog", fromVersion=...) or ${CHANGELOG_RESOURCE_URI}.
 `;
 }

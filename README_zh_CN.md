@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：** `v0.6.8` — 新增可选的 Docker／远程内核端点与 CLI 本机端口发现，统一筛选树深度校验，并修复启动、确认响应与反馈提交问题。CLI 同步更新至 `v0.2.9`。
+> **最新版本：** `v0.6.9` — 精简 MCP 提示词与按需帮助，默认工具静态提示载荷字符数减少约 61%；修复文档删除后的读回误报与资源引用错误分类。CLI 同步更新至 `v0.2.10`。
 
 > **v0.6.4：**`v0.6.4` — 扩展受保护的 AV 配置能力，新增可审计 Markdown 快照、图片引用审计、权限受控的视觉图片读取、扩展诊断与更清晰的路径语义。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。CLI 提升至 `v0.2.6`。
 
@@ -259,6 +259,14 @@ Sisyphus 自有工具的默认设计是让用户明确控制 AI 的操作范围�
 - [严格安全写入](./docs/zh/reference/write-safety.md)
 - [开发文档](./docs/zh/development/index.md)
 - [English README](./README.md)
+
+## ❤️ 项目贡献者
+
+<a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=yangtaihong59/siyuan-plugins-mcp-sisyphus" alt="项目贡献者头像" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks/).
 
 ## 赞赏支持
 

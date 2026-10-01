@@ -57,7 +57,7 @@ DOCUMENT_VARIANTS.find((variant) => variant.action === 'create')!.schema.oneOf =
 
 const documentTool = defineTool<DocumentAction>({
     name: 'document',
-    description: '📝 SiYuan-native document operations by ID or notebook + path: create, lookup, rename, move, reorder, attrs, tree, outline, daily note, heading↔doc conversion. `path` is notebook-local for create but a .sy storage path (from lookup) elsewhere; prefer fs for plain path-based read/write.',
+    description: '📝 Document IDs, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown read/write. create uses notebook + notebook-local path (/Folder/Doc, omit notebook name). lookup accepts id, notebook+hpath, or notebook+path (.sy storage path); reuse returned storage paths for rename/move/remove. Read create help for parentPath + title.',
     variants: DOCUMENT_VARIANTS,
     actionSchema: DocumentActionSchema,
     aggregateOptions: {

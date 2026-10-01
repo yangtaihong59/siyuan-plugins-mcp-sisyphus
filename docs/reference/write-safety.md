@@ -55,6 +55,7 @@ If active hashes in the same operation scope share four digits, a new preflight 
 
 ## Correctness properties
 
+- `fs` path readback checks live document existence before reading its block tree. Stale path or SQL indexes no longer turn a successful deletion into a readback failure. A failed existence query still leaves the outcome unknown; a network error never proves deletion.
 - State is canonicalized with stable object-key ordering and preserved array ordering, then hashed with versioned SHA-256.
 - `fs.reorder` and `document.reorder` use a structure precondition covering the parent, notebook configuration, and every visible direct child's ID, storage path, sort value, and current order. A concurrent create, delete, move, or reorder invalidates the lease; commit readback requires the exact requested order under custom sorting mode.
 - The Agent submits a short credential, but correctness always compares two complete SHA-256 digests; the prefix is never compared directly to live state.

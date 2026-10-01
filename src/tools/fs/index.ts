@@ -34,7 +34,7 @@ export const FS_VARIANTS: ActionVariant<FsAction>[] = [
 
 const fsTool = defineTool<FsAction>({
     name: 'fs',
-    description: '📂 Default tool for notes addressed by workspace path (/Notebook/Folder/Doc): browse, read, write, exact-text replace, grep, reorder, move, delete. Works on a Markdown view only; use document/block/av for block IDs, native layout, attributes, or databases.',
+    description: '📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.',
     variants: FS_VARIANTS,
     actionSchema: FsActionSchema,
     aggregateOptions: {

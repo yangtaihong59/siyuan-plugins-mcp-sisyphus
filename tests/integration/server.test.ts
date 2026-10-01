@@ -641,7 +641,10 @@ describe('MCP Server Integration', () => {
             const instructions = buildServerInstructions('');
             expect(instructions).toContain('Default to `fs`');
             expect(instructions).toContain('/Notebook/Folder/Doc');
-            expect(instructions).toContain('notebook-local path');
+            expect(instructions).toContain('Reuse paths and IDs from results');
+            expect(instructions).toContain('Search snippets and partial reads are not full documents');
+            expect(instructions).toContain('send only fields supported by the chosen action');
+            expect(instructions).toContain('topic="ai-layout-guide"');
             expect(instructions).toContain('#tag#');
             expect(instructions).toContain("((block-id 'anchor text'))");
             expect(instructions).toContain('Change rows, columns, and cells only with the av tool');
@@ -649,6 +652,8 @@ describe('MCP Server Integration', () => {
             expect(instructions).toContain('siyuan://help/ai-layout-guide');
             expect(instructions).toContain('explicit confirmation');
             expect(instructions).toContain('validateOnly=true');
+            expect(instructions).toContain('set validateOnly=false');
+            expect(instructions).toContain('business arguments unchanged');
         });
 
         it('omits strict preflight guidance when disabled but retains external submission safety', () => {

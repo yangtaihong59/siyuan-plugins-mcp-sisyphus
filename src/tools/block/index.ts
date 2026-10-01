@@ -56,7 +56,7 @@ export const BLOCK_VARIANTS: ActionVariant<BlockAction>[] = [
 
 const blockTool = defineTool<BlockAction>({
     name: 'block',
-    description: '🧱 Block-level editing by block ID: insert/prepend/append/update blocks, exact text replace inside one block, move, attributes, folding, kramdown/DOM reads, children, breadcrumbs. Use when fs\'s Markdown view is not precise enough.',
+    description: '🧱 Native structure and metadata by block ID; prefer fs for ordinary Markdown edits. Read get_kramdown before replace: it matches only that block, not children or a heading section. update is best for one block (a table/code block can be multiline); use insert/append/prepend for sibling blocks.',
     variants: BLOCK_VARIANTS,
     actionSchema: BlockActionSchema,
     aggregateOptions: {

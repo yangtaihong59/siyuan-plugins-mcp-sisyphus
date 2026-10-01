@@ -6,7 +6,7 @@ import { listAllTools, TOOL_REGISTRY } from '@/core/tool-registry';
 import { readHelpResource } from '@/core/resources';
 import { AV_VARIANTS } from '@/tools/av';
 import { DOCUMENT_VARIANTS } from '@/tools/document';
-import { validateRegisteredToolArguments } from '@/tools/internal/define-tool';
+import { getRegisteredActionSchemas, validateRegisteredToolArguments } from '@/tools/internal/define-tool';
 import { buildActionHelp } from '@/tools/internal/help-render';
 import { createMockClient } from '../../helpers/mock-client';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
@@ -60,6 +60,43 @@ describe('MCP progressive disclosure contract', () => {
         const client = createMockClient();
         const result = await TOOL_REGISTRY.av.callTool(client, args, config.av, createMockPermissionManager());
         expect(result.isError).toBe(true);
+        expect(client.request).not.toHaveBeenCalled();
+    });
+
+    it('resolves every collapsed parameter to complete enabled action help without reading notes', async () => {
+        const config = buildDefaultToolConfig();
+        const schemas = getRegisteredActionSchemas();
+        const client = createMockClient();
+        const permissions = createMockPermissionManager();
+        let checked = 0;
+        for (const tool of listAllTools(config)) {
+            const mounted = tool.inputSchema as any;
+            const collapsed = Object.entries(mounted.properties).filter(([, value]: [string, any]) =>
+                value.description?.includes('before constructing this nested value'));
+            if (collapsed.length === 0) continue;
+            for (const action of mounted.properties.action.enum) {
+                if (action === 'help') continue;
+                const schema = schemas[tool.name]?.[action] as any;
+                if (!collapsed.some(([field]) => schema?.properties?.[field])) continue;
+                const help = parseResult(await TOOL_REGISTRY[tool.name].callTool(client,
+                    { action: 'help', topic: action }, config[tool.name], permissions)) as any;
+                expect(help.parameters, `${tool.name}.${action}`).toEqual(schema);
+                const resource = readHelpResource(help.fullDocResource)!;
+                const schemaText = resource.text.split('## Parameter schema\n\n')[1].split('```json\n')[1].split('\n```')[0];
+                expect(JSON.parse(schemaText), help.fullDocResource).toEqual(schema);
+                checked++;
+            }
+        }
+        expect(checked).toBeGreaterThan(0);
+        expect(client.request).not.toHaveBeenCalled();
+    });
+
+    it('serves the advertised layout help without requiring resource support', async () => {
+        const config = buildDefaultToolConfig();
+        const client = createMockClient();
+        const help = parseResult(await TOOL_REGISTRY.fs.callTool(client,
+            { action: 'help', topic: 'ai-layout-guide' }, config.fs, createMockPermissionManager())) as any;
+        expect(help.text).toBe(readHelpResource('siyuan://help/ai-layout-guide')!.text);
         expect(client.request).not.toHaveBeenCalled();
     });
 

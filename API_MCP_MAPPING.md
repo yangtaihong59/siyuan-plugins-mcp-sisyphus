@@ -192,7 +192,7 @@
 | `/api/asset/renameAsset` | api-wrapper | `src/api/file.ts:80` | 有效内核路由 |
 | `/api/asset/setImageAlpha` | api-wrapper | `src/api/file.ts:95` | 失效 wrapper（保留审计） |
 | `/api/asset/upload` | api-wrapper+core | `src/api/file.ts:24`<br>`src/kernel/client.ts:85` | 有效内核路由 |
-| `/api/attr/getBlockAttrs` | api-wrapper+core | `src/api/block.ts:303`<br>`src/core/write-safety-coordinator.ts:659`<br>`src/core/write-safety-coordinator.ts:1007` | 有效内核路由 |
+| `/api/attr/getBlockAttrs` | api-wrapper+core | `src/api/block.ts:303`<br>`src/core/write-safety-coordinator.ts:659`<br>`src/core/write-safety-coordinator.ts:1014` | 有效内核路由 |
 | `/api/attr/setBlockAttrs` | api-wrapper | `src/api/block.ts:295` | 有效内核路由 |
 | `/api/av/addAttributeViewBlocks` | api-wrapper | `src/api/av.ts:109` | 有效内核路由 |
 | `/api/av/addAttributeViewKey` | api-wrapper | `src/api/av.ts:146` | 有效内核路由 |
@@ -203,7 +203,7 @@
 | `/api/av/getAttributeViewFilterSort` | api-wrapper | `src/api/av.ts:59` | 有效内核路由 |
 | `/api/av/getAttributeViewKeys` | api-wrapper | `src/api/av.ts:52` | 有效内核路由 |
 | `/api/av/getAttributeViewPrimaryKeyValues` | api-wrapper | `src/api/av.ts:212` | 有效内核路由 |
-| `/api/av/getMirrorDatabaseBlocks` | api-wrapper+core | `src/api/av.ts:200`<br>`src/core/write-safety-coordinator.ts:1709` | 有效内核路由 |
+| `/api/av/getMirrorDatabaseBlocks` | api-wrapper+core | `src/api/av.ts:200`<br>`src/core/write-safety-coordinator.ts:1716` | 有效内核路由 |
 | `/api/av/removeAttributeViewBlocks` | api-wrapper | `src/api/av.ts:132` | 有效内核路由 |
 | `/api/av/removeAttributeViewKey` | api-wrapper | `src/api/av.ts:159` | 有效内核路由 |
 | `/api/av/renderAttributeView` | api-wrapper | `src/api/av.ts:48` | 有效内核路由 |
@@ -216,16 +216,16 @@
 | `/api/block/appendDailyNoteBlock` | api-wrapper | `src/api/block.ts:251` | 有效内核路由 |
 | `/api/block/batchInsertBlock` | api-wrapper | `src/api/block.ts:231` | 有效内核路由 |
 | `/api/block/batchUpdateBlock` | api-wrapper | `src/api/block.ts:242` | 有效内核路由 |
-| `/api/block/checkBlockExist` | api-wrapper+core | `src/api/block.ts:194`<br>`src/core/write-safety-coordinator.ts:995` | 有效内核路由 |
+| `/api/block/checkBlockExist` | api-wrapper+core | `src/api/block.ts:194`<br>`src/core/write-safety-coordinator.ts:963`<br>`src/core/write-safety-coordinator.ts:1002` | 有效内核路由 |
 | `/api/block/deleteBlock` | api-wrapper | `src/api/block.ts:101` | 有效内核路由 |
 | `/api/block/foldBlock` | api-wrapper | `src/api/block.ts:126` | 有效内核路由 |
 | `/api/block/getBlockBreadcrumb` | api-wrapper | `src/api/block.ts:206` | 有效内核路由 |
-| `/api/block/getBlockDOM` | api-wrapper+core | `src/api/block.ts:210`<br>`src/core/write-safety-coordinator.ts:631`<br>`src/core/write-safety-coordinator.ts:660`<br>`src/core/write-safety-coordinator.ts:1010`<br>`src/core/write-safety-coordinator.ts:1699` | 有效内核路由 |
-| `/api/block/getBlockInfo` | api-wrapper+core+tool-direct | `src/api/block.ts:198`<br>`src/core/write-safety-coordinator.ts:661`<br>`src/core/write-safety-coordinator.ts:1006`<br>`src/tools/search/handlers.ts:230` | 有效内核路由 |
-| `/api/block/getBlockKramdown` | api-wrapper+core | `src/api/block.ts:143`<br>`src/api/block.ts:144`<br>`src/core/write-safety-coordinator.ts:1008`<br>`src/core/write-safety-coordinator.ts:1154` | 有效内核路由 |
+| `/api/block/getBlockDOM` | api-wrapper+core | `src/api/block.ts:210`<br>`src/core/write-safety-coordinator.ts:631`<br>`src/core/write-safety-coordinator.ts:660`<br>`src/core/write-safety-coordinator.ts:1017`<br>`src/core/write-safety-coordinator.ts:1706` | 有效内核路由 |
+| `/api/block/getBlockInfo` | api-wrapper+core+tool-direct | `src/api/block.ts:198`<br>`src/core/write-safety-coordinator.ts:661`<br>`src/core/write-safety-coordinator.ts:1013`<br>`src/tools/search/handlers.ts:230` | 有效内核路由 |
+| `/api/block/getBlockKramdown` | api-wrapper+core | `src/api/block.ts:143`<br>`src/api/block.ts:144`<br>`src/core/write-safety-coordinator.ts:1015`<br>`src/core/write-safety-coordinator.ts:1161` | 有效内核路由 |
 | `/api/block/getBlockKramdowns` | api-wrapper | `src/api/block.ts:155` | 有效内核路由 |
 | `/api/block/getBlocksWordCount` | api-wrapper | `src/api/block.ts:218` | 有效内核路由 |
-| `/api/block/getChildBlocks` | api-wrapper+core | `src/api/block.ts:164`<br>`src/api/block.ts:165`<br>`src/core/write-safety-coordinator.ts:1009` | 有效内核路由 |
+| `/api/block/getChildBlocks` | api-wrapper+core | `src/api/block.ts:164`<br>`src/api/block.ts:165`<br>`src/core/write-safety-coordinator.ts:1016` | 有效内核路由 |
 | `/api/block/getDocInfo` | api-wrapper | `src/api/block.ts:173` | 有效内核路由 |
 | `/api/block/getDocsInfo` | api-wrapper | `src/api/block.ts:269` | 有效内核路由 |
 | `/api/block/getRecentUpdatedBlocks` | api-wrapper | `src/api/block.ts:214` | 有效内核路由 |
@@ -279,7 +279,7 @@
 | `/api/notification/pushErrMsg` | api-wrapper | `src/api/notification.ts:35` | 有效内核路由 |
 | `/api/notification/pushMsg` | api-wrapper | `src/api/notification.ts:20` | 有效内核路由 |
 | `/api/outline/getDocOutline` | api-wrapper | `src/api/document.ts:240` | 有效内核路由 |
-| `/api/query/sql` | api-wrapper+core+tool-direct | `src/api/search.ts:31`<br>`src/core/write-safety-coordinator.ts:948`<br>`src/core/write-safety-coordinator.ts:1034`<br>`src/tools/block/handlers.ts:64` | 有效内核路由 |
+| `/api/query/sql` | api-wrapper+core+tool-direct | `src/api/search.ts:31`<br>`src/core/write-safety-coordinator.ts:948`<br>`src/core/write-safety-coordinator.ts:1041`<br>`src/tools/block/handlers.ts:64` | 有效内核路由 |
 | `/api/ref/getBacklinkDoc` | api-wrapper | `src/api/search.ts:47` | 有效内核路由 |
 | `/api/ref/getBackmentionDoc` | api-wrapper | `src/api/search.ts:57` | 有效内核路由 |
 | `/api/repo/createSnapshot` | api-wrapper | `src/api/repo.ts:52` | 有效内核路由 |
