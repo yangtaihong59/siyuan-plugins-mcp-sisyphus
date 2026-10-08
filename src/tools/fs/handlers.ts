@@ -1,3 +1,4 @@
+import { availableReadSteps, databaseReadSteps, documentReadInfo, type ReadStep } from '../internal/read-guidance';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
 import * as fileApi from '../../api/file';
@@ -398,7 +399,7 @@ function createFsReadWindowPayload(
     includeBlockIds: boolean,
 ): Record<string, unknown> {
     const { nextBlockStart, ...payload } = window;
-    if (nextBlockStart === undefined) return { path, ...payload };
+    if (nextBlockStart === undefined) return { path, ...payload, readInfo: documentReadInfo(window) };
     const nextWindow = {
         action: 'read',
         path,
@@ -410,6 +411,7 @@ function createFsReadWindowPayload(
     return {
         path,
         ...payload,
+        readInfo: documentReadInfo(window),
         nextWindow,
         nextWindowHint: `Continue with fs(${JSON.stringify(nextWindow)}).`,
     };
@@ -420,7 +422,7 @@ function createAttributeViewFsHint(attributeViews: Array<{ blockID: string; avID
         attributeViews,
         warning: 'This document contains database/attribute-view blocks. fs is only a pure Markdown convenience layer and will not safely edit these SiYuan-native structures. Use av(action="get"|"render"|"set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column") for rows, columns, and cells.',
         avToolHint: {
-            read: 'av(action="get", id="<av-id>") or av(action="render", id="<av-id>", blockID="<database-block-id>")',
+            read: 'av(action="get", avID="<av-id>") or av(action="render", avID="<av-id>", blockID="<database-block-id>")',
             write: 'av(action="set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column", avID="<av-id>", ...)',
         },
     };
@@ -642,10 +644,17 @@ const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         outline: withoutRefs.outline.map(({ id, ...heading }) => heading),
     };
     const attributeViews = await listDocumentAttributeViews(client, scope.id, blocks);
+    const payload = createFsReadWindowPayload(scope.canonicalPath, window, parsed.includeBlockIds ?? false);
+    const steps: ReadStep[] = payload.nextWindow
+        ? [{ purpose: 'continue_read', tool: 'fs', arguments: payload.nextWindow as ReadStep['arguments'] }]
+        : [];
+    steps.push(...databaseReadSteps(attributeViews));
+    const nextSteps = await availableReadSteps(client, steps);
     return createJsonResult({
-        ...createFsReadWindowPayload(scope.canonicalPath, window, parsed.includeBlockIds ?? false),
-        ...(attributeViews.length > 0 ? createAttributeViewFsHint(attributeViews) : {}),
-        ...createFsNonFidelityHint(blocks),
+        ...payload,
+        readInfo: documentReadInfo(readWindow, blocks.map(block => block.type)),
+        ...(attributeViews.length > 0 ? { attributeViews } : {}),
+        ...(nextSteps.length ? { nextSteps } : {}),
     });
 };
 

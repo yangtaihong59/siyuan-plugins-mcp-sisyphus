@@ -3102,7 +3102,7 @@
             "maximum": 9007199254740991
           },
           "pageSize": {
-            "description": "Rows per page, default all",
+            "description": "Rows per page, default 16",
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991

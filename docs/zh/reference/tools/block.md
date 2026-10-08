@@ -83,3 +83,5 @@ siyuan block append --parent-id <doc-id> --data-type markdown --data "- [ ] Todo
 - `docs_info`
 
 `update` 替换一个块：完整表格或代码块可以包含多行，换行本身不代表截断。多个同级块请使用 `append`、`prepend` 或 `insert`；更新后读取目标确认结构、引用和属性。`fs.replace` 不适合增删表格行，请改用整块 `block.update`。
+
+参见 [读取范围与数据库操作指引](../read-results.md)。

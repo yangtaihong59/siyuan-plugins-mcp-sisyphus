@@ -1,3 +1,5 @@
+import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
+import type { SiYuanClient } from '../../api/client';
 import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import type { SearchAction } from '../../core/config';
@@ -132,19 +134,20 @@ function resolveSearchMethodMeta(parsed: SearchMethodArgs): { method?: number; m
     };
 }
 
-function createFulltextPaginatedResult(
+async function createFulltextPaginatedResult(
+    client: SiYuanClient,
     normalizedObj: Record<string, unknown>,
-    parsed: Pick<SearchFulltextArgs, 'page' | 'pageSize' | 'parentId' | 'hasTags'>,
+    parsed: (SearchFulltextArgs | SearchSemanticArgs) & { parentId?: string; hasTags?: boolean },
     kernelMeta: { matchedBlockCount?: number; matchedRootCount?: number; pageCount?: number },
     resolvedArgs?: Record<string, unknown>,
     emptyWarning?: string,
-): ToolResult {
+): Promise<ToolResult> {
     const blocks = Array.isArray(normalizedObj.blocks)
         ? normalizedObj.blocks as unknown[]
         : [];
     const page = parsed.page ?? 1;
     const pageSize = parsed.pageSize ?? 32;
-    const truncated = applyTruncation(blocks, 20, `Use page/pageSize parameters to paginate. Current page: ${page}.`);
+    // Return the entire kernel page; trimming it again would skip matches on continuation.
     const returnedTotal = blocks.length;
     const kernelPageCount = typeof kernelMeta.pageCount === 'number' ? kernelMeta.pageCount : 1;
     const permissionFilteredCount = typeof normalizedObj.filteredOutBlockCount === 'number'
@@ -155,20 +158,33 @@ function createFulltextPaginatedResult(
         ? returnedTotal
         : (typeof kernelMeta.matchedBlockCount === 'number' ? kernelMeta.matchedBlockCount : returnedTotal);
     const pagination = {
-        total,
+        total: postFiltered ? null : total,
         page,
         pageSize,
-        pageCount: postFiltered ? 1 : kernelPageCount,
-        hasNextPage: postFiltered ? false : page < kernelPageCount,
+        pageCount: kernelPageCount,
+        hasNextPage: page < kernelPageCount,
     };
     const { blocks: _ignoredBlocks, pageCount: _ignoredPageCount, ...restRaw } = normalizedObj;
     void _ignoredBlocks;
     void _ignoredPageCount;
 
-    return createPaginatedResult(truncated.items, pagination, {
+    const knownPages = typeof kernelMeta.pageCount === 'number';
+    const hasNext = knownPages && page < kernelMeta.pageCount!;
+    const steps: ReadStep[] = hasNext ? [{ purpose: 'continue_read', tool: 'search', arguments: { ...parsed, page: page + 1 } }] : [];
+    const firstBlock = blocks[0] as { id?: string } | undefined;
+    if (firstBlock?.id) steps.push({ purpose: 'read_match', tool: 'block', arguments: { action: 'get_kramdown', id: firstBlock.id } });
+    const nextSteps = await availableReadSteps(client, steps);
+    return createPaginatedResult(blocks, pagination, {
         ...restRaw,
         ...createPartialMetadata(permissionFilteredCount),
-        ...buildTruncationSummary(returnedTotal, truncated.meta),
+        showing: returnedTotal,
+        truncated: false,
+        readInfo: {
+            scope: 'search_query', representation: 'search_snippets',
+            coverage: permissionFilteredCount || page > 1 || hasNext ? 'partial' : knownPages ? 'complete' : 'unknown',
+            limitations: ['snippets_not_documents', 'search_index_may_lag', ...(permissionFilteredCount ? ['permission_filtered'] : []), ...(page > 1 || hasNext ? ['pagination'] : []), ...(!knownPages ? ['unknown_total'] : [])],
+        },
+        ...(nextSteps.length ? { nextSteps } : {}),
         returnedTotal,
         returnedPageCount: 1,
         returnedHasNextPage: false,
@@ -195,6 +211,11 @@ function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArg
         data: truncated.items,
         total,
         totalRows: total,
+        readInfo: {
+            scope: 'sql_query', representation: 'sql_rows',
+            coverage: truncated.meta?.truncated || removedCount > 0 ? 'partial' : 'unknown',
+            limitations: ['selected_columns_only', 'kernel_limit_unknown', ...(truncated.meta?.truncated ? ['response_truncated'] : []), ...(removedCount > 0 ? ['permission_filtered'] : [])],
+        },
         ...buildTruncationSummary(total, truncated.meta),
         ...createPartialMetadata(removedCount),
         ...(resolvedArgs ? { resolvedArgs } : {}),
@@ -295,7 +316,7 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
             }).resolvedArgs
             : undefined;
 
-        return createFulltextPaginatedResult(normalizedObj, parsed, {
+        return createFulltextPaginatedResult(client, normalizedObj, parsed, {
             matchedBlockCount: typeof result.matchedBlockCount === 'number' ? result.matchedBlockCount : undefined,
             matchedRootCount: typeof result.matchedRootCount === 'number' ? result.matchedRootCount : undefined,
             pageCount: typeof (result as unknown as Record<string, unknown>).pageCount === 'number'
@@ -331,7 +352,7 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
             normalizedObj.blocks = await enrichItemsWithNotebookNames(client, normalizedObj.blocks);
         }
 
-        return createFulltextPaginatedResult(normalizedObj, parsed, {
+        return createFulltextPaginatedResult(client, normalizedObj, parsed, {
             matchedBlockCount: typeof result.matchedBlockCount === 'number' ? result.matchedBlockCount : undefined,
             matchedRootCount: typeof result.matchedRootCount === 'number' ? result.matchedRootCount : undefined,
             pageCount: typeof result.pageCount === 'number' ? result.pageCount : undefined,

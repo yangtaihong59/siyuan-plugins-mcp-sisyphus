@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：** `v0.6.9` — 精简 MCP 提示词与按需帮助，默认工具静态提示载荷字符数减少约 61%；修复文档删除后的读回误报与资源引用错误分类。CLI 同步更新至 `v0.2.10`。
+> **最新版本：** `v0.6.10` — 借鉴 Notion MCP 的数据库操作指引与读取完整性说明，提供可直接调用的下一步参数；修复搜索与数据库分页漏项，统一短哈希池以减少回执长度。CLI 同步更新至 `v0.2.11`。
 
 > **v0.6.4：**`v0.6.4` — 扩展受保护的 AV 配置能力，新增可审计 Markdown 快照、图片引用审计、权限受控的视觉图片读取、扩展诊断与更清晰的路径语义。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。CLI 提升至 `v0.2.6`。
 

@@ -575,7 +575,7 @@ describe('fs tool', () => {
         expect(parsed.content.match(/Callout 内容/g)).toHaveLength(1);
         expect(parsed.content).not.toContain('{:');
         expect(parsed.content).not.toContain('updated=');
-        expect(parsed.complexBlockTypes).toEqual(['s']);
+        expect(parsed.readInfo.limitations).toContain('native_structure_not_fully_represented');
         expect(childReads).not.toContain('quote-1');
         expect(childReads).not.toContain('super-1');
     });
@@ -608,8 +608,7 @@ describe('fs tool', () => {
 
         expect(parsed.content).toContain('<video src="assets/demo.mp4"></video>');
         expect(parsed.content).toContain('<audio src="assets/demo.mp3"></audio>');
-        expect(parsed.complexBlockTypes).toEqual(['video', 'audio']);
-        expect(parsed.nonFidelityWarning).toContain('pure Markdown');
+        expect(parsed.readInfo.limitations).toContain('native_structure_not_fully_represented');
     });
 
     it('treats SiYuan callout blocks as self-contained blockquote-style containers', async () => {
@@ -693,8 +692,7 @@ describe('fs tool', () => {
         expect(parsed.content).toContain('右侧内容');
         expect(parsed.content).not.toContain('{:');
         expect(parsed.content).not.toContain('updated=');
-        expect(parsed.complexBlockTypes).toEqual(['s']);
-        expect(parsed.nonFidelityWarning).toContain('pure Markdown');
+        expect(parsed.readInfo.limitations).toContain('native_structure_not_fully_represented');
         expect(childReads).not.toContain('super-1');
     });
 
@@ -961,6 +959,7 @@ describe('fs tool', () => {
     it('returns attribute-view guidance when reading a document with database blocks', async () => {
         const baseClient = createFsClient();
         const client = createMockClient({
+            readFile: async () => JSON.stringify(buildDefaultToolConfig()),
             request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/block/getChildBlocks') {
                     if (body?.id === 'doc-1') return [{ id: 'av-block-1', type: 'av' }];
@@ -984,10 +983,8 @@ describe('fs tool', () => {
 
         expect(parsed.content).toContain('NodeAttributeView');
         expect(parsed.attributeViews).toEqual([{ blockID: 'av-block-1', avID: 'av-1' }]);
-        expect(parsed.warning).toContain('Use av');
-        expect(parsed.nonFidelityWarning).toContain('pure Markdown');
-        expect(parsed.complexBlockTypes).toEqual(['av']);
-        expect(parsed.recommendedReads).toEqual(['file.export_md', 'block.dom']);
+        expect(parsed.readInfo.limitations).toContain('database_contents_not_included');
+        expect(parsed.nextSteps).toEqual([{ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: 'av-1', blockID: 'av-block-1' } }]);
     });
 
     it('writes agent memory through the virtual root file while preserving config', async () => {

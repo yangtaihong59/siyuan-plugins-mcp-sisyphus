@@ -1,3 +1,4 @@
+import { availableReadSteps, databaseReadSteps, kramdownDatabases } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
 import * as attributeApi from '../../api/block';
 import * as blockApi from '../../api/block';
@@ -78,7 +79,7 @@ function createDatabaseBlockHint(actionName: string): Record<string, unknown> {
         databaseBlock: true,
         warning: `${actionName} operated on a database/attribute-view block container. To read or edit database rows, columns, or cells, use av(action="get"|"render"|"add_rows"|"remove_rows"|"add_column"|"remove_column"|"set_cells") with the attribute view ID instead of editing the block as markdown.`,
         avToolHint: {
-            read: 'av(action="get", id="<av-id>") or av(action="render", id="<av-id>", blockID="<database-block-id>")',
+            read: 'av(action="get", avID="<av-id>") or av(action="render", avID="<av-id>", blockID="<database-block-id>")',
             write: 'av(action="set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column", avID="<av-id>", ...)',
         },
     };
@@ -597,7 +598,13 @@ const handleGetKramdown: BlockActionHandler = async ({ client, permMgr, rawArgs 
     const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
     if (denied) return denied;
     const result = normalizeKramdownResult(await blockApi.getBlockKramdown(client, parsed.id));
-    return createJsonResult(result);
+    const databases = kramdownDatabases(result.kramdown);
+    const nextSteps = await availableReadSteps(client, databaseReadSteps(databases));
+    return createJsonResult({
+        ...result,
+        readInfo: { scope: 'block', coverage: 'complete', representation: 'kramdown', limitations: databases.length ? ['database_contents_not_included'] : [] },
+        ...(nextSteps.length ? { nextSteps } : {}),
+    });
 };
 
 const handleBatchKramdown: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
@@ -689,7 +696,15 @@ const handleBatchKramdown: BlockActionHandler = async ({ client, permMgr, rawArg
     const succeeded = items.filter((item) => item.ok).length;
     const failed = items.length - succeeded;
 
+    const databases = items.flatMap(item => item.ok ? kramdownDatabases(item.kramdown ?? '') : []);
+    const uniqueDatabases = [...new Map(databases.map(database => [database.avID, database])).values()];
+    const nextSteps = await availableReadSteps(client, databaseReadSteps(uniqueDatabases));
     return createJsonResult({
+        readInfo: {
+            scope: 'blocks', coverage: failed ? 'partial' : 'complete', representation: mode === 'md' ? 'kramdown' : 'textmark',
+            limitations: [...(failed ? ['unavailable_blocks'] : []), ...(databases.length ? ['database_contents_not_included'] : [])],
+        },
+        ...(nextSteps.length ? { nextSteps } : {}),
         items,
         requested: items.length,
         succeeded,

@@ -80,3 +80,5 @@ Notes for AI callers:
 - `search_assets`
 - `fulltext_asset_content`
 - `list_invalid_refs`
+
+See [Read scope and database guidance](../read-results.md).

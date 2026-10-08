@@ -1,3 +1,6 @@
+import { writeHashPool } from '../../core/write-safety-hash';
+import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
+import { databaseContext, viewReadState } from './read-context';
 import type { SiYuanClient } from '@/api/client';
 import * as avApi from '../../api/av';
 import * as blockApi from '../../api/block';
@@ -2148,12 +2151,26 @@ async function handleGet({ client, permMgr, rawArgs }: ToolHandlerContext): Prom
     const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read', { blockID: parsed.blockID, action: 'get' });
     if (denied) return denied;
     const rowLookup = extractAvRowLookup(avData);
+    const definition = asRecord(avData);
+    const views = Array.isArray(definition?.views) ? definition.views.map(asRecord).filter(Boolean) : [];
+    // A carrier may select a different view from the database default.
+    // Let the kernel resolve its selection instead of overriding it here.
+    const viewID = !parsed.blockID && views.some(view => view.id === definition?.viewID) ? definition?.viewID as string : undefined;
+    const steps: ReadStep[] = [
+        { purpose: 'read_view', tool: 'av', arguments: { action: 'render', avID: parsed.avID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}), ...(viewID ? { viewID } : {}), createIfNotExist: false } },
+        { purpose: 'edit_cells_help', tool: 'av', arguments: { action: 'help', topic: 'set_cells' } },
+    ];
+    const nextSteps = await availableReadSteps(client, steps);
     return createJsonResult({
+        databaseContext: databaseContext(parsed.avID, { ...(parsed.blockID ? { blockID: parsed.blockID } : {}), columns: 'av.keyValues[].key', rows: 'resolvedRows' }),
+        readInfo: { scope: 'database', coverage: Array.isArray(definition?.keyValues) ? 'complete' : 'unknown', representation: 'database_raw', limitations: ['bound_block_bodies_not_included'] },
+        ...(nextSteps.length ? { nextSteps } : {}),
         id: parsed.avID,
         av: avData,
         ...(rowLookup.rows.length > 0 ? {
             resolvedRows: rowLookup.rows.map((row) => ({
                 rowID: row.rowID,
+                ...(row.isDetached !== undefined ? { isDetached: row.isDetached } : {}),
                 ...(row.sourceBlockID ? { sourceBlockID: row.sourceBlockID } : {}),
                 ...(row.valueIDs.length > 0 ? { valueIDs: row.valueIDs } : {}),
             })),
@@ -2302,14 +2319,24 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
     const isTableLayout = Array.isArray(view?.columns);
     const table = isTableLayout ? buildAvTableView(view as Record<string, unknown>, rawRows, total) : undefined;
     const data = table?.rows ?? rawRows;
+    const selectedViewID = getStringField(view, ['id']) ?? getStringField(responseObj, ['viewID']);
+    const readArgs = { ...parsed, avID: effectiveAvID, ...(selectedViewID ? { viewID: selectedViewID } : {}), createIfNotExist: false };
+    const state = viewReadState(view, readArgs, effectivePageSize);
+    const steps: ReadStep[] = [];
+    if (state.next) steps.push({ purpose: 'continue_read', tool: 'av', arguments: state.next });
+    steps.push({ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: effectiveAvID, ...(materializedBlockID || parsed.blockID ? { blockID: materializedBlockID ?? parsed.blockID } : {}) } });
+    const nextSteps = await availableReadSteps(client, steps);
     const result = createPaginatedResult(data, {
         total,
         page,
         pageSize: effectivePageSize,
         pageCount: kernelPageCount,
-        hasNextPage: page < kernelPageCount,
+        hasNextPage: state.hasNextPage,
     }, {
         ...responseObj,
+        readInfo: state.readInfo,
+        databaseContext: databaseContext(effectiveAvID, { ...(materializedBlockID || parsed.blockID ? { blockID: materializedBlockID ?? parsed.blockID } : {}), ...(selectedViewID ? { viewID: selectedViewID } : {}), ...(table ? { columns: 'table.columns', rows: 'table.rows' } : { rows: 'data' }) }),
+        ...(nextSteps.length ? { nextSteps } : {}),
         avID: effectiveAvID,
         id: effectiveAvID,
         ...(table ? { table } : {}),
@@ -2340,6 +2367,8 @@ async function handleGetAttributeViewKeys({ client, permMgr, rawArgs }: ToolHand
     const keysArray = extractAttributeViewKeysFromData(avData);
     return createJsonResult({
         avID: parsed.avID,
+        databaseContext: databaseContext(parsed.avID, { columns: 'keys' }),
+        readInfo: { scope: 'database_columns', coverage: Array.isArray(asRecord(avData)?.keyValues) ? 'complete' : 'unknown', representation: 'database_columns', limitations: [] },
         keys: keysArray,
     });
 }
@@ -2857,8 +2886,8 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
             defaultTemplateID: expected.defaultTemplateID,
             changed: false,
             status: 'already_applied',
-            templatePreimageHash: await rawTemplateConfigHash(definition),
-            templatePostimageHash: await rawTemplateConfigHash(definition),
+            templatePreimageHash: writeHashPool.issue(await rawTemplateConfigHash(definition)),
+            templatePostimageHash: writeHashPool.issue(await rawTemplateConfigHash(definition)),
         });
     }
     const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
@@ -2898,8 +2927,8 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
         avID: parsed.avID,
         templateCount: expected.templates.length,
         defaultTemplateID: expected.defaultTemplateID,
-        templatePreimageHash: await rawTemplateConfigHash(definition),
-        templatePostimageHash: await rawTemplateConfigHash(after.definition),
+        templatePreimageHash: writeHashPool.issue(await rawTemplateConfigHash(definition)),
+        templatePostimageHash: writeHashPool.issue(await rawTemplateConfigHash(after.definition)),
     }), refreshOperations);
 }
 
@@ -3003,10 +3032,10 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
             cleared: parsed.relatedItemIDs.length === 0,
             changed: false,
             status: 'already_applied',
-            sourcePreimageHash: await hashCanonicalState(observed.source),
-            sourcePostimageHash: await hashCanonicalState(observed.source),
-            destinationPreimageHash: await hashCanonicalState(observed.destination),
-            destinationPostimageHash: await hashCanonicalState(observed.destination),
+            sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(observed.source)),
+            sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(observed.source)),
+            destinationPreimageHash: writeHashPool.issue(await hashCanonicalState(observed.destination)),
+            destinationPostimageHash: writeHashPool.issue(await hashCanonicalState(observed.destination)),
             ...(target.backKeyID ? { backRelationKeyID: target.backKeyID, reverseReadback: 'verified' } : {}),
         });
     } catch {
@@ -3026,10 +3055,10 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
         action: 'set_relation', avID: parsed.avID, keyID: parsed.keyID, itemID: parsed.itemID,
         destinationAvID: target.destinationAvID, relatedItemIDs: parsed.relatedItemIDs,
         cleared: parsed.relatedItemIDs.length === 0,
-        sourcePreimageHash: await hashCanonicalState(source),
-        sourcePostimageHash: await hashCanonicalState(after.source),
-        destinationPreimageHash: await hashCanonicalState(target.destination),
-        destinationPostimageHash: await hashCanonicalState(after.destination),
+        sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(source)),
+        sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(after.source)),
+        destinationPreimageHash: writeHashPool.issue(await hashCanonicalState(target.destination)),
+        destinationPostimageHash: writeHashPool.issue(await hashCanonicalState(after.destination)),
         ...(target.backKeyID ? { backRelationKeyID: target.backKeyID, reverseReadback: 'verified' } : {}),
     }), refreshOperations);
 }
@@ -3081,10 +3110,10 @@ async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolH
             ...expected,
             changed: false,
             status: 'already_applied',
-            sourcePreimageHash: await hashCanonicalState(source),
-            sourcePostimageHash: await hashCanonicalState(source),
-            destinationPreimageHash: await hashCanonicalState(destination!),
-            destinationPostimageHash: await hashCanonicalState(destination!),
+            sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(source)),
+            sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(source)),
+            destinationPreimageHash: writeHashPool.issue(await hashCanonicalState(destination!)),
+            destinationPostimageHash: writeHashPool.issue(await hashCanonicalState(destination!)),
             ...(sourceRelation?.avID ? { priorDestinationAvID: sourceRelation.avID } : {}),
         });
     }
@@ -3111,8 +3140,8 @@ async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolH
     const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'configure_two_way_relation', ...expected,
-        sourcePreimageHash: await hashCanonicalState(source), sourcePostimageHash: await hashCanonicalState(after.source),
-        destinationPreimageHash: await hashCanonicalState(destination), destinationPostimageHash: await hashCanonicalState(after.destination),
+        sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(source)), sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(after.source)),
+        destinationPreimageHash: writeHashPool.issue(await hashCanonicalState(destination)), destinationPostimageHash: writeHashPool.issue(await hashCanonicalState(after.destination)),
         ...(sourceRelation?.avID ? { priorDestinationAvID: sourceRelation.avID } : {}),
     }), refreshOperations);
 }
@@ -3195,8 +3224,8 @@ async function handleConfigureRollup({ client, permMgr, rawArgs }: ToolHandlerCo
             calc: parsed.calc,
             changed: false,
             status: 'already_applied',
-            sourcePreimageHash: await hashCanonicalState(source),
-            sourcePostimageHash: await hashCanonicalState(source),
+            sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(source)),
+            sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(source)),
             nativeFilterSideEffect: 'filters referencing this rollup key may be removed by SiYuan',
         });
     }
@@ -3223,7 +3252,7 @@ async function handleConfigureRollup({ client, permMgr, rawArgs }: ToolHandlerCo
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'configure_rollup', avID: parsed.avID, keyID: parsed.keyID, relationKeyID: parsed.relationKeyID,
         destinationAvID: relationDestinationAvID!, destinationKeyID: parsed.destinationKeyID, calc: parsed.calc,
-        sourcePreimageHash: await hashCanonicalState(source), sourcePostimageHash: await hashCanonicalState(after),
+        sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(source)), sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(after)),
         nativeFilterSideEffect: 'filters referencing this rollup key may be removed by SiYuan',
     }), refreshOperations);
 }
@@ -3722,38 +3751,49 @@ async function handleGetPrimaryKeyValues({ client, permMgr, rawArgs }: ToolHandl
         pageSize: parsed.pageSize,
     });
 
-    const blockIDs = response.blockIDs ?? [];
-    if (blockIDs.length > 0) {
-        const cache = createResultResolutionCache();
-        await permMgr.reload();
-        const filteredBlockIDs: string[] = [];
-        const filteredRows: unknown[] = [];
-        let filteredOutCount = 0;
-        for (let index = 0; index < blockIDs.length; index += 1) {
-            const blockID = blockIDs[index];
-            const context = await resolveResultItemContext(client, { id: blockID }, cache)
-                ?? await resolveDocumentContextById(client, blockID).catch(() => null);
-            const notebook = context && 'notebook' in context ? context.notebook : undefined;
-            if (!notebook || !permMgr.canRead(notebook)) {
-                filteredOutCount += 1;
-                continue;
-            }
-            filteredBlockIDs.push(blockID);
-            filteredRows.push(response.rows[index]);
-        }
-
-        return createJsonResult({
-            avID: parsed.avID,
-            name: response.name,
-            blockIDs: filteredBlockIDs,
-            rows: filteredRows,
-            ...(filteredOutCount > 0 ? { filteredOutCount, partial: true, reason: 'permission_filtered' } : {}),
-        });
+    // blockIDs are database carriers, not an array parallel to rows.values.
+    await permMgr.reload();
+    const cache = createResultResolutionCache();
+    async function readableBlock(id: string): Promise<boolean> {
+        const context = await resolveResultItemContext(client, { id }, cache)
+            ?? await resolveDocumentContextById(client, id).catch(() => null);
+        return Boolean(context && 'notebook' in context && permMgr.canRead(context.notebook));
     }
-
+    const blockIDs: string[] = [];
+    for (const id of response.blockIDs ?? []) if (await readableBlock(id)) blockIDs.push(id);
+    const keyValues = asRecord(response.rows);
+    if (!keyValues || (keyValues.values != null && !Array.isArray(keyValues.values))) {
+        throw new Error('Primary-key response has no valid rows.values structure.');
+    }
+    const values = Array.isArray(keyValues.values) ? keyValues.values : [];
+    const visibleValues: unknown[] = [];
+    for (const value of values) {
+        const sourceBlockID = extractSourceBlockIdFromBlockValue(value);
+        if (asRecord(value)?.isDetached === true || (sourceBlockID && await readableBlock(sourceBlockID))) visibleValues.push(value);
+    }
+    const filteredOutCount = values.length - visibleValues.length;
+    const page = parsed.page ?? 1;
+    const pageSize = parsed.pageSize ?? 16;
+    const total = response.total;
+    const totalKnown = typeof total === 'number' && Number.isFinite(total) && total >= 0;
+    const hasNextPage = totalKnown && page * pageSize < total;
+    const steps: ReadStep[] = hasNextPage
+        ? [{ purpose: 'continue_read', tool: 'av', arguments: { ...parsed, page: page + 1, pageSize } }]
+        : [];
+    const nextSteps = await availableReadSteps(client, steps);
+    const rows = { ...keyValues, values: visibleValues };
     return createJsonResult({
-        avID: parsed.avID,
-        ...response,
+        avID: parsed.avID, name: response.name, blockIDs, rows,
+        ...(totalKnown ? { total, page, pageSize, hasNextPage } : {}),
+        databaseContext: databaseContext(parsed.avID, { columns: 'rows.key', rows: 'resolvedRows' }),
+        resolvedRows: extractAvRowLookup({ keyValues: [rows] }).rows.map(({ valueIDs, ...row }) => row),
+        readInfo: {
+            scope: 'primary_key_query', representation: 'primary_key_values',
+            coverage: filteredOutCount || page > 1 || hasNextPage ? 'partial' : !totalKnown ? 'unknown' : 'complete',
+            limitations: ['primary_key_only', ...(page > 1 || hasNextPage ? ['pagination'] : []), ...(filteredOutCount ? ['permission_filtered'] : []), ...(!totalKnown ? ['unknown_total'] : [])],
+        },
+        ...(nextSteps.length ? { nextSteps } : {}),
+        ...(filteredOutCount > 0 ? { filteredOutCount, partial: true, reason: 'permission_filtered' } : {}),
     });
 }
 

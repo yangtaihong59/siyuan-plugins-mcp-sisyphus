@@ -143,7 +143,7 @@ ${normalizedAgentMemory || '(not created yet)'}
 - Default to \`fs\` for Markdown notes at /Notebook/Folder/Doc; use search for workspace content discovery, document/block for IDs and native structure, av for databases, and file for assets.
 - Reuse paths and IDs from results; titles alone are not identities. Each tool's path and ID formats differ.
 - Before editing existing content, read the target and nearby blocks. Prefer exact replacement for local changes; preserve unrelated content, native structures, references, and style. After structural or multi-part edits, read back the affected content to verify it.
-- Search snippets and partial reads are not full documents. Follow returned continuation fields when more context is needed; respect scope and fidelity warnings before concluding content is absent or replacing it.
+- Use readInfo for scope, coverage and representation limits; nextSteps contains enabled read/help calls with reusable arguments. Search snippets and partial reads are not full documents. Follow returned continuation fields when more context is needed; respect scope and fidelity warnings before concluding content is absent or replacing it.
 - Actions marked * in a tool description need explicit confirmation: say what you will do and wait for the user's yes. The same applies to file(action="export_resources") with outputPath and to uploads over 10 MB (retry with confirmLargeFile=true).${strictWritesRule}
 - External submissions (feedback) skip preflight; send only after user authorization and never retry an uncertain submission automatically.
 

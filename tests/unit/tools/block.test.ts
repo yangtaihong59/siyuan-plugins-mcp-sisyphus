@@ -56,6 +56,20 @@ describe('block tool', () => {
         expect(isMissingBlockError(new Error('some other error'))).toBe(false);
     });
 
+    it('labels textmark exports with their actual representation', async () => {
+        const client = createMockClient({ request: vi.fn(async (endpoint: string, args: any) => {
+            if (endpoint === '/api/query/sql') return [{ id: 'block-1', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', type: 'p' }];
+            if (endpoint === '/api/block/getBlockKramdowns') {
+                expect(args.mode).toBe('textmark');
+                return { 'block-1': 'content' };
+            }
+            throw new Error(endpoint);
+        }) });
+        const result = await callBlockTool(client, { action: 'batch_kramdown', ids: ['block-1'], mode: 'textmark' },
+            buildDefaultToolConfig().block, { reload: async () => {}, canRead: () => true } as any);
+        expect(parseResult(result).readInfo).toMatchObject({ coverage: 'complete', representation: 'textmark' });
+    });
+
     it('exposes merged batch and daily-note actions in the grouped schema', () => {
         const config = buildDefaultToolConfig();
         const [tool] = listBlockTools(config.block);
@@ -120,7 +134,7 @@ describe('block tool', () => {
             ids,
         }, buildDefaultToolConfig().block, batchPermMgr as never);
 
-        expect(parseResult(result)).toEqual({
+        expect(parseResult(result)).toMatchObject({
             items: [
                 { id: 'allowed-a', ok: true, kramdown: 'Alpha' },
                 {

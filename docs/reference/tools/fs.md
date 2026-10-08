@@ -86,3 +86,5 @@ CLI: `siyuan fs reorder --path "/Ideas" --ordered-paths-json '["/Ideas/Know Your
 When `fs.read` reports complex blocks or the task needs SiYuan-specific block layout, metadata, SQL, backlinks, assets, or database operations, switch to `document`, `block`, `search`, `file`, or `av`.
 
 Read guards: each child-list/block HTTP response is limited to 1 MiB; cumulative enumeration is limited to 4 MiB of metadata, 50000 blocks, and 128 levels. Exceeding these limits fails explicitly, without an unbounded fallback. These guards bound MCP/CLI-side reads, not the kernel memory used to generate a response.
+
+See [Read scope and database guidance](../read-results.md).

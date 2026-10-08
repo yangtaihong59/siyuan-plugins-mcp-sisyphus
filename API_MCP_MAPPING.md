@@ -186,24 +186,24 @@
 | `/api/asset/getDocAssets` | api-wrapper | `src/api/file.ts:60` | 有效内核路由 |
 | `/api/asset/getDocImageAssets` | api-wrapper | `src/api/file.ts:64` | 有效内核路由 |
 | `/api/asset/getImageOCRText` | api-wrapper | `src/api/file.ts:68` | 有效内核路由 |
-| `/api/asset/getUnusedAssets` | api-wrapper+core | `src/api/file.ts:56`<br>`src/core/write-safety-coordinator.ts:885` | 有效内核路由 |
+| `/api/asset/getUnusedAssets` | api-wrapper+core | `src/api/file.ts:56`<br>`src/core/write-safety-coordinator.ts:878` | 有效内核路由 |
 | `/api/asset/removeUnusedAsset` | api-wrapper | `src/api/file.ts:87` | 有效内核路由 |
 | `/api/asset/removeUnusedAssets` | api-wrapper | `src/api/file.ts:72` | 有效内核路由 |
 | `/api/asset/renameAsset` | api-wrapper | `src/api/file.ts:80` | 有效内核路由 |
 | `/api/asset/setImageAlpha` | api-wrapper | `src/api/file.ts:95` | 失效 wrapper（保留审计） |
 | `/api/asset/upload` | api-wrapper+core | `src/api/file.ts:24`<br>`src/kernel/client.ts:85` | 有效内核路由 |
-| `/api/attr/getBlockAttrs` | api-wrapper+core | `src/api/block.ts:303`<br>`src/core/write-safety-coordinator.ts:659`<br>`src/core/write-safety-coordinator.ts:1014` | 有效内核路由 |
+| `/api/attr/getBlockAttrs` | api-wrapper+core | `src/api/block.ts:303`<br>`src/core/write-safety-coordinator.ts:652`<br>`src/core/write-safety-coordinator.ts:1007` | 有效内核路由 |
 | `/api/attr/setBlockAttrs` | api-wrapper | `src/api/block.ts:295` | 有效内核路由 |
 | `/api/av/addAttributeViewBlocks` | api-wrapper | `src/api/av.ts:109` | 有效内核路由 |
 | `/api/av/addAttributeViewKey` | api-wrapper | `src/api/av.ts:146` | 有效内核路由 |
 | `/api/av/batchSetAttributeViewBlockAttrs` | api-wrapper | `src/api/av.ts:179` | 有效内核路由 |
 | `/api/av/createAttributeViewItem` | api-wrapper | `src/api/av.ts:124` | 有效内核路由 |
 | `/api/av/duplicateAttributeViewBlock` | api-wrapper | `src/api/av.ts:186` | 有效内核路由 |
-| `/api/av/getAttributeView` | api-wrapper+core | `src/api/av.ts:32`<br>`src/core/write-safety-coordinator.ts:625` | 有效内核路由 |
+| `/api/av/getAttributeView` | api-wrapper+core | `src/api/av.ts:32`<br>`src/core/write-safety-coordinator.ts:618` | 有效内核路由 |
 | `/api/av/getAttributeViewFilterSort` | api-wrapper | `src/api/av.ts:59` | 有效内核路由 |
 | `/api/av/getAttributeViewKeys` | api-wrapper | `src/api/av.ts:52` | 有效内核路由 |
 | `/api/av/getAttributeViewPrimaryKeyValues` | api-wrapper | `src/api/av.ts:212` | 有效内核路由 |
-| `/api/av/getMirrorDatabaseBlocks` | api-wrapper+core | `src/api/av.ts:200`<br>`src/core/write-safety-coordinator.ts:1716` | 有效内核路由 |
+| `/api/av/getMirrorDatabaseBlocks` | api-wrapper+core | `src/api/av.ts:200`<br>`src/core/write-safety-coordinator.ts:1709` | 有效内核路由 |
 | `/api/av/removeAttributeViewBlocks` | api-wrapper | `src/api/av.ts:132` | 有效内核路由 |
 | `/api/av/removeAttributeViewKey` | api-wrapper | `src/api/av.ts:159` | 有效内核路由 |
 | `/api/av/renderAttributeView` | api-wrapper | `src/api/av.ts:48` | 有效内核路由 |
@@ -216,16 +216,16 @@
 | `/api/block/appendDailyNoteBlock` | api-wrapper | `src/api/block.ts:251` | 有效内核路由 |
 | `/api/block/batchInsertBlock` | api-wrapper | `src/api/block.ts:231` | 有效内核路由 |
 | `/api/block/batchUpdateBlock` | api-wrapper | `src/api/block.ts:242` | 有效内核路由 |
-| `/api/block/checkBlockExist` | api-wrapper+core | `src/api/block.ts:194`<br>`src/core/write-safety-coordinator.ts:963`<br>`src/core/write-safety-coordinator.ts:1002` | 有效内核路由 |
+| `/api/block/checkBlockExist` | api-wrapper+core | `src/api/block.ts:194`<br>`src/core/write-safety-coordinator.ts:956`<br>`src/core/write-safety-coordinator.ts:995` | 有效内核路由 |
 | `/api/block/deleteBlock` | api-wrapper | `src/api/block.ts:101` | 有效内核路由 |
 | `/api/block/foldBlock` | api-wrapper | `src/api/block.ts:126` | 有效内核路由 |
 | `/api/block/getBlockBreadcrumb` | api-wrapper | `src/api/block.ts:206` | 有效内核路由 |
-| `/api/block/getBlockDOM` | api-wrapper+core | `src/api/block.ts:210`<br>`src/core/write-safety-coordinator.ts:631`<br>`src/core/write-safety-coordinator.ts:660`<br>`src/core/write-safety-coordinator.ts:1017`<br>`src/core/write-safety-coordinator.ts:1706` | 有效内核路由 |
-| `/api/block/getBlockInfo` | api-wrapper+core+tool-direct | `src/api/block.ts:198`<br>`src/core/write-safety-coordinator.ts:661`<br>`src/core/write-safety-coordinator.ts:1013`<br>`src/tools/search/handlers.ts:230` | 有效内核路由 |
-| `/api/block/getBlockKramdown` | api-wrapper+core | `src/api/block.ts:143`<br>`src/api/block.ts:144`<br>`src/core/write-safety-coordinator.ts:1015`<br>`src/core/write-safety-coordinator.ts:1161` | 有效内核路由 |
+| `/api/block/getBlockDOM` | api-wrapper+core | `src/api/block.ts:210`<br>`src/core/write-safety-coordinator.ts:624`<br>`src/core/write-safety-coordinator.ts:653`<br>`src/core/write-safety-coordinator.ts:1010`<br>`src/core/write-safety-coordinator.ts:1699` | 有效内核路由 |
+| `/api/block/getBlockInfo` | api-wrapper+core+tool-direct | `src/api/block.ts:198`<br>`src/core/write-safety-coordinator.ts:654`<br>`src/core/write-safety-coordinator.ts:1006`<br>`src/tools/search/handlers.ts:251` | 有效内核路由 |
+| `/api/block/getBlockKramdown` | api-wrapper+core | `src/api/block.ts:143`<br>`src/api/block.ts:144`<br>`src/core/write-safety-coordinator.ts:1008`<br>`src/core/write-safety-coordinator.ts:1154` | 有效内核路由 |
 | `/api/block/getBlockKramdowns` | api-wrapper | `src/api/block.ts:155` | 有效内核路由 |
 | `/api/block/getBlocksWordCount` | api-wrapper | `src/api/block.ts:218` | 有效内核路由 |
-| `/api/block/getChildBlocks` | api-wrapper+core | `src/api/block.ts:164`<br>`src/api/block.ts:165`<br>`src/core/write-safety-coordinator.ts:1016` | 有效内核路由 |
+| `/api/block/getChildBlocks` | api-wrapper+core | `src/api/block.ts:164`<br>`src/api/block.ts:165`<br>`src/core/write-safety-coordinator.ts:1009` | 有效内核路由 |
 | `/api/block/getDocInfo` | api-wrapper | `src/api/block.ts:173` | 有效内核路由 |
 | `/api/block/getDocsInfo` | api-wrapper | `src/api/block.ts:269` | 有效内核路由 |
 | `/api/block/getRecentUpdatedBlocks` | api-wrapper | `src/api/block.ts:214` | 有效内核路由 |
@@ -249,8 +249,8 @@
 | `/api/filetree/getDoc` | api-wrapper | `src/api/document.ts:227` | 有效内核路由 |
 | `/api/filetree/getHPathByID` | api-wrapper | `src/api/document.ts:144` | 有效内核路由 |
 | `/api/filetree/getHPathByPath` | api-wrapper | `src/api/document.ts:131` | 有效内核路由 |
-| `/api/filetree/getIDsByHPath` | api-wrapper+core | `src/api/document.ts:169`<br>`src/core/write-safety-coordinator.ts:937` | 有效内核路由 |
-| `/api/filetree/getPathByID` | api-wrapper+core | `src/api/document.ts:156`<br>`src/core/write-safety-coordinator.ts:839` | 有效内核路由 |
+| `/api/filetree/getIDsByHPath` | api-wrapper+core | `src/api/document.ts:169`<br>`src/core/write-safety-coordinator.ts:930` | 有效内核路由 |
+| `/api/filetree/getPathByID` | api-wrapper+core | `src/api/document.ts:156`<br>`src/core/write-safety-coordinator.ts:832` | 有效内核路由 |
 | `/api/filetree/heading2Doc` | api-wrapper | `src/api/document.ts:290` | 有效内核路由 |
 | `/api/filetree/listDocsByPath` | api-wrapper | `src/api/document.ts:184` | 有效内核路由 |
 | `/api/filetree/listDocTree` | api-wrapper | `src/api/document.ts:205` | 有效内核路由 |
@@ -269,8 +269,8 @@
 | `/api/lute/spinBlockDOM` | api-wrapper | `src/api/av.ts:193` | 有效内核路由 |
 | `/api/notebook/closeNotebook` | api-wrapper | `src/api/notebook.ts:23` | 有效内核路由 |
 | `/api/notebook/createNotebook` | api-wrapper | `src/api/notebook.ts:30` | 有效内核路由 |
-| `/api/notebook/getNotebookConf` | api-wrapper+core | `src/api/notebook.ts:51`<br>`src/core/write-safety-coordinator.ts:512`<br>`src/core/write-safety-coordinator.ts:621` | 有效内核路由 |
-| `/api/notebook/lsNotebooks` | api-wrapper+core | `src/api/notebook.ts:9`<br>`src/cli/discover-instances.ts:204`<br>`src/core/write-safety-coordinator.ts:504`<br>`src/core/write-safety-coordinator.ts:613`<br>`src/core/write-safety-coordinator.ts:831`<br>`src/core/write-safety-coordinator.ts:923` | 有效内核路由 |
+| `/api/notebook/getNotebookConf` | api-wrapper+core | `src/api/notebook.ts:51`<br>`src/core/write-safety-coordinator.ts:505`<br>`src/core/write-safety-coordinator.ts:614` | 有效内核路由 |
+| `/api/notebook/lsNotebooks` | api-wrapper+core | `src/api/notebook.ts:9`<br>`src/cli/discover-instances.ts:204`<br>`src/core/write-safety-coordinator.ts:497`<br>`src/core/write-safety-coordinator.ts:606`<br>`src/core/write-safety-coordinator.ts:824`<br>`src/core/write-safety-coordinator.ts:916` | 有效内核路由 |
 | `/api/notebook/openNotebook` | api-wrapper | `src/api/notebook.ts:16` | 有效内核路由 |
 | `/api/notebook/removeNotebook` | api-wrapper | `src/api/notebook.ts:37` | 有效内核路由 |
 | `/api/notebook/renameNotebook` | api-wrapper | `src/api/notebook.ts:44` | 有效内核路由 |
@@ -279,21 +279,21 @@
 | `/api/notification/pushErrMsg` | api-wrapper | `src/api/notification.ts:35` | 有效内核路由 |
 | `/api/notification/pushMsg` | api-wrapper | `src/api/notification.ts:20` | 有效内核路由 |
 | `/api/outline/getDocOutline` | api-wrapper | `src/api/document.ts:240` | 有效内核路由 |
-| `/api/query/sql` | api-wrapper+core+tool-direct | `src/api/search.ts:31`<br>`src/core/write-safety-coordinator.ts:948`<br>`src/core/write-safety-coordinator.ts:1041`<br>`src/tools/block/handlers.ts:64` | 有效内核路由 |
+| `/api/query/sql` | api-wrapper+core+tool-direct | `src/api/search.ts:31`<br>`src/core/write-safety-coordinator.ts:941`<br>`src/core/write-safety-coordinator.ts:1034`<br>`src/tools/block/handlers.ts:65` | 有效内核路由 |
 | `/api/ref/getBacklinkDoc` | api-wrapper | `src/api/search.ts:47` | 有效内核路由 |
 | `/api/ref/getBackmentionDoc` | api-wrapper | `src/api/search.ts:57` | 有效内核路由 |
 | `/api/repo/createSnapshot` | api-wrapper | `src/api/repo.ts:52` | 有效内核路由 |
 | `/api/repo/diffRepoSnapshots` | api-wrapper | `src/api/repo.ts:76` | 有效内核路由 |
 | `/api/repo/getRepoSnapshots` | api-wrapper | `src/api/repo.ts:60` | 有效内核路由 |
-| `/api/repo/getRepoTagSnapshots` | api-wrapper+core | `src/api/repo.ts:64`<br>`src/core/write-safety-coordinator.ts:734` | 有效内核路由 |
+| `/api/repo/getRepoTagSnapshots` | api-wrapper+core | `src/api/repo.ts:64`<br>`src/core/write-safety-coordinator.ts:727` | 有效内核路由 |
 | `/api/repo/openRepoSnapshotFile` | api-wrapper | `src/api/repo.ts:80` | 有效内核路由 |
 | `/api/repo/removeRepoTagSnapshot` | api-wrapper | `src/api/repo.ts:68` | 有效内核路由 |
 | `/api/repo/rollbackRepoSnapshotFile` | api-wrapper | `src/api/repo.ts:84` | 有效内核路由 |
 | `/api/repo/tagSnapshot` | api-wrapper | `src/api/repo.ts:56` | 有效内核路由 |
 | `/api/riff/addRiffCards` | api-wrapper | `src/api/flashcard.ts:111` | 有效内核路由 |
 | `/api/riff/getNotebookRiffDueCards` | api-wrapper | `src/api/flashcard.ts:66` | 有效内核路由 |
-| `/api/riff/getRiffCards` | api-wrapper+core | `src/api/flashcard.ts:128`<br>`src/core/write-safety-coordinator.ts:698` | 有效内核路由 |
-| `/api/riff/getRiffCardsByBlockIDs` | api-wrapper+core | `src/api/flashcard.ts:139`<br>`src/core/write-safety-coordinator.ts:728` | 有效内核路由 |
+| `/api/riff/getRiffCards` | api-wrapper+core | `src/api/flashcard.ts:128`<br>`src/core/write-safety-coordinator.ts:691` | 有效内核路由 |
+| `/api/riff/getRiffCardsByBlockIDs` | api-wrapper+core | `src/api/flashcard.ts:139`<br>`src/core/write-safety-coordinator.ts:721` | 有效内核路由 |
 | `/api/riff/getRiffDecks` | api-wrapper | `src/api/flashcard.ts:47` | 有效内核路由 |
 | `/api/riff/getRiffDueCards` | api-wrapper | `src/api/flashcard.ts:55` | 有效内核路由 |
 | `/api/riff/getTreeRiffDueCards` | api-wrapper | `src/api/flashcard.ts:77` | 有效内核路由 |
@@ -315,7 +315,7 @@
 | `/api/system/bootProgress` | api-wrapper | `src/api/system.ts:24` | 有效内核路由 |
 | `/api/system/currentTime` | api-wrapper | `src/api/system.ts:36` | 有效内核路由 |
 | `/api/system/getChangelog` | api-wrapper | `src/api/system.ts:12` | 有效内核路由 |
-| `/api/system/getConf` | api-wrapper+core | `src/api/system.ts:16`<br>`src/core/write-safety-coordinator.ts:745` | 有效内核路由 |
+| `/api/system/getConf` | api-wrapper+core | `src/api/system.ts:16`<br>`src/core/write-safety-coordinator.ts:738` | 有效内核路由 |
 | `/api/system/getNetwork` | api-wrapper | `src/api/system.ts:8` | 有效内核路由 |
 | `/api/system/getSysFonts` | api-wrapper | `src/api/system.ts:20` | 有效内核路由 |
 | `/api/system/getWorkspaceInfo` | api-wrapper | `src/api/system.ts:4` | 有效内核路由 |
@@ -338,7 +338,7 @@
 
 | API 路径 | 位置 | 状态 |
 |---|---|---|
-| `/api/file/readDir` | `src/tools/av/handlers.ts:1388` | 有效 |
+| `/api/file/readDir` | `src/tools/av/handlers.ts:1391` | 有效 |
 
 ### UI-only（不计覆盖率）
 

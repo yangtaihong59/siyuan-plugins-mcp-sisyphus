@@ -281,12 +281,31 @@ describe('write safety coordinator', () => {
         }));
         if (scenario === 'drift') {
             expect(result.error.code).toBe('state_changed');
+            expect(result.error.expectedHash).toMatch(/^[a-f0-9]{4,64}$/);
+            expect(result.error.currentHash).toMatch(/^[a-f0-9]{4,64}$/);
+            expect(result.error.expectedHash).not.toBe(result.error.currentHash);
             expect(execute).not.toHaveBeenCalled();
         } else {
             expect(execute).toHaveBeenCalledTimes(1);
             expect(result.safety.transactionState).toBe(scenario === 'commit' ? 'committed' : 'no_change');
             if (scenario === 'commit') expect(result.safety.previousHash).not.toBe(result.safety.resultHash);
             else expect(result.safety.previousHash).toBe(result.safety.resultHash);
+            expect(result.safety.previousHash).toMatch(/^[a-f0-9]{4,64}$/);
+            expect(result.safety.resultHash).toMatch(/^[a-f0-9]{4,64}$/);
+            const saved = JSON.parse((client as any).writeFile.mock.calls.at(-1)[1]);
+            const entry = saved.entries.find((item: any) => item.requestId === preflight.requestId);
+            expect(entry.result.previousHash).toMatch(/^sha256:v1:[a-f0-9]{64}$/);
+            expect(entry.result.resultHash).toMatch(/^sha256:v1:[a-f0-9]{64}$/);
+            const replayResult = await coordinator.run({
+                client, permMgr, category: 'block', action: 'update', strictMode: true,
+                args: { ...args, requestId: preflight.requestId, expectedStateHash: preflight.expectedStateHash }, execute,
+            });
+            const replay = parseResult(replayResult);
+            expect(replay.replayed).toBe(true);
+            expect(replay.previousHash).toBe(result.safety.previousHash);
+            expect(replay.resultHash).toBe(result.safety.resultHash);
+            expect(replayResult.structuredContent).toEqual(replay);
+            expect(execute).toHaveBeenCalledTimes(1);
         }
     });
 
@@ -648,7 +667,7 @@ describe('write safety coordinator', () => {
             writeExecuted: true,
             transactionState: 'committed',
         });
-        expect(result.safety.resultHash).toMatch(/^sha256:v1:/);
+        expect(result.safety.resultHash).toMatch(/^[a-f0-9]{4}$/);
         expect(permMgr.canWrite).not.toHaveBeenCalledWith(notebookID);
         const replay = parseResult(await coordinator.run({ ...execution, args: { ...execution.args, requestId: preflight.requestId } }));
         expect(replay.replayed).toBe(true);
@@ -1203,7 +1222,8 @@ describe('write safety coordinator', () => {
             code: 'state_changed',
             expectedHash: preflight.expectedStateHash,
         });
-        expect(result.error.currentHash).toMatch(/^sha256:v1:/);
+        expect(result.error.currentHash).toMatch(/^[a-f0-9]{4,64}$/);
+        expect(result.error.currentHash).not.toBe(result.error.expectedHash);
         expect(execute).not.toHaveBeenCalled();
 
         const consumed = parseResult(await coordinator.run({

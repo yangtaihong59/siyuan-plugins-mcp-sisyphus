@@ -1,8 +1,8 @@
 import type { ToolCategory } from './config';
 import {
-    WRITE_HASH_DIGEST_LENGTH,
-    WRITE_HASH_PREFIX_MIN_LENGTH,
     hashWriteState,
+    WriteHashPool,
+    writeHashPool,
     writeHashDigest,
 } from './write-safety-hash';
 
@@ -26,15 +26,16 @@ export interface WritePreflightLease extends WritePreflightLeaseScope {
 
 export type WritePreflightLeaseResolution =
     | { status: 'ok'; lease: WritePreflightLease }
-    | { status: 'invalid' }
-    | { status: 'ambiguous'; minimumRequiredLength: number };
+    | { status: 'invalid' };
 
 /**
- * Process-local preflight credentials. Only complete SHA-256 values are kept;
- * the short value exposed to callers is an untrusted lookup prefix.
+ * Operation leases retain complete SHA-256 values. A shared pool resolves
+ * issued aliases; possession of an alias alone never authorizes a write.
  */
 export class WritePreflightLeasePool {
     private leases: WritePreflightLease[] = [];
+
+    constructor(private readonly hashes: WriteHashPool = writeHashPool) {}
 
     issue(
         scope: WritePreflightLeaseScope,
@@ -62,13 +63,10 @@ export class WritePreflightLeasePool {
 
         this.enforceScopeCapacity(scopeKey);
         this.enforceGlobalCapacity();
-        const prefixLength = shortestUniquePrefixLength(
-            lease.fullHash,
-            this.leases.filter((item) => item.scopeKey === scopeKey).map((item) => item.fullHash),
-        );
+        const credential = this.hashes.issue(fullHash);
         return {
-            credential: writeHashDigest(fullHash).slice(0, prefixLength),
-            hashPrefixLength: prefixLength,
+            credential,
+            hashPrefixLength: credential.length,
             leaseExpiresAt: lease.expiresAt,
             lease: cloneLease(lease),
         };
@@ -81,23 +79,9 @@ export class WritePreflightLeasePool {
     ): WritePreflightLeaseResolution {
         this.pruneExpired(now);
         const scopeKey = buildScopeKey(normalizeScope(scope));
-        const matches = this.leases.filter((item) => (
-            item.scopeKey === scopeKey && writeHashDigest(item.fullHash).startsWith(digestPrefix.toLowerCase())
-        ));
-        if (matches.length === 0) return { status: 'invalid' };
-        if (matches.length > 1) {
-            return {
-                status: 'ambiguous',
-                minimumRequiredLength: Math.max(
-                    digestPrefix.length + 1,
-                    ...matches.map((item) => shortestUniquePrefixLength(
-                        item.fullHash,
-                        matches.map((candidate) => candidate.fullHash),
-                    )),
-                ),
-            };
-        }
-        return { status: 'ok', lease: cloneLease(matches[0]) };
+        const fullHash = this.hashes.resolve(digestPrefix);
+        const lease = this.leases.find((item) => item.scopeKey === scopeKey && item.fullHash === fullHash);
+        return lease ? { status: 'ok', lease: cloneLease(lease) } : { status: 'invalid' };
     }
 
     consume(lease: WritePreflightLease): void {
@@ -145,17 +129,6 @@ function normalizeScope(scope: WritePreflightLeaseScope): WritePreflightLeaseSco
 
 function buildScopeKey(scope: WritePreflightLeaseScope): string {
     return hashWriteState(scope);
-}
-
-function shortestUniquePrefixLength(fullHash: string, candidates: string[]): number {
-    const digest = writeHashDigest(fullHash);
-    for (let length = WRITE_HASH_PREFIX_MIN_LENGTH; length < WRITE_HASH_DIGEST_LENGTH; length += 1) {
-        const prefix = digest.slice(0, length);
-        if (candidates.every((candidate) => candidate === fullHash || !writeHashDigest(candidate).startsWith(prefix))) {
-            return length;
-        }
-    }
-    return WRITE_HASH_DIGEST_LENGTH;
 }
 
 function compareLeaseAge(left: WritePreflightLease, right: WritePreflightLease): number {
