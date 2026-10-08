@@ -3,6 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolResult } from '@/tools/internal/shared';
 import { extractPaginationInfo, renderCliError, renderToolResult } from '@/cli/render';
 
+it('allows continuing a filtered page with an unknown total', () => {
+    const result: ToolResult = { content: [{ type: 'text', text: JSON.stringify({ data: [], total: null, page: 1, pageCount: 3, hasNextPage: true }) }] };
+    expect(extractPaginationInfo(result)).toEqual({ page: 1, pageCount: 3, hasNextPage: true });
+});
+
 function captureStdIO() {
     let stdout = '';
     let stderr = '';

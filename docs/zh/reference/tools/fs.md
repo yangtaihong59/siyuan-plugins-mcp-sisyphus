@@ -86,3 +86,5 @@ CLI：`siyuan fs reorder --path "/思想沉淀" --ordered-paths-json '["/思想�
 当 `fs.read` 提示存在复杂块，或任务需要块级排版、元数据、SQL、反链、资源文件或数据库操作时，切换到 `document`、`block`、`search`、`file` 或 `av` 等高级工具。
 
 读取保护：块列表与单块 HTTP 响应最多 1 MiB；累计枚举元数据最多 4 MiB、50000 个块、128 层。超限明确报错，不回退为全量读取。保护作用于 MCP/CLI 侧，不能限制思源内核自身生成响应时的内存。
+
+参见 [读取范围与数据库操作指引](../read-results.md)。

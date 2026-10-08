@@ -195,7 +195,7 @@ export function extractPaginationInfo(result: ToolResult): PaginationInfo | null
 
     if (
         !Array.isArray(payload.data)
-        || typeof payload.total !== 'number'
+        || (typeof payload.total !== 'number' && payload.total !== null)
         || typeof payload.page !== 'number'
         || typeof payload.pageCount !== 'number'
     ) {
@@ -294,7 +294,7 @@ function renderSuccessPayload(payload: unknown): void {
     }
 
     const maybePaginated = obj as Record<string, any>;
-    if (Array.isArray(maybePaginated.data) && typeof maybePaginated.total === 'number' && typeof maybePaginated.page === 'number') {
+    if (Array.isArray(maybePaginated.data) && (typeof maybePaginated.total === 'number' || maybePaginated.total === null) && typeof maybePaginated.page === 'number') {
         renderPaginatedResult(obj, out);
         return;
     }
@@ -304,7 +304,7 @@ function renderSuccessPayload(payload: unknown): void {
 
 function renderPaginatedResult(obj: Record<string, unknown>, out: OutputStream): void {
     const data = Array.isArray(obj.data) ? obj.data : [];
-    const total = typeof obj.total === 'number' ? obj.total : data.length;
+    const total = typeof obj.total === 'number' ? obj.total : '?';
     const page = typeof obj.page === 'number' ? obj.page : 1;
     const pageCount = typeof obj.pageCount === 'number' ? obj.pageCount : '?';
     const pageSize = typeof obj.pageSize === 'number' ? obj.pageSize : undefined;

@@ -137,7 +137,7 @@ async function mutate(tool, action, args, precondition = 'none', options = {}) {
             }
             executionArgs.requestId = preflight.requestId;
             payload = await callCli(tool, action, executionArgs, options);
-            if (['state_changed', 'preflight_lease_invalid', 'ambiguous_hash_prefix'].includes(payload?.error?.code)
+            if (['state_changed', 'preflight_lease_invalid'].includes(payload?.error?.code)
                 && payload?.writeAttempted === false
                 && attempt < 2) {
                 process.stdout.write(`RETRY ${label} after ${payload.error.code}\n`);

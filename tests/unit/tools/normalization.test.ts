@@ -108,6 +108,7 @@ describe('tool result normalization', () => {
         }, enabledActions('get_doc'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            readInfo: { scope: 'document', coverage: 'complete', representation: 'markdown', limitations: [] },
             id: 'doc-1',
             mode: 'markdown',
             notebook: 'nb-1',
@@ -393,6 +394,7 @@ describe('tool result normalization', () => {
         }, enabledActions('get_doc'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            readInfo: { scope: 'document', coverage: 'unknown', representation: 'html', limitations: ['kernel_window', 'database_contents_not_included'] },
             id: 'doc-1',
             mode: 'html',
             notebook: 'nb-1',
@@ -425,6 +427,7 @@ describe('tool result normalization', () => {
         }, enabledActions('get_doc'), permMgr);
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            readInfo: { scope: 'document', coverage: 'partial', representation: 'markdown', limitations: ['block_limit', 'unknown_total'] },
             id: 'doc-1',
             mode: 'markdown',
             notebook: 'nb-1',

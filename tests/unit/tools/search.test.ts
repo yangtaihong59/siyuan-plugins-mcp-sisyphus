@@ -8,6 +8,52 @@ import { assertReadOnlySql } from '@/tools/search/sql-builder';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
 
+describe('search read continuation', () => {
+    it.each([2, 51])('reports SQL projection limits for %i rows without inventing a continuation', async (count) => {
+        const client = createMockClient({ request: vi.fn(async (endpoint: string) => {
+            if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'allowed', name: 'Test', closed: false }] };
+            if (endpoint === '/api/query/sql') return Array.from({ length: count }, (_, i) => ({ id: `row-${i}` }));
+            throw new Error(endpoint);
+        }) });
+        const result = parseResult(await callSearchTool(client, { action: 'query_sql', stmt: 'SELECT id FROM blocks LIMIT 60' },
+            buildDefaultToolConfig().search, { reload: async () => {}, canRead: () => true } as any));
+        expect(result.readInfo).toMatchObject({ scope: 'sql_query', representation: 'sql_rows', coverage: count > 50 ? 'partial' : 'unknown' });
+        expect(result.data).toHaveLength(Math.min(count, 50));
+        expect(result.nextSteps).toBeUndefined();
+    });
+
+    it('returns every match in a kernel page and follows the original filters', async () => {
+        const config = buildDefaultToolConfig();
+        const client = createMockClient({
+            readFile: async () => JSON.stringify(config),
+            request: vi.fn(async (endpoint: string, args: any) => {
+                if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'allowed', name: 'Test' }] };
+                if (endpoint === '/api/search/fullTextSearchBlock') return {
+                    blocks: Array.from({ length: args.page === 2 ? 3 : 32 }, (_, i) => ({
+                        id: `match-${(args.page ?? 1) === 2 ? 32 + i : i}`, box: 'allowed', content: 'needle', tag: '#tag#',
+                    })), matchedBlockCount: 35, pageCount: 2,
+                };
+                throw new Error(endpoint);
+            }),
+        });
+        const permMgr = { canRead: () => true } as any;
+        const first = parseResult(await callSearchTool(client, {
+            action: 'fulltext', query: 'needle', pageSize: 32, hasTags: true, sortBy: 'updated_desc',
+        }, config.search, permMgr));
+        expect(first.data).toHaveLength(32);
+        expect(first.total).toBeNull();
+        expect(first.hasNextPage).toBe(true);
+        expect(first.pageCount).toBe(2);
+        expect(first.readInfo).toMatchObject({ coverage: 'partial', representation: 'search_snippets' });
+        const continuation = first.nextSteps.find((step: any) => step.purpose === 'continue_read');
+        expect(continuation.arguments).toMatchObject({ query: 'needle', page: 2, pageSize: 32, hasTags: true, sortBy: 'updated_desc' });
+        const second = parseResult(await callSearchTool(client, continuation.arguments, config.search, permMgr));
+        expect(new Set([...first.data, ...second.data].map(row => row.id)).size).toBe(35);
+        expect(second.nextSteps.some((step: any) => step.purpose === 'continue_read')).toBe(false);
+        expect(second.readInfo.coverage).toBe('partial');
+    });
+});
+
 describe('search SQL read-only guard', () => {
     it('allows SELECT and WITH queries whose main statement is SELECT', () => {
         expect(() => assertReadOnlySql('SELECT * FROM blocks LIMIT 1')).not.toThrow();
@@ -576,8 +622,9 @@ describe('search tool filtering', () => {
         expect(parsed.data[0].plainContent).toBe('before child after');
         expect(parsed.data[0].excerpt).toContain('before child after');
         expect(parsed.data[0].path).toBe('/doc-1.sy');
-        expect(parsed.total).toBe(1);
-        expect(parsed.pageCount).toBe(1);
+        expect(parsed.total).toBeNull();
+        expect(parsed.pageCount).toBe(3);
+        expect(parsed.hasNextPage).toBe(true);
         expect(parsed.returnedTotal).toBe(1);
         expect(parsed.kernelMatchedBlockCount).toBe(25);
         expect(parsed.kernelPageCount).toBe(3);

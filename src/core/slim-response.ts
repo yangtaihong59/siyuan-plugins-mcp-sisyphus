@@ -164,7 +164,6 @@ function slimError(error: Record<string, unknown>): Record<string, unknown> {
         'expectedHash',
         'currentHash',
         'revalidateRequired',
-        'minimumRequiredLength',
         'requestId',
         'ledgerState',
         'resultHash',
@@ -259,8 +258,10 @@ function slimObject(payload: Record<string, unknown>, ctx: SlimContext): Record<
             if (uiRefresh !== undefined) next.uiRefresh = uiRefresh;
             continue;
         }
-        if (key === 'nextWindow' && isRecord(value)) {
-            next.nextWindow = value;
+        // These are executable read arguments, not display data. In particular
+        // action, parentId and nested filter fields must survive unchanged.
+        if ((key === 'nextWindow' && isRecord(value)) || (key === 'nextSteps' && Array.isArray(value))) {
+            next[key] = value;
             continue;
         }
         if (TOP_LEVEL_DROP_KEYS.has(key)) continue;

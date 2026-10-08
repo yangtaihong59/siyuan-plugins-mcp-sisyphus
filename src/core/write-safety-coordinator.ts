@@ -27,7 +27,7 @@ import {
     USER_RULES_VIRTUAL_PATH,
     type ToolCategory,
 } from './config';
-import { canonicalizeWriteState, hashWriteBytes, hashWriteBytesAsync, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
+import { canonicalizeWriteState, compactWriteHashFields, hashWriteBytes, hashWriteBytesAsync, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
 import {
     WritePreflightLeasePool,
     type WritePreflightLease,
@@ -225,18 +225,11 @@ export class WriteSafetyCoordinator {
                     revalidateRequired: true,
                 });
             }
-            if (resolved.status === 'ambiguous') {
-                return writeSafetyFailure('ambiguous_hash_prefix', 'The submitted hash prefix matches multiple active preflight leases in this operation scope. Run validateOnly again to obtain an unambiguous credential.', {
-                    expectedField,
-                    minimumRequiredLength: resolved.minimumRequiredLength,
-                    revalidateRequired: true,
-                });
-            }
             activeLease = resolved.lease;
             if (activeLease.fullHash !== before.hash) {
                 this.preflightLeases.consume(activeLease);
                 return writeSafetyFailure('state_changed', 'The target changed after it was read. No write was attempted.', {
-                    expectedHash: expected,
+                    expectedHash: activeLease.fullHash,
                     currentHash: before.hash,
                     revalidateRequired: true,
                 });
@@ -2160,7 +2153,7 @@ function replayLedgerEntry(entry: WriteLedgerEntry): ToolResult {
 
 function addSafetyMetadata(result: ToolResult, safety: Record<string, unknown>): ToolResult {
     const parsed = parseResultObject(result);
-    const payload = parsed ? { ...parsed, safety } : { safety };
+    const payload = { ...(parsed ?? {}), safety: compactWriteHashFields(safety) };
     return {
         ...result,
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
@@ -2242,6 +2235,8 @@ function fromSafetyError(error: unknown): ToolResult {
 }
 
 function jsonResult(payload: Record<string, unknown>, isError = false): ToolResult {
+    payload = compactWriteHashFields(payload);
+    if (isRecord(payload.error)) payload.error = compactWriteHashFields(payload.error);
     return {
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
         structuredContent: payload,

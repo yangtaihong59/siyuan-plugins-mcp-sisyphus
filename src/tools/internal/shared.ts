@@ -502,7 +502,7 @@ export function paginate<T>(items: T[], page: number, pageSize: number): Paginat
 
 export interface PaginatedPayload<T> {
     data: T[];
-    total: number;
+    total: number | null;
     page: number;
     pageSize: number;
     pageCount: number;
@@ -516,7 +516,7 @@ export interface PaginatedPayload<T> {
  */
 export function createPaginatedResult<T>(
     data: T[],
-    pagination: { total: number; page: number; pageSize: number; pageCount: number; hasNextPage?: boolean },
+    pagination: { total: number | null; page: number; pageSize: number; pageCount: number; hasNextPage?: boolean },
     extras?: Record<string, unknown>,
 ): ToolResult {
     const payload: PaginatedPayload<T> & Record<string, unknown> = {

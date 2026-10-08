@@ -80,3 +80,5 @@ siyuan search query-sql --sql "SELECT id, content, type FROM blocks LIMIT 10"
 - `search_assets`
 - `fulltext_asset_content`
 - `list_invalid_refs`
+
+参见 [读取范围与数据库操作指引](../read-results.md)。

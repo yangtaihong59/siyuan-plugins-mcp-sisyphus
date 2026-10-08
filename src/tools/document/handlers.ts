@@ -1,3 +1,4 @@
+import { availableReadSteps, databaseReadSteps, documentReadInfo, kramdownDatabases, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
@@ -938,6 +939,7 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         const result = await documentApi.getDoc(client, parsed.id, 0, parsed.size);
         return createJsonResult({
             id: parsed.id,
+            readInfo: { scope: 'document', coverage: 'unknown', representation: 'html', limitations: ['kernel_window', 'database_contents_not_included'] },
             mode: 'html',
             notebook: context.notebook,
             ...(notebookName ? { notebookName } : {}),
@@ -948,9 +950,10 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         blockStart: parsed.blockStart,
         blockLimit: parsed.blockLimit,
         tokenBudget: parsed.tokenBudget,
-        includeBlockIds: parsed.includeBlockIds,
+        includeBlockIds: true,
     });
-    const { nextBlockStart, ...windowPayload } = window;
+    const { nextBlockStart, blockRefs, ...windowPayload } = window;
+    if (!parsed.includeBlockIds) windowPayload.outline = windowPayload.outline.map(({ id, ...heading }) => heading);
     const nextWindow = nextBlockStart === undefined
         ? undefined
         : {
@@ -962,6 +965,11 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
             tokenBudget: window.tokenBudget,
             ...(parsed.includeBlockIds ? { includeBlockIds: true } : {}),
         };
+    const steps: ReadStep[] = nextWindow
+        ? [{ purpose: 'continue_read', tool: 'document', arguments: nextWindow }]
+        : [];
+    steps.push(...databaseReadSteps(kramdownDatabases(window.content)));
+    const nextSteps = await availableReadSteps(client, steps);
     return createJsonResult({
         id: parsed.id,
         mode: 'markdown',
@@ -969,6 +977,9 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         ...(notebookName ? { notebookName } : {}),
         hPath: await getHPathByIdWithRetry(client, parsed.id),
         ...windowPayload,
+        ...(parsed.includeBlockIds ? { blockRefs } : {}),
+        readInfo: documentReadInfo(window, (blockRefs ?? []).map(block => block.type)),
+        ...(nextSteps.length ? { nextSteps } : {}),
         ...(nextWindow ? {
             nextWindow,
             nextWindowHint: `Continue with document(${JSON.stringify(nextWindow)}).`,

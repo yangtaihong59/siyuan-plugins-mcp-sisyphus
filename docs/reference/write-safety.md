@@ -49,7 +49,9 @@ Actions may use `expectedStateHash`, `expectedStructureHash`, `expectedManifestH
 
 Credentials accept either `sha256:v1:<4-64 hex digits>` or bare `<4-64 hex digits>`, case-insensitively. Four digits are only a lease lookup key, not a 16-bit correctness check. The real write resolves the credential within `tool + action + business-argument digest + sorted target IDs`, retrieves the lease's complete 256-bit SHA-256, rereads current state, and compares the complete digests. Even a 64-digit credential must resolve to an active lease and cannot bypass preflight.
 
-If active hashes in the same operation scope share four digits, a new preflight automatically returns the shortest unique prefix of five or more digits. If a previously issued short prefix becomes ambiguous later, the server neither guesses nor returns candidate hashes; it requires another preflight. Leases exist only in memory, contain no note body, and disappear on plugin/MCP Server restart. A committed or uncertain write also consumes its lease.
+Preflight and receipts share a short-hash pool in the coordinator runtime. Before returning a hash, reuse its existing alias or start with four digits. If that alias belongs to a different full hash, extend one digit at a time and register the first available alias. An existing `abcd` stays unchanged; a later collision can receive `abcd1`. Resolution uses the exact registered alias, not a prefix search over leases. Do not shorten or extend issued credentials yourself.
+
+The pool stores no note content. Aliases remain reserved for the process lifetime, even after leases expire or are consumed, and are never reassigned. Restart clears the pool and active leases; aliases are not permanent identifiers across restarts. Leases retain their operation scope, expiry, and capacity limits. Knowing an alias alone does not authorize a write.
 
 `block.update` reports the number of distinct targets from either `id` or `items[].id` in `targetCount`. A batch of 11 different blocks reports 11; repeated IDs count once. Block state includes Kramdown, block attributes, and DOM, so inline changes such as block-reference `data-subtype`, `strong`, or `em` change the hash. DOM attribute order and creation/update timestamps do not count as content changes. Attribute drift after preflight returns `state_changed`; a successful attribute edit returns `committed`, while an unchanged readback returns `no_change`.
 
@@ -70,7 +72,6 @@ If active hashes in the same operation scope share four digits, a new preflight 
 | --- | --- | --- |
 | `precondition_required` | A request ID or required hash is absent | Run preflight again; never invent a hash |
 | `preflight_lease_invalid` | The lease is missing, expired, evicted, or belonged to a previous process | Run the same `validateOnly` call again |
-| `ambiguous_hash_prefix` | The prefix matches multiple active leases in this scope | Re-preflight and use the newly issued longer prefix |
 | `state_changed` | The target changed after preflight | Stop and reread before deciding to write |
 | `outcome_unknown` | The connection failed after execution began | Do not retry with a new ID; inspect the target |
 | `readback_mismatch` | The returned mutation could not be verified | Treat the outcome as unknown |
@@ -92,7 +93,9 @@ Do not add a second queue or coordinator to “make strict writes safer.” The 
 
 This is not a kernel-level compare-and-swap transaction. The coordinator serializes every write that passes through Sisyphus, but the SiYuan UI, another plugin, or a direct kernel API caller can still write between the last state check and execution. Post-write readback exposes an abnormal final state but does not roll it back; inspect the target before acting on `outcome_unknown` or `readback_mismatch`.
 
-The short-hash lease itself never calls `/api/repo/*`, creates no SiYuan repository snapshots, and stores no full content for preflight (the timeline tool's existing repository-state reads are unrelated to lease storage). Complete audit digests such as `previousHash` and `resultHash` in successful responses are not credentials for the next write; another preflight is required to create an active lease.
+The short-hash lease never calls `/api/repo/*`, creates no repository snapshots, and stores no note content. Success, no-change and replay `previousHash` / `resultHash`, conflict `expectedHash` / `currentHash`, and AV template, two-way relation, relation-value and rollup preimage/postimage hashes use the same alias pool. Internal comparisons and the idempotency ledger retain full SHA-256 values. Another write still requires a fresh preflight lease.
+
+Export `sha256`, Markdown snapshot `scopeHash` / `inventoryHash` / `metadataHash` / `contentHash`, snapshot cursors, upload fingerprints and skill-resource manifest `digest` values retain full digests for file verification and incremental comparison across processes and restarts. Hash-like note content and third-party tool results are not rewritten.
 
 Disabling Strict Safe Writes restores the legacy schema and direct invocation. Mutations still avoid transport retries, but responses state `writeSafetyGuaranteed: false`.
 

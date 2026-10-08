@@ -112,3 +112,5 @@ siyuan document ensure_link_targets --notebook <notebook-id> --parent-id <parent
 - `duplicate`
 - `heading_to_doc`
 - `doc_to_heading`
+
+See [Read scope and database guidance](../read-results.md).

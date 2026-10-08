@@ -997,7 +997,7 @@ export const AvGetPrimaryKeyValuesSchema = z.object({
     avID: z.string().describe("Attribute view ID"),
     keyword: z.string().optional().describe("Optional keyword filter for primary key values"),
     page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
-    pageSize: z.number().int().min(1).optional().describe("Rows per page, default all"),
+    pageSize: z.number().int().min(1).optional().describe("Rows per page, default 16"),
 });
 
 const AvViewIDSchema = z.string().min(1).describe('Attribute-view view ID');

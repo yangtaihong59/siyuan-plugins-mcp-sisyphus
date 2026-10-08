@@ -83,3 +83,5 @@ siyuan block append --parent-id <doc-id> --data-type markdown --data "- [ ] Todo
 - `docs_info`
 
 `update` replaces one block: a complete table or fenced code block may contain multiple lines; newlines alone do not indicate truncation. Use `append`, `prepend`, or `insert` for multiple sibling blocks, then read back the target to verify structure, references, and attributes. Use whole-block `block.update` for table row changes that `fs.replace` cannot map safely.
+
+See [Read scope and database guidance](../read-results.md).

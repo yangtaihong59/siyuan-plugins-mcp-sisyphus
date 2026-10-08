@@ -736,8 +736,8 @@ describe('av tool', () => {
             avID,
             defaultTemplateID: templateID,
         });
-        expect(payload.templatePreimageHash).toMatch(/^sha256:v1:/);
-        expect(payload.templatePostimageHash).toMatch(/^sha256:v1:/);
+        expect(payload.templatePreimageHash).toMatch(/^[a-f0-9]{4,64}$/);
+        expect(payload.templatePostimageHash).toMatch(/^[a-f0-9]{4,64}$/);
     });
 
     it('accepts a template field for a newly added v3.8 key whose empty values list is omitted', async () => {
@@ -2045,6 +2045,21 @@ describe('av tool', () => {
         });
     });
 
+    it('keeps the carrier-selected view in generated read guidance', async () => {
+        const avApi = await import('@/api/av');
+        const config = (await import('@/core/config')).buildDefaultToolConfig();
+        const readClient = { readFile: async () => JSON.stringify(config) } as any;
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: {
+            id: 'av-1', viewID: 'database-default', views: [{ id: 'database-default' }], keyValues: [],
+        } });
+        const result = await callAvTool(readClient, { action: 'get', avID: 'av-1', blockID: 'db-block-1' }, enabledActions('get'), permMgr);
+        const value = JSON.parse(result.content[0].text);
+        expect(result.isError).toBeUndefined();
+        expect(value.nextSteps.find(step => step.purpose === 'read_view').arguments).toEqual({
+            action: 'render', avID: 'av-1', blockID: 'db-block-1', createIfNotExist: false,
+        });
+    });
+
     it('uses explicit blockID permission context for set_cells while keeping row validation intact', async () => {
         const avApi = await import('@/api/av');
         const blockApi = await import('@/api/block');
@@ -2136,7 +2151,7 @@ describe('av tool', () => {
         }, enabledActions('get'), permMgr);
 
         expect(vi.mocked(context.ensurePermissionForDocumentId)).toHaveBeenCalledWith(client, permMgr, 'db-block-empty', 'read');
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             id: 'av-empty',
             av: {
                 id: 'av-empty',
@@ -2167,7 +2182,7 @@ describe('av tool', () => {
         expect(vi.mocked(searchApi.querySQL).mock.calls[0][1]).toContain('av-empty');
         expect(vi.mocked(context.resolveResultItemContext)).not.toHaveBeenCalled();
         expect(vi.mocked(context.ensurePermissionForDocumentId)).toHaveBeenCalledWith(client, permMgr, 'db-block-empty', 'read');
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             id: 'av-empty',
             av: {
                 id: 'av-empty',
@@ -2211,7 +2226,7 @@ describe('av tool', () => {
             avID: 'av-misaligned',
         }, enabledActions('get'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             id: 'av-misaligned',
             av: {
                 id: 'av-misaligned',
@@ -3794,7 +3809,12 @@ describe('av tool', () => {
         vi.mocked(avApi.getAttributeViewPrimaryKeyValues).mockResolvedValue({
             name: '记账',
             blockIDs: ['block-a', 'block-b'],
-            rows: [{ id: 'row-a' }, { id: 'row-b' }],
+            total: 3,
+            rows: { key: { id: 'primary', type: 'block' }, values: [
+                { id: 'cell-a', blockID: 'row-a', block: { id: 'block-a' } },
+                { id: 'cell-b', blockID: 'row-b', block: { id: 'block-b' } },
+                { id: 'cell-c', blockID: 'row-c', isDetached: true, block: { content: 'Independent' } },
+            ] },
         });
         vi.mocked(context.resolveResultItemContext).mockImplementation(async (_client, item) => {
             const id = item && typeof item === 'object' && 'id' in item ? (item as { id?: string }).id : undefined;
@@ -3813,11 +3833,16 @@ describe('av tool', () => {
             avID: 'av-1',
         }, enabledActions('get_primary_key_values'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             avID: 'av-1',
             name: '记账',
             blockIDs: ['block-a'],
-            rows: [{ id: 'row-a' }],
+            rows: { key: { id: 'primary', type: 'block' }, values: [
+                { id: 'cell-a', blockID: 'row-a', block: { id: 'block-a' } },
+                { id: 'cell-c', blockID: 'row-c', isDetached: true, block: { content: 'Independent' } },
+            ] },
+            readInfo: { coverage: 'partial', limitations: ['primary_key_only', 'permission_filtered'] },
+            resolvedRows: [{ rowID: 'row-a', sourceBlockID: 'block-a' }, { rowID: 'row-c', isDetached: true }],
             filteredOutCount: 1,
             partial: true,
             reason: 'permission_filtered',
@@ -3832,7 +3857,7 @@ describe('av tool', () => {
             page: 2,
         }, enabledActions('render'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             data: [],
             total: 0,
             page: 2,
@@ -4161,7 +4186,7 @@ describe('av tool', () => {
                 id: insertedBlockID,
             }],
         }]);
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             data: [],
             total: 0,
             page: 1,
@@ -4427,7 +4452,7 @@ describe('av tool', () => {
             avID: 'av-1',
         }, enabledActions('get_attribute_view_keys'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             avID: 'av-1',
             keys: [{ id: 'k1', name: 'Title', type: 'block' }],
         });
@@ -4451,7 +4476,7 @@ describe('av tool', () => {
             avID: 'av-1',
         }, enabledActions('get_attribute_view_keys'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             avID: 'av-1',
             keys: [
                 { id: 'k1', name: '主键', type: 'block' },
@@ -4635,7 +4660,7 @@ describe('av tool', () => {
             avID: 'av-stale',
         }, enabledActions('get'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             id: 'av-stale',
             av: {
                 id: 'av-stale',
@@ -4669,7 +4694,7 @@ describe('av tool', () => {
             avID: 'av-row-stale',
         }, enabledActions('get'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
             id: 'av-row-stale',
             av: {
                 id: 'av-row-stale',
