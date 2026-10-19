@@ -96,13 +96,13 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
                 officialMcpRuntime,
             );
             if (!handlesInterrupt && writeCoordinator?.owner === 'kernel'
-                && (isKernelExport(tool, payload) || (toolConfig.writeSafety.strictMode && policy.mode === 'mutation'))) {
+                && (isKernelExport(tool, payload) || (policy.mode === 'mutation' && (toolConfig.writeSafety.strictMode || (category === 'av' && normalizedAction === 'create'))))) {
                 process.on('SIGINT', interrupt);
                 handlesInterrupt = true;
             }
             const invoke = writeCoordinator?.owner === 'kernel' && isKernelExport(tool, payload)
                 ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
-                : toolConfig.writeSafety.strictMode && policy.mode === 'mutation'
+                : policy.mode === 'mutation' && (toolConfig.writeSafety.strictMode || (category === 'av' && normalizedAction === 'create'))
                 ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
                 : toolConfig.writeSafety.strictMode && policy.mode === 'external'
                     ? () => new WriteSafetyCoordinator(client).run({

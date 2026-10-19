@@ -26,7 +26,7 @@ describe('write safety action policy', () => {
         expect(getActionSafetyPolicy('fs', 'write', { overwrite: true })).toMatchObject({
             mode: 'mutation', precondition: 'state',
         });
-        expect(getActionSafetyPolicy('av', 'render', { createIfNotExist: true })).toMatchObject({
+        expect(getActionSafetyPolicy('av', 'create')).toMatchObject({
             mode: 'mutation', precondition: 'none',
         });
         expect(getActionSafetyPolicy('av', 'render')).toEqual({ mode: 'read' });
@@ -52,7 +52,7 @@ describe('write safety action policy', () => {
     });
 
     it('routes AV view configuration through strict state preconditions', () => {
-        for (const action of ['add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order']) {
+        for (const action of ['add_view', 'update_view']) {
             expect(getActionSafetyPolicy('av', action)).toMatchObject({ mode: 'mutation', precondition: 'state', validateOnly: true });
         }
     });
@@ -88,7 +88,7 @@ describe('write safety action policy', () => {
         for (const [category, action] of [
             ['fs', 'write'],
             ['file', 'create_template'],
-            ['av', 'render'],
+            ['av', 'create'],
         ] as const) {
             const descriptor = listAllTools(config).find((tool) => tool.name === category)!;
             const branches = (descriptor.inputSchema as Record<string, unknown>)[branchKey] as Array<Record<string, any>>;

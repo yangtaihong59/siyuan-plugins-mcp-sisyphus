@@ -80,13 +80,13 @@ async function main() {
     report.fixtures.push({ type: 'document', id: doc.id, notebook, path: '/' + prefix }); save();
     const child = await check('create by parentPath and title', () => mutation('document', { action: 'create', notebook, parentPath: '/' + prefix, title: 'Child', icon: '1f9ea' }));
     report.fixtures.push({ type: 'document', id: child.id, notebook }); save();
-    const av = await check('create isolated AV', () => mutation('av', { action: 'render', blockID: doc.id, createIfNotExist: true }));
+    const av = await check('create isolated AV', () => mutation('av', { action: 'create', parentID: doc.id }));
     const context = { avID: av.avID, blockID: av.blockID };
     report.fixtures.push({ type: 'av', ...context, parentID: doc.id }); save();
     const rows = await check('add three detached rows', () => mutation('av', { action: 'add_rows', ...context, primaryKeyTexts: ['A', 'B', 'C'] }));
     const text = await check('add text column', () => mutation('av', { action: 'add_column', ...context, keyName: '负责人', keyType: 'text' }));
     const date = await check('add date column', () => mutation('av', { action: 'add_column', ...context, keyName: '截止日期', keyType: 'date' }));
-    const selectID = av.view.columns.find(c => c.type === 'select').id;
+    const selectID = (await call('av', { action: 'get', avID: av.avID })).columns.find(c => c.type === 'select').id;
     const cells = rows.rows.flatMap((row, i) => [
         { rowID: row.rowID, columnID: selectID, valueType: 'select', option: i < 2 ? '进行中' : '待开始' },
         { rowID: row.rowID, columnID: text.keyID, valueType: 'text', text: ['甲', '乙', '丙'][i] },
@@ -118,26 +118,26 @@ async function main() {
     for (const mode of [true, false]) {
         slim = mode;
         await check('av.get preserves all nine values, slim=' + mode, async () => {
-            const result = await call('av', { action: 'get', id: av.avID }); assert.deepEqual(values(result), expected); return values(result);
+            const result = await call('av', { action: 'get', avID: av.avID, scope: 'raw' }); assert.deepEqual(values(result), expected); return values(result);
         });
-        await check('av.render preserves repeated option names, slim=' + mode, async () => {
-            const result = await call('av', { action: 'render', id: av.avID, blockID: av.blockID });
+        await check('av.query preserves repeated option names, slim=' + mode, async () => {
+            const result = await call('av', { action: 'query', avID: av.avID, blockID: av.blockID });
             const names = result.data.map(row => row.cells[selectID]);
             assert(JSON.stringify(names).includes('进行中')); assert(JSON.stringify(names).includes('待开始')); return names;
         });
     }
     slim = true;
     await check('av.get accepts canonical avID', async () => {
-        const result = await call('av', { action: 'get', avID: av.avID }); assert(!result.error); assert.equal(result.av.id, av.avID); return { avID: result.av.id };
+        const result = await call('av', { action: 'get', avID: av.avID, scope: 'raw' }); assert(!result.error); assert.equal(result.av.id, av.avID); return { avID: result.av.id };
     });
     await check('fresh CLI reads all nine values', async () => {
-        const result = JSON.parse(cp.execFileSync(process.execPath, [root + '/cli/dist/cli.cjs', 'av', 'get', '--id', av.avID, '--json'], { encoding: 'utf8', env: process.env }));
+        const result = JSON.parse(cp.execFileSync(process.execPath, [root + '/cli/dist/cli.cjs', 'av', 'get', '--av-id', av.avID, '--scope', 'raw', '--json'], { encoding: 'utf8', env: process.env }));
         assert.deepEqual(values(result), expected); return values(result);
     });
     stdio = new Client({ name: 'layout-feedback-stdio', version: '1' });
     await stdio.connect(new StdioClientTransport({ command: process.execPath, args: [root + '/dist/mcp-server.cjs'], env: { ...process.env } }));
     await check('fresh stdio reads all nine values', async () => {
-        const result = payload(await stdio.callTool({ name: 'av', arguments: { action: 'get', id: av.avID } }));
+        const result = payload(await stdio.callTool({ name: 'av', arguments: { action: 'get', avID: av.avID, scope: 'raw' } }));
         assert.deepEqual(values(result), expected); return values(result);
     });
     await check('fresh CLI supports tool-only layout guide', async () => {

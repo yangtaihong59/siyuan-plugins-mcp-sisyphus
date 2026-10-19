@@ -1,6 +1,6 @@
 ---
 name: siyuan-sisyphus-database
-description: CLI-only playbook for SiYuan attribute views with siyuan-sisyphus. Use to inspect database metadata, render views, add columns or rows, update cells, and keep AV, view, row, column, and block IDs distinct.
+description: CLI-only playbook for SiYuan attribute views with siyuan-sisyphus. Use to inspect database metadata, query views, add columns or rows, update cells, and keep AV, view, row, column, and block IDs distinct.
 ---
 
 # Operate SiYuan Databases with the CLI
@@ -11,7 +11,7 @@ Never guess attribute-view identifiers. Inspect the AV and its views before chan
 siyuan-sisyphus av get --av-id '<av-id>' --json
 ```
 ```bash
-siyuan-sisyphus av render --av-id '<av-id>' --page '1' --page-size '50' --json
+siyuan-sisyphus av query --av-id '<av-id>' --page '1' --page-size '50' --json
 ```
 ```bash
 siyuan-sisyphus av search --keyword 'project' --json
@@ -31,6 +31,6 @@ siyuan-sisyphus av add-rows --av-id '<av-id>' --view-id '<view-id>' --block-ids-
 siyuan-sisyphus av set-cells --av-id '<av-id>' --cells-json '[{"rowID":"<row-id>","columnID":"<column-id>","valueType":"text","text":"Done"}]' --json
 ```
 
-Before writing cells, render the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Re-render after mutation. Read `siyuan-sisyphus help av set-cells` for the current cell schema.
+Before writing cells, query the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Query again after mutation. Read `siyuan-sisyphus help av set-cells` for the current cell schema.
 
-Treat a successful mutation response as provisional until the same view and affected rows/cells are read back. Keep the render and readback paginated, continue while more data is advertised, and compare the intended cell values by stable row and column IDs. A raw MCP or CLI success message does not establish that strict-write coordination or complete readback occurred.
+Treat a successful mutation response as provisional until the same view and affected rows/cells are read back. Keep the query and readback paginated, continue while more data is advertised, and compare the intended cell values by stable row and column IDs. A raw MCP or CLI success message does not establish that strict-write coordination or complete readback occurred.

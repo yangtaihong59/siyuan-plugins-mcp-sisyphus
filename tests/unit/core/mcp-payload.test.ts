@@ -35,15 +35,15 @@ describe('MCP progressive disclosure contract', () => {
 
     it('serves the complete collapsed filter schema through both help routes', async () => {
         const config = buildDefaultToolConfig();
-        const schema = AV_VARIANTS.find(variant => variant.action === 'set_filters')!.schema;
+        const schema = AV_VARIANTS.find(variant => variant.action === 'update_view')!.schema;
         const mounted = listAllTools(config).find(tool => tool.name === 'av')!.inputSchema as any;
         expect(JSON.stringify(mounted.properties.filters).length).toBeLessThan(400);
         const client = createMockClient();
         const help = parseResult(await TOOL_REGISTRY.av.callTool(client,
-            { action: 'help', topic: 'set_filters' }, config.av, createMockPermissionManager())) as any;
+            { action: 'help', topic: 'update_view' }, config.av, createMockPermissionManager())) as any;
         expect(help.parameters).toEqual(schema);
         expect(help.parameters.properties.filters.items.properties.operator.enum).toContain('Contains');
-        const resource = readHelpResource('siyuan://help/action/av/set_filters')!;
+        const resource = readHelpResource('siyuan://help/action/av/update_view')!;
         const schemaText = resource.text.split('## Parameter schema\n\n')[1].split('```json\n')[1].split('\n```')[0];
         expect(JSON.parse(schemaText)).toEqual(schema);
         expect(client.request).not.toHaveBeenCalled();
@@ -51,7 +51,7 @@ describe('MCP progressive disclosure contract', () => {
 
     it('still rejects malformed nested filters before issuing write credentials', async () => {
         const config = buildDefaultToolConfig();
-        const args = { action: 'set_filters', avID: 'av-1', blockID: 'db-1', viewID: 'view-1',
+        const args = { action: 'update_view', avID: 'av-1', blockID: 'db-1', viewID: 'view-1',
             filters: [{ combination: 'and', filters: [{ operator: '=' }] }] };
         expect(() => validateRegisteredToolArguments('av', args)).toThrow();
         expect(() => validateRegisteredToolArguments('av', { ...args,
@@ -119,12 +119,12 @@ describe('MCP progressive disclosure contract', () => {
 
     it('keeps disabled actions out of listing and inline help', async () => {
         const config = buildDefaultToolConfig();
-        config.av.actions.set_filters = false;
+        config.av.actions.update_view = false;
         const mounted = listAllTools(config).find(tool => tool.name === 'av')!;
-        expect((mounted.inputSchema as any).properties.action.enum).not.toContain('set_filters');
-        expect(mounted.description).not.toContain('set_filters(');
+        expect((mounted.inputSchema as any).properties.action.enum).not.toContain('update_view');
+        expect(mounted.description).not.toContain('update_view(');
         const result = await TOOL_REGISTRY.av.callTool(createMockClient(),
-            { action: 'help', topic: 'set_filters' }, config.av, createMockPermissionManager());
+            { action: 'help', topic: 'update_view' }, config.av, createMockPermissionManager());
         expect(result.isError).toBe(true);
     });
 });

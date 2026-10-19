@@ -5,10 +5,7 @@ export { deriveKernelEndpointUrl, loadWriteCoordinatorSettings, selectWriteCoord
 export type { CliWriteCoordinatorSettings, CliWriteCoordinatorEndpoint } from '../core/write-coordinator-settings';
 import { SiYuanClient } from '../api/client';
 import {
-    MCP_TOOLS_CONFIG_API_PATH,
-    buildDefaultToolConfig,
-    normalizeToolConfig,
-    warnLegacyToolConfigOnce,
+    loadToolConfigFromApiFileWithStatus,
     type ToolConfig,
 } from '../core/config';
 import { PermissionManager } from '../core/permissions';
@@ -132,14 +129,7 @@ async function retargetLoopbackProfile(
 }
 
 async function loadToolConfigFromAPI(client: SiYuanClient): Promise<ToolConfig> {
-    try {
-        const content = await client.readFile(MCP_TOOLS_CONFIG_API_PATH);
-        if (!content) return buildDefaultToolConfig();
-
-        const raw = JSON.parse(content);
-        warnLegacyToolConfigOnce(raw, { source: `SiYuan API file "${MCP_TOOLS_CONFIG_API_PATH}"` });
-        return normalizeToolConfig(raw);
-    } catch {
-        return buildDefaultToolConfig();
-    }
+    const loaded = await loadToolConfigFromApiFileWithStatus(client);
+    if (loaded.errorMessage?.includes('Unsupported avActionsVersion')) throw new Error(loaded.errorMessage);
+    return loaded.config;
 }

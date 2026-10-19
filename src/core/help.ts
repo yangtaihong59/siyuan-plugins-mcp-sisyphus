@@ -29,7 +29,7 @@ export const FS_GUIDANCE: string[] = [
     'For double-links in fs.write or fs.replace replacement text, use ((block-id \'anchor text\')) with a real block ID and human-readable anchor text. Naked ((id)) is resolved before writing; if anchor lookup fails, MCP falls back to ((id \'id\')) with a warning.',
     'For tags in fs.write or fs.replace replacement text, use #tag# or hierarchical tag syntax such as #parent/child#; verify global tag state with tag(action="list", query="tag").',
     'fs(action="replace") performs exact string replacement only inside non-complex Markdown blocks. If a document also contains complex SiYuan-native blocks, those blocks are skipped; replacements that only exist inside skipped blocks, or cross block boundaries, are rejected without writing.',
-    'If fs.read reports attributeViews or avToolHint, the document contains real database blocks. Use av(action="get"|"render"|"set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column") for AV rows, columns, and cells instead of editing the database placeholder as Markdown.',
+    'If fs.read reports attributeViews or avToolHint, the document contains real database blocks. Use av(action="get"|"query"|"set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column") for AV rows, columns, and cells instead of editing the database placeholder as Markdown.',
     'fs(action="reorder") applies a complete manual order to every visible direct child under path and switches the notebook to custom sorting. Read fs.ls first and include each returned child path exactly once.',
     'fs(action="rm") and fs(action="mv") require explicit user confirmation before execution.',
 ];
@@ -75,20 +75,16 @@ export const BLOCK_GUIDANCE: string[] = [
 ];
 
 export const AV_GUIDANCE: string[] = [
-    'AV actions operate on real SiYuan attribute views (database blocks), not Markdown tables.',
-    'To initialize a new AV definition, call av(action="render", blockID, createIfNotExist=true). MCP can generate the AV ID automatically and materialize a SiYuan-style NodeAttributeView block in the target document through a transaction.',
-    'Most follow-up AV reads and writes only need avID. MCP resolves the owning database block from row bindings, mirror database blocks, or the blocks-table AV block record; pass blockID when you need an exact database-block view context or fallback.',
-    'Use strong typed fields such as valueType=text/number/date/checkbox/select when calling av(action="set_cells").',
-    'For cell writes, rowID must be the database row item ID stored in each AV value\'s blockID field. The value id field is only the cell value ID, and block.id is the original bound source block ID.',
-    'av(action="set_column_options") replaces a select or multi-select key\'s complete option list. It is dangerous and requires confirmation plus a strict preflight; omitted options are intentionally removed. If SiYuan reports new names in append order, MCP returns that intermediate state and never sends a concealed reorder write.',
-    'av(action="duplicate_rows") copies canonical, bound row item IDs into detached text records. It is dangerous and requires confirmation plus a strict manifest preflight; two-way relations also require rw/rwd permission on every resolved destination AV carrier. A lost response is never retried automatically.',
-    'AV permission checks resolve from registered database blocks. For createIfNotExist=true, provide blockID as the creation target; after materialization, MCP can usually rediscover that owning database block automatically.',
-    'av(action="search") first queries kernel search results, then MCP post-filters unreadable or unresolvable AVs and reports the filtering metadata.',
-    'av(action="search") is best for database names and primary-key matches. Do not assume it will find arbitrary non-primary-key cell text immediately after writes.',
-    'For add_view, set_filters, set_sorts, set_group, set_column_visibility, and set_column_order, always provide avID + blockID + viewID. blockID must be the exact NodeAttributeView carrier whose custom-sy-av-view currently equals viewID; MCP refuses kernel fallback.',
-    'These view-configuration actions are strict writes: run the same action with validateOnly=true, then submit the returned requestId and returned expectedStateHash. Their persistence proof is raw getAttributeView plus carrier attrs/DOM, never renderAttributeView.',
-    'set_filters and set_sorts replace their entire arrays; partial patch input is not supported. An empty filter list is persisted as the semantic empty AND root, even if Go omits its empty filters array on raw JSON readback.',
-    'add_view creates only table, gallery, or kanban and names it in one native transaction. Kanban requires an existing select column so creation cannot silently synthesize a schema field in every existing view. The native transaction selects the new view on the supplied carrier and normalizes its visible-view list to the existing persisted view order plus that new ID; MCP verifies that exact effect. Use block(action="set_attrs") deliberately for any other visible-view curation.',
+    'Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.',
+    'get defaults to structure: identity, columns and view summaries, never all row IDs. scope=columns reads keys; scope=view reads exact view configuration; scope=raw preserves the complete native AV.',
+    'query returns canonical rowID and columnID. Never substitute sourceBlockID or cell value IDs. mode=primary_keys returns lightweight paginated primary keys; keyword applies to either mode.',
+    'Explicit viewID selects only the read target; it never switches the database carrier. Returned viewID and selectionSource identify the actual selection; selectionFallback reports kernel-default fallback.',
+    'create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.',
+    'update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.',
+    'filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.',
+    'update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.',
+    'Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.',
+    'Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.',
 ];
 
 export const FILE_GUIDANCE: string[] = [
@@ -233,10 +229,6 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
 };
 
 export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
-    get: 'Call av(action="get", avID="<av-id>"); id is a deprecated alias. Returns the full AV payload after permission checks. blockID is optional and only needed for an exact database-block context or fallback permission resolution. readInfo distinguishes database/view scope and partial or unknown coverage. databaseContext identifies ID roles and existing field locations; nextSteps supplies enabled read/help calls. Never substitute sourceBlockID or a cell value ID for rowID.',
-    render: 'Use avID (id is a deprecated compatibility alias) plus optional blockID/viewID/page/pageSize/query to render database rows with the active view context. With createIfNotExist=true, blockID becomes the creation target; if avID is omitted, MCP generates one and materializes the database block automatically via a SiYuan-style transaction. readInfo distinguishes database/view scope and partial or unknown coverage. databaseContext identifies ID roles and existing field locations; nextSteps supplies enabled read/help calls. Never substitute sourceBlockID or a cell value ID for rowID.',
-    get_attribute_view_keys: 'Use avID to return the database column definitions. readInfo distinguishes database/view scope and partial or unknown coverage. databaseContext identifies ID roles and existing field locations; nextSteps supplies enabled read/help calls. Never substitute sourceBlockID or a cell value ID for rowID.',
-    get_attribute_view_filter_sort: 'Use avID + blockID to return the filters and sorts applied to that database block view.',
     search: 'Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.',
     add_rows: 'Use avID + blockIDs to add existing blocks as bound rows, or avID + primaryKeyTexts to add detached rows whose primary key is plain text. Optional blockID/viewID/groupID/previousID refine the insertion target and preserve the intended database-block view/group defaults. MCP polls briefly after insertion and only reports success when each new row resolves to a writable rowID. To add initial non-primary-key cell values, follow add_rows with av(action="set_cells", avID, cells=[{rowID, columnID, valueType, ...}, ...]); reuse the rowID returned by add_rows.',
     remove_rows: 'Use avID + srcIDs to remove rows from the AV. Optional blockID pins a specific registered database block when you need explicit block-view context.',
@@ -246,18 +238,17 @@ export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     set_column_options: 'Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.',
     duplicate_rows: 'Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.',
     duplicate: 'Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.',
-    get_primary_key_values: 'Returns primary-key data in rows.key/rows.values and canonical IDs in resolvedRows. blockIDs are database carriers, not row IDs. Default pageSize is 16. Follow nextSteps for more rows; readInfo describes scope and permission filtering.',
     add_view: 'Provide avID + exact NodeAttributeView blockID + a new stable viewID + table/gallery/kanban + name. First run validateOnly=true. It does not use render; kanban requires an existing select key to avoid an implicit schema write.',
-    set_filters: 'Provide avID + exact carrier blockID + its current viewID + the complete typed filter tree (at most 4 nested groups followed by a leaf). [] clears filters; raw readback accepts only the known empty AND-root normalization. First run validateOnly=true.',
-    set_sorts: 'Provide avID + exact carrier blockID + its current viewID + the complete [{column, order}] array. [] clears all sorts; partial patch input is rejected by contract. First run validateOnly=true.',
-    set_group: 'Provide avID + exact carrier blockID + its current viewID + group. field="" clears grouping; numeric range method requires range. First run validateOnly=true.',
-    set_column_visibility: 'Provide avID + exact carrier blockID + its current viewID + keyID + hidden. keyID must exist in that view layout. First run validateOnly=true.',
-    set_column_order: 'Provide avID + exact carrier blockID + its current viewID + every current keyID exactly once in desired order. Partial lists are refused. First run validateOnly=true.',
     set_new_item_templates: 'Dangerous complete replacement of ordered native new-item templates. Pass every template and defaultTemplateID, not a patch. MCP captures a canonical complete-template preimage, validates each key and select/mSelect option against the raw AV, performs one native transaction, and verifies order, default, and all remaining template fields through getAttributeView. Missing options are rejected rather than added or silently pruned.',
     create_from_template: 'Dangerous native creation using an existing template. itemID in the result is the AV row identity; blockID is the separate bound block/document identity. MCP preflights all default fields and relation targets, then reads every requested default back. Document templates require an explicit saveLocation so the target notebook can be authorized; inherited global document location is intentionally not guessed.',
     configure_two_way_relation: 'Dangerous schema operation for an existing relation key. Pass source and destination AV identities plus a stable reverse-key ID. MCP verifies both writable database carriers, uses the native updateAttrViewColRelation transaction, and reads both directions back. It refuses to retarget an existing relation that would mutate an unpreflighted third AV.',
     configure_rollup: 'Dangerous schema operation for an existing rollup key. Pass its existing relation key, destination key, and the native RollupCalc object exactly as SiYuan defines it. MCP does not invent calculation aliases. SiYuan may remove filters that reference the reconfigured rollup key.',
     set_relation: 'Dangerous complete replacement of one relation cell. blockID is the verified source database carrier; itemID and relatedItemIDs are AV row item IDs, never bound document block IDs. An empty relatedItemIDs array clears the relation. MCP authorizes destination writes and verifies source plus two-way reverse cells without retrying an unknown response.',
+    get: 'Use avID with scope=structure (default), columns, view, or raw. structure never contains row IDs or values. Optional blockID proves database context; viewID selects reading only. Use query for records.',
+    query: 'Use avID, optional keyword/page/pageSize, and mode=rows (default) or primary_keys. Row mode supports viewID/blockID/groupPaging. Primary-key mode rejects viewID/groupPaging and defaults to 16 rows. Follow nextSteps only when present.',
+    create: 'Use parentID and optionally a new avID; preflight first. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.',
+    update_view: 'Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Preflight validates all configurations before one transaction; readback protects every unrequested property.',
+
 };
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
@@ -473,21 +464,21 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     av: {
-        render: [
+        query: [
             {
-                title: 'Render an AV returned by search',
-                description: 'av.search results include renderArgs with canonical avID.',
+                title: 'Query an AV returned by search',
+                description: 'Use get to inspect a database returned by search, then query its records.',
                 mcp: {
-                    action: 'render',
+                    action: 'query',
                     avID: '20240318112233-abc123',
                     page: 1,
                     pageSize: 20,
                 },
             },
             {
-                title: 'Render an existing AV',
+                title: 'Query an existing AV',
                 mcp: {
-                    action: 'render',
+                    action: 'query',
                     avID: '20240318112233-abc123',
                 },
             },

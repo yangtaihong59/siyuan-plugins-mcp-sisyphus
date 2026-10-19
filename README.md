@@ -23,7 +23,7 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.10` — Adopts Notion MCP-inspired database guidance and read-completeness information with callable next steps, fixes missing search and database pagination results, and uses a shared short-hash pool to reduce receipt size. CLI is now `v0.2.11`.
+> **Latest:** `v0.6.11` — Introduces AV v2 structure reads, paginated queries, explicit database creation, and combined view updates, with durable creation receipts and configuration checks. Legacy AV actions and the top-level `id` alias are removed; see the [migration guide](./docs/reference/tools/av.md#configuration-migration). CLI is now `v0.2.12`.
 
 > **v0.6.4:** `v0.6.4` — Expands guarded AV configuration, adds auditable Markdown snapshots, image-reference auditing, permission-scoped visual image delivery, extension diagnostics, and clearer path semantics. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58). CLI is now `v0.2.6`.
 
@@ -33,7 +33,7 @@ I originally built SiYuan Sisyphus simply because I wanted my own SiYuan notes t
 
 This does not replace the existing project:
 
-- the 14 Sisyphus aggregate tools, parameter conventions, notebook permissions, and existing agent workflows remain compatible;
+- the 14 Sisyphus aggregate tools and notebook permissions remain available; AV v2 changes database actions as described in the migration guide;
 - Sisyphus now connects to SiYuan's official MCP endpoint and discovers tools registered by other plugins;
 - native SiYuan MCP tools can also be included explicitly, but remain disabled by default because they have a different security boundary;
 - permission management, the document timeline, and multiple connection options continue to be maintained.
@@ -48,11 +48,11 @@ The boundary is deliberate: Sisyphus-owned capabilities—including `fs`, the do
 
 | Tool source | Default | Best suited for | Compatibility and security boundary |
 |---|---|---|---|
-| **Sisyphus aggregate tools** | Enabled | Stable read, search, edit, database, permission, and automation workflows | Existing actions and parameters remain compatible and pass through Sisyphus permissions and dangerous-action controls |
+| **Sisyphus aggregate tools** | Enabled | Stable read, search, edit, database, permission, and automation workflows | Pass through Sisyphus permissions and dangerous-action controls; database calls follow AV v2 |
 | **Official plugin MCP tools** | Enabled | New capabilities registered by other SiYuan plugins through official MCP | Dynamically discovered by `extension`; the official tool name becomes the action |
 | **Native SiYuan MCP tools** | Disabled | Testing and comparison in trusted local environments | Execute with the administrator session or API Token and bypass Sisyphus notebook permissions and dangerous-action confirmation |
 
-Existing users do not need to rewrite Sisyphus calls as official tools. The original tool surface remains available; official plugin tools add a new ecosystem entry point over the same connection.
+Existing users do not need to rewrite Sisyphus calls as official tools. Database scripts must adopt AV v2; official plugin tools add a new ecosystem entry point over the same connection.
 
 Plugin developers only need to register a tool with SiYuan's official MCP registry. Sisyphus can discover it there without requiring a separate Sisyphus-specific adapter.
 
@@ -87,7 +87,7 @@ For complete installation and connection instructions, see [Getting Started](./d
 ## Core Capabilities
 
 - **Official MCP plugin ecosystem integration**: discover tools registered by other plugins through SiYuan's official MCP and expose them to external agents.
-- **Existing agent workflow compatibility**: retain the original Sisyphus aggregate tools, actions, CLI, and permission configuration.
+- **Shared agent workflows**: retain Sisyphus aggregate tools, CLI, and notebook permission configuration; database workflows use AV v2.
 - **AI-friendly note access**: use human-readable `fs` paths such as `/Notebook/Project/Note` without requiring agents to understand block IDs or document-tree internals.
 - **MCP and CLI entry points**: use MCP for multi-step agent workflows and CLI for scripts, automation, and small one-shot tasks.
 - **Notebook-level safety**: assign each notebook `none`, `r`, `rw`, or `rwd` access.

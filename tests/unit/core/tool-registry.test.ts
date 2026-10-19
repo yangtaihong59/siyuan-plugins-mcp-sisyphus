@@ -74,7 +74,7 @@ describe('tool registry', () => {
         const leaf = { column: 'key-status', operator: '=', value: { type: 'text', text: { content: 'ready' } } };
         let filter: any = leaf;
         for (let depth = 0; depth < 4; depth++) filter = { combination: depth % 2 ? 'and' : 'or', filters: [filter] };
-        const args = { action: 'set_filters', avID: 'av-1', blockID: 'block-1', viewID: 'view-1', filters: [filter] };
+        const args = { action: 'update_view', avID: 'av-1', blockID: 'block-1', viewID: 'view-1', filters: [filter] };
         expect(() => validateRegisteredToolArguments('av', args)).not.toThrow();
         delete leaf.column;
         expect(() => validateRegisteredToolArguments('av', args)).toThrow('A leaf filter requires column and operator.');

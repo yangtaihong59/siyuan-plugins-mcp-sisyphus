@@ -60,9 +60,8 @@ function checkSchemas(tools, transport) {
     const feedback = tools.find(tool => tool.name === 'feedback');
     assert(feedback);
     assert(!('validateOnly' in feedback.inputSchema.properties));
-    assert.match(feedback.description, /without validateOnly/);
     const av = tools.find(tool => tool.name === 'av');
-    assert(av.inputSchema.properties.action.enum.includes('set_filters'));
+    assert(av.inputSchema.properties.action.enum.includes('update_view'));
     report.checks.push({ transport, check: 'acyclic schemas and feedback contract', tools: tools.length, avSchemaBytes: Buffer.byteLength(JSON.stringify(av.inputSchema)) });
 }
 
@@ -86,6 +85,8 @@ async function main() {
     try {
         await Promise.all([client.connect(ct), server.connect(st)]);
         checkSchemas((await client.listTools()).tools, 'direct legacy');
+        const feedbackHelp = parse(await client.callTool({ name: 'feedback', arguments: { action: 'help', topic: 'submit' } }));
+        assert.match(feedbackHelp.hint, /without validateOnly/);
         const move = { name: 'block', arguments: { action: 'move', id: 'source', parentID: 'doc' } };
         assert.equal(parse(await client.callTool(move)).error.code, 'precondition_required');
         assert.equal(blockMoves, 0);

@@ -43,6 +43,6 @@ export function viewReadState(view: Record<string, any> | undefined, args: Recor
         limitations: ['view_filters_and_hidden_columns', ...(partial ? ['pagination'] : []), ...(unknown ? ['unknown_total'] : [])],
     };
     return { readInfo, hasNextPage: hasNext, next: hasNext && !unknown
-        ? { ...args, action: 'render', createIfNotExist: false, page: page + 1, ...(groups ? { groupPaging } : { pageSize }) }
+        ? { ...args, action: 'query', page: page + 1, ...(groups ? { groupPaging } : { pageSize }) }
         : undefined };
 }

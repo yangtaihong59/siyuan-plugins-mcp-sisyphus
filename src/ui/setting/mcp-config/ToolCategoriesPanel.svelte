@@ -150,10 +150,10 @@
             groupKey: "Databases",
             iconSvg: ICON_SVGS.database,
             actions: [
-                { key: "get", title: "Get Database", description: "Get the full attribute view payload by AV ID." },
-                { key: "render", title: "Render Database View", description: "Render database rows with optional view, pagination, and query context." },
-                { key: "get_attribute_view_keys", title: "Get Database Keys", description: "Get keys or columns for a database." },
-                { key: "get_attribute_view_filter_sort", title: "Get Database Filter Sort", description: "Get filters and sorts for a database block view." },
+                { key: "get", title: "Get Database Structure", description: "Read structure, columns, view configuration, or raw AV." },
+                { key: "query", title: "Query Database Rows", description: "Read paginated rows or primary keys." },
+                { key: "create", title: "Create Database", description: "Create a database and carrier under a parent." },
+                { key: "update_view", title: "Update View", description: "Update configuration on one exact carrier-selected view." },
                 { key: "search", title: "Search Databases", description: "Search attribute views by keyword." },
                 { key: "add_rows", title: "Add Rows", description: "Add existing blocks as rows in a database." },
                 { key: "remove_rows", title: "Remove Rows", description: "Remove bound rows from a database." },
@@ -161,7 +161,6 @@
                 { key: "remove_column", title: "Remove Column", description: "Remove a column from a database." },
                 { key: "set_cells", title: "Set Cells", description: "Update one or more cells with typed value payloads." },
                 { key: "duplicate", title: "Duplicate Database Block", description: "Duplicate an existing database block." },
-                { key: "get_primary_key_values", title: "Get Primary Key Values", description: "Get database primary key rows with optional filtering." },
             ],
         },
         {

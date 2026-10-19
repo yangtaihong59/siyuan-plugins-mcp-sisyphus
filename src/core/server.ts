@@ -80,7 +80,7 @@ export function getMcpServerHelpText(): string {
 
 async function tryReadConfigFromAPI(client: SiYuanClient): Promise<ToolConfig | null> {
     const result = await loadToolConfigFromApiFileWithStatus(client);
-    return result.ok && result.rawLength !== 0 ? result.config : null;
+    return result.errorMessage?.includes('Unsupported avActionsVersion') || (result.ok && result.rawLength !== 0) ? result.config : null;
 }
 
 async function initSiYuanClient(): Promise<SiYuanClient> {
@@ -512,7 +512,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
 
         const policy = getActionSafetyPolicy(category, action, args ?? {});
         const transportMode = options.transportMode ?? parseTransportMode();
-        const coordinatedMutation = config.writeSafety.strictMode && policy.mode === 'mutation';
+        const coordinatedMutation = policy.mode === 'mutation' && (config.writeSafety.strictMode || (category === 'av' && action === 'create'));
         const coordinatorSettings = (coordinatedMutation || isKernelExport(name, args ?? {}))
             ? await loadWriteCoordinatorSettings(client, process.env.SIYUAN_TOKEN)
             : undefined;

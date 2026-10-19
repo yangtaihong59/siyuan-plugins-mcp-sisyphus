@@ -1,4 +1,3 @@
-import { AV_ID_ALIAS_ACTIONS } from '../../core/argument-aliases';
 import type { SiYuanClient } from '../../api/client';
 import type { AvAction, CategoryToolConfig } from '../../core/config';
 import { AV_ACTION_HINTS, AV_GUIDANCE } from '../../core/help';
@@ -12,22 +11,16 @@ import {
     AvConfigureTwoWayRelationSchema,
     AvCreateFromTemplateSchema,
     AvDuplicateSchema,
-    AvGetAttributeViewFilterSortSchema,
-    AvGetAttributeViewKeysSchema,
-    AvGetPrimaryKeyValuesSchema,
     AvGetSchema,
+    AvCreateSchema,
+    AvQuerySchema,
+    AvUpdateViewSchema,
     AvRemoveColumnSchema,
     AvRemoveRowsSchema,
-    AvRenderSchema,
     AvSearchSchema,
     AvSetColumnOptionsSchema,
     AvSetCellsSchema,
     AvDuplicateRowsSchema,
-    AvSetColumnOrderSchema,
-    AvSetColumnVisibilitySchema,
-    AvSetFiltersSchema,
-    AvSetGroupSchema,
-    AvSetSortsSchema,
     AvSetNewItemTemplatesSchema,
     AvSetRelationSchema,
 } from '../../core/types';
@@ -38,10 +31,10 @@ import { AV_ACTION_HANDLERS } from './handlers';
 export const AV_TOOL_NAME = 'av';
 
 export const AV_VARIANTS: ActionVariant<AvAction>[] = [
-    createZodActionVariant('get', AvGetSchema, 'Get the full attribute view payload using avID; blockID is an optional exact database-block context.'),
-    createZodActionVariant('render', AvRenderSchema, 'Render an attribute view by avID with optional paging/filtering; with createIfNotExist=true, materialize a SiYuan-style AV block under blockID.'),
-    createZodActionVariant('get_attribute_view_keys', AvGetAttributeViewKeysSchema, 'Get the column (key) definitions of an attribute view.'),
-    createZodActionVariant('get_attribute_view_filter_sort', AvGetAttributeViewFilterSortSchema, 'Get filter and sort settings for an attribute view.'),
+    createZodActionVariant('get', AvGetSchema, 'Read database structure (no rows), columns, exact view configuration, or full raw AV.'),
+    createZodActionVariant('query', AvQuerySchema, 'Query paginated database rows or lightweight primary keys; never creates a database.'),
+    createZodActionVariant('create', AvCreateSchema, 'Create a new database and carrier under parentID; replay preserves IDs and creation progress.'),
+    createZodActionVariant('update_view', AvUpdateViewSchema, 'Update one carrier-selected view in a single transaction; omitted configurations remain unchanged.'),
     createZodActionVariant('search', AvSearchSchema, 'Search attribute views by name or primary-key values.'),
     createZodActionVariant('add_rows', AvAddRowsSchema, 'Add bound block rows or detached plain-text primary-key rows to a database.'),
     createZodActionVariant('remove_rows', AvRemoveRowsSchema, 'Remove rows from a database.'),
@@ -51,13 +44,7 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('set_column_options', AvSetColumnOptionsSchema, 'Replace one select or multi-select column\'s complete option list. Read the current options first: omitted entries are not preserved.'),
     createZodActionVariant('duplicate_rows', AvDuplicateRowsSchema, 'Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations.'),
     createZodActionVariant('duplicate', AvDuplicateSchema, 'Duplicate an attribute view using SiYuan copy-as-mirror semantics; previousID overrides the insertion target.'),
-    createZodActionVariant('get_primary_key_values', AvGetPrimaryKeyValuesSchema, 'Get primary key values for an attribute view.'),
     createZodActionVariant('add_view', AvAddViewSchema, 'Add one reviewed table, gallery, or kanban view through a verified carrier.'),
-    createZodActionVariant('set_filters', AvSetFiltersSchema, 'Replace the complete filter array on the exact view selected by a verified carrier.'),
-    createZodActionVariant('set_sorts', AvSetSortsSchema, 'Replace the complete sort array on the exact view selected by a verified carrier.'),
-    createZodActionVariant('set_group', AvSetGroupSchema, 'Set or clear grouping on the exact view selected by a verified carrier.'),
-    createZodActionVariant('set_column_visibility', AvSetColumnVisibilitySchema, 'Set one column\'s hidden state in the exact view selected by a verified carrier.'),
-    createZodActionVariant('set_column_order', AvSetColumnOrderSchema, 'Replace the complete column order in the exact view selected by a verified carrier.'),
     createZodActionVariant('set_new_item_templates', AvSetNewItemTemplatesSchema, 'Replace the complete ordered native new-item-template configuration after checking each field against the current AV schema.'),
     createZodActionVariant('create_from_template', AvCreateFromTemplateSchema, 'Create one AV item from a native new-item template. The returned itemID is the AV row identity; blockID is the distinct bound document/block identity.'),
     createZodActionVariant('configure_two_way_relation', AvConfigureTwoWayRelationSchema, 'Configure an existing source relation key and its stable two-way reverse relation key.'),
@@ -65,21 +52,9 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('set_relation', AvSetRelationSchema, 'Set or clear one relation cell by AV item IDs, then verify the two-way reverse cell when configured.'),
 ];
 
-for (const variant of AV_VARIANTS) {
-    if (!AV_ID_ALIAS_ACTIONS.includes(variant.action)) continue;
-    variant.schema.properties.id = {
-        type: 'string', deprecated: true,
-        description: 'Deprecated alias of avID. Use avID. If both are supplied they must match.',
-    };
-    if (variant.schema.required?.includes('avID')) {
-        variant.schema.required = variant.schema.required.filter((key: string) => key !== 'avID');
-        variant.schema.anyOf = [{ required: ['avID'] }, { required: ['id'] }];
-    }
-}
-
 const avTool = defineTool<AvAction>({
     name: 'av',
-    description: '🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Get avID from fs.read or av.search, then get for schema and resolvedRows before editing; use render for view rows. Reuse column IDs and resolvedRows.rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.',
+    description: '🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.',
     variants: AV_VARIANTS,
     actionSchema: AvActionSchema,
     aggregateOptions: {

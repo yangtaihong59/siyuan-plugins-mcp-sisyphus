@@ -327,7 +327,7 @@
                     <line x1="100" y1="-22" x2="100" y2="0" stroke="#9db2ff" stroke-width="1.5"/>
                     <line x1="78" y1="-14" x2="112" y2="-14" stroke="#9db2ff" stroke-width="1.5"/>
                     <line x1="78" y1="-7" x2="112" y2="-7" stroke="#9db2ff" stroke-width="1.5"/>
-                    <g class="sy-puppy__tool-mark sy-puppy__tool-mark--av-get sy-puppy__tool-mark--av-search sy-puppy__tool-mark--av-get_primary_key_values">
+                    <g class="sy-puppy__tool-mark sy-puppy__tool-mark--av-get sy-puppy__tool-mark--av-search sy-puppy__tool-mark--av-query">
                         <circle cx="106" cy="-22" r="4" fill="#d9f4ff" stroke="#1a1f3c" stroke-width="1"/>
                         <line x1="109" y1="-19" x2="112" y2="-16" stroke="#1a1f3c" stroke-width="1.5"/>
                     </g>
@@ -610,7 +610,7 @@
     :global(.sy-puppy--action-block-recent_updated .sy-puppy__tool-mark--block-recent_updated),
     :global(.sy-puppy--action-av-get .sy-puppy__tool-mark--av-get),
     :global(.sy-puppy--action-av-search .sy-puppy__tool-mark--av-search),
-    :global(.sy-puppy--action-av-get_primary_key_values .sy-puppy__tool-mark--av-get_primary_key_values),
+    :global(.sy-puppy--action-av-query .sy-puppy__tool-mark--av-query),
     :global(.sy-puppy--action-av-add_rows .sy-puppy__tool-mark--av-add_rows),
     :global(.sy-puppy--action-av-remove_rows .sy-puppy__tool-mark--av-remove_rows),
     :global(.sy-puppy--action-av-add_column .sy-puppy__tool-mark--av-add_column),

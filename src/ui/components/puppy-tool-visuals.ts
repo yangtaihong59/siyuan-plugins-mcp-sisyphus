@@ -26,8 +26,8 @@ const READING_ACTIONS = new Set([
     'list', 'get_conf', 'get_permissions', 'conf', 'get_version',
     'get_current_time', 'network', 'changelog',
     'fulltext', 'query_sql', 'get_backlinks',
-    'get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort',
-    'search', 'get_primary_key_values', 'get_doc_assets', 'read_image', 'get_image_ocr_text',
+    'get', 'render', 'query',
+    'search', 'get_doc_assets', 'read_image', 'get_image_ocr_text',
     'list_unused_assets', 'list_cards', 'get_decks', 'get_cards', 'get_balance', 'shop',
     'ls', 'tree', 'read', 'list_nodes', 'compare_node',
 ]);

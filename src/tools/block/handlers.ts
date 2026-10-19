@@ -77,9 +77,9 @@ async function getBlockType(client: SiYuanClient, id: string): Promise<string | 
 function createDatabaseBlockHint(actionName: string): Record<string, unknown> {
     return {
         databaseBlock: true,
-        warning: `${actionName} operated on a database/attribute-view block container. To read or edit database rows, columns, or cells, use av(action="get"|"render"|"add_rows"|"remove_rows"|"add_column"|"remove_column"|"set_cells") with the attribute view ID instead of editing the block as markdown.`,
+        warning: `${actionName} operated on a database/attribute-view block container. To read or edit database rows, columns, or cells, use av(action="get"|"query"|"add_rows"|"remove_rows"|"add_column"|"remove_column"|"set_cells") with the attribute view ID instead of editing the block as markdown.`,
         avToolHint: {
-            read: 'av(action="get", avID="<av-id>") or av(action="render", avID="<av-id>", blockID="<database-block-id>")',
+            read: 'av(action="get", avID="<av-id>") or av(action="query", avID="<av-id>", blockID="<database-block-id>")',
             write: 'av(action="set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column", avID="<av-id>", ...)',
         },
     };

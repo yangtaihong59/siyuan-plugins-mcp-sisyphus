@@ -5,7 +5,7 @@ import { getActionSafetyPolicy } from '../../core/write-safety-policy';
 export interface ReadInfo {
     scope: 'document' | 'block' | 'blocks' | 'database' | 'database_columns' | 'view_query' | 'search_query' | 'sql_query' | 'primary_key_query';
     coverage: 'complete' | 'partial' | 'unknown';
-    representation: 'markdown' | 'kramdown' | 'textmark' | 'html' | 'database_raw' | 'database_columns' | 'view' | 'search_snippets' | 'sql_rows' | 'primary_key_values';
+    representation: 'markdown' | 'kramdown' | 'textmark' | 'html' | 'database_raw' | 'database_structure' | 'view_configuration' | 'database_columns' | 'view' | 'search_snippets' | 'sql_rows' | 'primary_key_values';
     limitations: string[];
 }
 

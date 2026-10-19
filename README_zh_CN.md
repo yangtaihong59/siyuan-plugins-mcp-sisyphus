@@ -23,7 +23,7 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：** `v0.6.10` — 借鉴 Notion MCP 的数据库操作指引与读取完整性说明，提供可直接调用的下一步参数；修复搜索与数据库分页漏项，统一短哈希池以减少回执长度。CLI 同步更新至 `v0.2.11`。
+> **最新版本：** `v0.6.11` — 数据库升级为 AV v2，提供结构读取、分页查询、显式创建与组合视图更新，并加强创建回执与配置校验。旧 AV action 和顶层 `id` 别名已移除，迁移方式见[数据库文档](./docs/zh/reference/tools/av.md)。CLI 同步更新至 `v0.2.12`。
 
 > **v0.6.4：**`v0.6.4` — 扩展受保护的 AV 配置能力，新增可审计 Markdown 快照、图片引用审计、权限受控的视觉图片读取、扩展诊断与更清晰的路径语义。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。CLI 提升至 `v0.2.6`。
 
@@ -37,7 +37,7 @@ SiYuan Sisyphus 最初诞生于一个朴素的愿望：让思源笔记能够连�
 
 这不是对原有能力的替换：
 
-- Sisyphus 自带的 14 个聚合工具、参数约定、笔记本权限和现有 Agent 工作流继续保持兼容；
+- Sisyphus 自带的 14 个聚合工具与笔记本权限继续提供；数据库调用升级为 AV v2，旧脚本需按迁移文档调整；
 - Sisyphus 已接入思源官方 MCP 端点，会发现并加载其他插件注册的 Tool；
 - 思源官方原生 MCP Tool 也可以选择接入，但由于权限边界不同，默认关闭；
 - 权限管理、文档时间线、多种连接方式等增强能力继续维护。
@@ -52,11 +52,11 @@ SiYuan Sisyphus 最初诞生于一个朴素的愿望：让思源笔记能够连�
 
 | 工具来源 | 默认状态 | 适合场景 | 兼容与安全边界 |
 |---|---|---|---|
-| **Sisyphus 聚合工具** | 开启 | 稳定的阅读、搜索、编辑、数据库、权限和自动化工作流 | 保持原有 action 与参数约定，经过 Sisyphus 权限和危险操作控制 |
+| **Sisyphus 聚合工具** | 开启 | 稳定的阅读、搜索、编辑、数据库、权限和自动化工作流 | 经过 Sisyphus 权限和危险操作控制；数据库调用遵循 AV v2 |
 | **官方插件 MCP Tool** | 开启 | 使用其他思源插件通过官方 MCP 注册的新能力 | 由 `extension` 动态发现，官方工具名直接成为 action |
 | **思源原生 MCP Tool** | 关闭 | 本机可信环境中的官方能力测试与对比 | 直接使用管理员会话或 API Token，不经过 Sisyphus 笔记本权限和危险操作确认 |
 
-对已有用户来说，不需要把原来的 Sisyphus 调用改写成官方 Tool。原有工具继续可用；官方插件工具是在同一连接上增加的新生态入口。
+对已有用户来说，不需要把 Sisyphus 调用改写成官方 Tool；数据库旧脚本需迁移到 AV v2。官方插件工具是在同一连接上增加的新生态入口。
 
 对插件开发者来说，只要 Tool 已注册到思源官方 MCP，Sisyphus 就可以通过官方注册表发现它，无需再为 Sisyphus 单独实现一份适配。
 
@@ -91,7 +91,7 @@ sisyphus notebook list
 ## 核心能力
 
 - **官方 MCP 插件生态接入**：发现其他插件通过思源官方 MCP 注册的 Tool，并在外部 Agent 连接中同步暴露。
-- **兼容历史 Agent 工作流**：Sisyphus 原有聚合工具、action、CLI 和权限配置继续保留。
+- **共享 Agent 工作流**：继续提供 Sisyphus 聚合工具、CLI 与笔记本权限配置，数据库操作使用 AV v2。
 - **AI 友好的笔记访问方式**：`fs` 支持 `/笔记本/项目/文档` 这类人类可读路径，让 AI 不必理解块 ID 和文档树细节。
 - **MCP 与 CLI 双入口**：MCP 适合多步 Agent 工作流，CLI 适合脚本、自动化和小型单次任务。
 - **笔记本级安全边界**：每个笔记本可独立设置 `none`、`r`、`rw`、`rwd` 权限。

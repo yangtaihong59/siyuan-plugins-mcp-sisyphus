@@ -1,6 +1,10 @@
+import { firstJsonDifferencePath } from '../shared/canonical-state';
+import { AV_CREATION_CONTEXT, type AvCreationProgress, type AvCreationContext } from './av-creation-context';
+import { generateSiYuanNodeId } from '../shared/siyuan-id';
+import { ensurePermissionForDocumentId } from '../tools/internal/context';
+import { translateError } from '../tools/internal/errorTranslation';
+import { prepareViewUpdate, normalizeAvFilters, normalizeAvGroup, expectedAvGroup, viewFields as rawViewFields } from '../tools/av/view-config';
 import { getStagedUpload } from './upload-source';
-import { normalizeAvIdArgs } from './argument-aliases';
-import { withAvIdWarning } from '../tools/internal/av-id-warning';
 import { verifyAvCellsReadback } from './av-cell-readback';
 import { nodeFs } from './node-loader';
 
@@ -68,11 +72,7 @@ interface StateProbe {
 
 const AV_VIEW_CONFIGURATION_ACTIONS = new Set([
     'add_view',
-    'set_filters',
-    'set_sorts',
-    'set_group',
-    'set_column_visibility',
-    'set_column_order',
+    'update_view',
 ]);
 
 /**
@@ -90,13 +90,7 @@ export class WriteSafetyCoordinator {
     }
 
     async run(execution: WriteSafetyExecution): Promise<ToolResult> {
-        const rawArgs = execution.args;
-        try {
-            if (execution.category === 'av') execution = { ...execution, args: normalizeAvIdArgs(rawArgs) };
-        } catch (error) {
-            return createErrorResult(error, { tool: execution.category, action: execution.action, rawArgs });
-        }
-        return withAvIdWarning(await this.runNormalized(execution), execution.category, rawArgs);
+        return this.runNormalized(execution);
     }
 
     private async runNormalized(execution: WriteSafetyExecution): Promise<ToolResult> {
@@ -133,6 +127,9 @@ export class WriteSafetyCoordinator {
                 writeSafetyGuaranteed: false,
                 reason: 'external_uncontrolled',
             });
+        }
+        if (execution.category === 'av' && execution.action === 'create') {
+            return this.exclusive(() => this.runStrict(execution, policy));
         }
         if (!execution.strictMode) {
             if (execution.args.validateOnly === true) {
@@ -171,6 +168,8 @@ export class WriteSafetyCoordinator {
             }
             if (inspected.entry) return replayLedgerEntry(inspected.entry);
         }
+
+        if (category === 'av' && action === 'create') return this.runAvCreate(execution, inspected?.argsHash);
 
         let before: StateProbe | undefined;
         if (policy.precondition !== 'none') {
@@ -420,6 +419,61 @@ export class WriteSafetyCoordinator {
         return addSafetyMetadata(result, safetyResult);
     }
 
+    /** Multi-step creation owns a durable identity and result, independent of transport lifetime. */
+    private async runAvCreate(execution: WriteSafetyExecution, argsHash?: string): Promise<ToolResult> {
+        const { client, permMgr, args } = execution;
+        const parentID = args.parentID as string;
+        const requestId = args.requestId as string;
+        try {
+            const { denied } = await ensurePermissionForDocumentId(client, permMgr, parentID, 'write');
+            if (denied) return denied;
+            if (typeof args.avID === 'string') {
+                let existing: any;
+                try { existing = await client.requestRead('/api/av/getAttributeView', { id: args.avID }); }
+                catch (error) { if (translateError(error)?.code !== 'av_not_found') throw error; }
+                if (existing?.av) throw safetyError('already_exists', 'A new create request cannot reuse an existing AV.');
+            }
+            if (args.validateOnly === true) return jsonResult({ action: 'create', validateOnly: true, writeAttempted: false, writeExecuted: false, ...await this.ledger.issue('av', 'create', args) });
+            execution.beforeCommit?.();
+        } catch (error) { return fromSafetyError(error); }
+        let progress: AvCreationProgress = {
+            avID: typeof args.avID === 'string' ? args.avID : generateSiYuanNodeId(), blockID: generateSiYuanNodeId(), parentID,
+            stage: 'ids_reserved', currentStep: 'create_av',
+        };
+        const base = { requestId, tool: 'av' as const, action: 'create', argsHash: argsHash!, targetIds: [parentID, progress.avID, progress.blockID] };
+        try { await this.ledger.record({ ...base, state: 'executing', creation: { ...progress } }); }
+        catch (error) { return fromSafetyError(error); }
+        const context: AvCreationContext = {
+            progress,
+            checkpoint: async (stage, currentStep) => {
+                // Keep observed progress in the response even if its persistence fails.
+                Object.assign(progress, { stage, currentStep });
+                await this.ledger.record({ ...base, state: 'executing', creation: { ...progress } });
+            },
+        };
+        try {
+            const input = stripSafetyFields(args);
+            (input as any)[AV_CREATION_CONTEXT] = context;
+            const result = await execution.execute(input);
+            if (result.isError || progress.stage !== 'verified') {
+                const payload = parseResultObject(result);
+                throw new Error(JSON.stringify(payload?.error ?? 'Creation did not complete verification'));
+            }
+            const response = addSafetyMetadata(result, { requestId, writeSafetyMode: 'strict', writeSafetyGuaranteed: true, writeAttempted: true, writeExecuted: true, replayed: false, transactionState: 'committed' });
+            await this.ledger.record({ ...base, state: 'committed', creation: { ...progress }, response });
+            return response;
+        } catch (error) {
+            const failure = writeSafetyFailureAfterAttempt('outcome_unknown', 'Creation did not complete durable verification. Inspect the returned IDs; do not recreate or resume automatically.', {
+                requestId, ...progress, partial: progress.stage !== 'ids_reserved' && progress.stage !== 'verified',
+                carrierConfirmed: progress.stage === 'carrier_inserted' || progress.stage === 'verified',
+                cause: error instanceof Error ? error.message : String(error),
+            });
+            const response = jsonResult({ ...parseResultObject(failure), ...progress, requestId, partial: progress.stage !== 'ids_reserved' && progress.stage !== 'verified', carrierConfirmed: progress.stage === 'carrier_inserted' || progress.stage === 'verified' }, true);
+            try { await this.ledger.record({ ...base, state: 'unknown', creation: { ...progress }, response }); } catch { /* Earlier durable progress remains sufficient to prohibit another creation. */ }
+            return response;
+        }
+    }
+
     private async recordUnknown(
         requestId: string,
         category: ToolCategory,
@@ -474,11 +528,11 @@ function derivePostWriteProbeArgs(
             .flatMap((value) => isRecord(value) && typeof value.id === 'string' ? [value.id] : []);
         return { ...args, resolvedTargetIds };
     }
-    if (category === 'av' && (action === 'duplicate' || action === 'render') && payload && typeof payload.avID === 'string') {
+    if (category === 'av' && (action === 'duplicate' || action === 'create') && payload && typeof payload.avID === 'string') {
         return {
             ...args,
             avID: payload.avID,
-            ...(typeof payload.blockID === 'string' ? { blockID: payload.blockID } : action === 'render' ? { blockID: undefined } : {}),
+            ...(typeof payload.blockID === 'string' ? { blockID: payload.blockID } : action === 'create' ? { blockID: undefined } : {}),
         };
     }
     return args;
@@ -616,7 +670,7 @@ async function probeCurrentState(
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
         state.av = await client.requestRead('/api/av/getAttributeView', { id: args.avID });
-        if (action === 'render') {
+        if (action === 'create') {
             const definition = extractRawAvDefinition(state.av);
             if (definition.id !== args.avID) throw safetyError('readback_mismatch', 'Rendered AV identity was not persisted.');
             const blockID = typeof args.blockID === 'string' ? args.blockID : '';
@@ -657,6 +711,7 @@ async function probeCurrentState(
                 ? attrs['custom-sy-av-view']
                 : '';
             const rawAv = extractRawAvDefinition(state.av);
+            if (action === 'update_view') prepareViewUpdate(rawAv, stripSafetyFields(args));
             if (!selectedViewID || !findRawAvView(rawAv, selectedViewID)) {
                 throw safetyError('precondition_required', 'The AV carrier does not select one exact persisted view. Refusing kernel fallback.');
             }
@@ -1216,7 +1271,7 @@ function verifyAvViewConfigurationReadback(
     const protectedBefore = projectProtectedAvDefinition(beforeDefinition, action, args, false);
     const protectedAfter = projectProtectedAvDefinition(afterDefinition, action, args, true);
     if (canonicalizeWriteState(protectedBefore) !== canonicalizeWriteState(protectedAfter)) {
-        throw safetyError('readback_mismatch', 'Raw AV readback observed an unrelated persistent definition change.');
+        throw safetyError('readback_mismatch', `Complete verification failed: protected AV configuration differs at ${firstJsonDifferencePath(protectedBefore, protectedAfter) ?? '$'}. This does not establish which operation caused the change.`);
     }
 }
 
@@ -1317,106 +1372,20 @@ function assertExactAvCarrierReadback(carrier: Record<string, unknown>, avID: st
 }
 
 function verifyAvTargetConfiguration(
-    action: string,
-    args: Record<string, unknown>,
-    afterView: Record<string, unknown>,
-    definition: Record<string, unknown>,
+    action: string, args: Record<string, any>, afterView: Record<string, any>, definition: Record<string, unknown>,
 ): void {
-    if (action === 'set_filters') {
-        if (!sameAvValue(normalizeAvFilters(args.filters), normalizeAvFilters(afterView.filters))) {
-            throw safetyError('readback_mismatch', 'The persisted filter tree does not match the requested complete replacement.');
-        }
-        return;
-    }
-    if (action === 'set_sorts') {
-        const expected = Array.isArray(args.sorts) ? args.sorts : [];
-        const actual = Array.isArray(afterView.sorts) ? afterView.sorts : [];
-        if (!sameAvValue(expected, actual)) {
-            throw safetyError('readback_mismatch', 'The persisted sort list does not match the requested complete replacement.');
-        }
-        return;
-    }
-    if (action === 'set_group') {
-        if (!sameAvValue(normalizeAvGroup(args.group, definition), normalizeAvGroup(afterView.group, definition))) {
-            throw safetyError('readback_mismatch', 'The persisted group configuration does not match the requested semantic group.');
-        }
-        return;
-    }
-    const keyID = typeof args.keyID === 'string' ? args.keyID : '';
+    const beforeView = requireRawAvView(definition, args.viewID);
+    const failures: string[] = [];
+    if (args.filters !== undefined && !sameAvValue(normalizeAvFilters(args.filters), normalizeAvFilters(afterView.filters))) failures.push('filters');
+    if (args.sorts !== undefined && !sameAvValue(args.sorts, afterView.sorts ?? [])) failures.push('sorts');
+    if (args.group !== undefined && !sameAvValue(expectedAvGroup(args.group, beforeView.group, definition), normalizeAvGroup(afterView.group))) failures.push('group');
     const fields = rawViewFields(afterView);
-    if (action === 'set_column_visibility') {
-        const field = fields.find((value) => isRecord(value) && value.id === keyID);
-        if (!field || Boolean((field as Record<string, unknown>).hidden) !== args.hidden) {
-            throw safetyError('readback_mismatch', 'The persisted view-field visibility does not match the requested value.');
-        }
-        return;
+    for (const item of args.columnVisibility ?? []) {
+        const field = fields.find(field => field.id === item.columnID);
+        if (!field || Boolean(field.hidden) !== item.hidden) failures.push(`columnVisibility.${item.columnID}`);
     }
-    if (action === 'set_column_order') {
-        const expected = Array.isArray(args.keyIDs) ? args.keyIDs : [];
-        const actual = fields.map((value) => isRecord(value) ? value.id : undefined);
-        if (!sameAvValue(expected, actual)) {
-            throw safetyError('readback_mismatch', 'The persisted view-field order does not match the required complete order.');
-        }
-        return;
-    }
-    throw safetyError('readback_mismatch', `Unsupported AV semantic readback action: ${action}.`);
-}
-
-function normalizeAvFilters(value: unknown): unknown[] {
-    const source = Array.isArray(value) ? value : [];
-    const normalizeNode = (node: unknown): unknown => {
-        if (!isRecord(node)) return node;
-        const normalized = cloneJsonRecord(node);
-        normalized.column = typeof normalized.column === 'string' ? normalized.column : '';
-        normalized.operator = typeof normalized.operator === 'string' ? normalized.operator : '';
-        if (!('value' in normalized)) normalized.value = null;
-        const children = Array.isArray(normalized.filters) ? normalized.filters : [];
-        if (children.length > 0) normalized.filters = children.map(normalizeNode);
-        else delete normalized.filters;
-        return normalized;
-    };
-    const isGroup = (node: unknown): boolean => isRecord(node)
-        && (typeof node.combination === 'string' || Array.isArray(node.filters));
-    if (source.length === 1 && isGroup(source[0])) return [normalizeNode(source[0])];
-    return [normalizeNode({ combination: 'and', filters: source })];
-}
-
-function normalizeAvGroup(value: unknown, definition: Record<string, unknown>): Record<string, unknown> | undefined {
-    if (!isRecord(value)) return undefined;
-    const normalized: Record<string, unknown> = {
-        field: typeof value.field === 'string' ? value.field : '',
-        method: typeof value.method === 'number' ? value.method : 0,
-        order: typeof value.order === 'number' ? value.order : 0,
-        hideEmpty: value.hideEmpty === true,
-    };
-    if (isRecord(value.range)) {
-        normalized.range = {
-            numStart: value.range.numStart,
-            numEnd: value.range.numEnd,
-            numStep: value.range.numStep,
-        };
-    }
-    // The kernel deliberately switches first-time select/multi-select groups
-    // to option-order (3), regardless of a caller's stale generic order.
-    // This is a documented semantic normalization, not permission to ignore
-    // arbitrary group changes or derived group-state drift.
-    const keyType = rawAvKeyType(definition, normalized.field as string);
-    if (normalized.field && (keyType === 'select' || keyType === 'mSelect')) normalized.order = 3;
-    return normalized;
-}
-
-function rawAvKeyType(definition: Record<string, unknown>, keyID: string): string | undefined {
-    const keyValues = definition.keyValues;
-    if (!Array.isArray(keyValues)) return undefined;
-    const found = keyValues.find((value) => isRecord(value) && isRecord(value.key) && value.key.id === keyID);
-    return isRecord(found) && isRecord(found.key) && typeof found.key.type === 'string' ? found.key.type : undefined;
-}
-
-function rawViewFields(view: Record<string, unknown>): unknown[] {
-    if (view.type === 'table' && isRecord(view.table) && Array.isArray(view.table.columns)) return view.table.columns;
-    if (view.type === 'gallery' && isRecord(view.gallery) && Array.isArray(view.gallery.fields)) return view.gallery.fields;
-    if (view.type === 'kanban' && isRecord(view.kanban) && Array.isArray(view.kanban.fields)) return view.kanban.fields;
-    throw safetyError('readback_mismatch', `View ${String(view.id)} has no fields for its persisted layout.`);
+    if (args.columnOrder !== undefined && !sameAvValue(args.columnOrder, fields.map(field => field.id))) failures.push('columnOrder');
+    if (failures.length) throw safetyError('readback_mismatch', `Complete verification failed for: ${failures.join(', ')}. Inspect concurrent changes before any retry.`);
 }
 
 function projectProtectedAvDefinition(
@@ -1439,22 +1408,22 @@ function projectProtectedAvDefinition(
     }
     const target = projected.views.find((value): value is Record<string, unknown> => isRecord(value) && value.id === viewID);
     if (!target) return projected;
-    if (action === 'set_filters') delete target.filters;
-    else if (action === 'set_sorts') delete target.sorts;
-    else if (action === 'set_group') {
+    if (args.filters !== undefined) delete target.filters;
+    if (args.sorts !== undefined) delete target.sorts;
+    if (args.group !== undefined) {
         delete target.group;
         delete target.groups;
         delete target.groupCreated;
         delete target.groupItemIds;
         delete target.groupCalc;
         delete target.groupKey;
-    } else if (action === 'set_column_visibility') {
-        const keyID = typeof args.keyID === 'string' ? args.keyID : '';
-        const fields = rawViewFields(target);
-        const field = fields.find((value): value is Record<string, unknown> => isRecord(value) && value.id === keyID);
-        if (!field) throw safetyError('readback_mismatch', `View ${viewID} has no requested field ${keyID}.`);
+    }
+    for (const item of (args.columnVisibility ?? []) as Array<{ columnID: string }>) {
+        const field = rawViewFields(target).find(value => value.id === item.columnID);
+        if (!field) throw safetyError('readback_mismatch', `View ${viewID} has no field ${item.columnID}.`);
         delete field.hidden;
-    } else if (action === 'set_column_order') {
+    }
+    if (args.columnOrder !== undefined) {
         // The transaction repositions every requested field. Sort the local
         // projection by stable field ID so the comparison still protects each
         // field's full configuration while excluding only presentation order.
@@ -1966,7 +1935,7 @@ function optionalAvActionId(args: Record<string, unknown>, key: string): string 
 
 function stringArrayArgument(args: Record<string, unknown>, key: string): string[] {
     return Array.isArray(args[key])
-        ? args[key].filter((value): value is string => typeof value === 'string' && value.trim()).map((value) => value.trim())
+        ? args[key].filter((value): value is string => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim())
         : [];
 }
 
@@ -2136,6 +2105,11 @@ function sqlString(value: string): string {
 }
 
 function replayLedgerEntry(entry: WriteLedgerEntry): ToolResult {
+    if (entry.response) {
+        const payload = parseResultObject(entry.response);
+        if (payload?.safety && isRecord(payload.safety)) return addSafetyMetadata(entry.response, { ...payload.safety, replayed: true });
+        return { ...entry.response, ...jsonResult({ ...payload, replayed: true }, entry.response.isError) };
+    }
     if (entry.state === 'committed') {
         return jsonResult({
             ...(entry.result ?? {}),
@@ -2145,9 +2119,11 @@ function replayLedgerEntry(entry: WriteLedgerEntry): ToolResult {
             writeExecuted: false,
         });
     }
+    if (entry.creation) return jsonResult({ success: false, ...entry.creation, carrierConfirmed: entry.creation.stage === 'carrier_inserted' || entry.creation.stage === 'verified', partial: entry.creation.stage !== 'ids_reserved' && entry.creation.stage !== 'verified', requestId: entry.requestId, replayed: true, transactionState: 'unknown', error: { code: 'outcome_unknown', message: 'Creation was interrupted. Inspect the reserved IDs; do not recreate automatically.' } }, true);
     return writeSafetyFailure('outcome_unknown', `requestId ${entry.requestId} is in ${entry.state} state. Inspect the target before retrying.`, {
         requestId: entry.requestId,
         ledgerState: entry.state,
+        ...(entry.creation ?? {}),
     });
 }
 

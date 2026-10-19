@@ -29,7 +29,7 @@ process.env.SIYUAN_TOKEN = token;
 const report = {
     prefix, startedAt: new Date().toISOString(), notebook, fixtures: [], checks: [],
     artifacts: Object.fromEntries([serverPath, cliPath].map(p => [path.relative(root, p), crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex')])),
-    scope: 'Reported set_filters schema failure and block.update batch / inline-attribute safety. Other mutation actions are explicitly excluded from this focused regression run.',
+    scope: 'Reported update_view schema failure and block.update batch / inline-attribute safety. Other mutation actions are explicitly excluded from this focused regression run.',
 };
 let client, server;
 const save = () => fs.writeFileSync(path.join(reportDir, 'report.json'), JSON.stringify(report, null, 2));
@@ -103,7 +103,7 @@ function validateReferences(tools, transport) {
         visit(schema);
     }
     const av = tools.find(t => t.name === 'av');
-    assert(av?.inputSchema.properties.action.enum.includes('set_filters'));
+    assert(av?.inputSchema.properties.action.enum.includes('update_view'));
     passed(`tools/list references (${transport})`, { tools: tools.length, refs });
     fs.writeFileSync(path.join(reportDir, `schemas-${transport}.json`), JSON.stringify(tools.map(t => ({ name: t.name, inputSchema: t.inputSchema })), null, 2));
 }
@@ -185,7 +185,7 @@ async function main() {
 
     }
     const previousAv = process.argv.includes('--av-id') ? { avID: process.argv[process.argv.indexOf('--av-id') + 1], blockID: process.argv[process.argv.indexOf('--av-block') + 1] } : undefined;
-    const rendered = previousAv || await mutate('av', { action: 'render', blockID: docID, createIfNotExist: true }, { additive: true });
+    const rendered = previousAv || await mutate('av', { action: 'create', parentID: docID }, { additive: true });
     const avID = rendered.avID || rendered.id;
     const blockID = rendered.blockID;
     assert(avID && blockID, JSON.stringify(rendered));
@@ -198,13 +198,13 @@ async function main() {
     assert(viewID && definition.views.some(v => v.id === viewID));
     const column = definition.keyValues[0].key.id;
     const filters = [{ combination: 'and', filters: [{ column, operator: 'Is not empty' }, { combination: 'or', filters: [{ column, operator: 'Is empty' }] }] }];
-    const filterArgs = { action: 'set_filters', avID, blockID, viewID, filters };
-    await mutate('av', filterArgs, { label: 'av.set_filters recursive tree' });
+    const filterArgs = { action: 'update_view', avID, blockID, viewID, filters };
+    await mutate('av', filterArgs, { label: 'av.update_view recursive tree' });
     let av = (await api('/api/av/getAttributeView', { id: avID })).av;
     const filterText = JSON.stringify(av.views.find(v => v.id === viewID));
     assert(filterText.includes('Is not empty') && filterText.includes('Is empty'));
     passed('recursive filters raw readback', { avID, viewID });
-    await mutate('av', { ...filterArgs, filters: [] }, { label: 'av.set_filters empty array' });
+    await mutate('av', { ...filterArgs, filters: [] }, { label: 'av.update_view empty array' });
     av = (await api('/api/av/getAttributeView', { id: avID })).av;
     const cleared = av.views.find(v => v.id === viewID);
     assert(!JSON.stringify(cleared).includes('Is not empty'));
@@ -244,8 +244,8 @@ async function main() {
             authProvider: { token: async () => httpToken },
         }));
         validateReferences((await http.listTools()).tools, 'http');
-        await mutate('av', filterArgs, { label: 'av.set_filters recursive tree (HTTP)', connection: http });
-        await mutate('av', { ...filterArgs, filters: [] }, { label: 'av.set_filters empty array (HTTP)', connection: http });
+        await mutate('av', filterArgs, { label: 'av.update_view recursive tree (HTTP)', connection: http });
+        await mutate('av', { ...filterArgs, filters: [] }, { label: 'av.update_view empty array (HTTP)', connection: http });
     } finally {
         await http.close().catch(() => {});
         child.kill('SIGTERM');

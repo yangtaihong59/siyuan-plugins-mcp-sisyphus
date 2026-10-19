@@ -8,7 +8,7 @@ export const FS_ACTIONS = ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv',
 export const NOTEBOOK_ACTIONS = ['list', 'create', 'set_open_state', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'] as const;
 export const DOCUMENT_ACTIONS = ['create', 'lookup', 'ensure_link_targets', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'] as const;
 export const BLOCK_ACTIONS = ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'get_kramdown', 'batch_kramdown', 'get_children', 'transfer_references', 'set_attrs', 'get_attrs', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count', 'add_to_daily_note', 'docs_info'] as const;
-export const AV_ACTIONS = ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'get_primary_key_values', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'] as const;
+export const AV_ACTIONS = ['search', 'get', 'query', 'create', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'update_view', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'] as const;
 export const FILE_ACTIONS = ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_markdown_snapshot', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'audit_image_refs', 'read_image', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'] as const;
 export const SEARCH_ACTIONS = ['fulltext', 'semantic', 'query_sql', 'get_backlinks', 'search_refs', 'find_replace', 'search_assets', 'fulltext_asset_content', 'list_invalid_refs'] as const;
 export const TAG_ACTIONS = ['list', 'rename', 'remove'] as const;
@@ -99,6 +99,7 @@ export interface WriteSafetyConfig {
 }
 
 export type ToolConfig = {
+    avActionsVersion: 2;
     fs: CategoryToolConfig<FsAction>;
     notebook: CategoryToolConfig<NotebookAction>;
     document: CategoryToolConfig<DocumentAction>;
@@ -185,14 +186,11 @@ const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
         add_to_daily_note: 'advanced', docs_info: 'advanced',
     },
     av: {
-        get: 'basic', render: 'basic',
-        get_attribute_view_keys: 'basic', get_attribute_view_filter_sort: 'basic',
-        search: 'basic', get_primary_key_values: 'basic',
+        get: 'basic', query: 'basic', create: 'basic', search: 'basic',
         add_rows: 'advanced', remove_rows: 'advanced', add_column: 'advanced',
         remove_column: 'advanced', set_cells: 'advanced', set_column_options: 'advanced',
         duplicate_rows: 'advanced', duplicate: 'advanced', add_view: 'advanced',
-        set_filters: 'advanced', set_sorts: 'advanced', set_group: 'advanced',
-        set_column_visibility: 'advanced', set_column_order: 'advanced',
+        update_view: 'advanced',
         set_new_item_templates: 'advanced', create_from_template: 'advanced',
         configure_two_way_relation: 'advanced', configure_rollup: 'advanced', set_relation: 'advanced',
     },
@@ -253,7 +251,7 @@ export const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
     // These operations replace persistent AV configuration or can write a
     // relation graph across databases. A normal AV write confirmation is not
     // enough to make their scope apparent to the caller.
-    av: new Set(['set_column_options', 'duplicate_rows', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
+    av: new Set(['update_view', 'set_column_options', 'duplicate_rows', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
     file: new Set(['upload_asset', 'delete_template', 'remove_unused_assets', 'delete_asset']),
     search: new Set(['find_replace']),
     tag: new Set(['remove']),
@@ -278,6 +276,7 @@ const createActionsRecord = <Action extends string>(
 
 export function buildDefaultToolConfig(): ToolConfig {
     return {
+        avActionsVersion: 2,
         fs: {
             enabled: true,
             actions: createActionsRecord(FS_ACTIONS, ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv', 'reorder', 'search']),
@@ -296,7 +295,7 @@ export function buildDefaultToolConfig(): ToolConfig {
         },
         av: {
             enabled: true,
-            actions: createActionsRecord(AV_ACTIONS, ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'get_primary_key_values', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
+            actions: createActionsRecord(AV_ACTIONS, ['search', 'get', 'query', 'create', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'update_view', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
         },
         file: {
             enabled: true,
@@ -526,19 +525,34 @@ function applyNestedConfig(config: ToolConfig, raw: Record<string, unknown>) {
     }
 }
 
+/** Migrate explicit raw flags before defaults; get exists in both formats. */
 export function normalizeToolConfig(raw: unknown): ToolConfig {
-    const config = buildDefaultToolConfig();
-    if (!isRecord(raw)) return config;
-
-    applyNestedConfig(config, raw);
-
-    for (const category of TOOL_CATEGORIES) {
-        if (!config[category].enabled) continue;
-        if (getEnabledActions(config[category]).length === 0) {
-            config[category].enabled = false;
-        }
+    if (isRecord(raw) && raw.avActionsVersion !== undefined && raw.avActionsVersion !== 1 && raw.avActionsVersion !== 2) {
+        throw new Error(`Unsupported avActionsVersion: ${String(raw.avActionsVersion)}`);
     }
-
+    let source = raw;
+    if (isRecord(raw) && raw.avActionsVersion !== 2 && isRecord(raw.av)) {
+        const old = isRecord(raw.av.actions) ? raw.av.actions : {};
+        const actions = { ...old };
+        const migration = {
+            create: ['render'],
+            get: ['get', 'get_attribute_view_keys', 'get_attribute_view_filter_sort'],
+            query: ['render', 'get_primary_key_values'],
+            update_view: ['set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order'],
+        };
+        for (const [target, origins] of Object.entries(migration)) {
+            delete actions[target];
+            const explicit = origins.map(key => old[key]).filter(value => typeof value === 'boolean');
+            if (explicit.length) actions[target] = !explicit.includes(false);
+        }
+        source = { ...raw, av: { ...raw.av, actions } };
+    }
+    const config = buildDefaultToolConfig();
+    if (!isRecord(source)) return config;
+    applyNestedConfig(config, source);
+    for (const category of TOOL_CATEGORIES) {
+        if (config[category].enabled && getEnabledActions(config[category]).length === 0) config[category].enabled = false;
+    }
     return config;
 }
 
@@ -573,8 +587,10 @@ export async function loadToolConfigFromApiFileWithStatus(client: SiYuanClient):
             rawLength: content.length,
         };
     } catch (error) {
+        const config = buildDefaultToolConfig();
+        if (formatConfigLoadError(error).includes('Unsupported avActionsVersion')) config.av.enabled = false;
         return {
-            config: buildDefaultToolConfig(),
+            config,
             ok: false,
             source: 'default_fallback',
             errorMessage: formatConfigLoadError(error),

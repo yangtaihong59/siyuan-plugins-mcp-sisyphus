@@ -55,16 +55,14 @@ export const ACTION_SAFETY_POLICIES: {
         set_fold_state: mutation('state'), transfer_references: mutation('manifest'), set_attrs: mutation('state'),
     },
     av: {
-        get: read(), render: mutation(), get_attribute_view_keys: read(), get_attribute_view_filter_sort: read(),
-        search: read(), get_primary_key_values: read(),
+        get: read(), query: read(), create: mutation(), search: read(),
         add_rows: mutation(), remove_rows: mutation('manifest'), add_column: mutation('state'),
         remove_column: mutation('state'), set_cells: mutation('manifest'),
         set_column_options: mutation('state'), duplicate_rows: mutation('manifest'), duplicate: mutation('state'),
         // View configuration is a W2 mutation even though it does not edit
         // rows. A stale carrier can otherwise make the kernel fall back to a
         // different view, so every action requires the strict state lease.
-        add_view: mutation('state'), set_filters: mutation('state'), set_sorts: mutation('state'),
-        set_group: mutation('state'), set_column_visibility: mutation('state'), set_column_order: mutation('state'),
+        add_view: mutation('state'), update_view: mutation('state'),
         set_new_item_templates: mutation('state'), create_from_template: mutation('state'),
         configure_two_way_relation: mutation('state'), configure_rollup: mutation('state'), set_relation: mutation('state'),
     },
@@ -130,11 +128,6 @@ export function getActionSafetyPolicy(
     if (category === 'file' && action === 'create_template' && args.overwrite !== true) {
         return mutation();
     }
-    // renderAttributeView is read-only unless the caller explicitly asks the
-    // kernel to create a missing database.
-    if (category === 'av' && action === 'render') {
-        return args.createIfNotExist === true ? mutation() : read();
-    }
     // Existing-target resolution never changes SiYuan state: both resolve and
     // reuse require only read permission and return the exact supplied IDs.
     // Creation alone freezes the parent child list under a structural lease.
@@ -162,9 +155,6 @@ export function getPossibleActionSafetyPolicies(category: ToolCategory, action: 
     }
     if (category === 'file' && action === 'create_template') {
         policies.push(getActionSafetyPolicy(category, action, { overwrite: true }));
-    }
-    if (category === 'av' && action === 'render') {
-        policies.push(getActionSafetyPolicy(category, action, { createIfNotExist: true }));
     }
     return policies;
 }

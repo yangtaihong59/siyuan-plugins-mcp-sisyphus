@@ -1,3 +1,5 @@
+import type { AvCreationProgress } from './av-creation-context';
+import type { ToolResult } from '../tools/internal/shared';
 import { nodeCrypto } from './node-loader';
 import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';
 import type { SiYuanClient } from '../api/client';
@@ -26,6 +28,8 @@ export interface WriteLedgerEntry {
     createdAt: number;
     updatedAt: number;
     result?: Record<string, unknown>;
+    creation?: AvCreationProgress;
+    response?: ToolResult;
 }
 
 interface LedgerFile {
@@ -88,16 +92,7 @@ export class WriteSafetyLedger {
         const argsHash = hashWriteState(stripSafetyFields(args));
         const entry = this.entries.get(requestId);
         if (!entry) throw safetyError('request_id_expired', 'requestId is unknown or expired. Run validateOnly preflight again.');
-        // Older render requests were hashed before avID -> id normalization.
-        // Only equivalent, unambiguous old shapes may reuse a persisted request.
-        let matchesArgs = entry.argsHash === argsHash;
-        if (!matchesArgs && tool === 'av' && action === 'render' && typeof args.avID === 'string') {
-            const legacy = stripSafetyFields(args);
-            delete legacy.avID;
-            legacy.id = args.avID;
-            matchesArgs = entry.argsHash === hashWriteState(legacy)
-                || entry.argsHash === hashWriteState({ ...legacy, avID: args.avID });
-        }
+        const matchesArgs = entry.argsHash === argsHash;
         if (entry.tool !== tool || entry.action !== action || !matchesArgs) {
             throw safetyError(
                 'idempotency_conflict',

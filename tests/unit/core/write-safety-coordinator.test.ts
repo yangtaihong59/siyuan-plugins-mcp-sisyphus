@@ -1515,19 +1515,19 @@ describe('write safety coordinator', () => {
         const permMgr = createMockPermissionManager({ canWrite: () => true });
         permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
         const coordinator = new WriteSafetyCoordinator(client);
-        const args = { action: 'set_filters', avID, blockID, viewID, filters: [] };
+        const args = { action: 'update_view', avID, blockID, viewID, filters: [] };
         const preflight = parseResult(await coordinator.run({
-            client, permMgr, category: 'av', action: 'set_filters',
+            client, permMgr, category: 'av', action: 'update_view',
             args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
         }));
         const execute = vi.fn(async () => {
             // `filters,omitempty` means the durable empty AND root loses its
             // empty child array and zero-value leaf fields on raw readback.
             definition.views[0].filters = [{ column: '', operator: '', value: null, combination: 'and' }];
-            return success({ success: true, action: 'set_filters' });
+            return success({ success: true, action: 'update_view' });
         });
         const result = parseResult(await coordinator.run({
-            client, permMgr, category: 'av', action: 'set_filters',
+            client, permMgr, category: 'av', action: 'update_view',
             args: {
                 ...args,
                 requestId: preflight.requestId,

@@ -829,32 +829,34 @@ const AvSelectOptionSchema = z.object({
 }).strict();
 
 export const AvGetSchema = z.object({
-    action: z.literal("get"),
-    avID: z.string().describe("Attribute view ID"),
-    blockID: z.string().optional().describe("Optional database block ID for exact context or fallback permission resolution"),
-});
+    action: z.literal('get'),
+    avID: z.string().min(1),
+    blockID: z.string().min(1).optional(),
+    viewID: z.string().min(1).optional(),
+    scope: z.enum(['structure', 'columns', 'view', 'raw']).optional().describe('Default structure: database identity, columns and view summaries, without rows. raw returns the complete native AV.'),
+}).strict();
 
-export const AvRenderSchema = z.object({
-    action: z.literal("render"),
-    avID: z.string().optional().describe("Attribute view ID; use avID. Omit only with createIfNotExist=true to let MCP generate one"),
-    blockID: z.string().optional().describe("Optional database block ID; required when creating a new AV"),
-    viewID: z.string().optional().describe("Optional target view ID"),
-    page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
-    pageSize: z.number().int().optional().describe("Rows per page; use -1 or omit for kernel default"),
-    query: z.string().optional().describe("Optional row query filter"),
-    groupPaging: z.record(z.string(), z.unknown()).optional().describe("Optional group paging map passed through to SiYuan"),
-    createIfNotExist: z.boolean().optional().describe("Create the default view only when explicitly true; provide blockID when creating a new AV"),
-});
+export const AvCreateSchema = z.object({
+    action: z.literal('create'),
+    parentID: z.string().min(1).describe('Parent block/document for the new database carrier'),
+    avID: z.string().regex(/^\d{14}-[a-z0-9]{7}$/).optional().describe('Optional new AV ID; an existing AV is rejected for a new request'),
+}).strict();
 
-export const AvGetAttributeViewKeysSchema = z.object({
-    action: z.literal("get_attribute_view_keys"),
-    avID: z.string().describe("Attribute view ID"),
-});
-
-export const AvGetAttributeViewFilterSortSchema = z.object({
-    action: z.literal("get_attribute_view_filter_sort"),
-    avID: z.string().describe("Attribute view ID"),
-    blockID: z.string().optional().describe("Database block ID (optional)"),
+export const AvQuerySchema = z.object({
+    action: z.literal('query'),
+    avID: z.string().min(1),
+    mode: z.enum(['rows', 'primary_keys']).optional(),
+    blockID: z.string().min(1).optional(),
+    viewID: z.string().min(1).optional(),
+    keyword: z.string().optional(),
+    page: z.number().int().min(1).optional(),
+    pageSize: z.number().int().refine(n => n === -1 || n > 0, 'Use -1 or a positive page size').optional(),
+    groupPaging: z.record(z.string(), z.object({ page: z.number().int().min(1), pageSize: z.number().int().positive().optional() }).strict()).optional(),
+}).strict().superRefine((args, ctx) => {
+    if (args.mode === 'primary_keys') {
+        for (const key of ['viewID', 'groupPaging'] as const) if (args[key] !== undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'primary_keys does not accept view-specific parameters' });
+        if (args.pageSize === -1) ctx.addIssue({ code: 'custom', path: ['pageSize'], message: 'primary_keys requires a positive page size' });
+    }
 });
 
 export const AvSearchSchema = z.object({
@@ -992,14 +994,6 @@ export const AvDuplicateSchema = z.object({
     previousID: z.string().optional().describe("Optional block ID to insert the duplicated mirror database block after"),
 });
 
-export const AvGetPrimaryKeyValuesSchema = z.object({
-    action: z.literal("get_primary_key_values"),
-    avID: z.string().describe("Attribute view ID"),
-    keyword: z.string().optional().describe("Optional keyword filter for primary key values"),
-    page: z.number().int().min(1).optional().describe("Page number (1-based), default 1"),
-    pageSize: z.number().int().min(1).optional().describe("Rows per page, default 16"),
-});
-
 const AvViewIDSchema = z.string().min(1).describe('Attribute-view view ID');
 const AvCarrierBlockIDSchema = z.string().min(1).describe('Exact NodeAttributeView carrier block ID; kernel fallback is not permitted');
 const AvLayoutSchema = z.enum(['table', 'gallery', 'kanban']).describe('View layout type');
@@ -1068,69 +1062,30 @@ export const AvAddViewSchema = z.object({
     name: z.string().trim().min(1).max(255).describe('Name for the new view. Creation and naming are sent in one native transaction and read back together.'),
 });
 
-export const AvSetFiltersSchema = z.object({
-    action: z.literal('set_filters'),
-    avID: z.string().min(1).describe('Attribute view ID'),
+export const AvUpdateViewSchema = z.object({
+    action: z.literal('update_view'),
+    avID: z.string().min(1),
     blockID: AvCarrierBlockIDSchema,
-    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
-    filters: z.array(AvFilterSchema).describe(`Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root. Group nesting is capped at ${AV_FILTER_MAX_DEPTH - 1} levels.`),
-});
-
-export const AvSetSortsSchema = z.object({
-    action: z.literal('set_sorts'),
-    avID: z.string().min(1).describe('Attribute view ID'),
-    blockID: AvCarrierBlockIDSchema,
-    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
-    sorts: z.array(z.object({
-        column: z.string().min(1).describe('Column key ID'),
-        order: z.enum(['ASC', 'DESC']).describe('Sort direction'),
-    })).describe('Complete replacement sort array; [] clears all sorts.'),
-});
-
-export const AvSetGroupSchema = z.object({
-    action: z.literal('set_group'),
-    avID: z.string().min(1).describe('Attribute view ID'),
-    blockID: AvCarrierBlockIDSchema,
-    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
+    viewID: AvViewIDSchema,
+    filters: z.array(AvFilterSchema).optional().describe('Complete replacement; [] clears filters'),
+    sorts: z.array(z.object({ column: z.string().min(1), order: z.enum(['ASC', 'DESC']) }).strict()).optional().describe('Complete replacement; [] clears sorts'),
     group: z.object({
-        field: z.string().describe('Grouping key ID; empty string clears grouping'),
-        method: z.number().int().min(0).max(6).describe('0=value, 1=numeric range, 2=relative date, 3=day, 4=week, 5=month, 6=year'),
-        range: z.object({
-            numStart: z.number(),
-            numEnd: z.number(),
-            numStep: z.number().positive(),
-        }).optional().describe('Required by the kernel for numeric-range grouping'),
-        order: z.number().int().min(0).max(3).describe('0=ascending, 1=descending, 2=manual, 3=select-option order'),
-        hideEmpty: z.boolean(),
-    }).superRefine((group, ctx) => {
-        if (group.method === 1 && !group.range) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'range is required when group.method is 1 (numeric range).', path: ['range'] });
-        }
-    }),
-});
-
-export const AvSetColumnVisibilitySchema = z.object({
-    action: z.literal('set_column_visibility'),
-    avID: z.string().min(1).describe('Attribute view ID'),
-    blockID: AvCarrierBlockIDSchema,
-    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
-    keyID: z.string().min(1).describe('Column key ID in the carrier-selected view'),
-    hidden: z.boolean().describe('Whether the column is hidden in the carrier-selected view'),
-});
-
-export const AvSetColumnOrderSchema = z.object({
-    action: z.literal('set_column_order'),
-    avID: z.string().min(1).describe('Attribute view ID'),
-    blockID: AvCarrierBlockIDSchema,
-    viewID: AvViewIDSchema.describe('The exact view currently selected by blockID; MCP rejects kernel fallback.'),
-    keyIDs: z.array(z.string().min(1)).min(1).describe('Complete column key order for the current table, gallery, or kanban layout.'),
-}).superRefine((value, ctx) => {
-    if (new Set(value.keyIDs).size !== value.keyIDs.length) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'keyIDs must not contain duplicates.',
-            path: ['keyIDs'],
-        });
+        field: z.string(),
+        method: z.number().int().min(0).max(6).optional(),
+        range: z.object({ numStart: z.number(), numEnd: z.number(), numStep: z.number().positive() }).strict().optional(),
+        order: z.number().int().min(0).max(3).optional(),
+        hideEmpty: z.boolean().optional(),
+    }).strict().superRefine((group, ctx) => {
+        if (!group.field) return;
+        for (const key of ['method', 'order', 'hideEmpty'] as const) if (group[key] === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'Required for nonempty grouping' });
+        if (group.method === 1 && !group.range) ctx.addIssue({ code: 'custom', path: ['range'], message: 'Required for numeric-range grouping' });
+    }).optional().describe('Complete grouping configuration; {field:""} clears grouping'),
+    columnVisibility: z.array(z.object({ columnID: z.string().min(1), hidden: z.boolean() }).strict()).optional().describe('Modify only listed columns; duplicate IDs are rejected'),
+    columnOrder: z.array(z.string().min(1)).min(1).optional().describe('Complete current view field order, including hidden fields'),
+}).strict().superRefine((args, ctx) => {
+    if (args.filters === undefined && args.sorts === undefined && args.group === undefined && args.columnOrder === undefined && !args.columnVisibility?.length) ctx.addIssue({ code: 'custom', message: 'Provide at least one view configuration change' });
+    for (const [key, ids] of [['columnOrder', args.columnOrder], ['columnVisibility', args.columnVisibility?.map(item => item.columnID)]] as const) {
+        if (ids && new Set(ids).size !== ids.length) ctx.addIssue({ code: 'custom', path: [key], message: 'Duplicate column IDs are not allowed' });
     }
 });
 

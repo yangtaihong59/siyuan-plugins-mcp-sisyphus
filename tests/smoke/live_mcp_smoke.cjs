@@ -11,6 +11,7 @@ const SIYUAN_URL = 'http://127.0.0.1:6806';
 const CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
 
 const ALL_ENABLED_CONFIG = {
+    avActionsVersion: 2,
     fs: {
         enabled: true,
         actions: { ls: true, tree: true, read: true, write: true, replace: true, rm: true, mv: true, search: true },
@@ -53,9 +54,9 @@ const ALL_ENABLED_CONFIG = {
         enabled: true,
         actions: {
             get: true,
-            render: true,
-            get_attribute_view_keys: true,
-            get_attribute_view_filter_sort: true,
+            create: true,
+            query: true,
+            update_view: true,
             search: true,
             add_rows: true,
             remove_rows: true,
@@ -63,7 +64,6 @@ const ALL_ENABLED_CONFIG = {
             remove_column: true,
             set_cells: true,
             duplicate: true,
-            get_primary_key_values: true,
         },
     },
     file: {
@@ -290,7 +290,7 @@ async function assertDefaultToolList() {
         assert.match(descriptions.block, /Read siyuan:\/\/help\/action\/block\/\{action\} for details/);
         assert.match(descriptions.block, /single-block replacement/i);
         assert.match(descriptions.block, /Multi-line markdown may be truncated to the first line/i);
-        assert.match(descriptions.av, /Common actions: get, render, get_attribute_view_keys, get_attribute_view_filter_sort, search, get_primary_key_values/);
+        assert.match(descriptions.av, /Common actions: search, get, query, create/);
         assert.match(descriptions.av, /Additional actions: add_rows, remove_rows, add_column, remove_column, set_cells, duplicate/);
         assert.match(descriptions.av, /database/i);
         assert.match(descriptions.file, /Common actions: upload_asset, list_templates, read_template, create_template, update_template, save_doc_as_template, export_md, get_doc_assets, audit_image_refs, extract_doc/);
@@ -463,13 +463,13 @@ async function runAvSmoke(client, createdBlockIds) {
     const avID = candidate.id;
     const avGet = await callToolJson(client, 'av', {
         action: 'get',
-        id: avID,
+        avID, scope: 'raw',
     });
-    assert.equal(avGet.json.id, avID);
+    assert.equal(avGet.json.avID, avID);
     assert.equal(typeof avGet.json.av, 'object');
 
     const avPrimary = await callToolJson(client, 'av', {
-        action: 'get_primary_key_values',
+        action: 'query', mode: 'primary_keys',
         avID,
         page: 1,
         pageSize: 5,

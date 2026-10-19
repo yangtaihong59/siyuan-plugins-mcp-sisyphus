@@ -1,5 +1,4 @@
 import { getBakedActionSchema, usesBakedActionSchemas } from '../../core/action-schema-runtime';
-import { withAvIdWarning } from './av-id-warning';
 import type { z } from 'zod';
 
 import { SiYuanClient } from '../../api/client';
@@ -141,7 +140,7 @@ export function defineTool<Action extends string>(options: DefineToolOptions<Act
                     );
                 }
 
-                return withAvIdWarning(await handler({ client, rawArgs: normalizedArgs, permMgr }), name, rawArgs);
+                return await handler({ client, rawArgs: normalizedArgs, permMgr });
             } catch (error) {
                 return createErrorResult(error, { tool: name, action: normalizedAction ?? rawAction, rawArgs: normalizedArgs });
             }
