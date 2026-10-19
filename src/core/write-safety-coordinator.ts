@@ -520,6 +520,14 @@ function derivePostWriteProbeArgs(
     result: ToolResult,
 ): Record<string, unknown> {
     const payload = parseResultObject(result);
+    if (category === 'document' && (action === 'create' || action === 'create_daily_note')) {
+        if (!payload || typeof payload.id !== 'string' || !payload.id) {
+            throw safetyError('readback_mismatch', 'Document creation did not identify the created document.');
+        }
+        // A human path can exist in several notebooks and its SQL index may
+        // lag. Inspect only the returned document and its intended notebook.
+        return { id: payload.id, notebook: args.notebook };
+    }
     if (category === 'document' && action === 'duplicate' && payload && typeof payload.id === 'string') {
         return { ...args, id: payload.id };
     }
@@ -1087,7 +1095,7 @@ async function appendBlockRows(
         return;
     }
     state.blocks = await client.requestRead<unknown[]>('/api/query/sql', {
-        stmt: `SELECT * FROM blocks WHERE ${clauses.join(' OR ')} ORDER BY id`,
+        stmt: `SELECT * FROM blocks WHERE ${typeof args.notebook === 'string' ? `box = ${sqlString(args.notebook)} AND ` : ''}(${clauses.join(' OR ')}) ORDER BY id`,
     });
 }
 
@@ -1165,6 +1173,14 @@ async function verifyPostWriteSemanticState(
     before?: StateProbe,
     after?: StateProbe,
 ): Promise<void> {
+    if (category === 'document' && (action === 'create' || action === 'create_daily_note')) {
+        const blocks = isRecord(after?.state?.liveBlocks) ? Object.values(after.state.liveBlocks) : [];
+        const documents = blocks.flatMap(block => isRecord(block) && isRecord(block.info) ? [block.info] : []);
+        if (documents.length !== 1 || documents[0].box !== args.notebook) {
+            throw safetyError('readback_mismatch', 'The created document was not observed in the requested notebook.');
+        }
+        return;
+    }
     if ((category === 'fs' || category === 'document') && action === 'reorder') {
         const { state } = await probeDocumentReorderState(client, permMgr, category, args);
         const currentIDs = Array.isArray(state.children)
@@ -1657,46 +1673,55 @@ function inspectDuplicateRowsRelationDestinations(
     return [...destinations.values()];
 }
 
+function isExactAvCarrierDom(dom: string, blockID: string, avID: string): boolean {
+    // A document's DOM may start with its child AV. Verify the requested
+    // block itself, with all three attributes on the same opening tag.
+    const tag = /^\s*<[A-Za-z][A-Za-z0-9:-]*\b/.exec(dom);
+    if (!tag) return false;
+    const end = findHtmlOpeningTagEnd(dom, tag[0].length);
+    if (end === undefined) return false;
+    const parsed = parseHtmlOpeningTagAttributes(dom.slice(tag[0].length, end));
+    if (!parsed) return false;
+    const expected = { 'data-node-id': blockID, 'data-type': 'NodeAttributeView', 'data-av-id': avID };
+    return Object.entries(expected).every(([name, value]) => {
+        const attributes = parsed.attributes.filter((attribute) => attribute.name.toLowerCase() === name);
+        return attributes.length === 1 && attributes[0].value === value;
+    });
+}
+
 async function resolveVerifiedAvCarrier(
     client: SiYuanClient,
     avID: string,
     explicitBlockID?: string,
 ): Promise<string | undefined> {
     const candidates: string[] = explicitBlockID ? [explicitBlockID] : [];
-    if (explicitBlockID) {
+    if (!explicitBlockID) {
         try {
-            const response = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: explicitBlockID });
-            const dom = typeof response?.dom === 'string' ? response.dom : '';
-            return dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)
-                ? explicitBlockID
-                : undefined;
+            const mirrors = await client.requestRead<{ refDefs?: Array<{ refID?: string }> }>('/api/av/getMirrorDatabaseBlocks', { avID });
+            for (const ref of mirrors?.refDefs ?? []) {
+                if (typeof ref.refID === 'string' && ref.refID && !candidates.includes(ref.refID)) candidates.push(ref.refID);
+            }
         } catch {
-            return undefined;
+            // SQL lookup below is the compatibility path for databases without
+            // registered mirrors; a missing mirror response alone is not a reason
+            // to grant a cross-AV write.
+        }
+        const escapedAvID = avID.replace(/\0/g, '').replace(/'/g, "''");
+        const rows = await client.requestRead<unknown[]>('/api/query/sql', {
+            stmt: `SELECT id FROM blocks WHERE type = 'av' AND (markdown LIKE '%${escapedAvID}%' OR ial LIKE '%${escapedAvID}%' OR content LIKE '%${escapedAvID}%') ORDER BY updated DESC LIMIT 20`,
+        });
+        for (const row of Array.isArray(rows) ? rows : []) {
+            const id = stringField(row, ['id']);
+            if (id && !candidates.includes(id)) candidates.push(id);
         }
     }
-    try {
-        const mirrors = await client.requestRead<{ refDefs?: Array<{ refID?: string }> }>('/api/av/getMirrorDatabaseBlocks', { avID });
-        for (const ref of mirrors?.refDefs ?? []) {
-            if (typeof ref.refID === 'string' && ref.refID && !candidates.includes(ref.refID)) candidates.push(ref.refID);
-        }
-    } catch {
-        // SQL lookup below is the compatibility path for databases without
-        // registered mirrors; a missing mirror response alone is not a reason
-        // to grant a cross-AV write.
-    }
-    const escapedAvID = avID.replace(/\0/g, '').replace(/'/g, "''");
-    const rows = await client.requestRead<unknown[]>('/api/query/sql', {
-        stmt: `SELECT id FROM blocks WHERE type = 'av' AND (markdown LIKE '%${escapedAvID}%' OR ial LIKE '%${escapedAvID}%' OR content LIKE '%${escapedAvID}%') ORDER BY updated DESC LIMIT 20`,
-    });
-    for (const row of Array.isArray(rows) ? rows : []) {
-        const id = stringField(row, ['id']);
-        if (id && !candidates.includes(id)) candidates.push(id);
-    }
-    for (const candidate of candidates) {
+    // Native mirror and SQL ordering can change without any AV mutation.
+    // A stable choice keeps the permission target and lease scope identical.
+    for (const candidate of candidates.sort()) {
         try {
             const response = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: candidate });
             const dom = typeof response?.dom === 'string' ? response.dom : '';
-            if (dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)) return candidate;
+            if (isExactAvCarrierDom(dom, candidate, avID)) return candidate;
         } catch {
             // A stale candidate is not evidence of AV ownership; continue to
             // the next exact carrier candidate and fail closed if none remain.
@@ -1735,7 +1760,7 @@ async function requireCarrierWritePermission(
     const rawDom = typeof domResponse?.dom === 'string' ? domResponse.dom : '';
     const dom = canonicalizeAvCarrierDom(rawDom);
     const currentNotebook = stringField(info, ['box', 'notebook', 'notebookID']);
-    if (!rawDom.includes('data-type="NodeAttributeView"') || !rawDom.includes(`data-av-id="${avID}"`) || currentNotebook !== notebook) {
+    if (!isExactAvCarrierDom(rawDom, carrierBlockID, avID) || currentNotebook !== notebook) {
         throw safetyError('precondition_required', `The verified database carrier for attribute view "${avID}" changed while establishing the strict lease. No write was attempted.`);
     }
     return {

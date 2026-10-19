@@ -4217,6 +4217,25 @@ describe('av tool', () => {
         expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
     });
 
+    it.each(['select', 'mSelect'])('skips an already applied %s filter when the request omits its native empty color', async (type) => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: {
+            id: 'av-1', keyValues: [{ key: { id: 'key-status', type }, values: [] }],
+            views: [{ id: 'view-1', type: 'table', table: { columns: [{ id: 'key-status' }] },
+                filters: [{ column: '', operator: '', value: null, combination: 'and', filters: [{ column: 'key-status', operator: '=', value: { type, mSelect: [{ content: '待办', color: '' }] } }] }],
+            }],
+        } });
+
+        const result = await callAvTool(client, {
+            action: 'update_view', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1',
+            filters: [{ column: 'key-status', operator: '=', value: { type, mSelect: [{ content: '待办' }] } }],
+        }, enabledActions('update_view'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ changed: false, skipped: true, reason: 'already_applied' });
+        expect(transactionApi.performTransactions).not.toHaveBeenCalled();
+    });
+
     it('combines filter, sort and group updates in one transaction and rejects a stale carrier', async () => {
         const transactionApi = await import('@/api/transaction');
         const blockApi = await import('@/api/block');

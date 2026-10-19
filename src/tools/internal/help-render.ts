@@ -280,7 +280,8 @@ export function buildActionHelp<Action extends string>(
     const requiredFieldSets = matching.flatMap((variant) => requiredFieldAlternatives(variant.schema));
     const generatedExamples = buildActionExampleObjects(matching, action);
     const curatedExamples = getCuratedActionExamples(category, action);
-    const example = matching.length === 1 ? generatedExamples[0] : generatedExamples;
+    const example = curatedExamples[0]?.mcp
+        ?? (matching.length === 1 ? generatedExamples[0] : generatedExamples);
 
     return {
         tool: category,

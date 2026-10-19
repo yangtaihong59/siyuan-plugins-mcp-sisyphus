@@ -1645,7 +1645,7 @@
             }
           },
           "stmt": {
-            "description": "SQL SELECT statement to execute against the blocks/spans/assets tables; returned rows are permission-filtered",
+            "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
             "type": "string"
           },
           "sql": {
@@ -5418,7 +5418,7 @@
             "const": "query_sql"
           },
           "stmt": {
-            "description": "SQL SELECT statement to execute against the blocks/spans/assets tables; returned rows are permission-filtered",
+            "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
             "type": "string"
           },
           "sql": {

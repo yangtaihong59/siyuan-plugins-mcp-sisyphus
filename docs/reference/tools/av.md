@@ -19,6 +19,8 @@ Row queries support `viewID` and `groupPaging`. Primary-key mode defaults to 16 
 
 Creation persists stable `avID` and `blockID` before dispatch, with stages `ids_reserved`, `av_created`, `carrier_inserted`, and `verified`. A reserved block ID does not prove a carrier exists. Partial or unknown results retain IDs, the last confirmed stage, and current step. Never automatically recreate, resume, or clean up a partial creation. Replay checks the ledger before existence and returns the saved business result; restart cannot cause redispatch. A new request targeting an existing AV fails.
 
+Strict AV writes verify the carrier element’s `data-node-id`, `data-type`, and `data-av-id` together. A parent document containing a database is not its carrier; use the actual database block ID from the creation receipt for an explicit `blockID`. When optional `blockID` is omitted, candidates are selected in stable block-ID order, so native response reordering alone does not invalidate a lease. Actual carrier, permission, or database state changes still reject stale preflights.
+
 ## Updating a view
 
 `update_view` requires `avID`, `blockID`, and `viewID`. The verified carrier must currently select that exact view.
@@ -31,6 +33,10 @@ Creation persists stable `avID` and `blockID` before dispatch, with stages `ids_
 | `columnOrder` | Every current view field exactly once, including hidden fields; not the database-wide key set. |
 
 Omitted settings remain unchanged. Null, unknown properties, duplicate IDs, and incomplete order lists fail. An empty visibility list contributes no change and is rejected on its own; it is allowed alongside another valid setting. Semantically unchanged requests return `no_change` without a transaction.
+
+For `select` / `mSelect` filter values, each `mSelect` option requires `content`; `color` is optional and defaults to the native empty string. Readback and `no_change` checks treat an omitted color and `""` as equivalent. Explicit colors, option content, and filter combinations are still compared exactly.
+
+Filter groups use only `combination` and `filters`; put `column`, `operator`, `value`, quantifiers and relative dates in child leaf nodes. Mixing group and leaf fields in one node is rejected before writing because the kernel would ignore those leaf conditions.
 
 Preflight and commit validate the whole request and layout field set. Unsupported layouts or configurations fail before submission. Native operations share one transaction request; this is not a guarantee of kernel atomicity. Readback verifies requested values and protects unrequested configuration: visibility exempts only the specified fields' hidden flags, ordering exempts positions but preserves other field attributes, and grouping uses native derived-state normalization. An unexpected difference means complete verification failed, not proof that this operation caused it.
 

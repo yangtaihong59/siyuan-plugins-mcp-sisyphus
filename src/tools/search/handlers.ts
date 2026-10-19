@@ -39,7 +39,7 @@ import {
     filterItemsByPermission,
     isPermissionRelatedApiError,
 } from './permission-filter';
-import { assertReadOnlySql, getBacklinkDocWithFallback, getBackmentionDocWithFallback } from './sql-builder';
+import { assertReadOnlySql, getBacklinksWithFallback } from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';
 
@@ -404,15 +404,27 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         const mode = parsed.mode ?? 'both';
         const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
         if (denied) return denied;
+        if (scopeRootId) {
+            const scope = await ensurePermissionForDocumentId(client, permMgr, scopeRootId, 'read');
+            if (scope.denied) return scope.denied;
+        }
         try {
-            const linkResult = mode !== 'mentions'
-                ? await getBacklinkDocWithFallback(client, parsed.id, parsed.keyword, scopeRootId)
-                : {};
-            const mentionResult = mode !== 'links'
-                ? await getBackmentionDocWithFallback(client, parsed.id, parsed.keyword, scopeRootId)
-                : {};
-            const result = { ...(linkResult as Record<string, unknown>), ...(mentionResult as Record<string, unknown>) };
-            const filtered = filterBacklinkResultByPermission(result, permMgr);
+            const result = await getBacklinksWithFallback(client, parsed.id, parsed.keyword, scopeRootId, mode);
+            let filtered;
+            if (scopeRootId) {
+                // Native Doc results lack box; their source document was authorized above.
+                filtered = filterBacklinkResultByPermission(result, permMgr);
+            } else {
+                // Both native global paths and SQL rows include box. Never expose unattributed rows.
+                const attributable = (item: unknown) => !!item && typeof item === 'object'
+                    && typeof (item as Record<string, unknown>).box === 'string'
+                    && ((item as Record<string, unknown>).box as string).length > 0;
+                const backlinks = result.backlinks.filter(attributable);
+                const backmentions = result.backmentions.filter(attributable);
+                const unattributedCount = result.backlinks.length + result.backmentions.length - backlinks.length - backmentions.length;
+                filtered = filterBacklinkResultByPermission({ ...result, backlinks, backmentions }, permMgr);
+                filtered = { ...filtered, ...createPartialMetadata(unattributedCount + (filtered.filteredOutCount ?? 0)) };
+            }
             return createJsonResult({
                 ...filtered,
                 mode,

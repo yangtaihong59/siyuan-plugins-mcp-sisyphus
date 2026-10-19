@@ -1046,7 +1046,16 @@ const buildAvFilterSchema = (depth: number) => z.object({
         filters: z.array(buildAvFilterSchema(depth + 1)).optional().describe(`Nested group filters; group nesting is capped at ${AV_FILTER_MAX_DEPTH - 1} levels.`),
     } : {}),
 }).strict().superRefine((filter, ctx) => {
-    const group = filter.combination !== undefined || filter.filters !== undefined;
+    const group = filter.combination !== undefined || Boolean(filter.filters?.length);
+    if (group) {
+        for (const field of ['column', 'operator', 'value', 'quantifier', 'relativeDate', 'relativeDate2'] as const) {
+            if (filter[field] !== undefined) ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'A filter group uses combination and filters only. Put leaf fields in a child filter.',
+                path: [field],
+            });
+        }
+    }
     if (!group && (!filter.column || !filter.operator)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A leaf filter requires column and operator.', path: ['column'] });
     }
@@ -1353,7 +1362,7 @@ export const SearchSemanticSchema = z.object({
 
 export const SearchQuerySqlSchema = z.object({
     action: z.literal("query_sql"),
-    stmt: z.string().optional().describe("SQL SELECT statement to execute against the blocks/spans/assets tables; returned rows are permission-filtered"),
+    stmt: z.string().optional().describe("Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column."),
     sql: z.string().optional().describe("Semantic alias for stmt. Overrides stmt when both are provided."),
 }).superRefine((value, ctx) => {
     if (!value.stmt && !value.sql) {

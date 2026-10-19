@@ -43,6 +43,7 @@ After `export_md`, check the returned document identity fields and content rathe
 - `upload_asset` requires confirmation and reads a local file path as an explicit binary-transfer exception. Canonical input is `assetsDirPath + localFilePath`; `file` is accepted as a shorthand for `localFilePath`, and `assetsDirPath` defaults to `/assets/`.
 - Large uploads need explicit large-file confirmation.
 - `delete_template`, `delete_asset`, and `remove_unused_assets` require confirmation. `delete_template` is disabled by default.
+- Strict template writes distinguish absence from failed reads: a missing new destination is a valid preimage, and absence after deletion is a valid postimage. Authentication, authorization, network, and server errors still fail preflight or produce an unknown outcome. Saving to a new name with `save_doc_as_template` needs no placeholder template.
 - Template writes use SiYuan's workspace file API for `/data/templates/...`; they do not write the local filesystem directly.
 - `export_resources` with a local output path should be treated carefully.
 - `extract_doc`: without kernel delegation, Node saves to the local filesystem (default `~/siyuan-extracted/`), clears the output root, and skips unreadable assets. Results include `outputRoot` and `defaultOutputDirUsed`; use a dedicated `outputDir`. Kernel delegation streams into a new document directory, preserves siblings, rejects existing destinations and removes only its own output on failure. Direct kernel clients receive a manifest and must save files themselves.
@@ -156,6 +157,8 @@ Save an existing document as a root-level template:
   "name": "meeting-note"
 }
 ```
+
+After saving, reuse `template.readArgs` or `template.relativePath` (including `.md`) to read the template. `template.name` is a display name and may omit the extension; do not pass it directly as `read_template.path`.
 
 Delete an existing template only after resolving it with `list_templates`:
 

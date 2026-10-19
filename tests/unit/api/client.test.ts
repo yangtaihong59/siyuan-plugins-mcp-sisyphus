@@ -37,6 +37,24 @@ describe('SiYuanClient', () => {
         });
     });
 
+    describe('requestResource', () => {
+        it('returns a readable 404 so template state can distinguish absence from a transport failure', async () => {
+            const response = new Response('missing template', { status: 404, statusText: 'Not Found' });
+            mockFetch.mockResolvedValue(response);
+
+            const result = await client.requestResource('/templates/missing.md');
+            expect(result.status).toBe(404);
+            expect(await result.text()).toBe('missing template');
+            expect(mockFetch).toHaveBeenCalledOnce();
+        });
+
+        it.each([401, 403])('does not treat HTTP %s as a missing resource', async (status) => {
+            mockFetch.mockResolvedValue(new Response('denied', { status }));
+            await expect(client.requestResource('/templates/private.md')).rejects.toThrow(`HTTP error: ${status}`);
+            expect(mockFetch).toHaveBeenCalledOnce();
+        });
+    });
+
     describe('bounded read responses', () => {
         it('decodes UTF-8 split across response chunks', async () => {
             const bytes = new TextEncoder().encode(JSON.stringify({ code: 0, data: '中文' }));

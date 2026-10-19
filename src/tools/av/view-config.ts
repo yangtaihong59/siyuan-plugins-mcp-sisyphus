@@ -12,11 +12,18 @@ export function normalizeAvFilters(value: unknown): unknown[] {
     const node = (input: any): any => {
         if (!input || typeof input !== 'object') return input;
         const output = { ...input, column: input.column ?? '', operator: input.operator ?? '', value: input.value ?? null };
+        if ((output.value?.type === 'select' || output.value?.type === 'mSelect') && Array.isArray(output.value.mSelect)) {
+            // Native ValueSelect.Color has no omitempty: an omitted color is
+            // persisted as "". Preserve explicit colors and all other fields.
+            output.value = { ...output.value, mSelect: output.value.mSelect.map(option =>
+                option && typeof option === 'object' && !Array.isArray(option)
+                    ? { ...option, color: option.color === undefined ? '' : option.color } : option) };
+        }
         if (input.filters?.length) output.filters = input.filters.map(node);
         else delete output.filters;
         return output;
     };
-    return source.length === 1 && (source[0]?.combination || Array.isArray(source[0]?.filters))
+    return source.length === 1 && (source[0]?.combination || (Array.isArray(source[0]?.filters) && source[0].filters.length > 0))
         ? [node(source[0])] : [node({ combination: 'and', filters: source })];
 }
 
@@ -45,7 +52,7 @@ export function prepareViewUpdate(definition: any, raw: Record<string, unknown>)
     const fields = viewFields(view);
     const keys = new Set((definition.keyValues ?? []).map((entry: any) => entry.key?.id));
     const checkKey = (id: string) => { if (!keys.has(id)) throw new Error(`Unknown AV column: ${id}`); };
-    const visit = (filter: any) => { if (filter.combination || filter.filters) (filter.filters ?? []).forEach(visit); else checkKey(filter.column); };
+    const visit = (filter: any) => { if (filter.combination || filter.filters?.length) (filter.filters ?? []).forEach(visit); else checkKey(filter.column); };
     args.filters?.forEach(visit);
     args.sorts?.forEach(sort => checkKey(sort.column));
     if (args.group?.field) checkKey(args.group.field);

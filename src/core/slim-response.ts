@@ -139,6 +139,9 @@ function shouldBypassSlimming(ctx: SlimContext): boolean {
     return ctx.category === 'av'
         || ctx.category === 'extension'
         || ctx.category === 'timeline'
+        // Link maps, dispositions and counts are the result, including when
+        // resolve/reuse perform no write. Generic success slimming loses them.
+        || (ctx.category === 'document' && ctx.action === 'ensure_link_targets')
         || (ctx.category === 'file' && ctx.action === 'read_image')
         || (ctx.category === 'search' && ctx.action === 'query_sql')
         || ctx.action === 'help'

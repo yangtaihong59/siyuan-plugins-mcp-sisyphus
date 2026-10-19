@@ -3,6 +3,19 @@ import { describe, expect, it } from 'vitest';
 import { slimToolResult } from '@/core/slim-response';
 
 describe('slim document-window responses', () => {
+    it.each(['resolve', 'reuse', 'create', 'dryRun'])('preserves link identities and dispositions for %s', (mode) => {
+        const payload = {
+            success: true, changed: mode === 'create', mode,
+            scope: { notebook: 'nb-1', parentId: 'parent-1' },
+            created: [], resolved: [{ key: 'a', id: 'doc-1', disposition: 'resolved' }],
+            reused: [], unresolved: [{ key: 'b', reason: 'not_found' }],
+            linkMap: { a: { id: 'doc-1', notebook: 'nb-1', path: '/parent/doc-1.sy', hPath: '/Parent/Child' } },
+            createdCount: 0, resolvedCount: 1, reusedCount: 0, unresolvedCount: 1,
+        };
+        const original = { content: [{ type: 'text' as const, text: JSON.stringify(payload) }], structuredContent: payload };
+        expect(slimToolResult(original, { category: 'document', action: 'ensure_link_targets' })).toEqual(original);
+    });
+
     it('preserves read_image metadata, structured content, and the image block verbatim', () => {
         const original = {
             content: [

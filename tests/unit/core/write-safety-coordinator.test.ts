@@ -122,7 +122,7 @@ function createCrossObjectAvFixture() {
                 const carrier = carriers[String(body?.id)];
                 if (!carrier) return { dom: '' };
                 return {
-                    dom: `<div data-type="NodeAttributeView" data-av-id="${carrier.avID}" data-lease-revision="${carrier.domRevision}"></div>`,
+                    dom: `<div data-node-id="${body?.id}" data-type="NodeAttributeView" data-av-id="${carrier.avID}" data-lease-revision="${carrier.domRevision}"></div>`,
                 };
             }
             if (endpoint === '/api/block/getBlockInfo') {
@@ -372,8 +372,8 @@ describe('write safety coordinator', () => {
                 const carrier = fixture.carriers[String(body?.id)];
                 if (!carrier) return { dom: '' };
                 const attributes = alternateCarrierAttributeOrder
-                    ? `class="av" data-av-id="${carrier.avID}" data-type="NodeAttributeView" updated="stable" custom-sy-av-view="view-1"`
-                    : `class="av" custom-sy-av-view="view-1" updated="stable" data-type="NodeAttributeView" data-av-id="${carrier.avID}"`;
+                    ? `class="av" data-node-id="${body?.id}" data-av-id="${carrier.avID}" data-type="NodeAttributeView" updated="stable" custom-sy-av-view="view-1"`
+                    : `class="av" data-node-id="${body?.id}" custom-sy-av-view="view-1" updated="stable" data-type="NodeAttributeView" data-av-id="${carrier.avID}"`;
                 return { dom: `<div ${attributes}></div>` };
             }
             return originalRequestRead(endpoint, body);
@@ -505,7 +505,7 @@ describe('write safety coordinator', () => {
                 }
                 if (endpoint === '/api/block/getBlockDOM') {
                     const isDestination = body?.id === destinationBlockID;
-                    return { id: body?.id, dom: `<div data-type="NodeAttributeView" data-av-id="${isDestination ? destinationAvID : avID}"></div>` };
+                    return { id: body?.id, dom: `<div data-node-id="${body?.id}" data-type="NodeAttributeView" data-av-id="${isDestination ? destinationAvID : avID}"></div>` };
                 }
                 if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, box: 'nb-rw' };
                 if (endpoint === '/api/av/getMirrorDatabaseBlocks') return { refDefs: [{ refID: destinationBlockID }] };
@@ -730,6 +730,68 @@ describe('write safety coordinator', () => {
         expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
         expect(permMgr.canWrite).not.toHaveBeenCalled();
         expect(permMgr.canDelete).not.toHaveBeenCalled();
+    });
+
+    it.each(['create', 'create_daily_note'])('reads %s by the returned ID without mixing another notebook at the same hpath', async (action) => {
+        const docID = '20261019000000-newdoc1';
+        const target = '20261019000001-target1';
+        const neighbor = '20261019000002-readonl';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/block/checkBlockExist') return body?.id === docID;
+                if (endpoint === '/api/block/getBlockInfo') return { id: docID, box: target };
+                if (endpoint === '/api/attr/getBlockAttrs') return {};
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: 'new document' };
+                if (endpoint === '/api/block/getChildBlocks') return [];
+                if (endpoint === '/api/block/getBlockDOM') return { dom: '<p>new document</p>' };
+                // A stale/path-only SQL lookup would also see the read-only neighbor.
+                if (endpoint === '/api/query/sql') return [{ id: 'other-doc', box: neighbor, hpath: '/Shared' }];
+                throw new Error(`Unexpected endpoint ${endpoint}`);
+            }),
+        } as any;
+        const permMgr = createMockPermissionManager({ canWrite: (id) => id === target });
+        permMgr.getAll = vi.fn(() => ({ [target]: 'rwd', [neighbor]: 'r' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action, notebook: target, ...(action === 'create' ? { path: '/Shared' } : {}) };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action, args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => success({ success: true, id: docID }));
+        const input = { ...args, requestId: preflight.requestId };
+        const result = parseResult(await coordinator.run({ client, permMgr, category: 'document', action, args: input, strictMode: true, execute }));
+        expect(result.safety).toMatchObject({ transactionState: 'committed', writeSafetyGuaranteed: true });
+        expect(client.requestRead).toHaveBeenCalledWith('/api/block/getBlockInfo', { id: docID });
+        expect(permMgr.canWrite).not.toHaveBeenCalledWith(neighbor);
+        const replay = parseResult(await coordinator.run({ client, permMgr, category: 'document', action, args: input, strictMode: true, execute }));
+        expect((replay.safety ?? replay).replayed).toBe(true);
+        expect(execute).toHaveBeenCalledOnce();
+    });
+
+    it.each(['missing_id', 'missing_document', 'wrong_notebook'])('does not commit document creation with %s readback', async (failure) => {
+        const id = '20261019000000-newdoc1';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/block/checkBlockExist') return failure !== 'missing_document';
+                if (endpoint === '/api/block/getBlockInfo') return { id, box: failure === 'wrong_notebook' ? 'other-nb' : 'nb-1' };
+                if (endpoint === '/api/attr/getBlockAttrs') return {};
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: 'created' };
+                if (endpoint === '/api/block/getChildBlocks' || endpoint === '/api/query/sql') return [];
+                if (endpoint === '/api/block/getBlockDOM') return { dom: '<p>created</p>' };
+                throw new Error(`Unexpected endpoint ${endpoint}`);
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager();
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rwd', 'other-nb': 'rwd' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'create', notebook: 'nb-1', path: '/Created' };
+        const preflight = parseResult(await coordinator.run({ client, permMgr, category: 'document', action: 'create', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn() }));
+        const result = parseResult(await coordinator.run({ client, permMgr, category: 'document', action: 'create', args: { ...args, requestId: preflight.requestId }, strictMode: true, execute: async () => success({ success: true, ...(failure === 'missing_id' ? {} : { id }) }) }));
+        expect(result.error.code).toBe('readback_mismatch');
+        expect(result.transactionState).toBe('unknown');
     });
 
     it('reads back the newly created document when duplicating a source document', async () => {
@@ -1506,7 +1568,7 @@ describe('write safety coordinator', () => {
                 if (endpoint === '/api/block/getBlockDOM') {
                     const attrs = [`updated="20260907205737"`, `custom-sy-av-view="${viewID}"`];
                     if (++domReadCount % 2) attrs.reverse();
-                    return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" ${attrs.join(' ')}></div>` };
+                    return { id: blockID, dom: `<div data-node-id="${blockID}" data-type="NodeAttributeView" data-av-id="${avID}" ${attrs.join(' ')}></div>` };
                 }
                 if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
                 return null;
@@ -1560,7 +1622,7 @@ describe('write safety coordinator', () => {
         const requestRead = vi.fn(async (endpoint: string) => {
             if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
             if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
-            if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+            if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-node-id="${blockID}" data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
             if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
             return null;
         });
@@ -1625,7 +1687,7 @@ describe('write safety coordinator', () => {
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
                 if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
-                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-node-id="${blockID}" data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
                 if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
                 return null;
             }),

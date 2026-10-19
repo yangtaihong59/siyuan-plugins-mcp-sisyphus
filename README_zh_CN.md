@@ -23,7 +23,9 @@
 
 > 连接外部 AI Agent、Sisyphus 原有工具与思源官方 MCP 插件生态。
 
-> **最新版本：** `v0.6.11` — 数据库升级为 AV v2，提供结构读取、分页查询、显式创建与组合视图更新，并加强创建回执与配置校验。旧 AV action 和顶层 `id` 别名已移除，迁移方式见[数据库文档](./docs/zh/reference/tools/av.md)。CLI 同步更新至 `v0.2.12`。
+> **最新版本：** `v0.6.12` — 修复数据库筛选默认值、参数校验与载体识别，稳定预检提交和无变更判断；修复跨笔记本同路径创建、模板读回与引用范围查询，保留链接目标完整映射；完善 SQL 权限说明与双语帮助。 CLI 同步更新至 `v0.2.13`。
+
+> **v0.6.11：** — 数据库升级为 AV v2，提供结构读取、分页查询、显式创建与组合视图更新，并加强创建回执与配置校验。旧 AV action 和顶层 `id` 别名已移除，迁移方式见[数据库文档](./docs/zh/reference/tools/av.md)。CLI 同步更新至 `v0.2.12`。
 
 > **v0.6.4：**`v0.6.4` — 扩展受保护的 AV 配置能力，新增可审计 Markdown 快照、图片引用审计、权限受控的视觉图片读取、扩展诊断与更清晰的路径语义。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。CLI 提升至 `v0.2.6`。
 

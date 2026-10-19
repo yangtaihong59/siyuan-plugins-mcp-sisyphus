@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { getBacklinkDoc, getBackmentionDoc, querySQL, semanticSearchBlock } from '@/api/search';
+import { getBacklink2, getBacklinkDoc, getBackmentionDoc, querySQL, semanticSearchBlock } from '@/api/search';
 
 describe('search api wrappers', () => {
     it('passes semantic filters to the native embedding search endpoint unchanged', async () => {
@@ -27,8 +27,8 @@ describe('search api wrappers', () => {
         await expect(getBacklinkDoc(client, 'target-id')).resolves.toBeNull();
         expect(client.request).toHaveBeenCalledWith('/api/ref/getBacklinkDoc', {
             defID: 'target-id',
-            keyword: undefined,
-            refTreeID: undefined,
+            keyword: '',
+            refTreeID: '',
         });
     });
 
@@ -39,9 +39,16 @@ describe('search api wrappers', () => {
         await expect(getBackmentionDoc(client, 'target-id')).resolves.toBeNull();
         expect(client.request).toHaveBeenCalledWith('/api/ref/getBackmentionDoc', {
             defID: 'target-id',
-            keyword: undefined,
-            refTreeID: undefined,
+            keyword: '',
+            refTreeID: '',
         });
+    });
+
+    it.each([undefined, 'keyword'])("supplies the global backlink endpoint with both keywords (%s)", async (keyword) => {
+        const response = { backlinks: [{ id: 'reference-doc', box: 'allowed' }], backmentions: [] };
+        const requestRead = vi.fn().mockResolvedValue(response);
+        await expect(getBacklink2({ requestRead } as any, 'target-id', keyword)).resolves.toBe(response);
+        expect(requestRead).toHaveBeenCalledWith('/api/ref/getBacklink2', { id: 'target-id', k: keyword ?? '', mk: keyword ?? '' });
     });
 
     it('normalizes null SQL payloads to an empty list', async () => {

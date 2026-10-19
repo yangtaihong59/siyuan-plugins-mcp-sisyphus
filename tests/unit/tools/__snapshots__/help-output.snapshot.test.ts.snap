@@ -21,6 +21,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -115,6 +116,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -201,6 +203,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -288,6 +291,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -378,6 +382,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -474,6 +479,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -530,6 +536,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -608,6 +615,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -667,6 +675,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -733,6 +742,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -788,7 +798,9 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "query",
         "example": {
           "action": "query",
-          "avID": "<avID>",
+          "avID": "20240318112233-abc123",
+          "page": 1,
+          "pageSize": 20,
         },
         "examples": [
           {
@@ -818,6 +830,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -916,6 +929,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -983,6 +997,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -1045,6 +1060,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -1100,6 +1116,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -1571,6 +1588,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -1664,6 +1682,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -1830,6 +1849,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -1899,10 +1919,99 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "update_view",
         "example": {
           "action": "update_view",
-          "avID": "<avID>",
-          "blockID": "<blockID>",
-          "viewID": "<viewID>",
+          "avID": "20240318112233-avdb001",
+          "blockID": "20240318112233-block01",
+          "filters": [
+            {
+              "column": "20240318112233-status1",
+              "operator": "=",
+              "value": {
+                "mSelect": [
+                  {
+                    "content": "待办",
+                  },
+                ],
+                "type": "select",
+              },
+            },
+          ],
+          "validateOnly": true,
+          "viewID": "20240318112233-view001",
         },
+        "examples": [
+          {
+            "description": "Replace the IDs with the exact database, carrier, selected view, and existing select-column IDs returned by get/query. Use an actual option name. A leaf has no combination or filters fields. Commit once with unchanged business arguments, validateOnly=false, and the returned requestId and expectedStateHash.",
+            "mcp": {
+              "action": "update_view",
+              "avID": "20240318112233-avdb001",
+              "blockID": "20240318112233-block01",
+              "filters": [
+                {
+                  "column": "20240318112233-status1",
+                  "operator": "=",
+                  "value": {
+                    "mSelect": [
+                      {
+                        "content": "待办",
+                      },
+                    ],
+                    "type": "select",
+                  },
+                },
+              ],
+              "validateOnly": true,
+              "viewID": "20240318112233-view001",
+            },
+            "title": "Preflight a select leaf filter",
+          },
+          {
+            "description": "Each group contains only combination and filters. Its children are groups or leaf conditions; column/operator/value belong only on leaves.",
+            "mcp": {
+              "action": "update_view",
+              "avID": "20240318112233-avdb001",
+              "blockID": "20240318112233-block01",
+              "filters": [
+                {
+                  "combination": "and",
+                  "filters": [
+                    {
+                      "combination": "or",
+                      "filters": [
+                        {
+                          "column": "20240318112233-status1",
+                          "operator": "=",
+                          "value": {
+                            "mSelect": [
+                              {
+                                "content": "待办",
+                              },
+                            ],
+                            "type": "select",
+                          },
+                        },
+                        {
+                          "column": "20240318112233-status1",
+                          "operator": "=",
+                          "value": {
+                            "mSelect": [
+                              {
+                                "content": "进行中",
+                              },
+                            ],
+                            "type": "select",
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+              "validateOnly": true,
+              "viewID": "20240318112233-view001",
+            },
+            "title": "Preflight nested filter groups",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/av/update_view",
         "guidance": [
           "Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.",
@@ -1912,11 +2021,12 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
         ],
-        "hint": "Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Preflight validates all configurations before one transaction; readback protects every unrequested property.",
+        "hint": "Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Filter nodes must not mix group fields (combination/filters) with leaf fields (column/operator/value); groups contain only combination and filters. Preflight validates all configurations before one transaction; readback protects every unrequested property.",
         "parameters": {
           "additionalProperties": false,
           "description": "Update one carrier-selected view in a single transaction; omitted configurations remain unchanged.",
@@ -3703,7 +3813,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "set_column_options": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
         "set_new_item_templates": "Dangerous complete replacement of ordered native new-item templates. Pass every template and defaultTemplateID, not a patch. MCP captures a canonical complete-template preimage, validates each key and select/mSelect option against the raw AV, performs one native transaction, and verifies order, default, and all remaining template fields through getAttributeView. Missing options are rejected rather than added or silently pruned.",
         "set_relation": "Dangerous complete replacement of one relation cell. blockID is the verified source database carrier; itemID and relatedItemIDs are AV row item IDs, never bound document block IDs. An empty relatedItemIDs array clears the relation. MCP authorizes destination writes and verifies source plus two-way reverse cells without retrying an unknown response.",
-        "update_view": "Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Preflight validates all configurations before one transaction; readback protects every unrequested property.",
+        "update_view": "Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Filter nodes must not mix group fields (combination/filters) with leaf fields (column/operator/value); groups contain only combination and filters. Preflight validates all configurations before one transaction; readback protects every unrequested property.",
       },
       "actions": {
         "add_column": {
@@ -3779,7 +3889,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "requiresConfirmation": true,
         },
         "update_view": {
-          "hint": "Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Preflight validates all configurations before one transaction; readback protects every unrequested property.",
+          "hint": "Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Filter nodes must not mix group fields (combination/filters) with leaf fields (column/operator/value); groups contain only combination and filters. Preflight validates all configurations before one transaction; readback protects every unrequested property.",
           "requiresConfirmation": true,
         },
       },
@@ -3815,6 +3925,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
         "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
         "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+        "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
         "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
         "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
         "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
@@ -5109,9 +5220,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "action": "word_count",
         "example": {
           "action": "word_count",
-          "ids": [
-            "<idsItem>",
-          ],
+          "id": "20240318112233-abc123",
         },
         "examples": [
           {
@@ -5348,8 +5457,9 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "action": "create",
         "example": {
           "action": "create",
+          "markdown": "正文从这里开始，不要再写 # New Child。",
           "notebook": "20210808180117-czj9bvb",
-          "path": "/Folder/Weekly Note",
+          "path": "/Folder/Parent/New Child",
         },
         "examples": [
           {
@@ -5681,13 +5791,64 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "action": "ensure_link_targets",
           "mode": "resolve",
           "notebook": "20210808180117-czj9bvb",
-          "parentId": "<parentId>",
+          "parentId": "20240318112233-abc1234",
           "targets": [
             {
-              "key": "<key>",
+              "id": "20240318112233-def4567",
+              "key": "source-index",
             },
           ],
         },
+        "examples": [
+          {
+            "description": "Replace the notebook, parent, and child IDs with IDs returned by the tools. Resolve/reuse target objects contain a caller key and an existing document id; omit title.",
+            "mcp": {
+              "action": "ensure_link_targets",
+              "mode": "resolve",
+              "notebook": "20210808180117-czj9bvb",
+              "parentId": "20240318112233-abc1234",
+              "targets": [
+                {
+                  "id": "20240318112233-def4567",
+                  "key": "source-index",
+                },
+              ],
+            },
+            "title": "Resolve explicit existing child IDs",
+          },
+          {
+            "mcp": {
+              "action": "ensure_link_targets",
+              "mode": "reuse",
+              "notebook": "20210808180117-czj9bvb",
+              "parentId": "20240318112233-abc1234",
+              "targets": [
+                {
+                  "id": "20240318112233-def4567",
+                  "key": "source-index",
+                },
+              ],
+            },
+            "title": "Reuse an exact existing child ID",
+          },
+          {
+            "description": "Create target objects contain a caller key and a new title; omit id. Preflight performs no write; commit once with the same business arguments, validateOnly=false, and the returned requestId and expectedStructureHash.",
+            "mcp": {
+              "action": "ensure_link_targets",
+              "mode": "create",
+              "notebook": "20210808180117-czj9bvb",
+              "parentId": "20240318112233-abc1234",
+              "targets": [
+                {
+                  "key": "source-index",
+                  "title": "New Target",
+                },
+              ],
+              "validateOnly": true,
+            },
+            "title": "Preflight creation with an explicit new title",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/document/ensure_link_targets",
         "guidance": [
           "For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"write"|"search") because it accepts human-readable paths and hides storage paths and IDs.",
@@ -7181,8 +7342,11 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "action": "create_template",
         "example": {
           "action": "create_template",
-          "markdown": "- Seed item",
-          "path": "/20240318112233-abc123.sy",
+          "markdown": "# .action{.title}
+
+## Summary
+",
+          "path": "reports/monthly.md",
         },
         "examples": [
           {
@@ -7580,6 +7744,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "example": {
           "action": "extract_doc",
           "id": "20240318112233-abc123",
+          "outputDir": "/private/tmp/siyuan-extracted",
         },
         "examples": [
           {
@@ -8186,7 +8351,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "example": {
           "action": "save_doc_as_template",
           "id": "20240318112233-abc123",
-          "name": "Research",
+          "name": "meeting-note",
         },
         "examples": [
           {
@@ -8260,8 +8425,11 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "action": "update_template",
         "example": {
           "action": "update_template",
-          "markdown": "- Seed item",
-          "path": "/20240318112233-abc123.sy",
+          "markdown": "# .action{.title}
+
+## Updated Summary
+",
+          "path": "reports/monthly.md",
         },
         "examples": [
           {
@@ -8335,6 +8503,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "example": {
           "action": "upload_asset",
           "assetsDirPath": "/assets/",
+          "localFilePath": "/private/tmp/demo.txt",
         },
         "examples": [
           {
@@ -8586,9 +8755,7 @@ Actions (required fields): upload_asset*(assetsDirPath) · list_templates() · r
         "action": "create_card",
         "example": {
           "action": "create_card",
-          "blockIDs": [
-            "<blockIDsItem>",
-          ],
+          "blockID": "20240318112233-abc123",
           "deckID": "20230218211946-2kw8jgx",
         },
         "examples": [
@@ -9342,7 +9509,10 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
         "action": "replace",
         "example": {
           "action": "replace",
-          "edit": "<edit>",
+          "edit": {
+            "new": "NEW_TEXT",
+            "old": "ORIGINAL_TEXT",
+          },
           "path": "/Notebook/Folder/Doc",
         },
         "examples": [
@@ -11121,7 +11291,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
               "type": "string",
             },
             "stmt": {
-              "description": "SQL SELECT statement to execute against the blocks/spans/assets tables; returned rows are permission-filtered",
+              "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
               "type": "string",
             },
           },
@@ -11451,6 +11621,7 @@ Actions (required fields): fulltext(query) · semantic(query) · query_sql() · 
         "action": "changelog",
         "example": {
           "action": "changelog",
+          "fromVersion": "0.4.8",
         },
         "examples": [
           {

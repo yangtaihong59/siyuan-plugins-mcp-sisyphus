@@ -11,10 +11,6 @@ function escapeSqlLike(value: string): string {
         .replace(/'/g, "''");
 }
 
-function hasBacklinkPayload(result: unknown): result is { backlinks?: unknown[]; backmentions?: unknown[] } {
-    return !!result && typeof result === 'object';
-}
-
 const READ_ONLY_SQL_ERROR = 'Only SELECT statements and WITH CTEs whose main statement is SELECT are allowed. Mutation queries (INSERT, UPDATE, DELETE, DROP, ALTER, CREATE) are forbidden.';
 
 function maskSqlLiteralsAndComments(stmt: string): string {
@@ -288,51 +284,37 @@ async function queryFallbackBackmentionRows(
     );
 }
 
-export async function getBacklinkDocWithFallback(
+export async function getBacklinksWithFallback(
     client: SiYuanClient,
     id: string,
     keyword?: string,
     refTreeID?: string,
+    mode: 'links' | 'mentions' | 'both' = 'both',
 ): Promise<{ backlinks: unknown[]; backmentions: unknown[]; fallbackUsed?: boolean; sourcePayloadMissing?: boolean; fallbackQuery?: 'sql'; resultConfidence?: 'fallback' }> {
-    const result = await searchApi.getBacklinkDoc(client, id, keyword, refTreeID);
-    if (hasBacklinkPayload(result) && (Array.isArray(result.backlinks) || Array.isArray(result.backmentions))) {
-        return {
-            backlinks: Array.isArray(result.backlinks) ? result.backlinks : [],
-            backmentions: Array.isArray(result.backmentions) ? result.backmentions : [],
-        };
+    let result: { backlinks?: unknown[]; backmentions?: unknown[] } | null;
+    if (!refTreeID) {
+        // The Doc endpoints require a concrete referencing document, not an empty scope.
+        result = await searchApi.getBacklink2(client, id, keyword);
+    } else {
+        const links = mode !== 'mentions' ? await searchApi.getBacklinkDoc(client, id, keyword, refTreeID) : null;
+        const mentions = mode !== 'links' ? await searchApi.getBackmentionDoc(client, id, keyword, refTreeID) : null;
+        result = { backlinks: links?.backlinks, backmentions: mentions?.backmentions };
     }
 
+    const linksMissing = mode !== 'mentions' && !Array.isArray(result?.backlinks);
+    const mentionsMissing = mode !== 'links' && !Array.isArray(result?.backmentions);
     const [backlinks, backmentions] = await Promise.all([
-        queryFallbackBacklinkRows(client, id, keyword, refTreeID),
-        queryFallbackBackmentionRows(client, id, keyword, refTreeID),
+        linksMissing ? queryFallbackBacklinkRows(client, id, keyword, refTreeID) : Promise.resolve(mode === 'mentions' ? [] : result?.backlinks ?? []),
+        mentionsMissing ? queryFallbackBackmentionRows(client, id, keyword, refTreeID) : Promise.resolve(mode === 'links' ? [] : result?.backmentions ?? []),
     ]);
     return {
         backlinks,
         backmentions,
-        fallbackUsed: true,
-        sourcePayloadMissing: true,
-        fallbackQuery: 'sql',
-        resultConfidence: 'fallback',
-    };
-}
-
-export async function getBackmentionDocWithFallback(
-    client: SiYuanClient,
-    id: string,
-    keyword?: string,
-    refTreeID?: string,
-): Promise<{ backmentions: unknown[]; fallbackUsed?: boolean; sourcePayloadMissing?: boolean; fallbackQuery?: 'sql'; resultConfidence?: 'fallback' }> {
-    const result = await searchApi.getBackmentionDoc(client, id, keyword, refTreeID);
-    if (result && typeof result === 'object' && Array.isArray((result as { backmentions?: unknown[] }).backmentions)) {
-        return { backmentions: (result as { backmentions: unknown[] }).backmentions };
-    }
-
-    const backmentions = await queryFallbackBackmentionRows(client, id, keyword, refTreeID);
-    return {
-        backmentions,
-        fallbackUsed: true,
-        sourcePayloadMissing: true,
-        fallbackQuery: 'sql',
-        resultConfidence: 'fallback',
+        ...(linksMissing || mentionsMissing ? {
+            fallbackUsed: true,
+            sourcePayloadMissing: true,
+            fallbackQuery: 'sql' as const,
+            resultConfidence: 'fallback' as const,
+        } : {}),
     };
 }

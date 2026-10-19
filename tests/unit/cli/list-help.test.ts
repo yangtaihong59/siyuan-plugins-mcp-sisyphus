@@ -9,6 +9,7 @@ import { runHelp, runList } from '@/cli/list-help';
 import * as pluginCheck from '@/cli/plugin-check';
 import { buildDefaultToolConfig } from '@/core/config';
 import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { DocumentEnsureLinkTargetsSchema } from '@/core/types';
 
 function captureStdIO() {
     let stdout = '';
@@ -55,6 +56,32 @@ describe('cli/list-help', () => {
         delete process.env.SIYUAN_TOKEN;
         if (stdoutTTY) Object.defineProperty(process.stdout, 'isTTY', stdoutTTY);
         if (stderrTTY) Object.defineProperty(process.stderr, 'isTTY', stderrTTY);
+    });
+
+    it('uses valid shared link-target examples in CLI action help', async () => {
+        const io = captureStdIO();
+        try {
+            const code = await runHelp({
+                command: 'help', tool: 'document', action: 'ensure_link_targets',
+                rest: [], json: true, debug: false,
+            } as ParsedArgs);
+            expect(code, io.stderr || io.stdout).toBe(0);
+            const output = JSON.parse(io.stdout);
+            expect(output.example).toEqual(output.examples[0].mcp);
+            const modes = output.examples.map(({ mcp }: { mcp: string }) => {
+                const mode = mcp.match(/--mode (\w+)/)![1];
+                const targets = JSON.parse(mcp.match(/--targets-json '([^']+)'/)![1]);
+                expect(DocumentEnsureLinkTargetsSchema.safeParse({
+                    action: 'ensure_link_targets', notebook: 'notebook-id', parentId: 'parent-id', mode, targets,
+                }).success).toBe(true);
+                expect(mcp).toContain('--parent-id 20240318112233-abc1234');
+                return mode;
+            });
+            expect(modes).toEqual(['resolve', 'reuse', 'create']);
+            expect(output.example).toContain('--mode resolve');
+        } finally {
+            io.restore();
+        }
     });
 
     it('renders a grouped tool overview', async () => {

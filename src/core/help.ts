@@ -82,6 +82,7 @@ export const AV_GUIDANCE: string[] = [
     'create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.',
     'update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.',
     'filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.',
+    'Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.',
     'update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.',
     'Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.',
     'Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.',
@@ -247,7 +248,7 @@ export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     get: 'Use avID with scope=structure (default), columns, view, or raw. structure never contains row IDs or values. Optional blockID proves database context; viewID selects reading only. Use query for records.',
     query: 'Use avID, optional keyword/page/pageSize, and mode=rows (default) or primary_keys. Row mode supports viewID/blockID/groupPaging. Primary-key mode rejects viewID/groupPaging and defaults to 16 rows. Follow nextSteps only when present.',
     create: 'Use parentID and optionally a new avID; preflight first. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.',
-    update_view: 'Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Preflight validates all configurations before one transaction; readback protects every unrequested property.',
+    update_view: 'Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Filter nodes must not mix group fields (combination/filters) with leaf fields (column/operator/value); groups contain only combination and filters. Preflight validates all configurations before one transaction; readback protects every unrequested property.',
 
 };
 
@@ -383,6 +384,41 @@ export interface HelpExample {
 
 export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, HelpExample[]>>> = {
     document: {
+        ensure_link_targets: [
+            {
+                title: 'Resolve explicit existing child IDs',
+                description: 'Replace the notebook, parent, and child IDs with IDs returned by the tools. Resolve/reuse target objects contain a caller key and an existing document id; omit title.',
+                mcp: {
+                    action: 'ensure_link_targets',
+                    notebook: '20210808180117-czj9bvb',
+                    parentId: '20240318112233-abc1234',
+                    mode: 'resolve',
+                    targets: [{ key: 'source-index', id: '20240318112233-def4567' }],
+                },
+            },
+            {
+                title: 'Reuse an exact existing child ID',
+                mcp: {
+                    action: 'ensure_link_targets',
+                    notebook: '20210808180117-czj9bvb',
+                    parentId: '20240318112233-abc1234',
+                    mode: 'reuse',
+                    targets: [{ key: 'source-index', id: '20240318112233-def4567' }],
+                },
+            },
+            {
+                title: 'Preflight creation with an explicit new title',
+                description: 'Create target objects contain a caller key and a new title; omit id. Preflight performs no write; commit once with the same business arguments, validateOnly=false, and the returned requestId and expectedStructureHash.',
+                mcp: {
+                    action: 'ensure_link_targets',
+                    notebook: '20210808180117-czj9bvb',
+                    parentId: '20240318112233-abc1234',
+                    mode: 'create',
+                    targets: [{ key: 'source-index', title: 'New Target' }],
+                    validateOnly: true,
+                },
+            },
+        ],
         create: [
             {
                 title: 'Create a child document by notebook-local hpath (recommended)',
@@ -464,6 +500,44 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     av: {
+        update_view: [
+            {
+                title: 'Preflight a select leaf filter',
+                description: 'Replace the IDs with the exact database, carrier, selected view, and existing select-column IDs returned by get/query. Use an actual option name. A leaf has no combination or filters fields. Commit once with unchanged business arguments, validateOnly=false, and the returned requestId and expectedStateHash.',
+                mcp: {
+                    action: 'update_view',
+                    avID: '20240318112233-avdb001',
+                    blockID: '20240318112233-block01',
+                    viewID: '20240318112233-view001',
+                    filters: [{
+                        column: '20240318112233-status1', operator: '=',
+                        value: { type: 'select', mSelect: [{ content: '待办' }] },
+                    }],
+                    validateOnly: true,
+                },
+            },
+            {
+                title: 'Preflight nested filter groups',
+                description: 'Each group contains only combination and filters. Its children are groups or leaf conditions; column/operator/value belong only on leaves.',
+                mcp: {
+                    action: 'update_view',
+                    avID: '20240318112233-avdb001',
+                    blockID: '20240318112233-block01',
+                    viewID: '20240318112233-view001',
+                    filters: [{
+                        combination: 'and',
+                        filters: [{
+                            combination: 'or',
+                            filters: [
+                                { column: '20240318112233-status1', operator: '=', value: { type: 'select', mSelect: [{ content: '待办' }] } },
+                                { column: '20240318112233-status1', operator: '=', value: { type: 'select', mSelect: [{ content: '进行中' }] } },
+                            ],
+                        }],
+                    }],
+                    validateOnly: true,
+                },
+            },
+        ],
         query: [
             {
                 title: 'Query an AV returned by search',
