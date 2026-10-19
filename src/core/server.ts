@@ -1,3 +1,4 @@
+import { supportsFormElicitation } from '../shared/mcp-capabilities';
 import { withStructuredContent } from './structured-result';
 import { isKernelExport } from '../cli/kernel-file-transfer';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
@@ -429,9 +430,9 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         );
 
         // 2026-07-28 carries confirmation in-band through MRTR. Legacy
-        // clients keep the existing instruction-level confirmation contract
-        // because many of them do not advertise elicitation support.
-        if (requiresConfirmation && ctx.mcpReq.envelope) {
+        // clients and clients without form support keep instruction-level confirmation.
+        // Skipping the optional UI does not skip permissions or strict write checks.
+        if (requiresConfirmation && ctx.mcpReq.envelope && supportsFormElicitation(clientCapabilities)) {
             const confirmationKey = 'dangerous-action-confirmation';
             const hasResponse = Object.prototype.hasOwnProperty.call(
                 ctx.mcpReq.inputResponses ?? {},

@@ -117,7 +117,7 @@ Calls TOOL_REGISTRY → SiYuanClient → SiYuan HTTP API
 - Supports TLS (custom certificates), Token auth, Parent Watchdog (self-destruct on parent exit)
 - Suitable for remote access, browser extensions, multi-client sharing
 
-Modern tool descriptors include titles, a generic structured-output contract, and conservative annotations. Dangerous modern calls are paused through multi-round-trip elicitation before the tool lifecycle begins. The optional draft SEP-2640 extension adds `skills/list`, `skills/get`, and digest-addressed `skill://` resources without replacing the stable help resources and prompts.
+Modern tool descriptors include titles, a generic structured-output contract, and conservative annotations. Dangerous modern calls pause for multi-round-trip elicitation only when the client supports forms; unsupported clients skip the dialog while retaining permissions and strict preflight checks. The optional draft SEP-2640 extension adds `skills/list`, `skills/get`, and digest-addressed `skill://` resources without replacing the stable help resources and prompts.
 
 ### CLI Direct Operation Mode
 
@@ -144,6 +144,6 @@ Terminal output (human-readable / --json)
 
 1. **Aggregated tool surface**: 13 MCP tools (fs / notebook / document / block / av / file / search / tag / system / flashcard / extension / mascot / feedback), rather than 100+ single-purpose tools.
 2. **Config hot-reload**: `server.ts` `getToolConfig()` has a 30-second TTL cache + in-flight deduplication. Changes from the settings panel take effect without restart.
-3. **Dangerous action gate**: `DANGEROUS_ACTIONS` marks 15 high-risk actions. MCP 2026-07-28 calls are blocked until multi-round elicitation is accepted; legacy clients receive description and instruction warnings.
+3. **Dangerous action gate**: `DANGEROUS_ACTIONS` marks 15 high-risk actions. MCP 2026-07-28 clients supporting form elicitation wait for acceptance; unsupported and legacy clients follow the user-authorization instructions, retaining permissions and strict preflight checks.
 4. **Analytics & Telemetry**: Every tool call records an analytics event (JSONL format, 2MB auto-rotation). Telemetry aggregates and reports periodically per config. In CLI mode, analytics is synchronously flushed before exit.
 5. **Puppy mascot**: Communicates with the MCP server via polling `puppyEvents.json` files (decoupled). Supports idle animations, drag, wage card, test mode, and other state machines.

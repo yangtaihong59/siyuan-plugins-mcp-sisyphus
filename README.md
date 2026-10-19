@@ -23,7 +23,9 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.12` — Fixes database filter defaults, validation, and carrier identification for reliable preflight, commits, and no-change detection; fixes same-path document creation across notebooks, template readback, and scoped reference queries; preserves complete link-target mappings and clarifies SQL permissions and bilingual help. CLI is now `v0.2.13`.
+> **Latest:** `v0.6.13` — Fixes DSH compatibility: clients without form confirmation support no longer trigger elicitation errors, while permissions and safe-write preflight remain enforced. MCP settings now provide DSH Cordis YAML configuration.
+
+> **v0.6.12：** — Fixes database filter defaults, validation, and carrier identification for reliable preflight, commits, and no-change detection; fixes same-path document creation across notebooks, template readback, and scoped reference queries; preserves complete link-target mappings and clarifies SQL permissions and bilingual help. CLI is now `v0.2.13`.
 
 > **v0.6.11：** — Introduces AV v2 structure reads, paginated queries, explicit database creation, and combined view updates, with durable creation receipts and configuration checks. Legacy AV actions and the top-level `id` alias are removed; see the [migration guide](./docs/reference/tools/av.md#configuration-migration). CLI is now `v0.2.12`.
 

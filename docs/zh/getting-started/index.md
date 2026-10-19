@@ -53,7 +53,7 @@ siyuan-sisyphus skill install --bundle all
 
 - `stdio` 自动接受新旧两代协议。
 - HTTP 将 2026-07-28 请求路由到逐请求无状态 handler，同时为旧客户端保留带 `mcp-session-id` 的有状态会话。
-- modern 高危 action 会先通过 MCP 多轮 elicitation 请求确认；modern 客户端必须声明 elicitation 能力才能执行这些操作。
+- modern 高危 action 会先通过 MCP 多轮 elicitation 请求确认；仅在客户端声明表单 elicitation 能力时弹出确认；未声明或仅支持 URL 模式时跳过弹框，仍执行权限、action 开关和严格预检校验。
 - 带 `Origin` 的浏览器请求只允许 localhost 及 `SIYUAN_MCP_ALLOWED_ORIGINS` 中用逗号分隔的主机名。
 - 内置思源官方 MCP 客户端使用自动版本协商。
 
@@ -64,3 +64,24 @@ SEP-2640 仍是草案扩展，但在 HTTP 与 stdio 传输中均默认开启，�
 ## 下一步
 
 配置完成后，前往 [常见任务](../reference/common-tasks.md) 页面尝试 MCP/CLI 快速示例。
+
+## DSH（DeepSeek Harness）
+
+在插件设置的 MCP 客户端列表中选择 **DSH**，再选择 HTTP/HTTPS 或 stdio，复制生成的 **Cordis YAML patch**。桌面版配置文件为 `~/.dsh/profiles/desktop/cordis.patch.yml`，其他 profile 可用 `web`、`headless`、`tui`。按条目 `id` 合并到已有补丁，保留其他内容；不要增加 `mcpServers` 外层，也不要重复添加相同 `serverName`。
+
+以下示例无需认证；地址和端口应以设置页生成值为准：
+
+```yaml
+- insert:
+    - id: mcp-siyuan-sisyphus
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: siyuan-sisyphus
+        transport: streamable-http
+        url: http://127.0.0.1:36806/mcp
+        failOnStartupError: true
+```
+
+保存后热加载，无需重启。工具名为 `mcp__siyuan-sisyphus__<tool>`，例如 `mcp__siyuan-sisyphus__fs`。当前片段使用 `failOnStartupError: true`，应先启动思源 MCP 服务。
+
+开启 HTTP 认证后，设置页生成 `Authorization: !!js "'Bearer ' + process.env.MCP_TOKEN"`；stdio 使用 `SIYUAN_TOKEN: !!js process.env.SIYUAN_TOKEN` 引用内核 API Token。需让 DSH 进程实际继承对应环境变量，不要把 Token 明文写入 YAML；仅在终端 export 不一定对已启动的桌面应用生效。

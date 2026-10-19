@@ -114,7 +114,7 @@ SiYuan.app → 加载插件 → 启动内嵌 HTTP Server
 - 支持 TLS（自定义证书）、Token 鉴权、父进程看门狗（父进程退出自毁）
 - 适合远程访问、浏览器插件、多客户端共享
 
-modern 工具描述包含标题、通用结构化输出契约和保守 annotations。modern 高危调用会在进入工具生命周期前通过多轮 elicitation 暂停并确认。可选的草案 SEP-2640 扩展增加 `skills/list`、`skills/get` 和带摘要的 `skill://` 资源，但不替代稳定的帮助 Resource 与 Prompt。
+modern 工具描述包含标题、通用结构化输出契约和保守 annotations。支持表单 elicitation 的 modern 客户端会在高危调用进入工具生命周期前暂停并确认；不支持时跳过弹框，保留权限和严格预检。可选的草案 SEP-2640 扩展增加 `skills/list`、`skills/get` 和带摘要的 `skill://` 资源，但不替代稳定的帮助 Resource 与 Prompt。
 
 ### CLI 直接操作模式
 
@@ -141,6 +141,6 @@ SiYuanClient → SiYuan HTTP API
 
 1. **聚合工具表面**：13 个 MCP tool（fs / notebook / document / block / av / file / search / tag / system / flashcard / extension / mascot / feedback），而非 100+ 个单用途工具。
 2. **配置热加载**：`server.ts` 中 `getToolConfig()` 带 30 秒 TTL 缓存 + in-flight 去重，设置面板改动后无需重启即可生效。
-3. **危险动作门禁**：`DANGEROUS_ACTIONS` 集合标记了 15 个高危 action。MCP 2026-07-28 调用会在多轮 elicitation 接受前被阻止；legacy 客户端收到 description 与 instructions 警告。
+3. **危险动作门禁**：`DANGEROUS_ACTIONS` 集合标记了 15 个高危 action。支持表单 elicitation 的 MCP 2026-07-28 调用会在确认接受前被阻止；无表单能力及 legacy 客户端采用 description 与 instructions 中的用户授权约定，权限与严格预检不变。
 4. **Analytics 与 Telemetry**：每次工具调用都会记录 analytics 事件（JSONL 格式，2MB 自动轮转），telemetry 按配置周期聚合上报；CLI 模式下 analytics 会同步等待落盘。
 5. **Puppy 吉祥物**：通过轮询 `puppyEvents.json` 文件与 MCP server 解耦通信，支持空闲动画、拖拽、工资卡、测试模式等状态机。

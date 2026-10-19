@@ -44,6 +44,13 @@
             descFallback: "Copy ~/.codex/config.toml mcp_servers configuration.",
         },
         {
+            id: "dsh",
+            titleKey: "mcpPresetDshTitle",
+            titleFallback: "DSH (DeepSeek Harness)",
+            descKey: "mcpPresetDshDesc",
+            descFallback: "Copy Cordis YAML patch configuration for DSH.",
+        },
+        {
             id: "cherry-studio",
             titleKey: "mcpPresetCherryTitle",
             titleFallback: "Cherry Studio",
@@ -120,6 +127,7 @@
     let selectedMcpClientPreset: McpClientPresetId = "claude-code";
     let preferredMcpTransport: McpTransportId | null = null;
     $: selectedMcpTransport = preferredMcpTransport ?? (httpStatus.running ? "http" : "stdio");
+    $: dshSetupGuide = getLabel("mcpDshSetupGuide", "Desktop: ~/.dsh/profiles/desktop/cordis.patch.yml; other profiles: web / headless / tui. Merge the Cordis insert entry by id; do not add mcpServers or duplicate serverName. Changes hot-reload without restarting. Tools use mcp__siyuan-sisyphus__<tool>. With HTTP authentication, set MCP_TOKEN in the DSH process environment; for authenticated stdio, set SIYUAN_TOKEN to the kernel API token. Environment references contain no literal secrets; a terminal export may not reach the desktop app. Initial connection failure prevents this entry from loading (failOnStartupError: true).");
     let changelogExpanded = false;
     $: changelogTitle = getLabel("toolSettingsChangelogTitle", "更新日志");
     $: changelogText = getLabel("toolSettingsChangelogText", "连接设置现按 MCP / CLI 分组，MCP 下再区分 HTTP/HTTPS 与 stdio。");
@@ -291,6 +299,32 @@
         return lines.join("\n");
     }
 
+    function generateDshConfig(s: HttpServerSettings, transport: McpTransportId): string {
+        const lines = [
+            "- insert:",
+            `    - id: mcp-${MCP_SERVER_NAME}`,
+            '      name: "@deepseek-ai/dsh-mcp-client"',
+            "      config:",
+            `        serverName: ${MCP_SERVER_NAME}`,
+            `        transport: ${transport === "http" ? "streamable-http" : "stdio"}`,
+        ];
+        if (transport === "http") {
+            lines.push(`        url: ${JSON.stringify(getHttpMcpUrl(s))}`);
+            if (s.authEnabled) lines.push("        headers:", `          Authorization: !!js "'Bearer ' + process.env.MCP_TOKEN"`);
+        } else {
+            const stdio = getStdioServerConfig();
+            lines.push(
+                `        command: ${JSON.stringify(stdio.command)}`,
+                `        args: ${JSON.stringify(stdio.args)}`,
+                "        env:",
+                `          SIYUAN_API_URL: ${JSON.stringify(stdio.env.SIYUAN_API_URL)}`,
+                stdio.env.SIYUAN_TOKEN ? "          SIYUAN_TOKEN: !!js process.env.SIYUAN_TOKEN" : '          SIYUAN_TOKEN: ""',
+            );
+        }
+        lines.push("        failOnStartupError: true");
+        return lines.join("\n");
+    }
+
     function generateKimiConfig(s: HttpServerSettings, transport: McpTransportId): string {
         if (transport === "stdio") {
             return JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: getStdioServerConfig() } }, null, 2);
@@ -364,6 +398,7 @@
         if (preset === "kimi") return generateKimiConfig(s, transport);
         if (preset === "opencode") return generateOpenCodeConfig(s, transport);
         if (preset === "codex") return generateCodexConfig(s, transport);
+        if (preset === "dsh") return generateDshConfig(s, transport);
         if (preset === "cherry-studio") return generateCherryStudioConfig(s, transport);
         if (preset === "cc-switch") return generateCcSwitchConfig(s, transport);
         return generateCursorJsonConfig(s, transport);
@@ -410,16 +445,17 @@ You are authorized to inspect and update the current client's MCP configuration.
 6. Report the files or settings changed and the verification result without exposing credentials.
 
 If you cannot edit the client configuration directly, provide the exact target path and commands or UI steps instead.`;
-        return replacePromptTokens(
+        const prompt = replacePromptTokens(
             getLabel("mcpAiSetupPrompt", fallback),
             {
                 client: getSelectedMcpClientTitle(),
                 transport: getSelectedMcpTransportTitle(),
-                format: selectedMcpClientPreset === "codex" ? "toml" : "json",
+                format: selectedMcpClientPreset === "dsh" ? "yaml" : selectedMcpClientPreset === "codex" ? "toml" : "json",
                 config: generatePresetSnippet(httpSettings, selectedMcpClientPreset, selectedMcpTransport),
                 serverName: MCP_SERVER_NAME,
             },
         );
+        return selectedMcpClientPreset === "dsh" ? `${prompt}\n\n${dshSetupGuide}` : prompt;
     }
 
     function generateCliAiSetupPrompt(): string {
@@ -682,6 +718,9 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                         </button>
                     </div>
                     <div class="http-note">{getLabel("mcpTransportRecommendation", "Prefer HTTP/HTTPS when available: its fixed MCP address automatically follows the current workspace’s changing kernel port. Give each workspace a different MCP port. stdio uses port 6806, which belongs to the first workspace started, so it cannot reliably select another workspace; its API token must match that workspace.")}</div>
+                    {#if selectedMcpClientPreset === "dsh"}
+                        <div class="http-note">{dshSetupGuide}</div>
+                    {/if}
                     <pre>{generatePresetSnippet(httpSettings, selectedMcpClientPreset, selectedMcpTransport)}</pre>
                     <div class="http-note">
                         {#each MCP_CLIENT_PRESETS as preset}
