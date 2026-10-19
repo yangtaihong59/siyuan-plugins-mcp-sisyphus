@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 
 import type { ParsedArgs } from '@/cli/args';
 import { SiYuanClient } from '@/api/client';
+import * as writeCoordinator from '@/cli/write-coordinator';
 import { runDispatch } from '@/cli/dispatch';
 import * as pluginCheck from '@/cli/plugin-check';
 import { buildDefaultToolConfig } from '@/core/config';
@@ -64,6 +65,27 @@ describe('cli/dispatch', () => {
         delete process.env.SIYUAN_MCP_TRANSPORT;
         delete process.env.SIYUAN_API_URL;
         delete process.env.SIYUAN_TOKEN;
+    });
+
+    it('requires the shared coordinator for AV creation even when general strict mode is disabled', async () => {
+        const io = captureStdIO();
+        const direct = vi.spyOn(TOOL_REGISTRY.av, 'callTool').mockResolvedValue(okResult());
+        const coordinated = vi.spyOn(writeCoordinator, 'callCliWriteCoordinator').mockResolvedValue(okResult());
+        const code = await runDispatch({ command: 'dispatch', tool: 'av', action: 'create', rest: ['--parent-id', 'parent', '--validate-only'], url: 'http://127.0.0.1:6806', json: true, debug: false } as ParsedArgs);
+        expect(code).toBe(0);
+        expect(direct).not.toHaveBeenCalled();
+        expect(coordinated).toHaveBeenCalledTimes(1);
+        io.restore();
+    });
+
+    it('does not fall back to enabled actions for an unknown AV config version', async () => {
+        const io = captureStdIO();
+        vi.mocked(SiYuanClient.prototype.readFile).mockResolvedValue('{"avActionsVersion":99}');
+        const direct = vi.spyOn(TOOL_REGISTRY.av, 'callTool').mockResolvedValue(okResult());
+        const code = await runDispatch({ command: 'dispatch', tool: 'av', action: 'get', rest: ['--av-id', 'test'], url: 'http://127.0.0.1:6806', json: true, debug: false } as ParsedArgs);
+        expect(code).toBe(1); expect(direct).not.toHaveBeenCalled();
+        expect(io.stdout + io.stderr).toContain('Unsupported avActionsVersion');
+        io.restore();
     });
 
     it('maps --arguments-json into the nested extension arguments object', async () => {

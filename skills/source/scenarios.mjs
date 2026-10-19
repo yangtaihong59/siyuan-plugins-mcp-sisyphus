@@ -235,8 +235,8 @@ Read the changed blocks again. Recent writes can take time to enter the search i
         id: 'database',
         cliName: 'siyuan-sisyphus-database',
         mcpName: 'siyuan-mcp-database',
-        cliDescription: 'CLI-only playbook for SiYuan attribute views with siyuan-sisyphus. Use to inspect database metadata, render views, add columns or rows, update cells, and keep AV, view, row, column, and block IDs distinct.',
-        mcpDescription: 'MCP playbook for SiYuan attribute views. Use to inspect database metadata, render views, add columns or rows, update cells, and keep AV, view, row, column, and block IDs distinct.',
+        cliDescription: 'CLI-only playbook for SiYuan attribute views with siyuan-sisyphus. Use to inspect database metadata, query views, add columns or rows, update cells, and keep AV, view, row, column, and block IDs distinct.',
+        mcpDescription: 'MCP playbook for SiYuan attribute views. Use to inspect database metadata, query views, add columns or rows, update cells, and keep AV, view, row, column, and block IDs distinct.',
         title: 'Operate SiYuan Databases',
         displayName: 'SiYuan Database',
         shortDescription: 'Operate SiYuan attribute view databases',
@@ -255,13 +255,13 @@ Keep these identifiers distinct: AV ID identifies the database; view ID identifi
 {{call rows}}
 {{call cells}}
 
-Before writing cells, render the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Re-render after mutation. Read {{help av set_cells}} for the current cell schema.
+Before writing cells, query the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Query again after mutation. Read {{help av set_cells}} for the current cell schema.
 
-Treat a successful mutation response as provisional until the same view and affected rows/cells are read back. Keep the render and readback paginated, continue while more data is advertised, and compare the intended cell values by stable row and column IDs. A raw MCP or CLI success message does not establish that strict-write coordination or complete readback occurred.
+Treat a successful mutation response as provisional until the same view and affected rows/cells are read back. Keep the query and readback paginated, continue while more data is advertised, and compare the intended cell values by stable row and column IDs. A raw MCP or CLI success message does not establish that strict-write coordination or complete readback occurred.
 `,
         calls: {
             get: call('av', 'get', { avID: '<av-id>' }),
-            render: call('av', 'render', { avID: '<av-id>', page: 1, pageSize: 50 }),
+            render: call('av', 'query', { avID: '<av-id>', page: 1, pageSize: 50 }),
             search: call('av', 'search', { keyword: 'project' }),
             column: call('av', 'add_column', { avID: '<av-id>', keyName: 'Status', keyType: 'select' }),
             rows: call('av', 'add_rows', { avID: '<av-id>', viewID: '<view-id>', blockIDs: ['<block-id>'] }),
@@ -403,7 +403,7 @@ Schema/data PASS never implies functional or presentation completion. Without li
             lookupCreated: call('document', 'lookup', { id: '<returned-document-id>', include: ['id', 'path', 'hpath', 'docInfo'] }),
             upload: call('file', 'upload_asset', { assetsDirPath: '<approved-assets-dir>', localFilePath: '<approved-staged-file>' }),
             av: call('av', 'get', { avID: '<av-id>', blockID: '<database-block-id>' }),
-            avKeys: call('av', 'get_attribute_view_keys', { avID: '<av-id>' }),
+            avKeys: call('av', 'get', { avID: '<av-id>', scope: 'columns' }),
             append: call('block', 'append', { parentID: '<resolved-parent-id>', dataType: 'markdown', data: '<one-reviewed-block>' }),
             insert: call('block', 'insert', { blocks: [{ previousID: '<resolved-previous-id>', dataType: 'markdown', data: '<one-reviewed-block>' }] }),
             update: call('block', 'update', { items: [{ id: '<reviewed-leaf-block-id>', dataType: 'markdown', data: '<replacement-block-content>' }] }),
@@ -417,7 +417,7 @@ Schema/data PASS never implies functional or presentation completion. Without li
             attrsRead: call('block', 'get_attrs', { id: '<reviewed-block-id>' }),
             assetsRead: call('file', 'get_doc_assets', { id: '<returned-document-id>', assetType: 'all' }),
             avRead: call('av', 'get', { avID: '<av-id>' }),
-            avRender: call('av', 'render', { avID: '<av-id>', viewID: '<view-id>', page: 1, pageSize: 50 }),
+            avRender: call('av', 'query', { avID: '<av-id>', viewID: '<view-id>', page: 1, pageSize: 50 }),
         },
     },
     {

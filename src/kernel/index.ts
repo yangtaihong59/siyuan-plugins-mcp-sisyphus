@@ -85,7 +85,11 @@ async function ensureRuntime(refreshConfig = false) {
         try {
             const raw = await client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/mcpToolsConfig');
             config = normalizeToolConfig(raw ? JSON.parse(raw) : null);
-        } catch {
+        } catch (error) {
+            if (String(error).includes("Unsupported avActionsVersion")) {
+                config = null;
+                throw error;
+            }
             config = config ?? buildDefaultToolConfig();
         }
     }
@@ -252,7 +256,7 @@ function readRecovery(name: string, args: Record<string, unknown>) {
     const category = resolveCategory(name);
     const help = `siyuan://help/action/${category ?? name}/${action}`;
     if (category === 'file' && action === 'export_markdown_snapshot') return { strategy: 'smaller_page', help, retryArguments: { ...args, limit: Math.max(1, Math.floor(Number(args.limit ?? 20) / 2)) }, advanceCursor: false };
-    if (category === 'av' && ['render', 'get_primary_key_values'].includes(action)) return { strategy: 'smaller_page', help, retryArguments: { ...args, pageSize: Math.max(1, Math.floor(Number(args.pageSize) > 0 ? Number(args.pageSize) / 2 : 20)) }, advancePage: false };
+    if (category === 'av' && action === 'query') return { strategy: 'smaller_page', help, retryArguments: { ...args, pageSize: Math.max(1, Math.floor(Number(args.pageSize) > 0 ? Number(args.pageSize) / 2 : 20)) }, advancePage: false };
     if (Array.isArray(args.ids) && args.ids.length > 1) return { strategy: 'split_ids', help, batchSize: Math.max(1, Math.floor(args.ids.length / 2)), preserveOrder: true, advancePage: false };
     return { strategy: 'narrow_scope', help, hint: 'Use the action pagination/target filters. For SQL add a bounded LIMIT and a stable ORDER BY; do not automatically rewrite arbitrary SQL.', advancePage: false };
 }
@@ -292,139 +296,143 @@ async function handleMcp(request: any): Promise<any> {
     if (session) session.seen = now;
     const appsEnabled = modern ? supportsMcpApps(modern.capabilities) : session?.apps === true;
 
-    switch (method) {
-        case 'server/discover': {
-            if (!modern) return jsonRpcError(id, -32601, 'Modern discovery requires a protocol envelope');
-            const { config: cfg } = await ensureRuntime(true);
-            return result({ supportedVersions: [MODERN_VERSION, PROTOCOL_VERSION], capabilities: { tools: {}, resources: {}, prompts: {}, extensions: await kernelExtensions() }, instructions: buildServerInstructions(cfg) });
-        }
-        case 'initialize': {
-            const { config: cfg } = await ensureRuntime(true);
-            const sessionId = randomUUID();
-            if (sessions.size >= 256) {
-                const oldest = sessions.keys().next().value!;
-                scheduler.cancelSession(oldest);
-                sessions.delete(oldest);
+    try {
+        switch (method) {
+            case 'server/discover': {
+                if (!modern) return jsonRpcError(id, -32601, 'Modern discovery requires a protocol envelope');
+                const { config: cfg } = await ensureRuntime(true);
+                return result({ supportedVersions: [MODERN_VERSION, PROTOCOL_VERSION], capabilities: { tools: {}, resources: {}, prompts: {}, extensions: await kernelExtensions() }, instructions: buildServerInstructions(cfg) });
             }
-            sessions.set(sessionId, { owner: taskOwner(request), apps: supportsMcpApps(params?.capabilities), seen: now });
-            const response = jsonRpcResult(id, {
-                protocolVersion: ['2024-11-05', '2025-03-26', '2025-06-18', PROTOCOL_VERSION].includes(params?.protocolVersion) ? params.protocolVersion : PROTOCOL_VERSION,
-                instructions: buildServerInstructions(cfg),
-                capabilities: {
-                    tools: { listChanged: !!siyuan.server.private.es },
-                    resources: {},
-                    prompts: {},
-                    extensions: await kernelExtensions(),
-                },
-                serverInfo: { name: 'siyuan-sisyphus-kernel', version: siyuan.plugin?.version ?? '0.0.0' },
-            });
-            response.headers['Mcp-Session-Id'] = [sessionId];
-            return response;
-        }
-        case 'notifications/cancelled':
-            // Cancellation IDs are JSON-RPC request IDs, not write requestId leases.
-            if (sid && (typeof params?.requestId === 'string' || (typeof params?.requestId === 'number' && Number.isFinite(params.requestId)))) scheduler.cancelRequest(sid, params.requestId);
-            return { statusCode: 202, headers: {}, body: null };
-        case 'notifications/initialized':
-        case 'initialized':
-            return { statusCode: 202, headers: {}, body: null };
-        case 'ping':
-            return result({});
-        case 'tools/list': {
-            const { config: cfg } = await ensureRuntime(true);
-            await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
-            const tools = decorateToolsWithMcpApps(listAllTools(cfg, kernelOfficialRuntime), appsEnabled, cfg.mcpApps).map(tool => ({
-                ...tool,
-                inputSchema: {
-                    ...tool.inputSchema,
-                    properties: {
-                        ...(tool.inputSchema.properties as object),
-                        confirm: { type: 'boolean', description: 'Set only after user confirmation of this exact dangerous call.' },
-                    },
-                    // Extension branches are strict; the transport consumes confirm.
-                    ...(Array.isArray(tool.inputSchema.oneOf) ? { oneOf: tool.inputSchema.oneOf.map((branch: any) => ({
-                        ...branch, properties: { ...branch.properties, confirm: { type: 'boolean' } },
-                    })) } : {}),
-                },
-            }));
-            return result({ tools });
-        }
-        case 'tools/call': {
-            const name = params?.name;
-            const args = params?.arguments ?? {};
-            if (typeof name !== 'string' || !args || typeof args !== 'object' || Array.isArray(args)) return jsonRpcError(id, -32602, 'tools/call requires params.name');
-            if (typeof id !== 'string' && (typeof id !== 'number' || !Number.isFinite(id))) return jsonRpcError(id, -32600, 'tools/call requires a string or numeric request id');
-            let task: KernelTask | undefined;
-            let retained: Record<string, unknown> | undefined;
-            let access = '';
-            let key: string | undefined;
-            try {
-                const taskId = params?._meta?.[TASK_META];
-                if (taskId !== undefined && (typeof taskId !== 'string' || !/^[a-f0-9-]{36}$/.test(taskId))) return jsonRpcError(id, -32602, 'Invalid taskId');
-                key = taskId ? taskKey(taskOwner(request), taskId) : undefined;
-                if (key && taskResults.has(key)) throw new KernelQueueError('duplicate_request', 'Task ID already completed; query /tasks result instead of submitting it again.');
-                task = scheduler.begin(taskId ? taskOwner(request) : sid, taskId ?? id, { session: sid, id });
-                if (key) access = await accessRevision();
-                retained = await callTool(name, args, appsEnabled, task, modern);
-            } catch (err) {
-                const code = err instanceof KernelQueueError ? err.code : 'internal';
-                retained = {
-                    isError: true, content: [{ type: 'text', text: JSON.stringify({ success: false,
-                        ...(err instanceof KernelQueueError ? { writeAttempted: false, writeExecuted: false } : {}),
-                        error: { code, message: err instanceof Error ? err.message : String(err) },
-                        ...(['read_budget_exceeded', 'read_deadline_exceeded'].includes(code) ? { complete: false, recovery: readRecovery(name, args) } : {}) }) }],
-                };
-            } finally {
-                if (task) {
-                    try { if (key && retained && retained.resultType !== 'input_required' && access) taskResults.save(key, retained, access); }
-                    finally { scheduler.finish(task); }
+            case 'initialize': {
+                const { config: cfg } = await ensureRuntime(true);
+                const sessionId = randomUUID();
+                if (sessions.size >= 256) {
+                    const oldest = sessions.keys().next().value!;
+                    scheduler.cancelSession(oldest);
+                    sessions.delete(oldest);
                 }
+                sessions.set(sessionId, { owner: taskOwner(request), apps: supportsMcpApps(params?.capabilities), seen: now });
+                const response = jsonRpcResult(id, {
+                    protocolVersion: ['2024-11-05', '2025-03-26', '2025-06-18', PROTOCOL_VERSION].includes(params?.protocolVersion) ? params.protocolVersion : PROTOCOL_VERSION,
+                    instructions: buildServerInstructions(cfg),
+                    capabilities: {
+                        tools: { listChanged: !!siyuan.server.private.es },
+                        resources: {},
+                        prompts: {},
+                        extensions: await kernelExtensions(),
+                    },
+                    serverInfo: { name: 'siyuan-sisyphus-kernel', version: siyuan.plugin?.version ?? '0.0.0' },
+                });
+                response.headers['Mcp-Session-Id'] = [sessionId];
+                return response;
             }
-            return result(retained!);
+            case 'notifications/cancelled':
+                // Cancellation IDs are JSON-RPC request IDs, not write requestId leases.
+                if (sid && (typeof params?.requestId === 'string' || (typeof params?.requestId === 'number' && Number.isFinite(params.requestId)))) scheduler.cancelRequest(sid, params.requestId);
+                return { statusCode: 202, headers: {}, body: null };
+            case 'notifications/initialized':
+            case 'initialized':
+                return { statusCode: 202, headers: {}, body: null };
+            case 'ping':
+                return result({});
+            case 'tools/list': {
+                const { config: cfg } = await ensureRuntime(true);
+                await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
+                const tools = decorateToolsWithMcpApps(listAllTools(cfg, kernelOfficialRuntime), appsEnabled, cfg.mcpApps).map(tool => ({
+                    ...tool,
+                    inputSchema: {
+                        ...tool.inputSchema,
+                        properties: {
+                            ...(tool.inputSchema.properties as object),
+                            confirm: { type: 'boolean', description: 'Set only after user confirmation of this exact dangerous call.' },
+                        },
+                        // Extension branches are strict; the transport consumes confirm.
+                        ...(Array.isArray(tool.inputSchema.oneOf) ? { oneOf: tool.inputSchema.oneOf.map((branch: any) => ({
+                            ...branch, properties: { ...branch.properties, confirm: { type: 'boolean' } },
+                        })) } : {}),
+                    },
+                }));
+                return result({ tools });
+            }
+            case 'tools/call': {
+                const name = params?.name;
+                const args = params?.arguments ?? {};
+                if (typeof name !== 'string' || !args || typeof args !== 'object' || Array.isArray(args)) return jsonRpcError(id, -32602, 'tools/call requires params.name');
+                if (typeof id !== 'string' && (typeof id !== 'number' || !Number.isFinite(id))) return jsonRpcError(id, -32600, 'tools/call requires a string or numeric request id');
+                let task: KernelTask | undefined;
+                let retained: Record<string, unknown> | undefined;
+                let access = '';
+                let key: string | undefined;
+                try {
+                    const taskId = params?._meta?.[TASK_META];
+                    if (taskId !== undefined && (typeof taskId !== 'string' || !/^[a-f0-9-]{36}$/.test(taskId))) return jsonRpcError(id, -32602, 'Invalid taskId');
+                    key = taskId ? taskKey(taskOwner(request), taskId) : undefined;
+                    if (key && taskResults.has(key)) throw new KernelQueueError('duplicate_request', 'Task ID already completed; query /tasks result instead of submitting it again.');
+                    task = scheduler.begin(taskId ? taskOwner(request) : sid, taskId ?? id, { session: sid, id });
+                    if (key) access = await accessRevision();
+                    retained = await callTool(name, args, appsEnabled, task, modern);
+                } catch (err) {
+                    const code = err instanceof KernelQueueError ? err.code : 'internal';
+                    retained = {
+                        isError: true, content: [{ type: 'text', text: JSON.stringify({ success: false,
+                            ...(err instanceof KernelQueueError ? { writeAttempted: false, writeExecuted: false } : {}),
+                            error: { code, message: err instanceof Error ? err.message : String(err) },
+                            ...(['read_budget_exceeded', 'read_deadline_exceeded'].includes(code) ? { complete: false, recovery: readRecovery(name, args) } : {}) }) }],
+                    };
+                } finally {
+                    if (task) {
+                        try { if (key && retained && retained.resultType !== 'input_required' && access) taskResults.save(key, retained, access); }
+                        finally { scheduler.finish(task); }
+                    }
+                }
+                return result(retained!);
+            }
+            case 'resources/list': {
+                const { config: cfg } = await ensureRuntime(true);
+                return result({ resources: [...listMcpAppResources(cfg.mcpApps), ...kernelListResources(), ...((await readKernelConfig()).skillsExtensionEnabled !== false ? listSepSkillResources() : [])] });
+            }
+            case 'resources/templates/list': {
+                return result({ resourceTemplates: kernelListResourceTemplates() });
+            }
+            case 'resources/read': {
+                const uri = params?.uri;
+                if (typeof uri !== 'string') return jsonRpcError(id, -32602, 'resources/read requires params.uri');
+                const { config: cfg } = await ensureRuntime(true);
+                const content = readMcpAppResource(uri, cfg.mcpApps) ?? kernelReadResource(uri, cfg?.userRulesText ?? '') ?? ((await readKernelConfig()).skillsExtensionEnabled !== false ? readSepSkillResource(uri) : undefined);
+                if (!content) return jsonRpcError(id, -32602, `Unknown resource: ${uri}`);
+                return result({ contents: [content] });
+            }
+            case 'skills/list': {
+                if ((await readKernelConfig()).skillsExtensionEnabled === false) return jsonRpcError(id, -32601, 'Skills extension disabled');
+                return result({
+                    skills: listSepSkills(),
+                    ttlMs: 300_000,
+                    cacheScope: 'public',
+                });
+            }
+            case 'skills/get': {
+                if ((await readKernelConfig()).skillsExtensionEnabled === false) return jsonRpcError(id, -32601, 'Skills extension disabled');
+                const uri = params?.uri;
+                if (typeof uri !== 'string') return jsonRpcError(id, -32602, 'skills/get requires params.uri');
+                const skill = getSepSkill(uri);
+                if (!skill) return jsonRpcError(id, -32602, `Unknown skill URI: ${uri}`);
+                return result({ skill });
+            }
+            case 'prompts/list': {
+                return result({ prompts: kernelListPrompts() });
+            }
+            case 'prompts/get': {
+                const name = params?.name;
+                if (typeof name !== 'string') return jsonRpcError(id, -32602, 'prompts/get requires params.name');
+                const prompt = kernelGetPrompt(name, params?.arguments?.task);
+                if (!prompt) return jsonRpcError(id, -32602, `Unknown prompt: ${name}`);
+                return result(prompt);
+            }
+            default:
+                return jsonRpcError(id, -32601, `Method not found: ${String(method)}`);
         }
-        case 'resources/list': {
-            const { config: cfg } = await ensureRuntime(true);
-            return result({ resources: [...listMcpAppResources(cfg.mcpApps), ...kernelListResources(), ...((await readKernelConfig()).skillsExtensionEnabled !== false ? listSepSkillResources() : [])] });
-        }
-        case 'resources/templates/list': {
-            return result({ resourceTemplates: kernelListResourceTemplates() });
-        }
-        case 'resources/read': {
-            const uri = params?.uri;
-            if (typeof uri !== 'string') return jsonRpcError(id, -32602, 'resources/read requires params.uri');
-            const { config: cfg } = await ensureRuntime(true);
-            const content = readMcpAppResource(uri, cfg.mcpApps) ?? kernelReadResource(uri, cfg?.userRulesText ?? '') ?? ((await readKernelConfig()).skillsExtensionEnabled !== false ? readSepSkillResource(uri) : undefined);
-            if (!content) return jsonRpcError(id, -32602, `Unknown resource: ${uri}`);
-            return result({ contents: [content] });
-        }
-        case 'skills/list': {
-            if ((await readKernelConfig()).skillsExtensionEnabled === false) return jsonRpcError(id, -32601, 'Skills extension disabled');
-            return result({
-                skills: listSepSkills(),
-                ttlMs: 300_000,
-                cacheScope: 'public',
-            });
-        }
-        case 'skills/get': {
-            if ((await readKernelConfig()).skillsExtensionEnabled === false) return jsonRpcError(id, -32601, 'Skills extension disabled');
-            const uri = params?.uri;
-            if (typeof uri !== 'string') return jsonRpcError(id, -32602, 'skills/get requires params.uri');
-            const skill = getSepSkill(uri);
-            if (!skill) return jsonRpcError(id, -32602, `Unknown skill URI: ${uri}`);
-            return result({ skill });
-        }
-        case 'prompts/list': {
-            return result({ prompts: kernelListPrompts() });
-        }
-        case 'prompts/get': {
-            const name = params?.name;
-            if (typeof name !== 'string') return jsonRpcError(id, -32602, 'prompts/get requires params.name');
-            const prompt = kernelGetPrompt(name, params?.arguments?.task);
-            if (!prompt) return jsonRpcError(id, -32602, `Unknown prompt: ${name}`);
-            return result(prompt);
-        }
-        default:
-            return jsonRpcError(id, -32601, `Method not found: ${String(method)}`);
+    } catch (error) {
+        return jsonRpcError(id, -32603, error instanceof Error ? error.message : String(error));
     }
 }
 

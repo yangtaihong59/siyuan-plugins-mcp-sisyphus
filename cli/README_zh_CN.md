@@ -6,7 +6,7 @@
 
 这是一个用于直接通过命令行操作 [SiYuan Note](https://b3log.org/siyuan) 的 CLI。你可以把它理解成思源版的 `obsidian-cli`：每个 MCP 工具（`fs`、`block`、`document`、`notebook`、`av`、`search`、`tag`、`file`、`timeline`、`system`、`flashcard`、`extension`、`mascot`、`feedback`）都会暴露成可在 shell 中直接调用的子命令。
 
-> **最新版本：** `v0.2.11` 新增数据库操作指引与读取完整性说明，修复搜索和数据库分页，支持总数未知时续页，并与插件 `v0.6.10` 共用短哈希池。
+> **最新版本：** `v0.2.12` 升级为 AV v2，提供结构读取、分页 `query`、显式 `create` 和组合 `update_view`，与插件 `v0.6.11` 共用创建回执与配置校验。旧 AV action 和顶层 `id` 别名已移除，迁移方式见[数据库文档](../docs/zh/reference/tools/av.md)。
 
 > **v0.2.6：**`v0.2.6` 开放扩展后的 AV 严格配置、快照、图片审计、图片读取、扩展诊断和链接解析工作流，并在 JSON 输出中保留混合文本/图片结果。感谢 [@LoneFireBlossom](https://github.com/LoneFireBlossom) 提交 [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) 与 PR #50–#56，感谢 [@ray24777](https://github.com/ray24777) 提交 [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57)，感谢 [@adminclaw](https://github.com/adminclaw) 提交 [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58)。
 
@@ -31,9 +31,9 @@ siyuan-sisyphus search fulltext --query "keyword" --page-size 10 --json | jq '.d
 
 插件默认在“设置 → MCP → 设置与调试”开启严格安全写入。变更命令需要先以 `validateOnly=true` 调用对应 action，再原样回传预检签发的 `requestId` 和返回的 `expected*Hash`（若有）；纯新增动作也需预检领取请求 ID。返回值是仅存在于内存中的临时租约凭据，通常从 4 位十六进制开始；它不会被当作 16 bit 状态值直接比较，HTTP 协调器会先解析租约中的完整 SHA-256，再与写入前重新读取的完整状态哈希比较。
 
-执行严格 CLI 写入时必须保持插件内置 MCP HTTP 服务开启。CLI 会把写入转交同一个协调器，避免 CLI、stdio 与 HTTP 各自产生独立租约池。租约过期、已消费或插件重启后必须重新预检。关闭严格写入会恢复旧版直接调用协议，不再提供哈希并发校验、请求幂等和写后验证。
+执行严格 CLI 写入时必须保持插件内置 MCP HTTP 服务开启。CLI 会把写入转交同一个协调器，避免 CLI、stdio 与 HTTP 各自产生独立租约池。租约过期、已消费或插件重启后必须重新预检。关闭严格写入后，其他修改恢复直接调用，不再提供哈希并发校验、请求幂等和写后验证；AV 创建始终要求预检与共享的持久化协调器。
 
-`requestId` 与状态凭证均从 4 位十六进制起步，必须完整复制，不能自行生成或截短。请同时升级插件至 v0.6.10，重新预检后执行；AV 的旧 `id` 入参继续可用并返回弃用提示，新调用使用 `avID`。
+`requestId` 与状态凭证均从 4 位十六进制起步，必须完整复制，不能自行生成或截短。请同时升级插件至 v0.6.11，重新预检后执行；AV v2 使用 `avID`，旧顶层 `id` 别名已移除。
 
 `feedback.submit` 属于外部操作：用户授权后直接传业务参数，不传 `validateOnly`、`requestId` 或哈希凭证。误传预检参数不会发送反馈，并会返回操作提示。反馈不提供严格状态校验或幂等重放保证，结果未知时不要自动重试。
 
@@ -164,7 +164,7 @@ siyuan-sisyphus timeline compare-node --document-id 20240318xyz --tag <timeline-
 
 # 常用友好别名
 siyuan-sisyphus fs replace --path "/Notebook/Doc" --old A --new B
-siyuan-sisyphus av render --av-id <attribute-view-id>
+siyuan-sisyphus av query --av-id <attribute-view-id>
 siyuan-sisyphus file upload-asset --file /private/tmp/demo.txt
 
 # 配合 jq 管道处理

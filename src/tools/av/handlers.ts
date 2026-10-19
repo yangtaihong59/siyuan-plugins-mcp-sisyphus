@@ -1,3 +1,6 @@
+import { generateSiYuanNodeId } from '../../shared/siyuan-id';
+import { AV_CREATION_CONTEXT, type AvCreationContext } from '../../core/av-creation-context';
+import { prepareViewUpdate, viewFields, normalizeAvFilters, normalizeAvGroup } from './view-config';
 import { writeHashPool } from '../../core/write-safety-hash';
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
 import { databaseContext, viewReadState } from './read-context';
@@ -21,21 +24,15 @@ import {
     AvCreateFromTemplateSchema,
     AvDuplicateSchema,
     AvDuplicateRowsSchema,
-    AvGetAttributeViewFilterSortSchema,
-    AvGetAttributeViewKeysSchema,
-    AvGetPrimaryKeyValuesSchema,
     AvGetSchema,
-    AvRenderSchema,
+    AvCreateSchema,
+    AvQuerySchema,
+    AvUpdateViewSchema,
     AvRemoveColumnSchema,
     AvRemoveRowsSchema,
     AvSearchSchema,
     AvSetColumnOptionsSchema,
     AvSetCellsSchema,
-    AvSetColumnOrderSchema,
-    AvSetColumnVisibilitySchema,
-    AvSetFiltersSchema,
-    AvSetGroupSchema,
-    AvSetSortsSchema,
     AvSetNewItemTemplatesSchema,
     AvSetRelationSchema,
 } from '../../core/types';
@@ -48,24 +45,6 @@ import { applyUiRefresh, type UiRefreshOperation } from '../internal/ui-refresh'
 import { sleep } from '../../shared/async';
 
 const AV_TOOL_NAME = 'av';
-
-function generateSiYuanNodeId(now = new Date()): string {
-    const pad = (value: number, length = 2) => String(value).padStart(length, '0');
-    const timestamp = [
-        now.getFullYear(),
-        pad(now.getMonth() + 1),
-        pad(now.getDate()),
-        pad(now.getHours()),
-        pad(now.getMinutes()),
-        pad(now.getSeconds()),
-    ].join('');
-    const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let suffix = '';
-    for (let index = 0; index < 7; index += 1) {
-        suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
-    return `${timestamp}-${suffix}`;
-}
 
 type AvContextResolution = {
     avData: unknown;
@@ -119,8 +98,8 @@ type StrongCellValueInput = {
 };
 
 interface AvTableView {
-    columns: Array<{ id: string; name?: string; type?: string }>;
-    rows: Array<{ id?: string; cells: Record<string, unknown> }>;
+    columns: Array<{ id: string; columnID: string; name?: string; type?: string }>;
+    rows: Array<{ id?: string; rowID?: string; cells: Record<string, unknown> }>;
     rowCount: number;
 }
 
@@ -1144,56 +1123,6 @@ function isMissingAttributeViewError(error: unknown): boolean {
     return error instanceof Error && translateError(error)?.code === 'av_not_found';
 }
 
-async function ensurePermissionForRender(
-    client: SiYuanClient,
-    permMgr: PermissionManager,
-    parsed: {
-        avID?: string;
-        blockID?: string;
-        createIfNotExist?: boolean;
-    },
-    effectiveAvID: string,
-    idWasGenerated: boolean,
-): Promise<{
-    denied: ToolResult | null;
-    shouldMaterialize: boolean;
-    targetDocumentId?: string;
-}> {
-    if (parsed.createIfNotExist === true) {
-        if (!parsed.blockID) {
-            throw new Error(`Unable to create or render attribute view "${effectiveAvID}" because createIfNotExist=true requires blockID to resolve notebook permission scope.`);
-        }
-
-        if (idWasGenerated) {
-            const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.blockID, 'write');
-            return { denied, shouldMaterialize: true, targetDocumentId: context.documentId };
-        }
-
-        try {
-            const { denied } = await ensurePermissionForAvId(client, permMgr, effectiveAvID, 'read');
-            return { denied, shouldMaterialize: false };
-        } catch (error) {
-            const canFallBackToBlockContext = isUnresolvedAvPermissionScopeError(error) || isMissingAttributeViewError(error);
-            if (!canFallBackToBlockContext) {
-                throw error;
-            }
-            const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.blockID, 'write');
-            return { denied, shouldMaterialize: true, targetDocumentId: context.documentId };
-        }
-    }
-
-    if (!parsed.avID) {
-        throw new Error('av(action="render") requires avID unless createIfNotExist=true is provided.');
-    }
-
-    try {
-        const { denied } = await ensurePermissionForAvId(client, permMgr, effectiveAvID, 'read');
-        return { denied, shouldMaterialize: false };
-    } catch (error) {
-        throw error;
-    }
-}
-
 async function resolveAvOwningBlockId(
     client: SiYuanClient,
     avID: string,
@@ -1504,7 +1433,7 @@ function extractAvTableColumns(responseObj: Record<string, unknown>): AvTableVie
             if (!id) return [];
             const name = pickString(keyRecord, ['name', 'title']);
             const type = pickString(keyRecord, ['type']);
-            return [{ id, ...(name ? { name } : {}), ...(type ? { type } : {}) }];
+            return [{ id, columnID: id, ...(name ? { name } : {}), ...(type ? { type } : {}) }];
         });
         if (columns.length > 0) return columns;
     }
@@ -1541,7 +1470,7 @@ function extractAvTableRows(rows: unknown[]): AvTableView['rows'] {
         }
         if (Object.keys(cells).length === 0) return [];
         const id = pickString(record, ['id', 'rowID', 'blockID']);
-        return [{ ...(id ? { id } : {}), cells }];
+        return [{ ...(id ? { id, rowID: id } : {}), cells }];
     });
 }
 
@@ -1966,32 +1895,6 @@ export function projectAvStateWithoutColumnOptions(avData: unknown, targetKeyID:
     return protectedState;
 }
 
-/**
- * Test-only diagnostic companion for the narrow projection above. Keeping the
- * first divergent raw path makes live evidence actionable without broadening
- * the write contract to whatever happened to differ in one response.
- */
-export function firstJsonDifferencePath(left: unknown, right: unknown, path = '$'): string | undefined {
-    if (Object.is(left, right)) return undefined;
-    if (Array.isArray(left) || Array.isArray(right)) {
-        if (!Array.isArray(left) || !Array.isArray(right)) return path;
-        const sharedLength = Math.min(left.length, right.length);
-        for (let index = 0; index < sharedLength; index += 1) {
-            const nested = firstJsonDifferencePath(left[index], right[index], `${path}[${index}]`);
-            if (nested) return nested;
-        }
-        return left.length === right.length ? undefined : `${path}.length`;
-    }
-    const leftRecord = asRecord(left);
-    const rightRecord = asRecord(right);
-    if (!leftRecord || !rightRecord) return path;
-    const keys = [...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])].sort();
-    for (const key of keys) {
-        const nested = firstJsonDifferencePath(leftRecord[key], rightRecord[key], `${path}.${key}`);
-        if (nested) return nested;
-    }
-    return undefined;
-}
 
 function normalizeCopiedRowValue(value: Record<string, unknown>): unknown {
     const clone = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
@@ -2146,35 +2049,45 @@ function createAvFieldValidationResult(
     };
 }
 
+/** Read selection never writes carrier attrs, including when viewID overrides its selection. */
+async function readViewSelection(client: SiYuanClient, avID: string, definition: any, blockID?: string, viewID?: string) {
+    const views: any[] = Array.isArray(definition?.views) ? definition.views.filter((view: any) => typeof view?.id === 'string' && view.id) : [];
+    if (viewID) {
+        const matches = views.filter(view => view.id === viewID);
+        if (matches.length !== 1) throw new Error(`Unknown or ambiguous viewID: ${viewID}`);
+        return { view: matches[0], viewID, selectionSource: 'explicit', selectionFallback: false };
+    }
+    if (blockID) {
+        const attrs = await blockApi.getBlockAttrs(client, blockID);
+        const selected = views.find(view => view.id === attrs['custom-sy-av-view']);
+        if (selected) return { view: selected, viewID: selected.id, selectionSource: 'carrier', selectionFallback: false };
+    }
+    if (!views.length) throw new Error(`Database ${avID} has no readable view`);
+    return { view: views[0], viewID: views[0].id, selectionSource: 'kernel_default', selectionFallback: Boolean(blockID) };
+}
+
 async function handleGet({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvGetSchema.parse(rawArgs);
     const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read', { blockID: parsed.blockID, action: 'get' });
     if (denied) return denied;
-    const rowLookup = extractAvRowLookup(avData);
-    const definition = asRecord(avData);
-    const views = Array.isArray(definition?.views) ? definition.views.map(asRecord).filter(Boolean) : [];
-    // A carrier may select a different view from the database default.
-    // Let the kernel resolve its selection instead of overriding it here.
-    const viewID = !parsed.blockID && views.some(view => view.id === definition?.viewID) ? definition?.viewID as string : undefined;
-    const steps: ReadStep[] = [
-        { purpose: 'read_view', tool: 'av', arguments: { action: 'render', avID: parsed.avID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}), ...(viewID ? { viewID } : {}), createIfNotExist: false } },
-        { purpose: 'edit_cells_help', tool: 'av', arguments: { action: 'help', topic: 'set_cells' } },
-    ];
+    const definition: any = avData;
+    const scope = parsed.scope ?? 'structure';
+    const columns = extractAttributeViewKeysFromData(avData).map((key: any) => ({ ...key, columnID: key.id }));
+    const { view, ...selection } = scope === 'view' || parsed.viewID || definition?.views?.length
+        ? await readViewSelection(client, parsed.avID, definition, parsed.blockID, parsed.viewID)
+        : { view: undefined, viewID: undefined, selectionSource: undefined, selectionFallback: false };
+    const steps: ReadStep[] = [{ purpose: 'read_view', tool: 'av', arguments: { action: 'query', avID: parsed.avID, viewID: selection.viewID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}) } }];
+    if (columns.some((key: any) => key.type === 'relation')) steps.push({ purpose: 'relation_help', tool: 'av', arguments: { action: 'help', topic: 'set_relation' } });
     const nextSteps = await availableReadSteps(client, steps);
-    return createJsonResult({
-        databaseContext: databaseContext(parsed.avID, { ...(parsed.blockID ? { blockID: parsed.blockID } : {}), columns: 'av.keyValues[].key', rows: 'resolvedRows' }),
-        readInfo: { scope: 'database', coverage: Array.isArray(definition?.keyValues) ? 'complete' : 'unknown', representation: 'database_raw', limitations: ['bound_block_bodies_not_included'] },
+    const content = scope === 'raw' ? { av: avData, resolvedRows: extractAvRowLookup(avData).rows }
+        : scope === 'columns' ? { columns }
+        : scope === 'view' ? { view: { id: view.id, name: view.name, type: view.type, filters: view.filters ?? [], sorts: view.sorts ?? [], group: view.group ?? null,
+            columnVisibility: viewFields(view).map(field => ({ columnID: field.id, hidden: field.hidden === true })), columnOrder: viewFields(view).map(field => field.id) } }
+        : { name: definition?.name, columns, views: (definition?.views ?? []).map((item: any) => ({ viewID: item.id, name: item.name, type: item.type })) };
+    return createJsonResult({ avID: parsed.avID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}), scope, ...selection, ...content,
+        databaseContext: databaseContext(parsed.avID, { blockID: parsed.blockID, viewID: selection.viewID, columns: scope === 'raw' ? 'av.keyValues[].key' : scope === 'view' ? 'view.columnVisibility' : 'columns' }),
+        readInfo: { scope: scope === 'columns' ? 'database_columns' : 'database', coverage: Array.isArray(definition?.keyValues) ? 'complete' : 'unknown', representation: scope === 'raw' ? 'database_raw' : scope === 'view' ? 'view_configuration' : 'database_structure', limitations: scope === 'raw' ? ['bound_block_bodies_not_included'] : ['row_values_not_included'] },
         ...(nextSteps.length ? { nextSteps } : {}),
-        id: parsed.avID,
-        av: avData,
-        ...(rowLookup.rows.length > 0 ? {
-            resolvedRows: rowLookup.rows.map((row) => ({
-                rowID: row.rowID,
-                ...(row.isDetached !== undefined ? { isDetached: row.isDetached } : {}),
-                ...(row.sourceBlockID ? { sourceBlockID: row.sourceBlockID } : {}),
-                ...(row.valueIDs.length > 0 ? { valueIDs: row.valueIDs } : {}),
-            })),
-        } : {}),
     });
 }
 
@@ -2196,7 +2109,7 @@ async function handleSearch({ client, permMgr, rawArgs }: ToolHandlerContext): P
         dedupedResults.push(result);
     }
     const filtered = await filterAvSearchResultsByPermission(client, permMgr, dedupedResults);
-    const normalizedResults = filtered.results.map((item) => {
+    const normalizedResults = await Promise.all(filtered.results.map(async (item) => {
         if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
         const record = item as Record<string, unknown>;
         const avID = typeof record.avID === 'string' && record.avID.length > 0
@@ -2209,9 +2122,9 @@ async function handleSearch({ client, permMgr, rawArgs }: ToolHandlerContext): P
             ...record,
             id: avID,
             avID,
-            renderArgs: { action: 'render', avID },
+            nextSteps: await availableReadSteps(client, [{ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID } }]),
         };
-    });
+    }));
     return createJsonResult({
         keyword: parsed.keyword,
         searchScope: {
@@ -2236,66 +2149,49 @@ async function handleSearch({ client, permMgr, rawArgs }: ToolHandlerContext): P
     });
 }
 
-async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvRenderSchema.parse(rawArgs);
-    const creationTime = new Date();
-    const idWasGenerated = !parsed.avID;
-    const effectiveAvID = parsed.avID ?? generateSiYuanNodeId(creationTime);
-    const permission = await ensurePermissionForRender(client, permMgr, parsed, effectiveAvID, idWasGenerated);
-    if (permission.denied) return permission.denied;
-
-    const response = await avApi.renderAttributeView(client, {
-        id: effectiveAvID,
-        blockID: parsed.blockID,
-        viewID: parsed.viewID,
-        page: parsed.page,
-        pageSize: parsed.pageSize,
-        query: parsed.query,
-        groupPaging: parsed.groupPaging,
-        createIfNotExist: parsed.createIfNotExist === true,
-    });
-
-    let materializedBlockID: string | undefined;
-    let materializedBlockRegistered: boolean | undefined;
-    if (permission.shouldMaterialize) {
-        materializedBlockID = generateSiYuanNodeId(creationTime);
-        let data = buildDuplicateAvBlockDom(materializedBlockID, effectiveAvID);
-        try {
-            const spun = await avApi.spinBlockDOM(client, data);
-            if (typeof spun.dom === 'string' && spun.dom.length > 0) {
-                data = spun.dom;
-            }
-        } catch {
-            // Keep materialization compatible with kernels that do not expose
-            // /api/lute/spinBlockDOM; transaction insert can still parse the
-            // minimal AV block DOM.
-        }
-        await transactionApi.performTransactions(client, [{
-            doOperations: [{
-                action: 'insert',
-                id: materializedBlockID,
-                data,
-                parentID: parsed.blockID!,
-            }],
-            undoOperations: [{
-                action: 'delete',
-                id: materializedBlockID,
-            }],
-        }]);
-        materializedBlockRegistered = false;
-        for (let attempt = 0; attempt < AV_MATERIALIZATION_POLL_ATTEMPTS; attempt += 1) {
-            const mirrorBlockIDs = await getAvMirrorDatabaseBlockIds(client, effectiveAvID);
-            if (mirrorBlockIDs.includes(materializedBlockID)) {
-                materializedBlockRegistered = true;
-                break;
-            }
-            if (attempt === AV_MATERIALIZATION_POLL_ATTEMPTS - 1) {
-                break;
-            }
-            await sleep(AV_MATERIALIZATION_POLL_DELAY_MS);
-        }
+async function handleCreate({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvCreateSchema.parse(rawArgs);
+    const context: AvCreationContext = (rawArgs as any)[AV_CREATION_CONTEXT];
+    if (!context) throw new Error('create requires a coordinator-issued creation context; run strict preflight first');
+    const { avID, blockID } = context.progress;
+    const { denied, context: parent } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
+    if (denied) return denied;
+    await avApi.renderAttributeView(client, { id: avID, blockID: parsed.parentID, createIfNotExist: true });
+    const created: any = await avApi.getAttributeView(client, avID);
+    if (created.av?.id !== avID) throw new Error('Created AV identity could not be verified');
+    await context.checkpoint('av_created', 'insert_carrier');
+    const spun = await avApi.spinBlockDOM(client, buildDuplicateAvBlockDom(blockID, avID));
+    if (typeof spun.dom !== 'string' || !spun.dom) throw new Error('Cannot build database carrier DOM');
+    await transactionApi.performTransactions(client, [{ doOperations: [{ action: 'insert', id: blockID, data: spun.dom, parentID: parsed.parentID }], undoOperations: [] }]);
+    let carrier: { dom?: string };
+    for (let attempt = 0; attempt < AV_MATERIALIZATION_POLL_ATTEMPTS; attempt++) {
+        try { carrier = await blockApi.getBlockDOM(client, blockID); } catch { carrier = {}; }
+        if (carrier.dom?.includes('data-type="NodeAttributeView"') && carrier.dom.includes(`data-av-id="${avID}"`)) break;
+        if (attempt + 1 < AV_MATERIALIZATION_POLL_ATTEMPTS) await sleep(AV_MATERIALIZATION_POLL_DELAY_MS);
     }
+    if (!carrier?.dom?.includes(`data-av-id="${avID}"`)) throw new Error('Database carrier persistence could not be confirmed');
+    await context.checkpoint('carrier_inserted', 'verify');
+    const readback: any = await avApi.getAttributeView(client, avID);
+    if (readback.av?.id !== avID) throw new Error('Database persistence could not be confirmed');
+    await context.checkpoint('verified', 'complete');
+    return applyUiRefresh(client, createWriteSuccessResult({ action: 'create', ...context.progress, materialized: true }), [
+        { type: 'reloadAttributeView', id: avID }, { type: 'reloadProtyle', id: parent.documentId },
+    ]);
+}
 
+async function handleQuery(context: ToolHandlerContext): Promise<ToolResult> {
+    const { client, permMgr, rawArgs } = context;
+    const parsed = AvQuerySchema.parse(rawArgs);
+    if (parsed.mode === 'primary_keys') return handleGetPrimaryKeyValues(context);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read', { blockID: parsed.blockID, action: 'query' });
+    if (denied) return denied;
+    const { view: selectedView, ...selection } = await readViewSelection(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
+    const effectiveAvID = parsed.avID;
+    const response = await avApi.renderAttributeView(client, {
+        id: parsed.avID, blockID: parsed.blockID, viewID: selection.viewID,
+        page: parsed.page, pageSize: parsed.pageSize, query: parsed.keyword,
+        groupPaging: parsed.groupPaging, createIfNotExist: false,
+    });
     const responseObj = (response && typeof response === 'object' && !Array.isArray(response))
         ? response as Record<string, unknown>
         : {};
@@ -2320,11 +2216,12 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
     const table = isTableLayout ? buildAvTableView(view as Record<string, unknown>, rawRows, total) : undefined;
     const data = table?.rows ?? rawRows;
     const selectedViewID = getStringField(view, ['id']) ?? getStringField(responseObj, ['viewID']);
-    const readArgs = { ...parsed, avID: effectiveAvID, ...(selectedViewID ? { viewID: selectedViewID } : {}), createIfNotExist: false };
+    if (selectedViewID && selectedViewID !== selection.viewID) throw new Error('Kernel returned a different view');
+    const readArgs = { ...parsed, viewID: selection.viewID };
     const state = viewReadState(view, readArgs, effectivePageSize);
     const steps: ReadStep[] = [];
     if (state.next) steps.push({ purpose: 'continue_read', tool: 'av', arguments: state.next });
-    steps.push({ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: effectiveAvID, ...(materializedBlockID || parsed.blockID ? { blockID: materializedBlockID ?? parsed.blockID } : {}) } });
+    steps.push({ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: effectiveAvID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}) } });
     const nextSteps = await availableReadSteps(client, steps);
     const result = createPaginatedResult(data, {
         total,
@@ -2335,59 +2232,15 @@ async function handleRender({ client, permMgr, rawArgs }: ToolHandlerContext): P
     }, {
         ...responseObj,
         readInfo: state.readInfo,
-        databaseContext: databaseContext(effectiveAvID, { ...(materializedBlockID || parsed.blockID ? { blockID: materializedBlockID ?? parsed.blockID } : {}), ...(selectedViewID ? { viewID: selectedViewID } : {}), ...(table ? { columns: 'table.columns', rows: 'table.rows' } : { rows: 'data' }) }),
+        databaseContext: databaseContext(effectiveAvID, { ...(parsed.blockID ? { blockID: parsed.blockID } : {}), ...(selectedViewID ? { viewID: selectedViewID } : {}), ...(table ? { columns: 'table.columns', rows: 'table.rows' } : { rows: 'data' }) }),
         ...(nextSteps.length ? { nextSteps } : {}),
         avID: effectiveAvID,
         id: effectiveAvID,
         ...(table ? { table } : {}),
-        ...(parsed.createIfNotExist === true ? { generatedAvID: idWasGenerated } : {}),
-        ...(permission.shouldMaterialize ? {
-            materialized: true,
-            blockID: materializedBlockID,
-            parentID: parsed.blockID,
-            databaseBlockRegistrationVerified: materializedBlockRegistered === true,
-            ...(materializedBlockRegistered === false ? {
-                warning: `Created attribute view "${effectiveAvID}" and materialized database block "${materializedBlockID}", but MCP could not verify mirror registration before the timeout. If the next AV write cannot resolve by avID yet, retry shortly or pass this blockID as explicit database-block context.`,
-            } : {}),
-        } : {}),
+        ...selection,
+        resolvedRows: rawRows.map((row: any) => ({ rowID: row.id, ...(row.isDetached !== undefined ? { isDetached: row.isDetached } : {}) })).filter(row => typeof row.rowID === 'string'),
     });
-    return permission.shouldMaterialize
-        ? applyUiRefresh(client, result, [
-            { type: 'reloadAttributeView', id: effectiveAvID },
-            ...(permission.targetDocumentId ? [{ type: 'reloadProtyle' as const, id: permission.targetDocumentId }] : []),
-        ])
-        : result;
-}
-
-async function handleGetAttributeViewKeys({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvGetAttributeViewKeysSchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read');
-    if (denied) return denied;
-
-    const keysArray = extractAttributeViewKeysFromData(avData);
-    return createJsonResult({
-        avID: parsed.avID,
-        databaseContext: databaseContext(parsed.avID, { columns: 'keys' }),
-        readInfo: { scope: 'database_columns', coverage: Array.isArray(asRecord(avData)?.keyValues) ? 'complete' : 'unknown', representation: 'database_columns', limitations: [] },
-        keys: keysArray,
-    });
-}
-
-async function handleGetAttributeViewFilterSort({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvGetAttributeViewFilterSortSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read');
-    if (denied) return denied;
-
-    const response = await avApi.getAttributeViewFilterSort(client, {
-        id: parsed.avID,
-        blockID: parsed.blockID ?? '',
-    });
-
-    return createJsonResult({
-        avID: parsed.avID,
-        ...(parsed.blockID ? { blockID: parsed.blockID } : {}),
-        ...response,
-    });
+    return result;
 }
 
 async function handleAddRows({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -3602,146 +3455,28 @@ async function handleAddView({ client, permMgr, rawArgs }: ToolHandlerContext): 
     });
 }
 
-async function handleSetFilters({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvSetFiltersSchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
-        blockID: parsed.blockID,
-        action: 'set_filters',
-    });
+async function handleUpdateView({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvUpdateViewSchema.parse(rawArgs);
+    const { avID, blockID } = parsed;
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, avID, 'write', { blockID, action: 'update_view' });
     if (denied) return denied;
-    await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
-    assertKnownFilterColumns(parsed.avID, avData, parsed.filters);
-    await avApi.setAttributeViewFilters(client, {
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        data: parsed.filters,
-    });
-    return createWriteSuccessResult({
-        action: 'set_filters',
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        viewID: parsed.viewID,
-        filters: parsed.filters,
-        completeReplacement: true,
-    });
-}
-
-async function handleSetSorts({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvSetSortsSchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
-        blockID: parsed.blockID,
-        action: 'set_sorts',
-    });
-    if (denied) return denied;
-    await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
-    for (const sort of parsed.sorts) assertKnownAvKey(parsed.avID, avData, sort.column, 'Sort column');
-    await avApi.setAttributeViewSorts(client, {
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        data: parsed.sorts,
-    });
-    return createWriteSuccessResult({
-        action: 'set_sorts',
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        viewID: parsed.viewID,
-        sorts: parsed.sorts,
-        completeReplacement: true,
-    });
-}
-
-async function handleSetGroup({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvSetGroupSchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
-        blockID: parsed.blockID,
-        action: 'set_group',
-    });
-    if (denied) return denied;
-    await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
-    if (parsed.group.field) assertKnownAvKey(parsed.avID, avData, parsed.group.field, 'Grouping column');
-    await avApi.setAttributeViewGroup(client, {
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        group: parsed.group,
-    });
-    return createWriteSuccessResult({
-        action: 'set_group',
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        viewID: parsed.viewID,
-        group: parsed.group,
-    });
-}
-
-async function handleSetColumnVisibility({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvSetColumnVisibilitySchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
-        blockID: parsed.blockID,
-        action: 'set_column_visibility',
-    });
-    if (denied) return denied;
-    const view = await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
-    assertKnownViewField(parsed.avID, view, parsed.keyID);
-    await transactionApi.performTransactions(client, [{
-        doOperations: [{
-            action: 'setAttrViewColHidden',
-            avID: parsed.avID,
-            blockID: parsed.blockID,
-            id: parsed.keyID,
-            data: parsed.hidden,
-        }],
-        undoOperations: [],
-    }]);
-    return createWriteSuccessResult({
-        action: 'set_column_visibility',
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        viewID: parsed.viewID,
-        keyID: parsed.keyID,
-        hidden: parsed.hidden,
-    });
-}
-
-async function handleSetColumnOrder({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvSetColumnOrderSchema.parse(rawArgs);
-    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', {
-        blockID: parsed.blockID,
-        action: 'set_column_order',
-    });
-    if (denied) return denied;
-    const view = await verifyExactAvCarrier(client, parsed.avID, avData, parsed.blockID, parsed.viewID);
-    const existingKeyIDs = viewFieldIDs(view);
-    if (existingKeyIDs.length !== parsed.keyIDs.length || existingKeyIDs.some((keyID) => !parsed.keyIDs.includes(keyID))) {
-        throw new Error(`keyIDs must be the complete current field set for view "${parsed.viewID}" in attribute view "${parsed.avID}".`);
-    }
-
-    // sortAttrViewCol inserts each key immediately after previousID. Sending
-    // the complete sequence in one transaction makes presentation order a
-    // single strict-write outcome; accepting a partial list would silently
-    // preserve unspecified fields in a caller-dependent position.
-    await transactionApi.performTransactions(client, [{
-        doOperations: parsed.keyIDs.map((keyID, index) => ({
-            action: 'sortAttrViewCol',
-            avID: parsed.avID,
-            blockID: parsed.blockID,
-            id: keyID,
-            previousID: index === 0 ? '' : parsed.keyIDs[index - 1],
-        })),
-        undoOperations: [],
-    }]);
-    return createWriteSuccessResult({
-        action: 'set_column_order',
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        viewID: parsed.viewID,
-        keyIDs: parsed.keyIDs,
-        completeReplacement: true,
-    });
+    const { args, view, operations } = prepareViewUpdate(avData, rawArgs);
+    await verifyExactAvCarrier(client, avID, avData, blockID, args.viewID);
+    const same = (a: unknown, b: unknown) => canonicalizeState(a) === canonicalizeState(b);
+    const fields = viewFields(view);
+    const noChange = (args.filters === undefined || same(normalizeAvFilters(args.filters), normalizeAvFilters(view.filters)))
+        && (args.sorts === undefined || same(args.sorts, view.sorts ?? []))
+        && (args.group === undefined || same(normalizeAvGroup(args.group), normalizeAvGroup(view.group)))
+        && (args.columnOrder === undefined || same(args.columnOrder, fields.map(field => field.id)))
+        && (args.columnVisibility ?? []).every(item => Boolean(fields.find(field => field.id === item.columnID)?.hidden) === item.hidden);
+    if (noChange) return createWriteSuccessResult({ ...args, changed: false, skipped: true, reason: 'already_applied' });
+    await transactionApi.performTransactions(client, [{ doOperations: operations, undoOperations: [] }]);
+    return createWriteSuccessResult({ ...args });
 }
 
 async function handleGetPrimaryKeyValues({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
-    const parsed = AvGetPrimaryKeyValuesSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read');
+    const parsed = AvQuerySchema.parse(rawArgs);
+    const { denied } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'read', { blockID: parsed.blockID });
     if (denied) return denied;
 
     const response = await avApi.getAttributeViewPrimaryKeyValues(client, {
@@ -3799,9 +3534,9 @@ async function handleGetPrimaryKeyValues({ client, permMgr, rawArgs }: ToolHandl
 
 export const AV_ACTION_HANDLERS: Record<AvAction, ToolActionHandler> = {
     get: handleGet,
-    render: handleRender,
-    get_attribute_view_keys: handleGetAttributeViewKeys,
-    get_attribute_view_filter_sort: handleGetAttributeViewFilterSort,
+    create: handleCreate,
+    query: handleQuery,
+    update_view: handleUpdateView,
     search: handleSearch,
     add_rows: handleAddRows,
     remove_rows: handleRemoveRows,
@@ -3816,11 +3551,5 @@ export const AV_ACTION_HANDLERS: Record<AvAction, ToolActionHandler> = {
     configure_rollup: handleConfigureRollup,
     set_relation: handleSetRelation,
     duplicate: handleDuplicate,
-    get_primary_key_values: handleGetPrimaryKeyValues,
     add_view: handleAddView,
-    set_filters: handleSetFilters,
-    set_sorts: handleSetSorts,
-    set_group: handleSetGroup,
-    set_column_visibility: handleSetColumnVisibility,
-    set_column_order: handleSetColumnOrder,
 };

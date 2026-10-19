@@ -63,7 +63,7 @@ The pool stores no note content. Aliases remain reserved for the process lifetim
 - The Agent submits a short credential, but correctness always compares two complete SHA-256 digests; the prefix is never compared directly to live state.
 - The selected workspace authority (kernel when enabled, otherwise Node HTTP) owns one lease pool, ledger, and serial write coordinator. CLI, stdio, and Node HTTP use that same authority.
 - Write HTTP requests are attempted once; read requests may still retry transient failures.
-- The ledger records `executing` before dispatch and `committed` only after readback. It stores request/action/target identifiers and hashes, never note bodies or binary payloads.
+- The ledger records `executing` before dispatch and `committed` only after readback. It stores request/action/target identifiers and hashes. AV creation additionally persists reserved IDs, confirmed stages, and the complete small creation receipt for replay; it does not store note bodies or binary payloads.
 - Reusing the same request ID and arguments does not execute again. Reusing it with different arguments returns `idempotency_conflict`.
 
 ## Failure semantics

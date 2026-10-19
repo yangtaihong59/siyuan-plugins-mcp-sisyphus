@@ -63,7 +63,7 @@
 - Agent 提交短凭据，但安全判断始终比较两份完整 SHA-256；短前缀绝不直接与实时哈希比较。
 - 工作空间选定的协调器（内核入口优先，否则为 Node HTTP）持有唯一租约池、账本和串行写通道；CLI、stdio 与 Node HTTP 统一转交给它。
 - 写 HTTP 请求最多发送一次；读取请求仍可针对瞬时故障重试。
-- 执行前先把 `requestId` 记为 `executing`，提交后读回目标并记为 `committed`。账本只保存 request ID、action、目标 ID 和哈希，不保存笔记正文或二进制内容。
+- 执行前先把 `requestId` 记为 `executing`，提交后读回目标并记为 `committed`。账本保存 request ID、action、目标 ID 和哈希；AV 创建还保存预留 ID、已确认阶段和完整的小型创建回执，以支持重放。不保存笔记正文或二进制内容。
 - 相同 `requestId` 和相同参数再次到达时不会再写；若 ID 被另一组参数复用，则返回 `idempotency_conflict`。
 
 ## 失败语义

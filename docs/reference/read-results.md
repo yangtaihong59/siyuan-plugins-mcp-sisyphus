@@ -25,15 +25,15 @@ Disabled tools/actions are omitted using current configuration. Configuration fa
 
 ## Database identities
 
-`databaseContext` identifies the AV, any exact carrier/view, locations of existing column/row fields, and `idUsage`. Column types and options remain in `av.keyValues[].key` or `keys` rather than being duplicated.
+`databaseContext` identifies the AV, any exact carrier/view, locations of existing column/row fields, and `idUsage`. Column types and options remain in `columns` (`get`) or `av.keyValues[].key` (`get(scope="raw")`) rather than being duplicated.
 
 - `avID` identifies the database; `blockID` identifies a carrier. Mirrors may share the same AV; an unspecified carrier is not guessed.
 - `resolvedRows[].rowID` identifies an AV row. `sourceBlockID` identifies its bound note block. A cell value ID is neither. Detached rows have no source block.
 - Column `key.id` is passed as `columnID` to `set_cells`; column operations use `keyID` as documented by their action help.
-- `get_primary_key_values` returns `{key, values}` in `rows`. Its `blockIDs` are database carriers and must not be zipped with rows. The default page size is 16. `resolvedRows` supplies identities; bound rows are filtered by source-block permissions.
+- `query(mode="primary_keys")` returns `{key, values}` in `rows`. Its `blockIDs` are database carriers and must not be zipped with rows. The default page size is 16. `resolvedRows` supplies identities; bound rows are filtered by source-block permissions.
 
 ## Coverage
 
-Implemented for `fs.read`, `document.get_doc`, `block.get_kramdown/batch_kramdown`, `search.fulltext/semantic/query_sql`, and `av.get/render/get_attribute_view_keys/get_primary_key_values`. MCP and CLI share these contracts. Other reads do not yet promise this metadata.
+Implemented for `fs.read`, `document.get_doc`, `block.get_kramdown/batch_kramdown`, `search.fulltext/semantic/query_sql`, and `av.get/query`. MCP and CLI share these contracts. Other reads do not yet promise this metadata.
 
 Full-text search retains the complete kernel page. After permission, parent or tag filtering, `total=null` means the filtered total is unknown; `pageCount` and `hasNextPage` still allow scanning subsequent kernel pages.

@@ -4,13 +4,13 @@ import { AV_FILTER_MAX_DEPTH } from '@/core/types';
 import { buildDefaultToolConfig, type AvAction, type CategoryToolConfig } from '@/core/config';
 import { AV_TOOL_NAME, AV_VARIANTS, listAvTools } from '@/tools/av';
 
-const setFiltersVariant = AV_VARIANTS.find((variant) => variant.action === 'set_filters');
+const setFiltersVariant = AV_VARIANTS.find((variant) => variant.action === 'update_view');
 
 // GLM-5.3's upstream inliner rejects recursive $refs with
 // "tools.function.parameters: recursive $ref ... cannot be inlined",
 // so the filter-tree schema must stay depth-bounded and $ref-free.
-describe('av set_filters schema depth bounding', () => {
-    it('exposes the set_filters variant', () => {
+describe('av update_view schema depth bounding', () => {
+    it('exposes the update_view variant', () => {
         expect(setFiltersVariant).toBeDefined();
     });
 
@@ -32,7 +32,7 @@ describe('av set_filters schema depth bounding', () => {
 
     it('accepts a leaf-only filter tree', () => {
         setFiltersVariant!.validate({
-            action: 'set_filters',
+            action: 'update_view',
             avID: 'av-1',
             blockID: 'block-1',
             viewID: 'view-1',
@@ -46,7 +46,7 @@ describe('av set_filters schema depth bounding', () => {
             filter = { combination: 'and', filters: [filter] };
         }
         setFiltersVariant!.validate({
-            action: 'set_filters',
+            action: 'update_view',
             avID: 'av-1',
             blockID: 'block-1',
             viewID: 'view-1',
@@ -60,7 +60,7 @@ describe('av set_filters schema depth bounding', () => {
             filter = { combination: 'and', filters: [filter] };
         }
         expect(() => setFiltersVariant!.validate({
-            action: 'set_filters',
+            action: 'update_view',
             avID: 'av-1',
             blockID: 'block-1',
             viewID: 'view-1',
@@ -76,7 +76,7 @@ describe('av set_filters schema depth bounding', () => {
             filter = { combination: 'and', filters: [filter] };
         }
         expect(() => setFiltersVariant!.validate({
-            action: 'set_filters',
+            action: 'update_view',
             avID: 'av-1',
             blockID: 'block-1',
             viewID: 'view-1',

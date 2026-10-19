@@ -420,9 +420,9 @@ function createFsReadWindowPayload(
 function createAttributeViewFsHint(attributeViews: Array<{ blockID: string; avID?: string }>): Record<string, unknown> {
     return {
         attributeViews,
-        warning: 'This document contains database/attribute-view blocks. fs is only a pure Markdown convenience layer and will not safely edit these SiYuan-native structures. Use av(action="get"|"render"|"set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column") for rows, columns, and cells.',
+        warning: 'This document contains database/attribute-view blocks. fs is only a pure Markdown convenience layer and will not safely edit these SiYuan-native structures. Use av(action="get"|"query"|"set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column") for rows, columns, and cells.',
         avToolHint: {
-            read: 'av(action="get", avID="<av-id>") or av(action="render", avID="<av-id>", blockID="<database-block-id>")',
+            read: 'av(action="get", avID="<av-id>") or av(action="query", avID="<av-id>", blockID="<database-block-id>")',
             write: 'av(action="set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column", avID="<av-id>", ...)',
         },
     };

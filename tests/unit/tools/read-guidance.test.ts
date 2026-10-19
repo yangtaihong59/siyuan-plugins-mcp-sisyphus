@@ -26,7 +26,7 @@ describe('read guidance', () => {
         const client = { readFile: async () => JSON.stringify(config) } as any;
         const steps = [
             ...databaseReadSteps([{ avID: 'db', blockID: 'carrier' }]),
-            { purpose: 'read_view', tool: 'av' as const, arguments: { action: 'render', avID: 'db', createIfNotExist: true } },
+            { purpose: 'read_view', tool: 'av' as const, arguments: { action: 'create', parentID: 'db' } },
             { purpose: 'help', tool: 'av' as const, arguments: { action: 'help', topic: 'set_cells' } },
         ];
         expect((await availableReadSteps(client, steps)).map(step => step.arguments.action)).toEqual(['help']);
@@ -44,12 +44,12 @@ describe('read guidance', () => {
     });
 
     it('advances independently paged groups without repeating finished groups', () => {
-        const args = { action: 'render', avID: 'db', viewID: 'view', query: 'needle', page: 1, pageSize: 2,
+        const args = { action: 'query', avID: 'db', viewID: 'view', keyword: 'needle', page: 1, pageSize: 2,
             groupPaging: { a: { page: 2, pageSize: 1 }, b: { page: 1, pageSize: 2 } } };
         const view = { groups: [{ id: 'a', rowCount: 3 }, { id: 'b', rowCount: 1 }] };
         const state = viewReadState(view, args, 2);
         expect(state.readInfo.coverage).toBe('partial');
-        expect(state.next).toMatchObject({ avID: 'db', viewID: 'view', query: 'needle', createIfNotExist: false,
+        expect(state.next).toMatchObject({ avID: 'db', viewID: 'view', keyword: 'needle',
             groupPaging: { a: { page: 3, pageSize: 1 }, b: { page: 2, pageSize: 2 } } });
         expect(viewReadState(view, state.next!, 2).next).toBeUndefined();
     });

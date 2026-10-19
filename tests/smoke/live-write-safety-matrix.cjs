@@ -29,7 +29,7 @@ const actionsByCategory = {
     notebook: ['list', 'create', 'set_open_state', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'],
     document: ['create', 'lookup', 'ensure_link_targets', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
     block: ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'get_kramdown', 'batch_kramdown', 'get_children', 'transfer_references', 'set_attrs', 'get_attrs', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count', 'add_to_daily_note', 'docs_info'],
-    av: ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'get_primary_key_values', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'],
+    av: ['get', 'query', 'create', 'search', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'update_view', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'],
     file: ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_markdown_snapshot', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'audit_image_refs', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'],
     search: ['fulltext', 'semantic', 'query_sql', 'get_backlinks', 'search_refs', 'find_replace', 'search_assets', 'fulltext_asset_content', 'list_invalid_refs'],
     tag: ['list', 'rename', 'remove'],
@@ -558,13 +558,12 @@ async function runBlockGroup(state) {
 async function runAvGroup(state) {
     await createDocument(state, '/数据库操作', 'attribute view fixtures');
     const databaseDocID = await createDocument(state, '/数据库操作/数据库文档', 'database host');
-    const rendered = await mutate('av', 'render', {
-        blockID: databaseDocID,
-        createIfNotExist: true,
+    const rendered = await mutate('av', 'create', {
+        parentID: databaseDocID,
     }, 'none', { variant: 'create' });
     const avID = firstString(rendered, ['avID', 'id']);
     const databaseBlockID = firstString(rendered, ['blockID']);
-    if (!avID) throw new Error('av.render did not return avID');
+    if (!avID) throw new Error('av.create did not return avID');
 
     const column = await mutate('av', 'add_column', {
         avID,
@@ -631,7 +630,7 @@ async function runAvGroup(state) {
         sourceRowIDs: [boundSourceItemID],
     }, 'manifest');
 
-    const avSnapshot = await read('av', 'get', { id: avID, blockID: databaseBlockID });
+    const avSnapshot = await read('av', 'get', { avID, scope: 'raw', blockID: databaseBlockID });
     const definition = avSnapshot.av;
     const views = Array.isArray(definition?.views) ? definition.views : [];
     const carrierAttrs = await read('block', 'get_attrs', { id: databaseBlockID });
@@ -643,25 +642,25 @@ async function runAvGroup(state) {
     const orderedKeyIDs = viewColumns.map((entry) => entry?.id).filter((id) => typeof id === 'string' && id);
     if (!orderedKeyIDs.includes(selectColumnID)) throw new Error('Current AV view does not expose the new select column');
 
-    await mutate('av', 'set_filters', {
+    await mutate('av', 'update_view', {
         avID, blockID: databaseBlockID, viewID: currentViewID,
         filters: [{ column: selectColumnID, operator: 'Is not empty' }],
     }, 'state');
-    await mutate('av', 'set_sorts', {
+    await mutate('av', 'update_view', {
         avID, blockID: databaseBlockID, viewID: currentViewID,
         sorts: [{ column: selectColumnID, order: 'ASC' }],
     }, 'state');
-    await mutate('av', 'set_group', {
+    await mutate('av', 'update_view', {
         avID, blockID: databaseBlockID, viewID: currentViewID,
         group: { field: selectColumnID, method: 0, order: 3, hideEmpty: false },
     }, 'state');
-    await mutate('av', 'set_column_visibility', {
+    await mutate('av', 'update_view', {
         avID, blockID: databaseBlockID, viewID: currentViewID,
-        keyID: selectColumnID, hidden: true,
+        columnVisibility: [{ columnID: selectColumnID, hidden: true }],
     }, 'state');
-    await mutate('av', 'set_column_order', {
+    await mutate('av', 'update_view', {
         avID, blockID: databaseBlockID, viewID: currentViewID,
-        keyIDs: [...orderedKeyIDs].reverse(),
+        columnOrder: [...orderedKeyIDs].reverse(),
     }, 'state');
 
     const templateID = siyuanNodeId();
@@ -676,9 +675,8 @@ async function runAvGroup(state) {
     }, 'state');
 
     const destinationDocID = await createDocument(state, '/数据库操作/目标数据库文档', 'destination database host');
-    const destinationRendered = await mutate('av', 'render', {
-        blockID: destinationDocID,
-        createIfNotExist: true,
+    const destinationRendered = await mutate('av', 'create', {
+        parentID: destinationDocID,
     }, 'none', { variant: 'relation-destination-create' });
     const destinationAvID = firstString(destinationRendered, ['avID', 'id']);
     const destinationBlockID = firstString(destinationRendered, ['blockID']);
@@ -701,8 +699,8 @@ async function runAvGroup(state) {
     }, 'state', { variant: 'rollup-fixture' });
     const rollupKeyID = firstString(rollupColumn, ['keyID', 'columnID']);
     if (!relationKeyID || !rollupKeyID) throw new Error('Relation/rollup fixtures did not return key IDs');
-    const destinationKeys = await read('av', 'get_attribute_view_keys', { id: destinationAvID });
-    const destinationKeyList = asArray(destinationKeys.keys || destinationKeys);
+    const destinationKeys = await read('av', 'get', { avID: destinationAvID, scope: 'columns' });
+    const destinationKeyList = asArray(destinationKeys.columns);
     const destinationPrimaryKeyID = destinationKeyList.find((key) => key?.type === 'block')?.id || destinationKeyList[0]?.id;
     if (!destinationPrimaryKeyID) throw new Error('Destination AV primary key ID could not be resolved');
     const backRelationKeyID = siyuanNodeId();
@@ -932,7 +930,7 @@ async function writeLiveReport() {
 - notebook（7）：create、set_open_state（关闭与打开）、remove、rename、set_conf、set_icon、set_permission
 - document（10）：create、create_daily_note、duplicate、rename、remove、move、reorder、set_attr、heading_to_doc、doc_to_heading
 - block（11）：insert、prepend、append、add_to_daily_note、update、replace、delete、move、set_fold_state、transfer_references、set_attrs
-- av（7）：render(createIfNotExist)、add_rows、remove_rows、add_column、remove_column、set_cells、duplicate
+- av（7）：create、add_rows、remove_rows、add_column、remove_column、set_cells、duplicate
 - file（7）：upload_asset、create_template、update_template、delete_template、save_doc_as_template、rename_asset、delete_asset；另测 create_template overwrite 分支
 - search（1）：find_replace
 - tag（2）：rename、remove
@@ -987,7 +985,7 @@ async function main() {
             fs: ['write', 'replace', 'mv', 'rm', 'reorder'],
             document: ['create', 'lookup', 'ensure_link_targets', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'],
             block: ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'transfer_references', 'set_attrs', 'add_to_daily_note'],
-            av: ['get', 'render', 'get_attribute_view_keys', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'],
+            av: ['get', 'query', 'create', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'update_view', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'],
             file: ['upload_asset', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'rename_asset', 'delete_asset'],
             search: ['search_assets', 'find_replace'],
             tag: ['rename', 'remove'],

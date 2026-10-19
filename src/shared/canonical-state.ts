@@ -42,3 +42,26 @@ function normalizeCanonicalValue(value: unknown): unknown {
     }
     return { $sisyphus: typeof value, value: String(value) };
 }
+
+/** First divergent path for readback diagnostics; no note values are disclosed. */
+export function firstJsonDifferencePath(left: unknown, right: unknown, path = '$'): string | undefined {
+    if (Object.is(left, right)) return undefined;
+    if (Array.isArray(left) || Array.isArray(right)) {
+        if (!Array.isArray(left) || !Array.isArray(right)) return path;
+        const sharedLength = Math.min(left.length, right.length);
+        for (let index = 0; index < sharedLength; index += 1) {
+            const nested = firstJsonDifferencePath(left[index], right[index], `${path}[${index}]`);
+            if (nested) return nested;
+        }
+        return left.length === right.length ? undefined : `${path}.length`;
+    }
+    const leftRecord = left && typeof left === 'object' ? left as Record<string, unknown> : undefined;
+    const rightRecord = right && typeof right === 'object' ? right as Record<string, unknown> : undefined;
+    if (!leftRecord || !rightRecord) return path;
+    const keys = [...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])].sort();
+    for (const key of keys) {
+        const nested = firstJsonDifferencePath(leftRecord[key], rightRecord[key], `${path}.${key}`);
+        if (nested) return nested;
+    }
+    return undefined;
+}

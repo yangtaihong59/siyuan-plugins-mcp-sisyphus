@@ -80,50 +80,27 @@ async function main() {
     report.fixtures.push({ type: 'document', id: doc.id, notebook, path: '/' + prefix }); save();
     const child = await check('create by parentPath and title', () => mutation('document', { action: 'create', notebook, parentPath: '/' + prefix, title: 'Child', icon: '1f9ea' }));
     report.fixtures.push({ type: 'document', id: child.id, notebook }); save();
-    const av = await check('create isolated AV', () => mutation('av', { action: 'render', blockID: doc.id, createIfNotExist: true }));
+    const av = await check('create isolated AV', () => mutation('av', { action: 'create', parentID: doc.id }));
     const context = { avID: av.avID, blockID: av.blockID };
     report.fixtures.push({ type: 'av', ...context, parentID: doc.id }); save();
 
-    await check('four actions: canonical and deprecated inputs match; conflicts reject', async () => {
-        for (const action of ['get', 'render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort']) {
-            const args = { action, avID: av.avID, ...(action === 'get_attribute_view_keys' ? {} : { blockID: av.blockID }) };
-            const canonical = await call('av', args); assert(!canonical.error, JSON.stringify(canonical));
-            const { avID: ignored, ...legacyArgs } = args;
-            const legacy = await call('av', { ...legacyArgs, id: av.avID }); assert(!legacy.error, JSON.stringify(legacy));
-            assert(legacy.warnings?.some(w => w.code === 'deprecated_parameter'));
-            delete legacy.warnings;
-            assert.deepEqual(legacy, canonical);
-            const both = await call('av', { ...args, id: av.avID }); assert(!both.error);
-            const conflict = await call('av', { ...args, id: doc.id }); assert(conflict.error); assert(JSON.stringify(conflict).includes('Conflicting'));
+    await check('removed aliases and actions reject', async () => {
+        for (const args of [{ action: 'get', id: av.avID }, { action: 'render', avID: av.avID }]) {
+            assert((await call('av', args)).error);
         }
-        return { actions: 4 };
     });
-    await check('explicit new AV: old-name preflight, canonical execution, legacy replay', async () => {
-        const avID = new Date().toISOString().replace(/\D/g, '').slice(0, 14) + '-' + crypto.randomBytes(5).toString('hex').slice(0, 7);
-        const canonical = { action: 'render', avID, blockID: child.id, createIfNotExist: true };
-        const legacy = { action: 'render', id: avID, blockID: child.id, createIfNotExist: true };
-        const pre = await call('av', { ...legacy, validateOnly: true }); assert(pre.requestId, JSON.stringify(pre)); assert(pre.warnings);
-        const result = await call('av', { ...canonical, requestId: pre.requestId });
-        assert.equal(result.safety?.transactionState, 'committed', JSON.stringify(result));
-        const replay = await call('av', { ...legacy, requestId: pre.requestId }); assert.equal((replay.safety ?? replay).replayed, true);
-        report.fixtures.push({ type: 'av', avID, blockID: result.blockID, parentID: child.id });
-        const read = await call('av', { action: 'get', avID }); assert.equal(read.av.id, avID);
-        const mismatch = await call('av', { ...canonical, blockID: doc.id, requestId: pre.requestId }); assert.equal(mismatch.error?.code, 'idempotency_conflict');
-        return { avID, blockID: result.blockID };
-    });
-    await check('existing AV with create enabled retains identity and replays', async () => {
-        const result = await mutation('av', { action: 'render', avID: av.avID, blockID: av.blockID, createIfNotExist: true }, true);
-        assert.equal(result.avID, av.avID); assert(!result.generatedAvID); return { avID: result.avID };
+    await check('new creation request rejects an existing AV', async () => {
+        assert((await call('av', { action: 'create', parentID: child.id, avID: av.avID, validateOnly: true })).error);
     });
     await check('wrong carrier and missing ID reject', async () => {
         const mismatch = await call('av', { action: 'get', avID: av.avID, blockID: child.id }); assert(mismatch.error);
-        const missing = await call('av', { action: 'render' }); assert(missing.error); assert(JSON.stringify(missing).includes('avID'));
+        const missing = await call('av', { action: 'query' }); assert(missing.error); assert(JSON.stringify(missing).includes('avID'));
         return { rejected: 2 };
     });
     const rows = await check('add three detached rows', () => mutation('av', { action: 'add_rows', ...context, primaryKeyTexts: ['A', 'B', 'C'] }));
     const text = await check('add text column', () => mutation('av', { action: 'add_column', ...context, keyName: '负责人', keyType: 'text' }));
     const date = await check('add date column', () => mutation('av', { action: 'add_column', ...context, keyName: '截止日期', keyType: 'date' }));
-    const selectID = av.view.columns.find(c => c.type === 'select').id;
+    const selectID = (await call('av', { action: 'get', avID: av.avID })).columns.find(c => c.type === 'select').id;
     const cells = rows.rows.flatMap((row, i) => [
         { rowID: row.rowID, columnID: selectID, valueType: 'select', option: i < 2 ? '进行中' : '待开始' },
         { rowID: row.rowID, columnID: text.keyID, valueType: 'text', text: ['甲', '乙', '丙'][i] },
@@ -155,26 +132,26 @@ async function main() {
     for (const mode of [true, false]) {
         slim = mode;
         await check('av.get preserves all nine values, slim=' + mode, async () => {
-            const result = await call('av', { action: 'get', id: av.avID }); assert.deepEqual(values(result), expected); return values(result);
+            const result = await call('av', { action: 'get', avID: av.avID, scope: 'raw' }); assert.deepEqual(values(result), expected); return values(result);
         });
-        await check('av.render preserves repeated option names, slim=' + mode, async () => {
-            const result = await call('av', { action: 'render', id: av.avID, blockID: av.blockID });
+        await check('av.query preserves repeated option names, slim=' + mode, async () => {
+            const result = await call('av', { action: 'query', avID: av.avID, blockID: av.blockID });
             const names = result.data.map(row => row.cells[selectID]);
             assert(JSON.stringify(names).includes('进行中')); assert(JSON.stringify(names).includes('待开始')); return names;
         });
     }
     slim = true;
     await check('av.get accepts canonical avID', async () => {
-        const result = await call('av', { action: 'get', avID: av.avID }); assert(!result.error); assert.equal(result.av.id, av.avID); return { avID: result.av.id };
+        const result = await call('av', { action: 'get', avID: av.avID, scope: 'raw' }); assert(!result.error); assert.equal(result.av.id, av.avID); return { avID: result.av.id };
     });
     await check('fresh CLI reads all nine values', async () => {
-        const result = JSON.parse(cp.execFileSync(process.execPath, [root + '/cli/dist/cli.cjs', 'av', 'get', '--av-id', av.avID, '--json'], { encoding: 'utf8', env: process.env }));
+        const result = JSON.parse(cp.execFileSync(process.execPath, [root + '/cli/dist/cli.cjs', 'av', 'get', '--av-id', av.avID, '--scope', 'raw', '--json'], { encoding: 'utf8', env: process.env }));
         assert.deepEqual(values(result), expected); return values(result);
     });
     stdio = new Client({ name: 'layout-feedback-stdio', version: '1' });
     await stdio.connect(new StdioClientTransport({ command: process.execPath, args: [root + '/dist/mcp-server.cjs'], env: { ...process.env } }));
     await check('fresh stdio reads all nine values', async () => {
-        const result = payload(await stdio.callTool({ name: 'av', arguments: { action: 'get', id: av.avID } }));
+        const result = payload(await stdio.callTool({ name: 'av', arguments: { action: 'get', avID: av.avID, scope: 'raw' } }));
         assert.deepEqual(values(result), expected); return values(result);
     });
     await check('fresh CLI supports tool-only layout guide', async () => {

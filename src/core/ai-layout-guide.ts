@@ -79,7 +79,7 @@ export function renderAiLayoutGuide(): string {
         '- Real SiYuan database blocks use `type = "av"` and are stored as `NodeAttributeView` containers such as `<div data-type="NodeAttributeView" ...></div>`.',
         '- Databases support records, multiple views, filters, sorts, relations, and rollups; they are not just prettier tables.',
         '- Do not describe a Markdown table as a database block, and do not describe a database block as just a table.',
-        '- The dedicated MCP `av` tool can create and materialize a new database with `render(createIfNotExist=true, blockID=...)`; omit `avID` to let MCP generate the AV ID automatically.',
+        '- The dedicated MCP `av` tool can create and materialize a new database with `create(parentID=...)`; omit `avID` to let MCP generate the AV ID automatically.',
         '',
         '## Recommended usage rules',
         '',

@@ -262,7 +262,7 @@ AI 在正式执行前必须先确认本轮模式：
 | `file` | `render(engine="sprig")`、`export_md`、`get_doc_assets` | `list_templates`、`read_template`、`create_template`、`update_template`、`save_doc_as_template`、`render(engine="template")`、`get_image_ocr_text` | `delete_template`、`upload_asset`、`export_resources`、`remove_unused_assets`、`delete_asset` |
 | `flashcard` | `get_decks`、`list_cards`、`get_cards` | `create_card(mode="full")`、`create_card(mode="attach")`、`review_card`、`review_card(skip=true)`；`review_card.reviewedCards` 参数校验 | `remove_card` |
 | `mascot` | `get_balance` | `shop` | `buy` |
-| `av` | `render`、`get`、`get_attribute_view_keys`、`get_attribute_view_filter_sort`、`search`、`get_primary_key_values`、`add_rows`、`add_column`、`set_cells`、`duplicate`、`remove_rows`、`remove_column` | detached 行、空 `add_rows` no-op | 只在本轮创建的真实 AV 上执行 |
+| `av` | `render`、`get`、`get(scope="columns")`、`get(scope="view")`、`search`、`query(mode="primary_keys")`、`add_rows`、`add_column`、`set_cells`、`duplicate`、`remove_rows`、`remove_column` | detached 行、空 `add_rows` no-op | 只在本轮创建的真实 AV 上执行 |
 
 ---
 
@@ -486,7 +486,7 @@ AV 测试必须走**本轮创建真实 AV** 的主路径，不得把“复制已
 
 ### 9.1 主测试路径
 
-标准起手动作是 `av.render` 创建本轮测试 AV。具体创建参数必须从当前 MCP schema/help 或 CLI help 获取，不在本手册中展开。
+标准起手动作是 `av.query` 创建本轮测试 AV。具体创建参数必须从当前 MCP schema/help 或 CLI help 获取，不在本手册中展开。
 
 创建成功后，必须立即记录两个标识：
 
@@ -511,10 +511,10 @@ AI 必须在自己创建的 AV 上完成以下动作链路：
 
 1. `render`
 2. `get`
-3. `get_attribute_view_keys`
-4. `get_attribute_view_filter_sort`
+3. `get(scope="columns")`
+4. `get(scope="view")`
 5. `search`
-6. `get_primary_key_values`
+6. `query(mode="primary_keys")`
 7. 创建 3 个普通块，准备绑定为数据库行
 8. `add_rows`，分别覆盖绑定块行与 detached 纯文本主键行
 9. `add_column`
@@ -531,10 +531,10 @@ AI 必须在自己创建的 AV 上完成以下动作链路：
 | --- | --- |
 | `render` | 成功创建 AV 块，并返回后续读写和清理所需的 AV / block 标识 |
 | `get` | 能获取完整 AV 结构 |
-| `get_attribute_view_keys` | 初始至少返回主键列；额外列视环境而定 |
-| `get_attribute_view_filter_sort` | 能返回当前筛选 / 排序信息；空结构也算通过 |
+| `get(scope="columns")` | 初始至少返回主键列；额外列视环境而定 |
+| `get(scope="view")` | 能返回当前筛选 / 排序信息；空结构也算通过 |
 | `search` | 能正常返回搜索结果或合理空结果 |
-| `get_primary_key_values` | 能返回主键值列表 |
+| `query(mode="primary_keys")` | 能返回主键值列表 |
 | `add_rows` | 成功添加绑定块行，并拿到真实行标识 |
 | detached 行 | 成功添加 detached 纯文本主键行，并返回后续可操作的行标识 |
 | 空 `add_rows` | 不报错，并明确说明未执行实际新增 |

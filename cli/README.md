@@ -6,7 +6,7 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.11` adds database operation guidance and read-completeness information, fixes search/database pagination, supports continuation with unknown totals, and shares short hashes with plugin `v0.6.10`.
+> **Latest:** `v0.2.12` adopts AV v2 structure reads, paginated `query`, explicit `create`, and combined `update_view`, sharing durable creation receipts and configuration checks with plugin `v0.6.11`. Legacy AV actions and the top-level `id` alias are removed; see the [migration guide](../docs/reference/tools/av.md#configuration-migration).
 
 > **v0.2.6:** `v0.2.6` exposes the expanded guarded AV, snapshot, image-audit, image-reading, extension-diagnostic, and link-resolution workflows, and preserves mixed text/image results in JSON output. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58).
 
@@ -31,9 +31,9 @@ siyuan-sisyphus search fulltext --query "keyword" --page-size 10 --json | jq '.d
 
 Strict safe writes are enabled by default in the plugin under Settings → MCP → Settings & Debug. Mutation commands first run the action with `validateOnly=true`, then copy the server-issued `requestId` and the returned `expected*Hash` (when present) unchanged; additive actions also require preflight to obtain a request ID. The returned value is a temporary in-memory lease credential, normally beginning with four hexadecimal characters; it is never used as a 16-bit state comparison because the HTTP coordinator resolves it to the leased full SHA-256 and compares that full hash with a fresh read before writing.
 
-Keep the plugin-hosted MCP HTTP server enabled while using strict CLI mutations. The CLI forwards these writes to that single coordinator so CLI, stdio, and HTTP do not create independent lease pools. Expired, consumed, or restart-invalidated leases require a new preflight. Turning strict writes off restores the legacy direct-call contract without hash concurrency checks, request idempotency, or post-write verification.
+Keep the plugin-hosted MCP HTTP server enabled while using strict CLI mutations. The CLI forwards these writes to that single coordinator so CLI, stdio, and HTTP do not create independent lease pools. Expired, consumed, or restart-invalidated leases require a new preflight. Turning strict writes off restores direct calls for other mutations without hash concurrency checks, request idempotency, or post-write verification. AV creation always requires preflight and the shared durable coordinator, including when strict writes are disabled.
 
-Request IDs and state credentials start at four hexadecimal characters. Copy them completely; do not generate or truncate them. Upgrade the plugin to v0.6.10 alongside this CLI and obtain fresh preflight credentials. The legacy AV `id` input remains accepted with a deprecation warning; use `avID` for new calls.
+Request IDs and state credentials start at four hexadecimal characters. Copy them completely; do not generate or truncate them. Upgrade the plugin to v0.6.11 alongside this CLI and obtain fresh preflight credentials. AV v2 requires `avID`; the legacy top-level `id` alias is removed.
 
 `feedback.submit` is an external operation: after user authorization, submit business parameters directly without `validateOnly`, `requestId`, or hash credentials. A mistaken preflight sends nothing and returns a hint. Feedback does not provide strict state verification or idempotent replay; do not automatically retry an unknown outcome.
 
@@ -164,7 +164,7 @@ siyuan-sisyphus timeline compare-node --document-id 20240318xyz --tag <timeline-
 
 # Friendly aliases
 siyuan-sisyphus fs replace --path "/Notebook/Doc" --old A --new B
-siyuan-sisyphus av render --av-id <attribute-view-id>
+siyuan-sisyphus av query --av-id <attribute-view-id>
 siyuan-sisyphus file upload-asset --file /private/tmp/demo.txt
 
 # Piping to jq

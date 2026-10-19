@@ -749,18 +749,17 @@
     },
     {
       "name": "av",
-      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Get avID from fs.read or av.search, then get for schema and resolvedRows before editing; use render for view rows. Reuse column IDs and resolvedRows.rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · render() · get_attribute_view_keys(avID) · get_attribute_view_filter_sort(avID) · search(keyword) · add_rows(avID) · remove_rows(avID, srcIDs) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · get_primary_key_values(avID) · add_view(avID, blockID, viewID, layout, name) · set_filters(avID, blockID, viewID, filters) · set_sorts(avID, blockID, viewID, sorts) · set_group(avID, blockID, viewID, group) · set_column_visibility(avID, blockID, viewID, keyID, hidden) · set_column_order(avID, blockID, viewID, keyIDs) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID, srcIDs) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "action": {
             "type": "string",
             "enum": [
-              "get",
-              "render",
-              "get_attribute_view_keys",
-              "get_attribute_view_filter_sort",
               "search",
+              "get",
+              "query",
+              "create",
               "add_rows",
               "remove_rows",
               "add_column",
@@ -769,13 +768,8 @@
               "set_column_options",
               "duplicate_rows",
               "duplicate",
-              "get_primary_key_values",
               "add_view",
-              "set_filters",
-              "set_sorts",
-              "set_group",
-              "set_column_visibility",
-              "set_column_order",
+              "update_view",
               "set_new_item_templates",
               "create_from_template",
               "configure_two_way_relation",
@@ -787,50 +781,185 @@
           },
           "avID": {
             "type": "string",
-            "description": "Attribute view ID",
             "minLength": 1,
+            "description": "Optional new AV ID; an existing AV is rejected for a new request",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
           "blockID": {
-            "description": "Optional database block ID for exact context or fallback permission resolution",
             "type": "string",
             "minLength": 1,
+            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
           "viewID": {
-            "description": "Optional target view ID",
             "type": "string",
             "minLength": 1,
+            "description": "Attribute-view view ID",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
+          "scope": {
+            "description": "Default structure: database identity, columns and view summaries, without rows. raw returns the complete native AV.",
+            "type": "string",
+            "enum": [
+              "structure",
+              "columns",
+              "view",
+              "raw"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "rows",
+              "primary_keys"
+            ]
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Keyword to search in attribute view names"
+          },
           "page": {
-            "description": "Page number (1-based), default 1",
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
           },
           "pageSize": {
-            "description": "Rows per page; use -1 or omit for kernel default",
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
-          "query": {
-            "description": "Optional row query filter",
-            "type": "string"
-          },
           "groupPaging": {
-            "description": "Optional group paging map passed through to SiYuan",
             "type": "object",
-            "additionalProperties": {}
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "page": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "pageSize": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "page"
+              ],
+              "additionalProperties": false
+            }
           },
-          "createIfNotExist": {
-            "description": "Create the default view only when explicitly true; provide blockID when creating a new AV",
-            "type": "boolean"
-          },
-          "keyword": {
+          "parentID": {
             "type": "string",
-            "description": "Keyword to search in attribute view names"
+            "minLength": 1,
+            "description": "Parent block/document for the new database carrier"
+          },
+          "filters": {
+            "description": "Complete replacement; [] clears filters Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "sorts": {
+            "description": "Complete replacement; [] clears sorts",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "order": {
+                  "type": "string",
+                  "enum": [
+                    "ASC",
+                    "DESC"
+                  ]
+                }
+              },
+              "required": [
+                "column",
+                "order"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "group": {
+            "description": "Complete grouping configuration; {field:\"\"} clears grouping",
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "method": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              },
+              "range": {
+                "type": "object",
+                "properties": {
+                  "numStart": {
+                    "type": "number"
+                  },
+                  "numEnd": {
+                    "type": "number"
+                  },
+                  "numStep": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "numStart",
+                  "numEnd",
+                  "numStep"
+                ],
+                "additionalProperties": false
+              },
+              "order": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              },
+              "hideEmpty": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "columnVisibility": {
+            "description": "Modify only listed columns; duplicate IDs are rejected",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "columnID": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "hidden": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "columnID",
+                "hidden"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "columnOrder": {
+            "description": "Complete current view field order, including hidden fields",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "excludes": {
             "description": "Optional AV IDs to exclude",
@@ -878,7 +1007,6 @@
           "keyID": {
             "description": "Optional new column key ID; MCP generates one when omitted",
             "type": "string",
-            "minLength": 1,
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
           "keyName": {
@@ -1094,57 +1222,6 @@
             "minLength": 1,
             "maxLength": 255,
             "description": "Name for the new view. Creation and naming are sent in one native transaction and read back together."
-          },
-          "filters": {
-            "description": "Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root. Group nesting is capped at 4 levels. Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          },
-          "sorts": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "column": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Column key ID"
-                },
-                "order": {
-                  "type": "string",
-                  "enum": [
-                    "ASC",
-                    "DESC"
-                  ],
-                  "description": "Sort direction"
-                }
-              },
-              "required": [
-                "column",
-                "order"
-              ],
-              "additionalProperties": false
-            },
-            "description": "Complete replacement sort array; [] clears all sorts."
-          },
-          "group": {
-            "description": "Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
-            "type": "object"
-          },
-          "hidden": {
-            "type": "boolean",
-            "description": "Whether the column is hidden in the carrier-selected view"
-          },
-          "keyIDs": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "description": "Complete column key order for the current table, gallery, or kanban layout."
           },
           "templates": {
             "description": "Complete ordered replacement template array Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
@@ -2157,799 +2234,91 @@
           },
           "avID": {
             "type": "string",
-            "description": "Attribute view ID"
+            "minLength": 1
           },
           "blockID": {
-            "description": "Optional database block ID for exact context or fallback permission resolution",
-            "type": "string"
-          },
-          "id": {
             "type": "string",
-            "deprecated": true,
-            "description": "Deprecated alias of avID. Use avID. If both are supplied they must match."
+            "minLength": 1
+          },
+          "viewID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "description": "Default structure: database identity, columns and view summaries, without rows. raw returns the complete native AV.",
+            "type": "string",
+            "enum": [
+              "structure",
+              "columns",
+              "view",
+              "raw"
+            ]
           }
         },
         "required": [
-          "action"
+          "action",
+          "avID"
         ],
         "additionalProperties": false,
-        "description": "Get the full attribute view payload using avID; blockID is an optional exact database-block context.",
-        "anyOf": [
-          {
-            "required": [
-              "avID"
-            ]
-          },
-          {
-            "required": [
-              "id"
-            ]
-          }
-        ]
+        "description": "Read database structure (no rows), columns, exact view configuration, or full raw AV."
       },
-      "render": {
+      "query": {
         "type": "object",
         "properties": {
           "action": {
             "type": "string",
-            "const": "render"
+            "const": "query"
           },
           "avID": {
-            "description": "Attribute view ID; use avID. Omit only with createIfNotExist=true to let MCP generate one",
-            "type": "string"
+            "type": "string",
+            "minLength": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "rows",
+              "primary_keys"
+            ]
           },
           "blockID": {
-            "description": "Optional database block ID; required when creating a new AV",
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "viewID": {
-            "description": "Optional target view ID",
+            "type": "string",
+            "minLength": 1
+          },
+          "keyword": {
             "type": "string"
           },
           "page": {
-            "description": "Page number (1-based), default 1",
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
           },
           "pageSize": {
-            "description": "Rows per page; use -1 or omit for kernel default",
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
-          "query": {
-            "description": "Optional row query filter",
-            "type": "string"
-          },
           "groupPaging": {
-            "description": "Optional group paging map passed through to SiYuan",
             "type": "object",
-            "additionalProperties": {}
-          },
-          "createIfNotExist": {
-            "description": "Create the default view only when explicitly true; provide blockID when creating a new AV",
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string",
-            "deprecated": true,
-            "description": "Deprecated alias of avID. Use avID. If both are supplied they must match."
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Render an attribute view by avID with optional paging/filtering; with createIfNotExist=true, materialize a SiYuan-style AV block under blockID."
-      },
-      "get_attribute_view_keys": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "get_attribute_view_keys"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "id": {
-            "type": "string",
-            "deprecated": true,
-            "description": "Deprecated alias of avID. Use avID. If both are supplied they must match."
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Get the column (key) definitions of an attribute view.",
-        "anyOf": [
-          {
-            "required": [
-              "avID"
-            ]
-          },
-          {
-            "required": [
-              "id"
-            ]
-          }
-        ]
-      },
-      "get_attribute_view_filter_sort": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "get_attribute_view_filter_sort"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "description": "Database block ID (optional)",
-            "type": "string"
-          },
-          "id": {
-            "type": "string",
-            "deprecated": true,
-            "description": "Deprecated alias of avID. Use avID. If both are supplied they must match."
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Get filter and sort settings for an attribute view.",
-        "anyOf": [
-          {
-            "required": [
-              "avID"
-            ]
-          },
-          {
-            "required": [
-              "id"
-            ]
-          }
-        ]
-      },
-      "search": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "search"
-          },
-          "keyword": {
-            "type": "string",
-            "description": "Keyword to search in attribute view names"
-          },
-          "excludes": {
-            "description": "Optional AV IDs to exclude",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "action",
-          "keyword"
-        ],
-        "additionalProperties": false,
-        "description": "Search attribute views by name or primary-key values."
-      },
-      "add_rows": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "add_rows"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockIDs": {
-            "description": "Existing block IDs to add as bound rows",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "primaryKeyTexts": {
-            "description": "Plain-text primary key values to add as detached rows",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "blockID": {
-            "description": "Optional database block ID used to pin a specific database-block view context",
-            "type": "string"
-          },
-          "viewID": {
-            "description": "Optional target view ID",
-            "type": "string"
-          },
-          "groupID": {
-            "description": "Optional target group ID",
-            "type": "string"
-          },
-          "previousID": {
-            "description": "Optional previous row item ID",
-            "type": "string"
-          },
-          "ignoreDefaultFill": {
-            "description": "When true, skip view/group default value filling",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "action",
-          "avID"
-        ],
-        "additionalProperties": false,
-        "description": "Add bound block rows or detached plain-text primary-key rows to a database."
-      },
-      "remove_rows": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "remove_rows"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "description": "Registered database block ID for explicit database-block context",
-            "type": "string"
-          },
-          "srcIDs": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Bound row block/item IDs to remove"
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "srcIDs"
-        ],
-        "additionalProperties": false,
-        "description": "Remove rows from a database."
-      },
-      "add_column": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "add_column"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "description": "Registered database block ID for explicit database-block context",
-            "type": "string"
-          },
-          "keyID": {
-            "description": "Optional new column key ID; MCP generates one when omitted",
-            "type": "string"
-          },
-          "keyName": {
-            "type": "string",
-            "description": "New column name"
-          },
-          "keyType": {
-            "type": "string",
-            "enum": [
-              "text",
-              "number",
-              "date",
-              "select",
-              "mSelect",
-              "url",
-              "email",
-              "phone",
-              "mAsset",
-              "template",
-              "created",
-              "updated",
-              "checkbox",
-              "relation",
-              "rollup",
-              "lineNumber"
-            ],
-            "description": "Column type"
-          },
-          "keyIcon": {
-            "description": "Optional column icon",
-            "type": "string"
-          },
-          "previousKeyID": {
-            "description": "Insert after this existing column key ID",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "keyName",
-          "keyType"
-        ],
-        "additionalProperties": false,
-        "description": "Add a column to a database."
-      },
-      "remove_column": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "remove_column"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "description": "Registered database block ID for explicit database-block context",
-            "type": "string"
-          },
-          "keyID": {
-            "description": "Column key ID",
-            "type": "string"
-          },
-          "columnID": {
-            "description": "Alias of keyID",
-            "type": "string"
-          },
-          "removeRelationDest": {
-            "description": "Also remove reverse relation metadata when deleting a relation column",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "action",
-          "avID"
-        ],
-        "additionalProperties": false,
-        "description": "Remove a column from a database."
-      },
-      "set_cells": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "set_cells"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "description": "Registered database block ID for explicit database-block context",
-            "type": "string"
-          },
-          "cells": {
-            "description": "Cell updates",
-            "minItems": 1,
-            "type": "array",
-            "items": {
+            "additionalProperties": {
               "type": "object",
               "properties": {
-                "rowID": {
-                  "type": "string",
-                  "description": "Row item ID"
+                "page": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
                 },
-                "columnID": {
-                  "type": "string",
-                  "description": "Column key ID"
-                },
-                "valueType": {
-                  "type": "string",
-                  "enum": [
-                    "text",
-                    "number",
-                    "date",
-                    "checkbox",
-                    "select",
-                    "multi_select",
-                    "relation",
-                    "url",
-                    "email",
-                    "phone",
-                    "mAsset"
-                  ],
-                  "description": "Cell value type"
-                },
-                "text": {
-                  "description": "Text value for valueType=text",
-                  "type": "string"
-                },
-                "number": {
-                  "description": "Number value for valueType=number",
-                  "type": "number"
-                },
-                "numberFormat": {
-                  "description": "Optional number format such as commas, percent, USD, or CNY",
-                  "type": "string"
-                },
-                "date": {
-                  "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ]
-                },
-                "endDate": {
-                  "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ]
-                },
-                "includeTime": {
-                  "description": "When false, store the date without a time component",
-                  "type": "boolean"
-                },
-                "checked": {
-                  "description": "Checkbox state for valueType=checkbox",
-                  "type": "boolean"
-                },
-                "option": {
-                  "description": "Selected option label for valueType=select",
-                  "type": "string"
-                },
-                "options": {
-                  "description": "Selected option labels for valueType=multi_select",
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "relationBlockIDs": {
-                  "description": "Related block IDs for valueType=relation",
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "url": {
-                  "description": "URL value for valueType=url",
-                  "type": "string"
-                },
-                "email": {
-                  "description": "Email value for valueType=email",
-                  "type": "string"
-                },
-                "phone": {
-                  "description": "Phone value for valueType=phone",
-                  "type": "string"
-                },
-                "assets": {
-                  "description": "Asset entries for valueType=mAsset",
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "image",
-                          "file"
-                        ],
-                        "description": "Asset entry type"
-                      },
-                      "content": {
-                        "type": "string",
-                        "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
-                      },
-                      "name": {
-                        "description": "Optional display name",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "content"
-                    ],
-                    "additionalProperties": false
-                  }
+                "pageSize": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
                 }
               },
               "required": [
-                "rowID",
-                "columnID",
-                "valueType"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "items": {
-            "description": "Alias for cells",
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "rowID": {
-                  "type": "string",
-                  "description": "Row item ID"
-                },
-                "columnID": {
-                  "type": "string",
-                  "description": "Column key ID"
-                },
-                "valueType": {
-                  "type": "string",
-                  "enum": [
-                    "text",
-                    "number",
-                    "date",
-                    "checkbox",
-                    "select",
-                    "multi_select",
-                    "relation",
-                    "url",
-                    "email",
-                    "phone",
-                    "mAsset"
-                  ],
-                  "description": "Cell value type"
-                },
-                "text": {
-                  "description": "Text value for valueType=text",
-                  "type": "string"
-                },
-                "number": {
-                  "description": "Number value for valueType=number",
-                  "type": "number"
-                },
-                "numberFormat": {
-                  "description": "Optional number format such as commas, percent, USD, or CNY",
-                  "type": "string"
-                },
-                "date": {
-                  "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ]
-                },
-                "endDate": {
-                  "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ]
-                },
-                "includeTime": {
-                  "description": "When false, store the date without a time component",
-                  "type": "boolean"
-                },
-                "checked": {
-                  "description": "Checkbox state for valueType=checkbox",
-                  "type": "boolean"
-                },
-                "option": {
-                  "description": "Selected option label for valueType=select",
-                  "type": "string"
-                },
-                "options": {
-                  "description": "Selected option labels for valueType=multi_select",
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "relationBlockIDs": {
-                  "description": "Related block IDs for valueType=relation",
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "url": {
-                  "description": "URL value for valueType=url",
-                  "type": "string"
-                },
-                "email": {
-                  "description": "Email value for valueType=email",
-                  "type": "string"
-                },
-                "phone": {
-                  "description": "Phone value for valueType=phone",
-                  "type": "string"
-                },
-                "assets": {
-                  "description": "Asset entries for valueType=mAsset",
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "image",
-                          "file"
-                        ],
-                        "description": "Asset entry type"
-                      },
-                      "content": {
-                        "type": "string",
-                        "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
-                      },
-                      "name": {
-                        "description": "Optional display name",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "content"
-                    ],
-                    "additionalProperties": false
-                  }
-                }
-              },
-              "required": [
-                "rowID",
-                "columnID",
-                "valueType"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "rowID": {
-            "description": "Single-cell row item ID",
-            "type": "string"
-          },
-          "columnID": {
-            "description": "Single-cell column key ID",
-            "type": "string"
-          },
-          "valueType": {
-            "type": "string",
-            "enum": [
-              "text",
-              "number",
-              "date",
-              "checkbox",
-              "select",
-              "multi_select",
-              "relation",
-              "url",
-              "email",
-              "phone",
-              "mAsset"
-            ],
-            "description": "Cell value type"
-          },
-          "text": {
-            "description": "Text value for valueType=text",
-            "type": "string"
-          },
-          "number": {
-            "description": "Number value for valueType=number",
-            "type": "number"
-          },
-          "numberFormat": {
-            "description": "Optional number format such as commas, percent, USD, or CNY",
-            "type": "string"
-          },
-          "date": {
-            "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              }
-            ]
-          },
-          "endDate": {
-            "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              }
-            ]
-          },
-          "includeTime": {
-            "description": "When false, store the date without a time component",
-            "type": "boolean"
-          },
-          "checked": {
-            "description": "Checkbox state for valueType=checkbox",
-            "type": "boolean"
-          },
-          "option": {
-            "description": "Selected option label for valueType=select",
-            "type": "string"
-          },
-          "options": {
-            "description": "Selected option labels for valueType=multi_select",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "relationBlockIDs": {
-            "description": "Related block IDs for valueType=relation",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "url": {
-            "description": "URL value for valueType=url",
-            "type": "string"
-          },
-          "email": {
-            "description": "Email value for valueType=email",
-            "type": "string"
-          },
-          "phone": {
-            "description": "Phone value for valueType=phone",
-            "type": "string"
-          },
-          "assets": {
-            "description": "Asset entries for valueType=mAsset",
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "image",
-                    "file"
-                  ],
-                  "description": "Asset entry type"
-                },
-                "content": {
-                  "type": "string",
-                  "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
-                },
-                "name": {
-                  "description": "Optional display name",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "type",
-                "content"
+                "page"
               ],
               "additionalProperties": false
             }
@@ -2960,172 +2329,43 @@
           "avID"
         ],
         "additionalProperties": false,
-        "description": "Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write."
+        "description": "Query paginated database rows or lightweight primary keys; never creates a database."
       },
-      "set_column_options": {
+      "create": {
         "type": "object",
         "properties": {
           "action": {
             "type": "string",
-            "const": "set_column_options"
+            "const": "create"
           },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "description": "Registered database block ID for exact context, permission resolution, and UI refresh",
-            "type": "string"
-          },
-          "keyID": {
-            "type": "string",
-            "description": "Select or multi-select column key ID"
-          },
-          "options": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Option label; empty option names are rejected before the transaction."
-                },
-                "color": {
-                  "description": "Optional SiYuan option color token",
-                  "type": "string"
-                },
-                "desc": {
-                  "description": "Optional option description",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": false
-            },
-            "description": "Complete desired option list, which may be empty. This is not a patch: omit no existing option unless its removal is intentional."
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "keyID",
-          "options"
-        ],
-        "additionalProperties": false,
-        "description": "Replace one select or multi-select column's complete option list. Read the current options first: omitted entries are not preserved."
-      },
-      "duplicate_rows": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "duplicate_rows"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "description": "Registered database block ID for exact context, permission resolution, and UI refresh",
-            "type": "string"
-          },
-          "sourceRowIDs": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Canonical AV row item IDs to copy, in source order. Do not pass cell value IDs or bound source block IDs."
-          },
-          "previousID": {
-            "description": "Optional row item ID after which the copied rows are inserted; omit to let SiYuan append them",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "sourceRowIDs"
-        ],
-        "additionalProperties": false,
-        "description": "Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations."
-      },
-      "duplicate": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "duplicate"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Source attribute view ID"
-          },
-          "blockID": {
-            "description": "Optional source database block ID used as exact context and default insertion target",
-            "type": "string"
-          },
-          "previousID": {
-            "description": "Optional block ID to insert the duplicated mirror database block after",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action",
-          "avID"
-        ],
-        "additionalProperties": false,
-        "description": "Duplicate an attribute view using SiYuan copy-as-mirror semantics; previousID overrides the insertion target."
-      },
-      "get_primary_key_values": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "get_primary_key_values"
-          },
-          "avID": {
-            "type": "string",
-            "description": "Attribute view ID"
-          },
-          "keyword": {
-            "description": "Optional keyword filter for primary key values",
-            "type": "string"
-          },
-          "page": {
-            "description": "Page number (1-based), default 1",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pageSize": {
-            "description": "Rows per page, default 16",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": [
-          "action",
-          "avID"
-        ],
-        "additionalProperties": false,
-        "description": "Get primary key values for an attribute view."
-      },
-      "add_view": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "add_view"
-          },
-          "avID": {
+          "parentID": {
             "type": "string",
             "minLength": 1,
-            "description": "Attribute view ID"
+            "description": "Parent block/document for the new database carrier"
+          },
+          "avID": {
+            "description": "Optional new AV ID; an existing AV is rejected for a new request",
+            "type": "string",
+            "pattern": "^\\d{14}-[a-z0-9]{7}$"
+          }
+        },
+        "required": [
+          "action",
+          "parentID"
+        ],
+        "additionalProperties": false,
+        "description": "Create a new database and carrier under parentID; replay preserves IDs and creation progress."
+      },
+      "update_view": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "update_view"
+          },
+          "avID": {
+            "type": "string",
+            "minLength": 1
           },
           "blockID": {
             "type": "string",
@@ -3135,58 +2375,10 @@
           "viewID": {
             "type": "string",
             "minLength": 1,
-            "description": "New view ID. Supply a stable ID before strict preflight; MCP never invents one after preflight."
-          },
-          "layout": {
-            "type": "string",
-            "enum": [
-              "table",
-              "gallery",
-              "kanban"
-            ],
-            "description": "View layout type"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Name for the new view. Creation and naming are sent in one native transaction and read back together."
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "blockID",
-          "viewID",
-          "layout",
-          "name"
-        ],
-        "additionalProperties": false,
-        "description": "Add one reviewed table, gallery, or kanban view through a verified carrier."
-      },
-      "set_filters": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "set_filters"
-          },
-          "avID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
-          },
-          "viewID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The exact view currently selected by blockID; MCP rejects kernel fallback."
+            "description": "Attribute-view view ID"
           },
           "filters": {
+            "description": "Complete replacement; [] clears filters",
             "type": "array",
             "items": {
               "type": "object",
@@ -4801,59 +3993,24 @@
                 }
               },
               "additionalProperties": false
-            },
-            "description": "Complete replacement filter tree. [] clears filters and reads back as the semantic empty AND root. Group nesting is capped at 4 levels."
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "blockID",
-          "viewID",
-          "filters"
-        ],
-        "additionalProperties": false,
-        "description": "Replace the complete filter array on the exact view selected by a verified carrier."
-      },
-      "set_sorts": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "set_sorts"
-          },
-          "avID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
-          },
-          "viewID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The exact view currently selected by blockID; MCP rejects kernel fallback."
+            }
           },
           "sorts": {
+            "description": "Complete replacement; [] clears sorts",
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
                 "column": {
                   "type": "string",
-                  "minLength": 1,
-                  "description": "Column key ID"
+                  "minLength": 1
                 },
                 "order": {
                   "type": "string",
                   "enum": [
                     "ASC",
                     "DESC"
-                  ],
-                  "description": "Sort direction"
+                  ]
                 }
               },
               "required": [
@@ -4861,57 +4018,21 @@
                 "order"
               ],
               "additionalProperties": false
-            },
-            "description": "Complete replacement sort array; [] clears all sorts."
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "blockID",
-          "viewID",
-          "sorts"
-        ],
-        "additionalProperties": false,
-        "description": "Replace the complete sort array on the exact view selected by a verified carrier."
-      },
-      "set_group": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "set_group"
-          },
-          "avID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
-          },
-          "viewID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The exact view currently selected by blockID; MCP rejects kernel fallback."
+            }
           },
           "group": {
+            "description": "Complete grouping configuration; {field:\"\"} clears grouping",
             "type": "object",
             "properties": {
               "field": {
-                "type": "string",
-                "description": "Grouping key ID; empty string clears grouping"
+                "type": "string"
               },
               "method": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 6,
-                "description": "0=value, 1=numeric range, 2=relative date, 3=day, 4=week, 5=month, 6=year"
+                "maximum": 6
               },
               "range": {
-                "description": "Required by the kernel for numeric-range grouping",
                 "type": "object",
                 "properties": {
                   "numStart": {
@@ -4935,105 +4056,856 @@
               "order": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 3,
-                "description": "0=ascending, 1=descending, 2=manual, 3=select-option order"
+                "maximum": 3
               },
               "hideEmpty": {
                 "type": "boolean"
               }
             },
             "required": [
-              "field",
-              "method",
-              "order",
-              "hideEmpty"
+              "field"
             ],
             "additionalProperties": false
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "blockID",
-          "viewID",
-          "group"
-        ],
-        "additionalProperties": false,
-        "description": "Set or clear grouping on the exact view selected by a verified carrier."
-      },
-      "set_column_visibility": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "set_column_visibility"
           },
-          "avID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Attribute view ID"
+          "columnVisibility": {
+            "description": "Modify only listed columns; duplicate IDs are rejected",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "columnID": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "hidden": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "columnID",
+                "hidden"
+              ],
+              "additionalProperties": false
+            }
           },
-          "blockID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
-          },
-          "viewID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The exact view currently selected by blockID; MCP rejects kernel fallback."
-          },
-          "keyID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Column key ID in the carrier-selected view"
-          },
-          "hidden": {
-            "type": "boolean",
-            "description": "Whether the column is hidden in the carrier-selected view"
-          }
-        },
-        "required": [
-          "action",
-          "avID",
-          "blockID",
-          "viewID",
-          "keyID",
-          "hidden"
-        ],
-        "additionalProperties": false,
-        "description": "Set one column's hidden state in the exact view selected by a verified carrier."
-      },
-      "set_column_order": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "set_column_order"
-          },
-          "avID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Attribute view ID"
-          },
-          "blockID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
-          },
-          "viewID": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The exact view currently selected by blockID; MCP rejects kernel fallback."
-          },
-          "keyIDs": {
+          "columnOrder": {
+            "description": "Complete current view field order, including hidden fields",
             "minItems": 1,
             "type": "array",
             "items": {
               "type": "string",
               "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "action",
+          "avID",
+          "blockID",
+          "viewID"
+        ],
+        "additionalProperties": false,
+        "description": "Update one carrier-selected view in a single transaction; omitted configurations remain unchanged."
+      },
+      "search": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "search"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Keyword to search in attribute view names"
+          },
+          "excludes": {
+            "description": "Optional AV IDs to exclude",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "action",
+          "keyword"
+        ],
+        "additionalProperties": false,
+        "description": "Search attribute views by name or primary-key values."
+      },
+      "add_rows": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "add_rows"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockIDs": {
+            "description": "Existing block IDs to add as bound rows",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "primaryKeyTexts": {
+            "description": "Plain-text primary key values to add as detached rows",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blockID": {
+            "description": "Optional database block ID used to pin a specific database-block view context",
+            "type": "string"
+          },
+          "viewID": {
+            "description": "Optional target view ID",
+            "type": "string"
+          },
+          "groupID": {
+            "description": "Optional target group ID",
+            "type": "string"
+          },
+          "previousID": {
+            "description": "Optional previous row item ID",
+            "type": "string"
+          },
+          "ignoreDefaultFill": {
+            "description": "When true, skip view/group default value filling",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "avID"
+        ],
+        "additionalProperties": false,
+        "description": "Add bound block rows or detached plain-text primary-key rows to a database."
+      },
+      "remove_rows": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "remove_rows"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for explicit database-block context",
+            "type": "string"
+          },
+          "srcIDs": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
             },
-            "description": "Complete column key order for the current table, gallery, or kanban layout."
+            "description": "Bound row block/item IDs to remove"
+          }
+        },
+        "required": [
+          "action",
+          "avID",
+          "srcIDs"
+        ],
+        "additionalProperties": false,
+        "description": "Remove rows from a database."
+      },
+      "add_column": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "add_column"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for explicit database-block context",
+            "type": "string"
+          },
+          "keyID": {
+            "description": "Optional new column key ID; MCP generates one when omitted",
+            "type": "string"
+          },
+          "keyName": {
+            "type": "string",
+            "description": "New column name"
+          },
+          "keyType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "number",
+              "date",
+              "select",
+              "mSelect",
+              "url",
+              "email",
+              "phone",
+              "mAsset",
+              "template",
+              "created",
+              "updated",
+              "checkbox",
+              "relation",
+              "rollup",
+              "lineNumber"
+            ],
+            "description": "Column type"
+          },
+          "keyIcon": {
+            "description": "Optional column icon",
+            "type": "string"
+          },
+          "previousKeyID": {
+            "description": "Insert after this existing column key ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "avID",
+          "keyName",
+          "keyType"
+        ],
+        "additionalProperties": false,
+        "description": "Add a column to a database."
+      },
+      "remove_column": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "remove_column"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for explicit database-block context",
+            "type": "string"
+          },
+          "keyID": {
+            "description": "Column key ID",
+            "type": "string"
+          },
+          "columnID": {
+            "description": "Alias of keyID",
+            "type": "string"
+          },
+          "removeRelationDest": {
+            "description": "Also remove reverse relation metadata when deleting a relation column",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "avID"
+        ],
+        "additionalProperties": false,
+        "description": "Remove a column from a database."
+      },
+      "set_cells": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "set_cells"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for explicit database-block context",
+            "type": "string"
+          },
+          "cells": {
+            "description": "Cell updates",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rowID": {
+                  "type": "string",
+                  "description": "Row item ID"
+                },
+                "columnID": {
+                  "type": "string",
+                  "description": "Column key ID"
+                },
+                "valueType": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "number",
+                    "date",
+                    "checkbox",
+                    "select",
+                    "multi_select",
+                    "relation",
+                    "url",
+                    "email",
+                    "phone",
+                    "mAsset"
+                  ],
+                  "description": "Cell value type"
+                },
+                "text": {
+                  "description": "Text value for valueType=text",
+                  "type": "string"
+                },
+                "number": {
+                  "description": "Number value for valueType=number",
+                  "type": "number"
+                },
+                "numberFormat": {
+                  "description": "Optional number format such as commas, percent, USD, or CNY",
+                  "type": "string"
+                },
+                "date": {
+                  "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "endDate": {
+                  "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "includeTime": {
+                  "description": "When false, store the date without a time component",
+                  "type": "boolean"
+                },
+                "checked": {
+                  "description": "Checkbox state for valueType=checkbox",
+                  "type": "boolean"
+                },
+                "option": {
+                  "description": "Selected option label for valueType=select",
+                  "type": "string"
+                },
+                "options": {
+                  "description": "Selected option labels for valueType=multi_select",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "relationBlockIDs": {
+                  "description": "Related block IDs for valueType=relation",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "url": {
+                  "description": "URL value for valueType=url",
+                  "type": "string"
+                },
+                "email": {
+                  "description": "Email value for valueType=email",
+                  "type": "string"
+                },
+                "phone": {
+                  "description": "Phone value for valueType=phone",
+                  "type": "string"
+                },
+                "assets": {
+                  "description": "Asset entries for valueType=mAsset",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "image",
+                          "file"
+                        ],
+                        "description": "Asset entry type"
+                      },
+                      "content": {
+                        "type": "string",
+                        "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
+                      },
+                      "name": {
+                        "description": "Optional display name",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "content"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "rowID",
+                "columnID",
+                "valueType"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "items": {
+            "description": "Alias for cells",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rowID": {
+                  "type": "string",
+                  "description": "Row item ID"
+                },
+                "columnID": {
+                  "type": "string",
+                  "description": "Column key ID"
+                },
+                "valueType": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "number",
+                    "date",
+                    "checkbox",
+                    "select",
+                    "multi_select",
+                    "relation",
+                    "url",
+                    "email",
+                    "phone",
+                    "mAsset"
+                  ],
+                  "description": "Cell value type"
+                },
+                "text": {
+                  "description": "Text value for valueType=text",
+                  "type": "string"
+                },
+                "number": {
+                  "description": "Number value for valueType=number",
+                  "type": "number"
+                },
+                "numberFormat": {
+                  "description": "Optional number format such as commas, percent, USD, or CNY",
+                  "type": "string"
+                },
+                "date": {
+                  "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "endDate": {
+                  "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "includeTime": {
+                  "description": "When false, store the date without a time component",
+                  "type": "boolean"
+                },
+                "checked": {
+                  "description": "Checkbox state for valueType=checkbox",
+                  "type": "boolean"
+                },
+                "option": {
+                  "description": "Selected option label for valueType=select",
+                  "type": "string"
+                },
+                "options": {
+                  "description": "Selected option labels for valueType=multi_select",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "relationBlockIDs": {
+                  "description": "Related block IDs for valueType=relation",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "url": {
+                  "description": "URL value for valueType=url",
+                  "type": "string"
+                },
+                "email": {
+                  "description": "Email value for valueType=email",
+                  "type": "string"
+                },
+                "phone": {
+                  "description": "Phone value for valueType=phone",
+                  "type": "string"
+                },
+                "assets": {
+                  "description": "Asset entries for valueType=mAsset",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "image",
+                          "file"
+                        ],
+                        "description": "Asset entry type"
+                      },
+                      "content": {
+                        "type": "string",
+                        "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
+                      },
+                      "name": {
+                        "description": "Optional display name",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "content"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "rowID",
+                "columnID",
+                "valueType"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "rowID": {
+            "description": "Single-cell row item ID",
+            "type": "string"
+          },
+          "columnID": {
+            "description": "Single-cell column key ID",
+            "type": "string"
+          },
+          "valueType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "number",
+              "date",
+              "checkbox",
+              "select",
+              "multi_select",
+              "relation",
+              "url",
+              "email",
+              "phone",
+              "mAsset"
+            ],
+            "description": "Cell value type"
+          },
+          "text": {
+            "description": "Text value for valueType=text",
+            "type": "string"
+          },
+          "number": {
+            "description": "Number value for valueType=number",
+            "type": "number"
+          },
+          "numberFormat": {
+            "description": "Optional number format such as commas, percent, USD, or CNY",
+            "type": "string"
+          },
+          "date": {
+            "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "endDate": {
+            "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "includeTime": {
+            "description": "When false, store the date without a time component",
+            "type": "boolean"
+          },
+          "checked": {
+            "description": "Checkbox state for valueType=checkbox",
+            "type": "boolean"
+          },
+          "option": {
+            "description": "Selected option label for valueType=select",
+            "type": "string"
+          },
+          "options": {
+            "description": "Selected option labels for valueType=multi_select",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relationBlockIDs": {
+            "description": "Related block IDs for valueType=relation",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "description": "URL value for valueType=url",
+            "type": "string"
+          },
+          "email": {
+            "description": "Email value for valueType=email",
+            "type": "string"
+          },
+          "phone": {
+            "description": "Phone value for valueType=phone",
+            "type": "string"
+          },
+          "assets": {
+            "description": "Asset entries for valueType=mAsset",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "image",
+                    "file"
+                  ],
+                  "description": "Asset entry type"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
+                },
+                "name": {
+                  "description": "Optional display name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "action",
+          "avID"
+        ],
+        "additionalProperties": false,
+        "description": "Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write."
+      },
+      "set_column_options": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "set_column_options"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for exact context, permission resolution, and UI refresh",
+            "type": "string"
+          },
+          "keyID": {
+            "type": "string",
+            "description": "Select or multi-select column key ID"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Option label; empty option names are rejected before the transaction."
+                },
+                "color": {
+                  "description": "Optional SiYuan option color token",
+                  "type": "string"
+                },
+                "desc": {
+                  "description": "Optional option description",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Complete desired option list, which may be empty. This is not a patch: omit no existing option unless its removal is intentional."
+          }
+        },
+        "required": [
+          "action",
+          "avID",
+          "keyID",
+          "options"
+        ],
+        "additionalProperties": false,
+        "description": "Replace one select or multi-select column's complete option list. Read the current options first: omitted entries are not preserved."
+      },
+      "duplicate_rows": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "duplicate_rows"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for exact context, permission resolution, and UI refresh",
+            "type": "string"
+          },
+          "sourceRowIDs": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Canonical AV row item IDs to copy, in source order. Do not pass cell value IDs or bound source block IDs."
+          },
+          "previousID": {
+            "description": "Optional row item ID after which the copied rows are inserted; omit to let SiYuan append them",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "avID",
+          "sourceRowIDs"
+        ],
+        "additionalProperties": false,
+        "description": "Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations."
+      },
+      "duplicate": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "duplicate"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Source attribute view ID"
+          },
+          "blockID": {
+            "description": "Optional source database block ID used as exact context and default insertion target",
+            "type": "string"
+          },
+          "previousID": {
+            "description": "Optional block ID to insert the duplicated mirror database block after",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "avID"
+        ],
+        "additionalProperties": false,
+        "description": "Duplicate an attribute view using SiYuan copy-as-mirror semantics; previousID overrides the insertion target."
+      },
+      "add_view": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "add_view"
+          },
+          "avID": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
+          },
+          "viewID": {
+            "type": "string",
+            "minLength": 1,
+            "description": "New view ID. Supply a stable ID before strict preflight; MCP never invents one after preflight."
+          },
+          "layout": {
+            "type": "string",
+            "enum": [
+              "table",
+              "gallery",
+              "kanban"
+            ],
+            "description": "View layout type"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Name for the new view. Creation and naming are sent in one native transaction and read back together."
           }
         },
         "required": [
@@ -5041,10 +4913,11 @@
           "avID",
           "blockID",
           "viewID",
-          "keyIDs"
+          "layout",
+          "name"
         ],
         "additionalProperties": false,
-        "description": "Replace the complete column order in the exact view selected by a verified carrier."
+        "description": "Add one reviewed table, gallery, or kanban view through a verified carrier."
       },
       "set_new_item_templates": {
         "type": "object",

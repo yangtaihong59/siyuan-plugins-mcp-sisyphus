@@ -25,15 +25,15 @@
 
 ## 数据库 ID 与字段位置
 
-`databaseContext` 返回 `avID`、已明确的 `blockID`/`viewID`、列/行字段在现有响应中的位置及 `idUsage`。列类型与选项保留在 `av.keyValues[].key` 或 `keys` 中，避免再复制完整结构。
+`databaseContext` 返回 `avID`、已明确的 `blockID`/`viewID`、列/行字段在现有响应中的位置及 `idUsage`。列类型与选项保留在 `columns`（`get`）或 `av.keyValues[].key`（`get(scope="raw")`） 中，避免再复制完整结构。
 
 - `avID` 标识数据库；`blockID` 标识数据库承载块。镜像可能共用同一个数据库，未指定精确承载块时不猜选。
 - `resolvedRows[].rowID` 是数据库行 ID；`sourceBlockID` 是绑定笔记块；单元格值 ID 不能替代它们。独立行没有源块。
 - 列的 `key.id` 在 `set_cells` 中使用参数名 `columnID`，在列操作中按相应帮助使用 `keyID`。
-- `get_primary_key_values` 的 `rows` 是 `{key, values}`，`blockIDs` 是数据库承载块列表，不能按位置与行配对。默认每页 16 条；`resolvedRows` 提供行映射，绑定行按源块权限过滤。
+- `query(mode="primary_keys")` 的 `rows` 是 `{key, values}`，`blockIDs` 是数据库承载块列表，不能按位置与行配对。默认每页 16 条；`resolvedRows` 提供行映射，绑定行按源块权限过滤。
 
 ## 覆盖范围
 
-当前覆盖 `fs.read`、`document.get_doc`、`block.get_kramdown/batch_kramdown`、`search.fulltext/semantic/query_sql`、`av.get/render/get_attribute_view_keys/get_primary_key_values`。MCP 和 CLI 使用相同的返回约定。其他读取 action 暂不承诺该字段。
+当前覆盖 `fs.read`、`document.get_doc`、`block.get_kramdown/batch_kramdown`、`search.fulltext/semantic/query_sql`、`av.get/query`。MCP 和 CLI 使用相同的返回约定。其他读取 action 暂不承诺该字段。
 
 全文搜索保留内核整页结果。权限或父级/标签过滤后，匹配总数未知时返回 `total=null`；`pageCount` 与 `hasNextPage` 仍用于继续扫描内核页，避免跳过后续命中。

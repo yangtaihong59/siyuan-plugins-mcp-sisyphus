@@ -181,7 +181,7 @@ ZIP／文档提取的验收是传输、保存和清理验证，不算严格 muta
 | 追加日记 `block.add_to_daily_note` | X | 日常追加日记保留；先预检再提交，同 requestId 重放。不能把超时当作未写入。 |
 | 文档信息批量查询 `block.docs_info` | X | 按 id／ids 读取；保持输入顺序分批调用 |
 | 数据库信息 `av.get` | X | 日常数据库信息保留；大范围/多页读取可能超预算，需要缩小范围或分页。 |
-| 渲染/可选创建数据库 `av.render` | X | 读取大表受预算；创建仍走严格预检；按 view/page/pageSize 缩小读取。 |
+| 渲染/可选创建数据库 `av.query` | X | 读取大表受预算；创建仍走严格预检；按 view/page/pageSize 缩小读取。 |
 | 属性键 `av.get_attribute_view_keys` | X | 日常属性键保留；大范围/多页读取可能超预算，需要缩小范围或分页。 |
 | 过滤排序信息 `av.get_attribute_view_filter_sort` | X | 日常过滤排序信息保留；大范围/多页读取可能超预算，需要缩小范围或分页。 |
 | 搜索数据库 `av.search` | X | 日常搜索数据库保留；大范围/多页读取可能超预算，需要缩小范围或分页。 |
@@ -301,7 +301,7 @@ ZIP／文档提取的验收是传输、保存和清理验证，不算严格 muta
 | `block.set_fold_state` | state | 未验收 | 未建立该 action 的独立容器验收场景 |
 | `block.transfer_references` | manifest | 未验收 | 未建立该 action 的独立容器验收场景 |
 | `block.set_attrs` | state | 未验收 | 未建立该 action 的独立容器验收场景 |
-| `av.render` | none | 未验收 | 未建立该 action 的独立容器验收场景 |
+| `av.query` | none | 未验收 | 未建立该 action 的独立容器验收场景 |
 | `av.add_rows` | none | 未验收 | 未建立该 action 的独立容器验收场景 |
 | `av.remove_rows` | manifest | 未验收 | 未建立该 action 的独立容器验收场景 |
 | `av.add_column` | state | 未验收 | 未建立该 action 的独立容器验收场景 |
@@ -341,6 +341,6 @@ ZIP／文档提取的验收是传输、保存和清理验证，不算严格 muta
 | `flashcard.remove_card` | state | 未验收 | 未建立该 action 的独立容器验收场景 |
 | `mascot.buy` | state | 未验收 | 未执行消耗余额的购买 |
 
-条件分支：`fs.write`、`file.create_template` 新建无需状态哈希，覆盖需要；`av.render` 仅 `createIfNotExist=true` 修改；`document.ensure_link_targets` 的 resolve／reuse／dryRun 为只读。未列出的分支不视为已覆盖。
+条件分支：`fs.write`、`file.create_template` 新建无需状态哈希，覆盖需要；`av.query` 仅 `createIfNotExist=true` 修改；`document.ensure_link_targets` 的 resolve／reuse／dryRun 为只读。未列出的分支不视为已覆盖。
 
 </details>

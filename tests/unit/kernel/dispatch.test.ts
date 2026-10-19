@@ -69,6 +69,14 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('kernel shared dispatch', () => {
+    it('rejects unknown AV config versions even after warming the config cache', async () => {
+        expect((await rpc('tools/list')).result.tools.length).toBeGreaterThan(0);
+        (config as any).avActionsVersion = 99;
+        expect(JSON.stringify(await rpc('tools/list'))).toContain('Unsupported avActionsVersion');
+        expect(JSON.stringify(await rpc('tools/call', { name: 'av', arguments: { action: 'get', avID: 'test' } }))).toContain('Unsupported avActionsVersion');
+        config.avActionsVersion = 2;
+        expect((await rpc('tools/list')).result.tools.length).toBeGreaterThan(0);
+    });
     it('retains rules, negotiates only supported protocol, and serves action help', async () => {
         config.userRulesText = '遵守测试规则';
         const init = (await rpc('initialize', { protocolVersion: '2026-07-28' })).result;

@@ -1,92 +1,59 @@
 import { describe, expect, it, vi } from 'vitest';
-import { normalizeAvIdArgs, AV_ID_ALIAS_ACTIONS } from '@/core/argument-aliases';
-import { WriteSafetyLedger } from '@/core/write-safety-ledger';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { AV_ACTIONS, buildDefaultToolConfig, normalizeToolConfig, loadToolConfigFromApiFileWithStatus, saveToolConfigToApiFile } from '@/core/config';
 import { AV_VARIANTS, callAvTool } from '@/tools/av';
-import { buildDefaultToolConfig } from '@/core/config';
-import { parseResult } from '../../helpers/parse-result';
 
-const config = buildDefaultToolConfig();
-describe('AV ID contract', () => {
-    it.each(AV_ID_ALIAS_ACTIONS)('%s accepts only unambiguous legacy names', (action) => {
-        const canonical = { action, avID: 'av-1' };
-        expect(normalizeAvIdArgs({ action, id: 'av-1' })).toEqual(canonical);
-        expect(normalizeAvIdArgs({ ...canonical, id: 'av-1' })).toEqual(canonical);
-        expect(() => normalizeAvIdArgs({ ...canonical, id: 'av-2' })).toThrow('Conflicting');
-        const variant = AV_VARIANTS.find(v => v.action === action)!;
-        expect(variant.schema.properties.avID.type).toBe('string');
-        expect(variant.schema.properties.id.deprecated).toBe(true);
-        expect(variant.schema.required).not.toContain('id');
-    });
-
-    it('does not rewrite nested entity IDs or unrelated actions', () => {
-        const args = { action: 'set_new_item_templates', avID: 'a', templates: [{ id: 'template' }] };
-        expect(normalizeAvIdArgs(args)).toEqual(args);
-    });
-
-    it('rejects conflicts before ledger access', async () => {
-        const client = { readFile: vi.fn(), writeFile: vi.fn() } as any;
-        const execute = vi.fn();
-        const result = await new WriteSafetyCoordinator(client).run({ client, permMgr: {} as any,
-            category: 'av', action: 'render', args: { action: 'render', id: 'a', avID: 'b', createIfNotExist: true, validateOnly: true },
-            strictMode: true, execute });
-        expect(result.isError).toBe(true);
-        expect(client.readFile).not.toHaveBeenCalled();
-        expect(execute).not.toHaveBeenCalled();
-    });
-
-    it('issues one canonical digest and warns during legacy preflight', async () => {
-        let saved = JSON.stringify({ version: 1, entries: [] });
-        const client = { readFile: vi.fn(async () => saved), writeFile: vi.fn(async (_p, content) => { saved = content; }) } as any;
-        const coordinator = new WriteSafetyCoordinator(client);
-        const result = parseResult(await coordinator.run({ client, permMgr: {} as any,
-            category: 'av', action: 'render', args: { action: 'render', id: 'a', blockID: 'b', createIfNotExist: true, validateOnly: true },
-            strictMode: true, execute: vi.fn() }));
-        expect(result.warnings).toEqual([expect.objectContaining({ code: 'deprecated_parameter', replacement: 'avID' })]);
-        const ledger = new WriteSafetyLedger(client);
-        await expect(ledger.inspect(result.requestId, 'av', 'render', { action: 'render', avID: 'a', blockID: 'b', createIfNotExist: true })).resolves.toHaveProperty('argsHash');
-    });
-
-    it.each(['id', 'both'])('preserves old persisted render results: %s', async (shape) => {
-        let saved = JSON.stringify({ version: 1, entries: [] });
-        const client = { readFile: async () => saved, writeFile: async (_p, content) => { saved = content; } } as any;
-        const oldArgs = { action: 'render', id: 'a', ...(shape === 'both' ? { avID: 'a' } : {}), blockID: 'b', createIfNotExist: true };
-        const old = new WriteSafetyLedger(client);
-        const { requestId } = await old.issue('av', 'render', oldArgs);
-        const { argsHash } = await old.inspect(requestId, 'av', 'render', oldArgs);
-        await old.record({ requestId, tool: 'av', action: 'render', argsHash, targetIds: ['a'], state: 'committed', result: { avID: 'a' } });
-        const restarted = new WriteSafetyLedger(client);
-        const args = { action: 'render', avID: 'a', blockID: 'b', createIfNotExist: true };
-        expect((await restarted.inspect(requestId, 'av', 'render', args)).entry?.result).toEqual({ avID: 'a' });
-        await expect(restarted.inspect(requestId, 'av', 'render', { ...args, blockID: 'different' })).rejects.toMatchObject({ code: 'idempotency_conflict' });
-    });
-
-    it('rejects a successful render response when the AV cannot be read back', async () => {
-        let saved = JSON.stringify({ version: 1, entries: [] });
-        const client = { readFile: async () => saved, writeFile: async (_p, content) => { saved = content; },
-            requestRead: vi.fn(async () => ({ av: null })) } as any;
-        const coordinator = new WriteSafetyCoordinator(client);
-        const args = { action: 'render', blockID: 'parent', createIfNotExist: true };
-        const execute = vi.fn(async () => ({ content: [{ type: 'text' as const, text: JSON.stringify({ avID: 'created-av', blockID: 'carrier' }) }] }));
-        const execution = { client, permMgr: {} as any, category: 'av' as const, action: 'render', args, strictMode: true, execute };
-        const pre = parseResult(await coordinator.run({ ...execution, args: { ...args, validateOnly: true } }));
-        const result = parseResult(await coordinator.run({ ...execution, args: { ...args, requestId: pre.requestId } }));
-        expect(result.error.code).toBe('readback_mismatch');
-        expect(client.requestRead).toHaveBeenCalledWith('/api/av/getAttributeView', { id: 'created-av' });
-        await coordinator.run({ ...execution, args: { ...args, requestId: pre.requestId } });
-        expect(execute).toHaveBeenCalledTimes(1);
-    });
-
-    it('generates canonical, complete help examples', async () => {
-        for (const action of AV_ID_ALIAS_ACTIONS.filter(a => a !== 'render')) {
-            const result = parseResult(await callAvTool({} as any, { action: 'help', topic: action }, config.av, {} as any));
-            expect(result.example.avID).toBeTruthy();
-            expect(result.example).not.toHaveProperty('id');
+describe('AV v2 contract and explicit configuration migration', () => {
+    it('exposes only the new read/create/view entrypoints', async () => {
+        for (const action of ['render', 'get_attribute_view_keys', 'get_attribute_view_filter_sort', 'get_primary_key_values', 'set_filters', 'set_sorts', 'set_group', 'set_column_visibility', 'set_column_order']) {
+            expect(AV_ACTIONS).not.toContain(action);
+            expect((await callAvTool({} as any, { action }, buildDefaultToolConfig().av, {} as any)).isError).toBe(true);
+        }
+        for (const action of ['get', 'query', 'create', 'update_view']) {
+            const variant = AV_VARIANTS.find(item => item.action === action)!;
+            expect(variant.schema.properties.id).toBeUndefined();
+            expect(() => variant.validate({ action, id: 'old-id' })).toThrow();
         }
     });
 
-    it('returns an actionable canonical missing-ID hint', async () => {
-        const result = parseResult(await callAvTool({} as any, { action: 'get' }, config.av, {} as any));
-        expect(JSON.stringify(result)).toContain('avID');
+    it.each([undefined, 1])('migrates v%s get:true plus disabled keys to get:false before defaults', version => {
+        const result = normalizeToolConfig({ avActionsVersion: version, av: { enabled: true, actions: { get: true, get_attribute_view_keys: false } } });
+        expect(result.av.actions.get).toBe(false);
+        expect(result.avActionsVersion).toBe(2);
+        expect(result.av.actions).not.toHaveProperty('get_attribute_view_keys');
+        expect(normalizeToolConfig(result)).toEqual(result);
+    });
+    it.each([
+        [{ render: false }, ['create', 'query']],
+        [{ get_primary_key_values: false, render: true }, ['query']],
+        [{ set_filters: true, set_column_order: false }, ['update_view']],
+        [{ get: false, get_attribute_view_filter_sort: true }, ['get']],
+    ])('conservatively merges old sources %j', (actions, disabled) => {
+        const result = normalizeToolConfig({ av: { actions } });
+        for (const action of disabled) expect(result.av.actions[action]).toBe(false);
+    });
+    it('ignores unversioned new flags and honors versioned new flags', () => {
+        expect(normalizeToolConfig({ av: { actions: { render: false, query: true } } }).av.actions.query).toBe(false);
+        expect(normalizeToolConfig({ avActionsVersion: 2, av: { actions: { get: true, get_attribute_view_keys: false, query: true, render: false } } }).av.actions).toMatchObject({ get: true, query: true });
+    });
+    it('uses defaults only when all source flags are absent and preserves category disable', () => {
+        expect(normalizeToolConfig({}).av).toEqual(buildDefaultToolConfig().av);
+        expect(normalizeToolConfig({ av: { enabled: false } }).av.enabled).toBe(false);
+    });
+    it('fails closed for unknown versions and does not write on read', async () => {
+        const client = { readFile: vi.fn(async () => '{"avActionsVersion":99}'), writeFile: vi.fn() } as any;
+        expect(() => normalizeToolConfig({ avActionsVersion: 99 })).toThrow('Unsupported');
+        const result = await loadToolConfigFromApiFileWithStatus(client);
+        expect(result.ok).toBe(false);
+        expect(result.config.av.enabled).toBe(false);
+        expect(client.writeFile).not.toHaveBeenCalled();
+    });
+    it('persists versioned normalized settings and survives reload', async () => {
+        let stored = JSON.stringify({ av: { actions: { get: true, get_attribute_view_keys: false } } });
+        const client = { readFile: async () => stored, writeFile: vi.fn(async (_path, content) => { stored = content; }) } as any;
+        const before = await loadToolConfigFromApiFileWithStatus(client);
+        expect(client.writeFile).not.toHaveBeenCalled();
+        await saveToolConfigToApiFile(client, before.config);
+        expect(JSON.parse(stored).avActionsVersion).toBe(2);
+        expect((await loadToolConfigFromApiFileWithStatus(client)).config).toEqual(before.config);
     });
 });
