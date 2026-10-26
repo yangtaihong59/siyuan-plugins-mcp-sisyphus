@@ -35,48 +35,11 @@ pnpm build  # 生产构建成功
 /Applications/SiYuan.app/Contents/MacOS/SiYuan --remote-debugging-port=9222 # 启动思源
 
 ```
-### 项目结构（基于 Vite + Svelte）
-```
-src/
-├── index.ts          # 插件入口
-├── mcp/
-│   └── server.ts     # MCP服务器入口
-├── cli/              # CLI 源码
-│   ├── index.ts      # CLI 入口
-│   ├── dispatch.ts   # 命令派发
-│   ├── args.ts       # 参数解析
-│   ├── flag-mapper.ts
-│   ├── render.ts
-│   ├── list-help.ts
-│   ├── config.ts
-│   └── init.ts
-├── components/       # Svelte 组件
-├── libs/            # 工具库
-├── api/             # API 封装
-├── tools/           # 10 个聚合工具
-│   ├── index.ts     # 工具 barrel export
-│   ├── internal/    # 工具层共享基础设施（defineTool/shared/context/ui-refresh 等）
-│   ├── notebook/    # 每个工具目录为 index.ts + handlers.ts
-│   ├── document/
-│   ├── block/
-│   ├── av/
-│   ├── search/
-│   ├── file/
-│   ├── system/
-│   ├── flashcard/
-│   ├── tag/
-│   └── mascot/
-├── setting/         # 设置面板
-├── types/           # 类型定义
-└── ...
-
-cli/                # 独立 npm 子包（siyuan-sisyphus）
-dist/               # 构建输出（自动生成）
-dev/                # 开发模式输出（运行 pnpm dev 时）
-tests/              # 测试套件（unit / integration / smoke）
-docs/               # VitePress 文档站点
-skills/             # Kimi CLI skills
-```
+### 项目结构
+完整且准确的目录说明、构建 target 与“已知结构债”见 `AGENTS.md`（唯一维护处，本文件不再重复）。要点：
+- 14 个聚合工具位于 `src/tools/<tool>/`（以 `src/tools/index.ts` 与 `src/core/config.ts` 的 `TOOL_CATEGORIES` 为准）
+- MCP Server 入口 `src/core/server.ts`；内核托管端点 `src/kernel/`；MCP Apps 页面 `src/mcp-apps/`
+- UI 统一在 `src/ui/`；跨入口纯函数在 `src/shared/`
 
 ### 常用开发命令
 ```bash
@@ -99,9 +62,12 @@ pnpm make-link        # 创建开发链接到 SiYuan 插件目录
 
 ### 重要配置项
 - **输出格式**：CommonJS (CJS)
-- **多入口编译**：
-  - `src/index.ts` → `dist/index.js`
-  - `src/core/server.ts` → `dist/mcp-server.cjs`
+- **多入口编译**（`BUILD_TARGET`）：
+  - `renderer`：`src/index.ts` → `dist/index.js`
+  - `server`：`src/core/server.ts` → `dist/mcp-server.cjs`
+  - `kernel`：`src/kernel/index.ts` → `dist/kernel.js`
+  - `mcp-app`：`src/mcp-apps/index.html` → `.mcp-app-dist/index.html`
+  - `cli`：`src/cli/index.ts` → `cli/dist/cli.cjs`
 - **路径别名**：`@/*` 映射到 `src/*`
 - **自动打包**：每次生产构建自动生成 `package.zip`
 
@@ -111,6 +77,7 @@ pnpm make-link        # 创建开发链接到 SiYuan 插件目录
 3. MCP 服务器代码在 `src/core/` 下，编译产物为 `dist/mcp-server.cjs`
 4. 注意需要兼容远程场景，任何读写操作都必须经过 SiYuan API，不能直接访问本地文件系统
 5. 工具实现统一放在 `src/tools/<tool>/`；工具层共享代码放在 `src/tools/internal/`，跨工具 helper 放在 `src/tools/internal/helpers/`
+6. 提交前运行 `pnpm typecheck && pnpm test`；CI（`.github/workflows/ci.yml`）会在 push/PR 到 main、dev 时执行同样的门禁
 
 ## 独立 CLI 子包（2026-04-18 首次发布，2026-04-18 重构为直接操作模式）
 

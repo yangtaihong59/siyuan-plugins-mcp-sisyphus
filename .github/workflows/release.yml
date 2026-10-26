@@ -47,6 +47,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      # 发布前门禁：类型检查 + 测试
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
       # Build for production, 这一步会生成一个 package.zip
       - name: Build for production
         run: pnpm build

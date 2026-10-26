@@ -421,7 +421,7 @@ it('uses the host URL authority for HTTP and SSE without Host or forwarded-host 
         url: { host, path: '/mcp' }, request: { method: 'GET', headers: {
             'Mcp-Session-Id': [sid], ...(origin ? { Origin: [origin] } : {}),
             'X-Forwarded-Host': ['evil.example'],
-        } }, port: { send: vi.fn(), close: vi.fn() },
+        } }, port: { send: vi.fn(), close: vi.fn(), onclose: undefined as undefined | (() => void) },
     });
     const sse = (globalThis as any).siyuan.server.private.es.handler;
     for (const origin of [undefined, 'http://127.0.0.1:16807', 'https://allowed.example']) {

@@ -16,15 +16,15 @@ import {
 export interface ToolTextContent {
     type: 'text';
     text: string;
-    data?: never;
-    mimeType?: never;
+    data?: undefined;
+    mimeType?: undefined;
 }
 
 export interface ToolImageContent {
     type: 'image';
     data: string;
     mimeType: string;
-    text?: never;
+    text?: undefined;
     _meta?: Record<string, unknown>;
 }
 

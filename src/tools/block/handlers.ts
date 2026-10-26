@@ -85,7 +85,7 @@ function createDatabaseBlockHint(actionName: string): Record<string, unknown> {
     };
 }
 
-function withReferenceSemanticsHints(payload: Record<string, unknown>, data: string): Record<string, unknown> {
+function withReferenceSemanticsHints<T extends Record<string, unknown>>(payload: T, data: string): T & Record<string, unknown> {
     return {
         ...payload,
         ...(hasSiyuanBlockLinks(data) ? createSiyuanBlockLinkHint() : {}),
@@ -288,13 +288,13 @@ async function normalizeBatchInsertBlocks(
         previousID?: string;
         parentID?: string;
     },
-): Array<{
+): Promise<Array<{
     dataType: 'markdown' | 'dom';
     data: string;
     nextID?: string;
     previousID?: string;
     parentID?: string;
-}> {
+}>> {
     return Promise.all(blocks.map(async (block) => ({
         ...block,
         data: await normalizeWriteData(client, block.dataType, block.data, 'block.insert'),
@@ -319,11 +319,11 @@ async function normalizeBatchUpdateItems(
         dataType: 'markdown' | 'dom';
         data: string;
     }>,
-): Array<{
+): Promise<Array<{
     id: string;
     dataType: 'markdown' | 'dom';
     data: string;
-}> {
+}>> {
     return Promise.all(items.map(async (item) => ({
         ...item,
         data: await normalizeWriteData(client, item.dataType, item.data, 'block.update'),

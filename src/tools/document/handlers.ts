@@ -48,6 +48,7 @@ import {
     ensurePermissionForDocumentId,
     ensurePermissionForNotebook,
     escapeSqlString,
+    extractDocumentId,
     listChildDocumentsByPath,
     resolveMoveTargetNotebook,
     resolveNotebookForPath,

@@ -52,7 +52,7 @@ export function isPathWithinScope(pathValue: string, scopePath: string): boolean
     return normalizedPath === normalizedScope || normalizedPath.startsWith(`${normalizedScope}/`);
 }
 
-function extractDocumentId(pathValue: string): string {
+export function extractDocumentId(pathValue: string): string {
     const segment = normalizePath(pathValue).split('/').filter(Boolean).at(-1) ?? '';
     return segment.endsWith('.sy') ? segment.slice(0, -3) : segment;
 }

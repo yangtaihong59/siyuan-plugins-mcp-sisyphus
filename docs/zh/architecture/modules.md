@@ -46,7 +46,6 @@ src/
 │   │   ├── validation.ts     # 参数校验辅助
 │   │   ├── ui-refresh.ts     # 触发思源 UI 刷新
 │   │   ├── help-render.ts    # help action 输出渲染
-│   │   ├── help-router.ts    # help 路由分发
 │   │   └── helpers/          # 跨工具 helper，如 notebookName 补全
 │   ├── notebook/             # notebook 工具
 │   │   ├── index.ts          # variants + list/call 导出

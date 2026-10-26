@@ -348,7 +348,7 @@ async function clearAnalyticsDataUnlocked(client: SiYuanClient): Promise<void> {
     }
 }
 
-export function estimateResultSizeHint(content: Array<{ type: string; text?: string }> | undefined): string | undefined {
+export function estimateResultSizeHint(content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> | undefined): string | undefined {
     if (!content || content.length === 0) return '0';
     const totalChars = content.reduce((sum, item) => sum + (item.type === 'text' ? item.text?.length ?? 0 : 0), 0);
     if (totalChars <= 200) return '0-200';

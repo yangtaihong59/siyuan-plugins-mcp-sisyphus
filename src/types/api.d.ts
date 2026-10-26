@@ -538,6 +538,7 @@ export type {
     IReqCloseNotebook,
     IReqCreateDocWithMd,
     IReqCreateNotebook,
+    IReqDocSaveAsTemplate,
     IReqDeleteBlock,
     IReqExportMdContent,
     IReqExportResources,

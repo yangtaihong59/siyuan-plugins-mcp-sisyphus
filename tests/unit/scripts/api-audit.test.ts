@@ -24,7 +24,8 @@ describe('API audit', () => {
             .toThrow(/未知 Gin 注册形式 ginServer\.PUT/);
     });
 
-    it('matches the fixed SiYuan and plugin baselines with no document drift', () => {
+    // Requires the pinned SiYuan source checkout at sample/siyuan (not present in CI).
+    it.skipIf(!fs.existsSync(path.resolve('sample/siyuan/.git')))('matches the fixed SiYuan and plugin baselines with no document drift', () => {
         const readFile = fs.readFileSync.bind(fs);
         const sampleRoot = path.resolve('sample/siyuan') + path.sep;
         const guard = vi.spyOn(fs, 'readFileSync').mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {

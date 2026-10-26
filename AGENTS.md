@@ -16,7 +16,7 @@
 - 仓库地址：`https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus`
 - 作者：Taihong Yang
 - 许可证：MIT
-- 当前版本：`0.6.1`（根 `package.json` 与 `plugin.json` 同步）
+- 当前版本：以根 `package.json` 为准（与 `plugin.json` 同步；CLI 子包版本独立）
 
 ---
 
@@ -100,7 +100,11 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── tag/                 # tag 工具
 │   │   ├── system/              # system 工具
 │   │   ├── flashcard/           # flashcard 工具
-│   │   └── mascot/              # mascot（吉祥物余额）工具
+│   │   ├── mascot/              # mascot（吉祥物余额）工具
+│   │   ├── fs/                  # fs 工具：基于人类可读路径的文档门面
+│   │   ├── timeline/            # timeline 工具：文档历史与版本对比
+│   │   ├── extension/           # extension 工具：桥接官方插件注册的 MCP 工具
+│   │   └── feedback/            # feedback 工具
 │   │
 │   ├── cli/                     # 独立 CLI 源码（被 cli Vite target 打包）
 │   │   ├── index.ts             # CLI 入口：命令分发（dispatch/list/help/init/config/version）
@@ -113,24 +117,29 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── config-command.ts    # config 子命令：多 profile 管理（list/get/set/use）
 │   │   ├── init.ts              # 交互式初始化
 │   │   ├── plugin-check.ts      # 插件在线检测
-│   │   └── runtime.ts           # CLI 运行时环境检测
+│   │   ├── runtime.ts           # CLI 运行时环境检测
+│   │   ├── write-coordinator.ts # 写协调客户端（server 也在用，见“已知结构债”）
+│   │   └── kernel-file-transfer.ts # kernel 文件导入导出（server 也在用）
+│   │
+│   ├── kernel/                  # kernel target：运行在思源内核 goja 沙箱中的 MCP 端点
+│   │   ├── index.ts             # 入口：请求分发、会话、调度
+│   │   ├── client.ts            # KernelSiYuanClient（内核内直连 API）
+│   │   ├── baked-action-schemas.ts # 构建期替换 zod schema 的预烘焙 JSON Schema
+│   │   └── node-shims.ts / polyfill.ts # goja 环境下的 Node/Web API 垫片
+│   │
+│   ├── mcp-apps/                # mcp-app target：MCP Apps 富交互页面（单文件 HTML）
 │   │
 │   ├── ui/                      # Svelte UI 与设置面板
 │   │   ├── components/          # 桌面悬浮宠物组件与行为逻辑
 │   │   ├── setting/             # 插件设置面板
+│   │   ├── version-control/     # 快照与版本对比面板（block-diff / timeline 逻辑）
 │   │   └── shared/              # UI 共享组件
 │   │
-│   ├── shared/                  # 跨层通用工具库
-│   │   ├── error.ts             # 错误处理辅助
-│   │   ├── promise-pool.ts      # 并发池
-│   │   └── invocation-format.ts # 调用格式化
+│   ├── shared/                  # 跨入口纯函数（版本比较、哈希规范化、token 估算、调用格式化等）
 │   │
-│   ├── types/
-│   │   ├── index.d.ts           # 思源常用数据结构（Block、Notebook 等）
-│   │   └── api.d.ts             # API 响应类型定义
-│   │
-│   └── presentation/            # 展示层辅助
-│       └── invocation-format.ts # 调用格式化
+│   └── types/
+│       ├── index.d.ts           # 思源常用数据结构（Block、Notebook 等）
+│       └── api.d.ts             # API 请求/响应类型定义
 │
 ├── cli/                         # 独立 npm 子包（发布为 `siyuan-sisyphus`）
 │   ├── package.json             # 子包元数据（version 与根包独立，bin 指向 dist/cli.cjs）
@@ -179,12 +188,14 @@ siyuan-plugins-mcp-sisyphus/
 
 ### Vite 多 Target 构建
 
-`vite.config.ts` 根据环境变量 `BUILD_TARGET` 分三路构建：
+`vite.config.ts` 根据环境变量 `BUILD_TARGET` 分五路构建：
 
 | Target | 入口 | 产物 | 说明 |
 |--------|------|------|------|
 | `renderer` | `src/index.ts` | `dist/index.js` + `dist/index.css` | 插件 UI（SiYuan 加载） |
 | `server` | `src/core/server.ts` | `dist/mcp-server.cjs` | MCP Server（Node 进程） |
+| `kernel` | `src/kernel/index.ts` | `dist/kernel.js`（IIFE） | 内核托管 MCP 端点（goja 沙箱） |
+| `mcp-app` | `src/mcp-apps/index.html` | `.mcp-app-dist/index.html` | MCP Apps 单文件页面，被 server/kernel 内联 |
 | `cli` | `src/cli/index.ts` | `cli/dist/cli.cjs` | 独立 CLI（npm 发布） |
 
 **新增 target 必须在 `vite.config.ts` 的 `validTargets` 数组中登记。**
@@ -219,9 +230,12 @@ pnpm install
 pnpm dev
 
 # 生产构建
-pnpm build              # renderer + server
+pnpm build              # renderer + kernel + server（含 mcp-app）
 pnpm build:cli          # 仅 CLI
 pnpm publish:cli        # 构建并发布 siyuan-sisyphus 到 npm
+
+# 质量门禁（CI：.github/workflows/ci.yml 在 push/PR 到 main、dev 时执行 typecheck + test + build）
+pnpm typecheck          # tsc --noEmit，须保持 0 错误
 
 # 测试
 pnpm test               # 运行全部单元/集成测试（vitest run）
@@ -410,6 +424,18 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
    - `workspace_info` 等敏感系统操作也被标记为 dangerous，需要确认。
 
 ---
+
+## 已知结构债（2026-10-26 审阅）
+
+以下问题已确认、尚未重构；改动相关代码时优先顺手收敛，不要再新增同类重复：
+
+- **UI 包打入整个工具层**：`core/analytics.ts` 为计算初始 token 成本 import `tool-registry`，renderer 又开了 `inlineDynamicImports`，导致 `dist/index.js` 含全部工具与 zod schema。
+- **两套 Client 无公共接口**：`api/client.ts` 的 `SiYuanClient` 与 `kernel/client.ts` 的 `KernelSiYuanClient` 重复实现读写方法，kernel 侧靠 `as any` 注入；`define-tool.ts` 的 `installRequestSemanticsCompatibility` 为测试替身在生产路径改写 client。
+- **调用前置逻辑三处各写一份**：`core/server.ts`、`kernel/index.ts`、`cli/dispatch.ts` 各自做禁用判断、危险确认与“是否走协调器”判定，错误格式已不一致。
+- **core 承载工具业务**：`write-safety-coordinator.ts`（AV 校验约千行）、`core/types.ts`（全部工具 schema）、`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`。
+- **依赖方向**：`core/server.ts` 依赖 `cli/write-coordinator`、`cli/kernel-file-transfer`；`shared/timeline-service.ts` 依赖 `ui/version-control`。
+- **重复小工具**：`stripSySuffix`（4 份）、`normalizeFsPath`（3 份）、SQL 转义（以 `context.ts` 的 `escapeSqlString` 为准）、`sha256:v1:` 哈希（3 条实现）、AV 载体块判定（`av/handlers.ts` 与 coordinator 各一份）。
+- **av/handlers.ts**：写入收尾序列重复十余次，可提取公共提交函数。
 
 ## 给 AI 编码代理的特别提醒
 

@@ -564,6 +564,25 @@ describe('tool permission and filtering behavior', () => {
         expect(getDocInfo).toHaveBeenCalledTimes(1);
     });
 
+    it('derives list_tree node IDs from the storage path when SiYuan omits id', async () => {
+        vi.spyOn(blockApi, 'getDocInfo').mockResolvedValue({ id: 'doc-2', rootID: 'doc-2', name: 'Doc Two.sy' } as never);
+        vi.spyOn(documentApi, 'listDocsByPath').mockResolvedValue({
+            box: 'allowed',
+            path: '/',
+            files: [{ path: '/doc-2.sy', subFileCount: 0 }],
+        } as never);
+
+        const result = await callDocumentTool({} as never, {
+            action: 'list_tree',
+            notebook: 'allowed',
+            path: '/',
+        }, documentConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        expect(parsed.tree).toHaveLength(1);
+        expect(parsed.tree[0].id).toBe('doc-2');
+    });
+
     it('falls back to listDocsByPath when listDocTree cannot open a leaf document path', async () => {
         vi.spyOn(documentApi, 'listDocTree').mockRejectedValue(new Error('no such file or directory'));
         const listDocsByPath = vi.spyOn(documentApi, 'listDocsByPath').mockResolvedValue({

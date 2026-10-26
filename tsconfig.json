@@ -4,7 +4,7 @@
         "useDefineForClassFields": true,
         "module": "ESNext",
         "lib": [
-            "ES2020",
+            "ES2022",
             "DOM",
             "DOM.Iterable"
         ],
@@ -41,6 +41,8 @@
         "paths": {
             "@/*": ["./src/*"],
             "@/shared/*": ["./src/shared/*"],
+            // siyuan@1.1.2 ships raw .ts sources that fail type-checking (skipLibCheck
+            // does not cover them), so type against the local mock surface instead.
             "siyuan": ["./tests/mocks/siyuan.ts"],
         }
     },

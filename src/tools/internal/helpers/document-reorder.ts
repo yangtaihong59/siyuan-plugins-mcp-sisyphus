@@ -2,6 +2,7 @@ import type { SiYuanClient } from '../../../api/client';
 import * as documentApi from '../../../api/document';
 import * as notebookApi from '../../../api/notebook';
 import type { NotebookConf } from '../../../types/shared';
+import { extractDocumentId } from '../context';
 
 export const CUSTOM_FILE_TREE_SORT_MODE = 6;
 
@@ -20,10 +21,6 @@ export interface DocumentReorderState {
     notebookConf: NotebookConf;
     sortMode?: number;
     children: ReorderChild[];
-}
-
-function extractDocumentId(path: string): string | undefined {
-    return path.split('/').filter(Boolean).at(-1)?.replace(/\.sy$/i, '');
 }
 
 export async function readDocumentReorderState(

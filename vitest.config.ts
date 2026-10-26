@@ -7,6 +7,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['./tests/setup.ts'],
+    // Cold dynamic imports of the kernel/server graph can exceed the 10s default under full parallel load.
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

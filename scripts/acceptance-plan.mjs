@@ -35,7 +35,7 @@ export function collectPlan(root = ROOT) {
             if (!ts.isCallExpression(call) || !['read', 'mutation', 'external'].includes(call.expression.getText(policy))) throw new Error('Unsupported safety policy syntax');
             policies.set(`${category.name.getText(policy)}.${property.name.getText(policy)}`, {
                 mode: call.expression.getText(policy),
-                precondition: call.arguments[0]?.text ?? (call.expression.getText(policy) === 'mutation' ? 'none' : null),
+                precondition: (call.arguments[0] && ts.isStringLiteralLike(call.arguments[0]) ? call.arguments[0].text : undefined) ?? (call.expression.getText(policy) === 'mutation' ? 'none' : null),
             });
         }
     }

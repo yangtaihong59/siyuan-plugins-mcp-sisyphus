@@ -46,7 +46,6 @@ src/
 │   │   ├── validation.ts     # Parameter validation helpers
 │   │   ├── ui-refresh.ts     # Trigger SiYuan UI refresh
 │   │   ├── help-render.ts    # Help action output rendering
-│   │   ├── help-router.ts    # Help routing dispatcher
 │   │   └── helpers/          # Cross-tool helpers such as notebookName enrichment
 │   ├── notebook/             # notebook tool
 │   │   ├── index.ts          # variants + list/call exports

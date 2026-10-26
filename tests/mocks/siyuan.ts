@@ -26,3 +26,7 @@ export class Dialog {
 }
 
 export function showMessage(_message?: string, _timeout?: number, _type?: string): void {}
+
+export function getAllEditor(): any[] {
+    return [];
+}

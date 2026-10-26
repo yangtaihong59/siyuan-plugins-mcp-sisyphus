@@ -103,7 +103,7 @@ function createCrossObjectAvFixture() {
         ],
         views: [],
     };
-    const client = {
+    const clientMock = {
         readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
         writeFile: vi.fn(async () => undefined),
         requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
@@ -133,7 +133,8 @@ function createCrossObjectAvFixture() {
             }
             return null;
         }),
-    } as never;
+    };
+    const client = clientMock as typeof clientMock & ConstructorParameters<typeof WriteSafetyCoordinator>[0];
     const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
     permMgr.getAll = vi.fn(() => ({ 'nb-source': 'rw', 'nb-destination': 'rw' }));
     permMgr.get = vi.fn((notebook: string) => notebook === 'nb-source' || notebook === 'nb-destination' ? 'rw' : 'r');
@@ -857,7 +858,7 @@ describe('write safety coordinator', () => {
                 if (endpoint === '/api/query/sql') return [];
                 return null;
             }),
-        } as never;
+        } as any;
         const permMgr = createMockPermissionManager({ canWrite: () => true, canDelete: () => true });
         permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rwd' }));
         const coordinator = new WriteSafetyCoordinator(client);
@@ -1515,7 +1516,7 @@ describe('write safety coordinator', () => {
             readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(),
             requestRead: vi.fn(),
-        } as never;
+        } as any;
         const coordinator = new WriteSafetyCoordinator(client);
         const execute = vi.fn();
         for (const [index, credential] of ['abc', 'f'.repeat(65), 'sha256:v2:8ac2', 'zzzz'].entries()) {
@@ -2114,7 +2115,7 @@ describe('write safety coordinator', () => {
                 if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
                 return null;
             }),
-        } as never;
+        } as any;
         const permMgr = createMockPermissionManager({ canWrite: () => true });
         permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
         const coordinator = new WriteSafetyCoordinator(client);
