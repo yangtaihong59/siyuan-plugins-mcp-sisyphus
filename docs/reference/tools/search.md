@@ -22,6 +22,7 @@ Related pages:
 
 - `find_replace` is the mutating exception in this tool and requires explicit confirmation.
 - `query_sql` is read-only and only accepts `SELECT` statements; add `LIMIT` yourself. It preserves every selected column and is available only when every notebook is readable. If any notebook is unreadable, raw SQL is rejected before execution because aggregates, joins, CTEs, and subqueries cannot be safely post-filtered by notebook.
+- The same raw-SQL permission gate applies to `fulltext(methodName="sql")` and numeric `method=2`. For document inventories, block/character statistics, title-only candidates, or same-title groups, use [`document.query`](./document.md#permission-scoped-document-queries). It scopes fixed server-generated queries before aggregation, so unreadable notebooks can remain hidden.
 - Search results are filtered by notebook permissions where applicable.
 - `get_backlinks` requires only the target `id` and uses the native global backlink query. Use `scopeRootId` / `refTreeID` to query a specific referencing document; omitted `keyword` is supplied as an empty string for the native request.
 - Full-text search can lag briefly behind recent writes because indexing is eventually consistent.

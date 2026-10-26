@@ -1,5 +1,8 @@
+import { ZodError } from 'zod';
 import { generateSiYuanNodeId } from '../../shared/siyuan-id';
 import { AV_CREATION_CONTEXT, type AvCreationContext } from '../../core/av-creation-context';
+import { AV_ADD_ROWS_CONTEXT, assertAvAddRowsStructure, type AvAddRowsContext } from './add-rows-plan';
+import { verifyAvCellsReadback } from '../../core/av-cell-readback';
 import { prepareViewUpdate, viewFields, normalizeAvFilters, normalizeAvGroup } from './view-config';
 import { writeHashPool } from '../../core/write-safety-hash';
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
@@ -40,7 +43,7 @@ import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermi
 import { computePageCount } from '../internal/pagination';
 import type { ToolActionHandler, ToolHandlerContext } from '../internal/define-tool';
 import { isMissingBlockError, translateError } from '../internal/errorTranslation';
-import { createJsonResult, createPaginatedResult, createWriteSuccessResult, type ToolResult } from '../internal/shared';
+import { createJsonResult, createWriteSuccessResult, type ToolResult } from '../internal/shared';
 import { applyUiRefresh, type UiRefreshOperation } from '../internal/ui-refresh';
 import { sleep } from '../../shared/async';
 
@@ -97,10 +100,28 @@ type StrongCellValueInput = {
     assets?: Array<{ type: 'image' | 'file'; content: string; name?: string }>;
 };
 
-interface AvTableView {
-    columns: Array<{ id: string; columnID: string; name?: string; type?: string }>;
-    rows: Array<{ id?: string; rowID?: string; cells: Record<string, unknown> }>;
-    rowCount: number;
+interface AvQueryColumn {
+    columnID: string;
+    name?: string;
+    type?: string;
+}
+
+interface AvQueryCell {
+    value: unknown;
+    formatted?: string;
+}
+
+interface AvQueryRow {
+    rowID?: string;
+    groupID?: string;
+    cells: Record<string, AvQueryCell>;
+}
+
+interface AvViewItems {
+    items: unknown[];
+    total: number;
+    groupIDs: Array<string | undefined>;
+    groups: Array<{ groupID: string; name?: string; rowCount?: number }>;
 }
 
 const ADD_ROWS_POLL_ATTEMPTS = 6;
@@ -600,7 +621,7 @@ function createDuplicateRowsValidationResult(
 }
 
 function createAvRowIdErrorResult(
-    action: 'set_cells' | 'duplicate_rows',
+    action: 'set_cells' | 'duplicate_rows' | 'remove_rows',
     payload: Record<string, unknown>,
 ): ToolResult {
     return {
@@ -1419,7 +1440,47 @@ function normalizeAvValue(value: unknown): unknown {
     return value;
 }
 
-function extractAvTableColumns(responseObj: Record<string, unknown>): AvTableView['columns'] {
+function pickFormattedContent(record: Record<string, unknown> | undefined): string | undefined {
+    if (!record) return undefined;
+    if (typeof record.formattedContent === 'string' && record.formattedContent) {
+        return record.formattedContent;
+    }
+    // The kernel stores date/number/created/updated display text inside the
+    // typed value object: value.date.formattedContent. Checking only the
+    // wrapper's top level silently drops real kernel formatting.
+    for (const key of ['date', 'created', 'updated', 'number', 'text', 'url', 'email', 'phone', 'checkbox']) {
+        const nested = record[key];
+        if (!nested || typeof nested !== 'object' || Array.isArray(nested)) continue;
+        const formatted = (nested as Record<string, unknown>).formattedContent;
+        if (typeof formatted === 'string' && formatted) return formatted;
+    }
+    return undefined;
+}
+
+function normalizeAvCellValue(value: unknown): AvQueryCell {
+    const record = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : undefined;
+    if (!record) return { value };
+    const inner = record.value && typeof record.value === 'object' && !Array.isArray(record.value)
+        ? record.value as Record<string, unknown>
+        : undefined;
+    const source = inner ?? record;
+    const raw = normalizeAvValue(source);
+    // Reuse the kernel's formattedContent when present. Do not invent date or
+    // option formatting: the canonical value stays raw and callers can still
+    // request get(scope="raw") for the complete native payload. Inspect both
+    // the rendered-cell wrapper and its nested value so neither layer loses
+    // formatting.
+    const kernelFormatted = pickFormattedContent(inner) ?? pickFormattedContent(record);
+    const scalarFormatted = source.date === undefined && (
+        typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean'
+    ) ? String(raw) : undefined;
+    const formatted = kernelFormatted ?? scalarFormatted;
+    return { value: raw, ...(formatted !== undefined ? { formatted } : {}) };
+}
+
+function extractAvQueryColumns(responseObj: Record<string, unknown>): AvQueryColumn[] {
     const candidates = [responseObj.columns, responseObj.keys, responseObj.keyValues, responseObj.attributeViewKeys];
     for (const candidate of candidates) {
         if (!Array.isArray(candidate)) continue;
@@ -1429,32 +1490,40 @@ function extractAvTableColumns(responseObj: Record<string, unknown>): AvTableVie
             const keyRecord = record.key && typeof record.key === 'object' && !Array.isArray(record.key)
                 ? record.key as Record<string, unknown>
                 : record;
-            const id = pickString(keyRecord, ['id', 'keyID', 'columnID']);
-            if (!id) return [];
+            const columnID = pickString(keyRecord, ['id', 'keyID', 'columnID']);
+            if (!columnID) return [];
             const name = pickString(keyRecord, ['name', 'title']);
             const type = pickString(keyRecord, ['type']);
-            return [{ id, columnID: id, ...(name ? { name } : {}), ...(type ? { type } : {}) }];
+            return [{ columnID, ...(name ? { name } : {}), ...(type ? { type } : {}) }];
         });
         if (columns.length > 0) return columns;
     }
     return [];
 }
 
-function extractAvTableRows(rows: unknown[]): AvTableView['rows'] {
-    return rows.flatMap((row) => {
+function extractAvQueryRows(
+    rows: unknown[],
+    groupIDs: Array<string | undefined> = [],
+    projectedFields?: ReadonlySet<string>,
+): AvQueryRow[] {
+    return rows.flatMap((row, index) => {
         if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
         const record = row as Record<string, unknown>;
+        // Resolve the row identity before projecting cells. A view that hides
+        // or does not select columns still has valid rows; dropping them would
+        // make rows[] disagree with total and pagination.
+        const rowID = pickString(record, ['id', 'rowID', 'blockID']);
         const values = Array.isArray(record.values)
             ? record.values
             : Array.isArray(record.cells)
                 ? record.cells
                 : [];
-        const cells: Record<string, unknown> = {};
+        const cells: Record<string, AvQueryCell> = {};
         for (const value of values) {
             if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
             const cell = value as Record<string, unknown>;
-            // 内核渲染 cell：{ id: 值ID, value: { keyID: 列ID, ... }, valueType }，
-            // 顶层 id 是值 ID 而非列 ID，列 keyID 必须从 value.keyID 取
+            // Kernel rendered cell: { id: valueID, value: { keyID: columnID, ... }, valueType }.
+            // The top-level id is a cell value ID; the column identity is value.keyID.
             const inner = cell.value && typeof cell.value === 'object' && !Array.isArray(cell.value)
                 ? cell.value as Record<string, unknown>
                 : undefined;
@@ -1466,35 +1535,59 @@ function extractAvTableRows(rows: unknown[]): AvTableView['rows'] {
                 ?? pickString(cell, ['keyID', 'columnID'])
                 ?? pickString(cell, ['id']);
             if (!columnID) continue;
-            cells[columnID] = normalizeAvValue(inner ?? cell);
+            // `fields` is a projection over stable columnIDs. Row identity is
+            // resolved before this loop, so filtering cells never drops rows.
+            if (projectedFields && !projectedFields.has(columnID)) continue;
+            // Pass the complete rendered cell, not only its inner value, so
+            // wrapper-level formattedContent survives projection.
+            cells[columnID] = normalizeAvCellValue(cell);
         }
-        if (Object.keys(cells).length === 0) return [];
-        const id = pickString(record, ['id', 'rowID', 'blockID']);
-        return [{ ...(id ? { id, rowID: id } : {}), cells }];
+        if (!rowID && Object.keys(cells).length === 0) return [];
+        const groupID = groupIDs[index];
+        return [{
+            ...(rowID ? { rowID } : {}),
+            ...(groupID ? { groupID } : {}),
+            cells,
+        }];
     });
 }
 
-function extractViewItems(view: Record<string, unknown> | undefined): { items: unknown[]; total: number } {
-    if (!view) return { items: [], total: 0 };
+function extractViewItems(view: Record<string, unknown> | undefined): AvViewItems {
+    if (!view) return { items: [], total: 0, groupIDs: [], groups: [] };
     const rows = Array.isArray(view.rows) ? view.rows
         : Array.isArray(view.cards) ? view.cards
             : [];
     const total = typeof view.rowCount === 'number' ? view.rowCount as number
         : typeof view.cardCount === 'number' ? view.cardCount as number
             : rows.length;
-    if (rows.length > 0 || !Array.isArray(view.groups)) return { items: rows, total };
-    // 分组视图：内核把行移入 view.groups[].rows/cards 并清空顶层行（SetItems(nil)），
-    // 这里聚合各分组当前页的行；总数取顶层 rowCount/cardCount（分页前全量）
+    if (rows.length > 0 || !Array.isArray(view.groups)) {
+        return { items: rows, total, groupIDs: rows.map(() => undefined), groups: [] };
+    }
+    // Grouped views move rows into view.groups[].rows/cards and clear the top
+    // level. Flatten exactly once while retaining the source group identity.
     const items: unknown[] = [];
+    const groupIDs: Array<string | undefined> = [];
+    const groups: AvViewItems['groups'] = [];
     for (const group of view.groups) {
         if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
         const groupView = group as Record<string, unknown>;
         const groupRows = Array.isArray(groupView.rows) ? groupView.rows
             : Array.isArray(groupView.cards) ? groupView.cards
                 : [];
-        items.push(...groupRows);
+        const groupID = pickString(groupView, ['id']);
+        if (groupID) {
+            const name = pickString(groupView, ['name']);
+            const rowCount = typeof groupView.rowCount === 'number' ? groupView.rowCount as number
+                : typeof groupView.cardCount === 'number' ? groupView.cardCount as number
+                    : undefined;
+            groups.push({ groupID, ...(name ? { name } : {}), ...(rowCount === undefined ? {} : { rowCount }) });
+        }
+        for (const row of groupRows) {
+            items.push(row);
+            groupIDs.push(groupID);
+        }
     }
-    return { items, total };
+    return { items, total, groupIDs, groups };
 }
 
 function computeRenderPageCount(view: Record<string, unknown> | undefined, total: number, effectivePageSize: number): number {
@@ -1516,13 +1609,6 @@ function computeRenderPageCount(view: Record<string, unknown> | undefined, total
     // 如果内核没有提供组内总数，才退回顶层总数；不能把各组总数相加后
     // 当作单一列表分页，否则多个不足一页的分组会误报 hasNextPage。
     return foundGroupTotal ? count : base;
-}
-
-function buildAvTableView(responseObj: Record<string, unknown>, rows: unknown[], total: number): AvTableView | undefined {
-    const columns = extractAvTableColumns(responseObj);
-    const tableRows = extractAvTableRows(rows);
-    if (columns.length === 0 && tableRows.length === 0) return undefined;
-    return { columns, rows: tableRows, rowCount: total };
 }
 
 function formatSiYuanUpdatedStamp(date = new Date()): string {
@@ -2201,7 +2287,7 @@ async function handleQuery(context: ToolHandlerContext): Promise<ToolResult> {
     const view = (responseObj.view && typeof responseObj.view === 'object' && !Array.isArray(responseObj.view))
         ? responseObj.view as Record<string, unknown>
         : undefined;
-    const { items: rawRows, total } = extractViewItems(view);
+    const { items: rawRows, total, groupIDs, groups } = extractViewItems(view);
     const page = parsed.page ?? 1;
     // 内核分页：请求 pageSize<1（含 -1）时使用视图默认页大小（view.pageSize）
     const effectivePageSize = (typeof parsed.pageSize === 'number' && parsed.pageSize > 0)
@@ -2210,11 +2296,28 @@ async function handleQuery(context: ToolHandlerContext): Promise<ToolResult> {
             ? view.pageSize
             : (rawRows.length || 1);
     const kernelPageCount = computeRenderPageCount(view, total, effectivePageSize);
-    // 表格布局才构建归一化 table；data 使用归一化行。原始 view 仍保留在
-    // 结果中以兼容需要完整视图/分组元数据的调用方。
-    const isTableLayout = Array.isArray(view?.columns);
-    const table = isTableLayout ? buildAvTableView(view as Record<string, unknown>, rawRows, total) : undefined;
-    const data = table?.rows ?? rawRows;
+    const columns = extractAvQueryColumns(view ?? responseObj);
+    const projectedFields = parsed.fields ? new Set(parsed.fields) : undefined;
+    if (projectedFields) {
+        // Validate field projection against the columns the kernel actually
+        // returned for this view. Silently returning an empty cell map would
+        // make a typo or a view-hidden column look like missing data.
+        const available = new Set(columns.map((column) => column.columnID));
+        const missing = parsed.fields!.filter((columnID) => !available.has(columnID));
+        if (available.size === 0 || missing.length > 0) {
+            throw new ZodError([{
+                code: 'custom',
+                path: ['fields'],
+                message: missing.length > 0
+                    ? `Unknown field(s) for this view: ${missing.join(', ')}. Use get(scope="columns") to read valid columnIDs.`
+                    : 'This view returned no readable columns, so fields cannot be projected. Call query without fields or inspect get(scope="columns").',
+            }]);
+        }
+    }
+    const rows = extractAvQueryRows(rawRows, groupIDs, projectedFields);
+    const projectedColumns = projectedFields
+        ? columns.filter((column) => projectedFields.has(column.columnID))
+        : columns;
     const selectedViewID = getStringField(view, ['id']) ?? getStringField(responseObj, ['viewID']);
     if (selectedViewID && selectedViewID !== selection.viewID) throw new Error('Kernel returned a different view');
     const readArgs = { ...parsed, viewID: selection.viewID };
@@ -2223,30 +2326,57 @@ async function handleQuery(context: ToolHandlerContext): Promise<ToolResult> {
     if (state.next) steps.push({ purpose: 'continue_read', tool: 'av', arguments: state.next });
     steps.push({ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: effectiveAvID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}) } });
     const nextSteps = await availableReadSteps(client, steps);
-    const result = createPaginatedResult(data, {
+    // One canonical rows array. Cells are projected by stable columnID, with
+    // the raw value and the kernel-provided formatted text (when available).
+    // The complete native payload remains available through get(scope="raw").
+    return createJsonResult({
+        avID: effectiveAvID,
+        id: effectiveAvID,
+        structureVersion: 2,
+        ...(pickString(selectedView, ['type']) ?? getStringField(responseObj, ['viewType'])
+            ? { viewType: pickString(selectedView, ['type']) ?? getStringField(responseObj, ['viewType']) }
+            : {}),
+        rows,
+        columns: projectedColumns,
+        ...(groups.length > 0 ? { groups } : {}),
         total,
         page,
         pageSize: effectivePageSize,
         pageCount: kernelPageCount,
         hasNextPage: state.hasNextPage,
-    }, {
-        ...responseObj,
-        readInfo: state.readInfo,
-        databaseContext: databaseContext(effectiveAvID, { ...(parsed.blockID ? { blockID: parsed.blockID } : {}), ...(selectedViewID ? { viewID: selectedViewID } : {}), ...(table ? { columns: 'table.columns', rows: 'table.rows' } : { rows: 'data' }) }),
+        readInfo: {
+            ...state.readInfo,
+            representation: 'database_rows',
+            limitations: [
+                ...state.readInfo.limitations.filter((item) => item !== 'view_filters_and_hidden_columns'),
+                'cells_projected_by_columnID',
+                'complete_native_payload_requires_get_scope_raw',
+            ],
+        },
+        databaseContext: databaseContext(effectiveAvID, {
+            ...(parsed.blockID ? { blockID: parsed.blockID } : {}),
+            ...(selectedViewID ? { viewID: selectedViewID } : {}),
+            columns: 'columns',
+            rows: 'rows',
+        }),
         ...(nextSteps.length ? { nextSteps } : {}),
-        avID: effectiveAvID,
-        id: effectiveAvID,
-        ...(table ? { table } : {}),
         ...selection,
-        resolvedRows: rawRows.map((row: any) => ({ rowID: row.id, ...(row.isDetached !== undefined ? { isDetached: row.isDetached } : {}) })).filter(row => typeof row.rowID === 'string'),
+        migration: {
+            fromVersion: 1,
+            toVersion: 2,
+            note: 'query rows now use one rows[] array; cells map columnID to { value, formatted }. The previous data/table/view.row duplicates were removed. Use get(scope="raw") for the complete native AV payload.',
+        },
     });
-    return result;
 }
 
 async function handleAddRows({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvAddRowsSchema.parse(rawArgs);
     const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', { blockID: parsed.blockID, action: 'add_rows' });
     if (denied) return denied;
+
+    if (parsed.rows) {
+        return handleCompositeAddRows(client, rawArgs, parsed, avData);
+    }
 
     const blockIDs = parsed.blockIDs ?? [];
     const primaryKeyTexts = parsed.primaryKeyTexts ?? [];
@@ -2325,15 +2455,183 @@ async function handleAddRows({ client, permMgr, rawArgs }: ToolHandlerContext): 
     }), refreshOperations);
 }
 
+/**
+ * Composite add_rows is intentionally two native phases: rows are inserted
+ * first, then their initial cells are written with updateAttrViewCell. The
+ * kernel does not expose an atomic row+cell creation operation, so the
+ * coordinator persists reserved row IDs before this function runs and every
+ * stage is checkpointed. A failure after rows exist is reported as partial
+ * with exact rowIDs; it is never retried as a second add_rows.
+ */
+async function handleCompositeAddRows(
+    client: SiYuanClient,
+    rawArgs: Record<string, unknown>,
+    parsed: ReturnType<typeof AvAddRowsSchema.parse>,
+    avData: unknown,
+): Promise<ToolResult> {
+    const context = (rawArgs as Record<symbol, unknown>)[AV_ADD_ROWS_CONTEXT] as AvAddRowsContext | undefined;
+    if (!context) {
+        throw new Error('Composite add_rows requires a coordinator-issued stage context; run validateOnly preflight first.');
+    }
+    try {
+        assertAvAddRowsStructure(avData, parsed.rows, parsed.viewID, parsed.groupID, parsed.previousID);
+    } catch (error) {
+        return createAvValidationErrorResult('add_rows', {
+            reason: 'batch_validation_failed',
+            message: error instanceof Error ? error.message : String(error),
+            hint: 'Inspect av(action="get", scope="columns"|"view") for current column IDs, types, view, and group. No rows were added.',
+        });
+    }
+
+    const plan = context.plan;
+    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
+    const srcs = plan.rows.map((row) => ({
+        itemID: row.rowID,
+        id: row.srcID,
+        isDetached: true,
+        content: row.primaryKeyText,
+    }));
+    const insertOps = withUpdatedOperation([{
+        action: 'insertAttrViewBlock',
+        avID: parsed.avID,
+        blockID: transactionBlockID,
+        viewID: parsed.viewID,
+        groupID: parsed.groupID,
+        previousID: parsed.previousID,
+        ignoreDefaultFill: parsed.ignoreDefaultFill,
+        srcs,
+    }], transactionBlockID);
+    await transactionApi.performTransactions(client, [{
+        doOperations: insertOps.doOperations,
+        undoOperations: [
+            { action: 'removeAttrViewBlock', srcIDs: plan.rows.map((row) => row.rowID), avID: parsed.avID },
+            ...insertOps.undoOperations,
+        ],
+    }]);
+
+    // The rows were acknowledged. Persist the exact generated rowIDs before
+    // attempting any cell write or, later, verification.
+    await context.checkpoint({ stage: 'rows_created', currentStep: 'resolve_rows', rows: plan.rows.map((row) => ({
+        index: row.index, clientKey: row.clientKey, rowID: row.rowID, cellCount: row.cells.length,
+    })) });
+
+    const resolution = await waitForAddedRows(
+        client,
+        parsed.avID,
+        [],
+        plan.rows.map((row) => ({ primaryKeyText: row.primaryKeyText, rowID: row.rowID })),
+    );
+    if (resolution.unresolvedRowIDs && resolution.unresolvedRowIDs.length > 0) {
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    error: {
+                        type: 'api_error',
+                        tool: AV_TOOL_NAME,
+                        action: 'add_rows',
+                        reason: 'row_id_sync_timeout',
+                        message: `Rows were inserted into attribute view "${parsed.avID}", but MCP could not observe every writable rowID before the sync timeout expired. No initial cells were written.`,
+                        avID: parsed.avID,
+                        rows: plan.rows.map((row) => ({
+                            index: row.index,
+                            clientKey: row.clientKey,
+                            rowID: row.rowID,
+                            primaryKeyText: row.primaryKeyText,
+                            cellCount: row.cells.length,
+                            rowResolved: !resolution.unresolvedRowIDs!.includes(row.rowID),
+                        })),
+                        unresolvedRowIDs: resolution.unresolvedRowIDs,
+                        hint: 'Inspect av(action="query") for the exact rowIDs, then use set_cells for any missing cells. Do not re-run add_rows with the same rows.',
+                    },
+                }, null, 2),
+            }],
+            isError: true,
+        };
+    }
+
+    await context.checkpoint({ stage: 'rows_created', currentStep: 'write_cells', rows: plan.rows.map((row) => ({
+        index: row.index, clientKey: row.clientKey, rowID: row.rowID, cellCount: row.cells.length, rowResolved: true,
+    })) });
+
+    const cells: Array<Record<string, unknown> & { rowID: string }> = plan.rows.flatMap((row) => (
+        row.cells.map((cell) => ({ ...cell, rowID: row.rowID }))
+    ));
+    if (cells.length > 0) {
+        const cellOps = cells.map((cell) => ({
+            action: 'updateAttrViewCell',
+            avID: parsed.avID,
+            keyID: String(cell.columnID),
+            rowID: String(cell.rowID),
+            data: buildStrongCellValue(String(cell.columnID), String(cell.rowID), cell as unknown as StrongCellValueInput),
+        }));
+        const cellTransaction = withUpdatedOperation(cellOps, transactionBlockID);
+        await transactionApi.performTransactions(client, [{
+            doOperations: cellTransaction.doOperations,
+            undoOperations: cellTransaction.undoOperations,
+        }]);
+        await context.checkpoint({ stage: 'cells_written', currentStep: 'verify_cells', rows: plan.rows.map((row) => ({
+            index: row.index, clientKey: row.clientKey, rowID: row.rowID, cellCount: row.cells.length, rowResolved: true,
+        })) });
+        const readback = await avApi.getAttributeView(client, parsed.avID);
+        const definition = (readback as { av?: Record<string, unknown> })?.av;
+        if (!definition || definition.id !== parsed.avID) {
+            throw new Error('Composite add_rows could not read back the attribute view after writing cells.');
+        }
+        verifyAvCellsReadback({ cells }, definition);
+    }
+    await context.checkpoint({ stage: 'verified', currentStep: 'complete', rows: plan.rows.map((row) => ({
+        index: row.index, clientKey: row.clientKey, rowID: row.rowID, cellCount: row.cells.length, rowResolved: true,
+    })) });
+
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
+    return applyUiRefresh(client, createWriteSuccessResult({
+        action: 'add_rows',
+        avID: parsed.avID,
+        rows: plan.rows.map((row) => ({
+            index: row.index,
+            clientKey: row.clientKey,
+            rowID: row.rowID,
+            primaryKeyText: row.primaryKeyText,
+            cellCount: row.cells.length,
+        })),
+        added: plan.rows.length,
+        cellsWritten: cells.length,
+        stage: 'verified',
+    }), refreshOperations);
+}
+
 async function handleRemoveRows({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvRemoveRowsSchema.parse(rawArgs);
     const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', { blockID: parsed.blockID, action: 'remove_rows' });
     if (denied) return denied;
 
+    // rowIDs is the canonical entry point: every ID must resolve to exactly
+    // one current AV row item before the native removal can be dispatched.
+    // srcIDs remains the explicitly native escape hatch and is never
+    // silently reinterpreted as a rowID alias.
+    let nativeSrcIDs: string[];
+    if (parsed.rowIDs) {
+        const rowLookup = extractAvRowLookup(avData);
+        const missing = parsed.rowIDs.filter((rowID) => !rowLookup.rowIDs.has(rowID));
+        if (missing.length > 0) {
+            return createAvRowIdErrorResult('remove_rows', {
+                reason: 'row_id_not_canonical',
+                message: `rowIDs ${missing.join(', ')} are not canonical AV row item IDs in attribute view "${parsed.avID}". No rows were removed.`,
+                avID: parsed.avID,
+                rowIDs: missing,
+                hint: 'Use rowID values returned by av(action="query"|"add_rows"). Never pass source block IDs or cell value IDs.',
+            });
+        }
+        nativeSrcIDs = parsed.rowIDs;
+    } else {
+        nativeSrcIDs = parsed.srcIDs!;
+    }
+
     const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const updatedOps = withUpdatedOperation([{
         action: 'removeAttrViewBlock',
-        srcIDs: parsed.srcIDs,
+        srcIDs: nativeSrcIDs,
         avID: parsed.avID,
     }], transactionBlockID);
     await transactionApi.performTransactions(client, [{
@@ -2344,8 +2642,9 @@ async function handleRemoveRows({ client, permMgr, rawArgs }: ToolHandlerContext
     return applyUiRefresh(client, createWriteSuccessResult({
         action: 'remove_rows',
         avID: parsed.avID,
-        srcIDs: parsed.srcIDs,
-        removed: parsed.srcIDs.length,
+        ...(parsed.rowIDs ? { rowIDs: parsed.rowIDs } : { srcIDs: parsed.srcIDs }),
+        srcIDs: nativeSrcIDs,
+        removed: nativeSrcIDs.length,
     }), refreshOperations);
 }
 
@@ -2418,7 +2717,7 @@ async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerContext):
     if (denied) return denied;
     const rowLookup = extractAvRowLookup(avData);
     const isSingleCellCall = !parsed.cells && !parsed.items;
-    const items = parsed.cells ?? parsed.items ?? [{
+    const singleItem: NonNullable<typeof parsed.cells>[number] = {
         rowID: parsed.rowID!,
         columnID: parsed.columnID!,
         valueType: parsed.valueType!,
@@ -2436,7 +2735,8 @@ async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerContext):
         email: parsed.email,
         phone: parsed.phone,
         assets: parsed.assets,
-    }];
+    };
+    const items = parsed.cells ?? parsed.items ?? [singleItem];
 
     if (items.some((item) => item.valueType === 'relation')) {
         // updateAttrViewCell alone authorizes only the source AV, while a

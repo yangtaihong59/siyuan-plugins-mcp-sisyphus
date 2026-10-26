@@ -1,5 +1,7 @@
 # 严格安全写入
 
+严格预检和提交前的状态核对都会重新加载笔记本权限；已有预检租约不能绕过后续撤销的权限，授权提升后也无需重启服务。
+
 严格安全写入解决的不是“写接口是否返回成功”，而是三个更具体的问题：目标在读取后是否被别人改过、网络失败时是否会重复写、以及重复请求能否被识别。该功能默认开启，且不创建思源数据快照。
 
 ## 调用流程
@@ -29,6 +31,30 @@
   "leaseExpiresAt": 1786543200000
 }
 ```
+
+同一响应还包含规范化的 `preflight` 对象（`version: 2`），这是首选客户端契约：
+
+```json
+{
+  "preflight": {
+    "version": 2,
+    "requestId": "b72f",
+    "expiresAt": 1786543200000,
+    "ttlMs": 600000,
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "guardTargetCount": 1 },
+    "commitArgs": {
+      "action": "set_cells",
+      "avID": "20260812120000-abcdefg",
+      "cells": [],
+      "validateOnly": false,
+      "requestId": "b72f",
+      "expectedManifestHash": "8ac2"
+    }
+  }
+}
+```
+
+提交时原样复制 `preflight.commitArgs`，不要自行重建 `requestId`、哈希字段或业务参数。`counts` 按 action 计算：`operationCount` 总是存在；`rowCount`、`cellCount`、`guardTargetCount` 只在可计算时出现，相同值不会把显式单元格数去重变小。`expiresAt` 与 `ttlMs` 表示同一个 10 分钟首次提交窗口。迁移期仍保留顶层 `requestId` 与哈希字段，供 0.6.13 客户端使用；两者指向同一条执行路径，不是第二条重试通道。若批次过大无法在响应上限内给出完整可执行参数，会明确拒绝而不是截断。
 
 凭证字段名与正式写入参数一致，可直接复制该字段和值；正式执行时移除 `validateOnly`（或设为 `false`），并复制预检返回的 `requestId`：
 

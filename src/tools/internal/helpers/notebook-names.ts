@@ -1,5 +1,17 @@
 import type { SiYuanClient } from '../../../api/client';
 import * as notebookApi from '../../../api/notebook';
+import type { PermissionManager } from '../../../core/permissions';
+
+/** Diagnose a name supplied where an ID is required without resolving it implicitly. */
+export async function getNotebookNameArgumentHint(
+    client: SiYuanClient, permMgr: PermissionManager, value: string,
+): Promise<string | undefined> {
+    const notebooks = await notebookApi.listNotebooks(client).catch(() => undefined);
+    const matches = (notebooks?.notebooks ?? []).filter(item =>
+        item.name === value && item.id !== value && permMgr.canRead(item.id));
+    if (matches.length === 0) return undefined;
+    return `notebook requires an ID, not its name. Use the intended notebook ID from notebook(action="list"): ${matches.map(item => item.id).join(', ')}. Keep path relative to that notebook; do not change permissions to resolve this argument error.`;
+}
 
 function getNotebookId(item: Record<string, unknown>): string | undefined {
     const value = item.notebook ?? item.box ?? item.boxID ?? item.notebookId;

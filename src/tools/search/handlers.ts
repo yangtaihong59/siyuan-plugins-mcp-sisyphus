@@ -1,6 +1,5 @@
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
-import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import type { SearchAction } from '../../core/config';
 import {
@@ -39,7 +38,7 @@ import {
     filterItemsByPermission,
     isPermissionRelatedApiError,
 } from './permission-filter';
-import { assertReadOnlySql, getBacklinksWithFallback } from './sql-builder';
+import { ensureRawSqlReadAccess, getBacklinksWithFallback } from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';
 
@@ -271,12 +270,16 @@ async function resolveFindReplaceTargetIDs(
 export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     fulltext: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchFulltextSchema.parse(rawArgs);
+        const resolvedMethod = resolveSearchMethodMeta(parsed);
+        if (resolvedMethod.method === 2) {
+            const denied = await ensureRawSqlReadAccess(client, permMgr, parsed.query);
+            if (denied) return denied;
+        }
         if (parsed.parentId) {
             const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentId, 'read');
             if (denied) return denied;
         }
 
-        const resolvedMethod = resolveSearchMethodMeta(parsed);
         const resolvedOrderBy = resolveSortAlias(parsed.sortBy, parsed.orderBy);
         const result = await searchApi.fullTextSearchBlock(client, {
             query: parsed.query,
@@ -361,35 +364,8 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     query_sql: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchQuerySqlSchema.parse(rawArgs);
         const stmt = resolveAliasString(parsed.stmt, parsed.sql);
-        try {
-            assertReadOnlySql(stmt ?? '');
-        } catch (error) {
-            return createErrorResult(
-                error,
-                { tool: SEARCH_TOOL_NAME, action: 'query_sql', rawArgs },
-            );
-        }
-        await permMgr.reload();
-        const notebookList = await notebookApi.listNotebooks(client);
-        const restrictedNotebookCount = notebookList.notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).length;
-        if (restrictedNotebookCount > 0) {
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify({
-                        error: {
-                            type: 'permission_denied',
-                            code: 'raw_sql_unavailable_with_restricted_notebooks',
-                            reason: 'permission_scope_not_enforceable',
-                            restrictedNotebookCount,
-                            message: 'Raw SQL is unavailable while one or more notebooks are unreadable because aggregate, join, CTE, and subquery results cannot be safely post-filtered by notebook.',
-                            hint: 'Grant read access to every notebook before using query_sql, or use permission-aware search and document actions instead.',
-                        },
-                    }, null, 2),
-                }],
-                isError: true,
-            };
-        }
+        const denied = await ensureRawSqlReadAccess(client, permMgr, stmt ?? '');
+        if (denied) return denied;
 
         const result = await searchApi.querySQL(client, stmt ?? '');
         const rows = Array.isArray(result) ? result : [];

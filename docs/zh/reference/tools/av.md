@@ -15,7 +15,9 @@
 
 `get` 和行查询可传 `blockID` 作为已验证数据库块上下文。读取选择顺序是显式 `viewID`、块当前所选视图、内核默认视图；响应返回 `selectionSource` 和 `selectionFallback`。显式无效 ID 报错。**显式读取 B 不切换当前选中 A 的块**；使用该块更新 B 仍然拒绝。
 
-行查询支持 `viewID` 和 `groupPaging`；主键模式默认每页 16 条，拒绝 `viewID`、`groupPaging` 和负页大小。查询永远向内核传 `createIfNotExist=false`。下一步指引只引用真实 ID 和已启用入口；末页不再建议翻页，权限过滤和未知总数保持明确。
+行查询支持 `viewID` 和 `groupPaging`；主键模式默认每页 16 条，拒绝 `viewID`、`groupPaging`、`fields` 和负页大小。查询永远向内核传 `createIfNotExist=false`。下一步指引只引用真实 ID 和已启用入口；末页不再建议翻页，权限过滤和未知总数保持明确。
+
+`query(mode="rows")` 只返回一份规范 `rows` 数组（`structureVersion: 2`）。每行保留稳定 `rowID`，单元格按稳定 `columnID` 投影为 `{ "value": <原始值>, "formatted": <内核 formattedContent（若有）> }`；可选 `fields` 传入稳定 `columnID` 列表，同时投影 `rows[].cells` 与 `columns`，始终保留 `rowID` 和分页信息；未知或当前视图不可读的字段会在返回前失败，不会伪装成缺失数据。`columns` 提供 `columnID`、名称和类型。分组结果额外带每行 `groupID` 与紧凑 `groups` 摘要。旧的 `data`、`table.rows`、`view.rows`、`resolvedRows` 重复字段已移除；完整原生 payload 请使用 `get(scope="raw")`。日期保留原始 epoch 表示，MCP 不猜测时区；`formatted` 使用内核值（包括嵌套的 `value.date.formattedContent`），即使当前视图未投影任何单元格，有效行仍会保留。每次行查询都会带迁移说明。
 
 创建在首次执行前持久化稳定的 `avID`、`blockID`，记录 `ids_reserved`、`av_created`、`carrier_inserted`、`verified` 阶段。分配 `blockID` 不代表承载块已存在。部分完成或结果未知时，返回已知 ID、最后确认阶段和当前步骤，不能换新请求自动重新创建、补做或清理。相同请求先检查账本，完成时返回原业务结果；重启后也不会再次创建。新请求指定已有 AV 时拒绝。
 
@@ -43,11 +45,13 @@
 ## 写入与独立安全边界
 
 - `add_rows`、`remove_rows`、`duplicate_rows` 管理行；`create_from_template` 独立，因为可能创建文档。
+- `add_rows` 每次只能选择一种输入模式：`blockIDs` 为绑定行，`primaryKeyTexts` 为 detached 纯文本行，`rows:[{clientKey, primaryKeyText, cells}]` 为带初始单元格的复合 detached 行。复合 `rows` 与旧输入互斥；服务端会在任何写入前生成稳定 `rowID`，并持久化 `reserved → rows_created → cells_written → verified` 阶段。初始单元格只接受标量类型；relation 会被明确拒绝，因为写入它可能修改目的数据库，而该库的权限与预检范围不在本 action 内。若行已创建但单元格写入失败，回执保留精确 `rowID` 与阶段；不要对这些行重新执行 `add_rows`。重放时若阶段仍为 `reserved`，会保守报告为已尝试/未知，绝不报告零写入。
+- `remove_rows` 接受规范 `rowIDs` 或明确标注为原生接口的 `srcIDs`，两者不可混用。服务端会在派发前按当前 AV 校验每个 `rowID`；无法确认的身份会零写入拒绝。
 - `add_column`、`remove_column`、`set_column_options` 分别创建、删除和配置字段；选项是完整列表替换，省略选项会被移除。
 - `set_cells` 更新普通单元格；关系值必须使用 `set_relation`，因为双向关系可能写入另一数据库。`itemID`、`relatedItemIDs` 都是 AV 行 ID，不是绑定块 ID。
 - `set_new_item_templates`、`configure_two_way_relation`、`configure_rollup` 保留独立入口。文档模板需要明确的 `saveLocation`；Rollup 使用原生 `RollupCalc`。
 - `add_view` 创建视图；看板必须已有 select 字段。`duplicate` 保留思源复制为镜像的行为。
-- 写入遵循现有权限、用户确认和严格预检规则。`update_view` 先 `validateOnly:true`，再携带原参数、返回的 `requestId` 和 `expectedStateHash` 提交。创建即使关闭一般严格模式，也要求持久化请求账本和预检 ID。
+- 写入遵循现有权限、用户确认和严格预检规则。所有严格 mutation 响应都包含规范化 `preflight` 对象；提交时原样复制 `preflight.commitArgs`。迁移期仍保留顶层 `requestId` 与哈希字段。即使关闭通用严格模式，`create` 与复合 `add_rows` 也必须有持久账本。
 
 ## 配置迁移
 
@@ -66,8 +70,10 @@
 
 ```json
 {"action":"get","avID":"<av-id>"}
-{"action":"query","avID":"<av-id>","viewID":"<view-id>","page":1,"pageSize":20}
+{"action":"query","avID":"<av-id>","viewID":"<view-id>","fields":["<column-id>"],"page":1,"pageSize":20}
 {"action":"query","avID":"<av-id>","mode":"primary_keys","keyword":"项目"}
+{"action":"add_rows","avID":"<av-id>","rows":[{"clientKey":"event-1","primaryKeyText":"会议","cells":[{"columnID":"<date-column>","valueType":"date","date":1792540800000,"includeTime":false}]}],"validateOnly":true}
+{"action":"remove_rows","avID":"<av-id>","rowIDs":["<row-id>"]}
 {"action":"update_view","avID":"<av-id>","blockID":"<carrier-id>","viewID":"<view-id>","filters":[],"columnVisibility":[{"columnID":"<column-id>","hidden":true}],"validateOnly":true}
 ```
 

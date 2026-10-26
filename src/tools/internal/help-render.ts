@@ -1,5 +1,7 @@
 import { getActionTier, isDangerousAction, type ActionTier, type ToolCategory } from '../../core/config';
 import { TOOL_ACTION_EXAMPLES, TOOL_ACTION_HINTS, TOOL_GUIDANCE_BY_CATEGORY, type HelpExample } from '../../core/help';
+import { getActionSafetyPolicy } from '../../core/write-safety-policy';
+import { WRITE_WORKFLOW_STEPS } from '../../core/write-preflight';
 import { getSchemaProperties, getSchemaRequired } from './schema-analyzer';
 import type { ActionVariant, JsonSchema } from './types';
 
@@ -252,12 +254,14 @@ export function buildHelpIndex<Action extends string>(
     }
 
     const confirmationActions = enabledActions.filter((action) => isDangerousAction(category, action));
+    const hasMutation = enabledActions.some((action) => getActionSafetyPolicy(category, action).mode === 'mutation');
     return {
         tool: category,
         commonActions: tierGroups.basic,
         sharedTopics: ['ai-layout-guide'],
         advancedActions: tierGroups.advanced,
         guidance: TOOL_GUIDANCE_BY_CATEGORY[category] ?? [],
+        ...(hasMutation ? { writeWorkflow: [...WRITE_WORKFLOW_STEPS] } : {}),
         actions,
         actionSummaries,
         ...(confirmationActions.length > 0 ? { requiresConfirmation: confirmationActions } : {}),
@@ -294,6 +298,9 @@ export function buildActionHelp<Action extends string>(
         ...(curatedExamples.length > 0 ? { examples: curatedExamples } : {}),
         guidance: TOOL_GUIDANCE_BY_CATEGORY[category] ?? [],
         requiresConfirmation: isDangerousAction(category, action),
+        ...(getActionSafetyPolicy(category, action).mode === 'mutation'
+            ? { writeWorkflow: [...WRITE_WORKFLOW_STEPS] }
+            : {}),
         fullDocResource: `siyuan://help/action/${category}/${action}`,
     };
 }

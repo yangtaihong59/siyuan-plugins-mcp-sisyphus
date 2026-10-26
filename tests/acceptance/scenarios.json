@@ -129,6 +129,18 @@
       "implementation": "planned"
     },
     {
+      "id": "NOTE-07",
+      "persona": "researcher",
+      "title": "受限笔记本下的文档统计、骨架和同名候选",
+      "minimumTier": "quick",
+      "gate": "read_only",
+      "actions": [
+        "document.query"
+      ],
+      "oracle": "使用已准备且获准读取的已知答案夹具，保持现有权限和开关不变；默认只查可读打开本，scope不暴露不可读本；显式未知/none/关闭本在SQL前拒绝；精确核对元数据投影、非d索引块数及length(content)之和、maxBlocks=0骨架、范围内且统计边界前计算的sameTitleCount、字面标题和路径前缀、排序与多页全集；索引延迟有界读重试，不把同名/同大小当内容重复，不要求跨页快照；缺少权限/关闭本/已知答案夹具时单列blocked，不为验收改权限或创建数据",
+      "implementation": "planned"
+    },
+    {
       "id": "BLOCK-01",
       "persona": "researcher",
       "title": "精确块插入、批量更新、替换与删除",
@@ -309,9 +321,10 @@
       "minimumTier": "quick",
       "gate": "isolated",
       "actions": [
-        "search.query_sql"
+        "search.query_sql",
+        "search.fulltext"
       ],
-      "oracle": "全本可读保留 COUNT/SUM/GROUP BY/box；任一本不可读执行前拒绝；变更 SQL 不到达内核",
+      "oracle": "全本可读保留 COUNT/SUM/GROUP BY/box；任一本不可读时query_sql与fulltext的methodName=sql及method=2均在执行前拒绝，零SQL请求；变更 SQL 不到达内核",
       "implementation": "partial_existing",
       "existingScript": "tests/smoke/live-av-v2.cjs"
     },

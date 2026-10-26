@@ -1,9 +1,12 @@
 import type { AvCreationProgress } from './av-creation-context';
+import type { AvAddRowsProgress } from '../tools/av/add-rows-plan';
+import type { BatchRenameProgress } from './batch-rename-plan';
 import type { ToolResult } from '../tools/internal/shared';
 import { nodeCrypto } from './node-loader';
 import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';
 import type { SiYuanClient } from '../api/client';
 import { hashWriteState } from './write-safety-hash';
+import { stripSafetyFields } from './write-safety-fields';
 import type { ToolCategory } from './config';
 
 export const WRITE_SAFETY_LEDGER_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/writeSafetyLedger';
@@ -29,6 +32,8 @@ export interface WriteLedgerEntry {
     updatedAt: number;
     result?: Record<string, unknown>;
     creation?: AvCreationProgress;
+    addRows?: AvAddRowsProgress;
+    rename?: BatchRenameProgress;
     response?: ToolResult;
 }
 
@@ -223,18 +228,7 @@ function isMissingFileEnvelope(value: unknown): value is FileApiErrorEnvelope {
         && (value.code === 404 || /not found|does not exist/i.test(value.msg));
 }
 
-export function stripSafetyFields(args: Record<string, unknown>): Record<string, unknown> {
-    const out = { ...args };
-    delete out.requestId;
-    delete out.validateOnly;
-    delete out.expectedHash;
-    delete out.expectedStateHash;
-    delete out.expectedStructureHash;
-    delete out.expectedValueHash;
-    delete out.expectedManifestHash;
-    delete out.expectedSourceHash;
-    return out;
-}
+export { stripSafetyFields } from './write-safety-fields';
 
 export function safetyError(code: string, message: string): Error & { code: string } {
     return Object.assign(new Error(message), { name: 'WriteSafetyError', code });

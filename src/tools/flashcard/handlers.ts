@@ -15,6 +15,7 @@ import type { ToolActionHandler } from '../internal/define-tool';
 import { extractKramdownContentForEditing } from '../internal/kramdown-safe';
 import { createJsonResult } from '../internal/shared';
 import { sleep } from '../../shared/async';
+import { readFlashcardReviewState } from './review-state';
 
 type FlashcardActionHandler = ToolActionHandler;
 
@@ -94,6 +95,14 @@ function createReviewMaterial(
     };
 }
 
+function flashcardSchedulingMetadata(card: flashcardApi.Flashcard): flashcardApi.Flashcard {
+    // Native getRiffCards records already contain note text. When permission
+    // cannot be established, retain only explicitly known scheduling fields.
+    const keys = ['deckID', 'cardID', 'blockID', 'due', 'stability', 'difficulty',
+        'elapsedDays', 'scheduledDays', 'reps', 'lapses', 'state', 'lastReview', 'nextDues'];
+    return Object.fromEntries(keys.filter(key => card[key] !== undefined).map(key => [key, card[key]]));
+}
+
 async function hydrateFlashcardContent(
     client: SiYuanClient,
     permMgr: PermissionManager,
@@ -102,21 +111,21 @@ async function hydrateFlashcardContent(
     try {
         await permMgr.reload();
     } catch {
-        return cards;
+        return cards.map(flashcardSchedulingMetadata);
     }
 
     const cardBlocks = await Promise.all(cards.map(async (card) => {
         const blockID = flashcardBlockID(card);
-        if (!blockID) return { card, blockID, children: [] as Array<{ id: string; type?: string }> };
+        if (!blockID) return { card: flashcardSchedulingMetadata(card), blockID, children: [] as Array<{ id: string; type?: string }> };
         let notebook = '';
         try {
             const info = await attributeApi.getBlockInfo(client, blockID) as Record<string, unknown> | null;
             notebook = typeof info?.box === 'string' ? info.box : '';
         } catch {
-            return { card, blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
+            return { card: flashcardSchedulingMetadata(card), blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
         }
         if (!notebook || !permMgr.canRead(notebook)) {
-            return { card, blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
+            return { card: flashcardSchedulingMetadata(card), blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
         }
         try {
             const children = await attributeApi.getChildBlocks(client, blockID);
@@ -136,13 +145,13 @@ async function hydrateFlashcardContent(
         ...(blockID ? [blockID] : []),
         ...children.map((child) => child.id),
     ]))];
-    if (ids.length === 0) return cards;
+    if (ids.length === 0) return cardBlocks.map(({ card }) => card);
 
     let kramdowns: Record<string, string> = {};
     try {
         kramdowns = await attributeApi.getBlockKramdowns(client, ids, 'md') ?? {};
     } catch {
-        return cards;
+        return cardBlocks.map(({ card }) => card);
     }
 
     return cardBlocks.map(({ card, blockID, children }) => {
@@ -400,9 +409,13 @@ async function verifyFlashcardDeckRecords(
 }
 
 function normalizeGetCardsResult(result: flashcardApi.FlashcardGetCardsResult | null | undefined): flashcardApi.Flashcard[] {
-    if (Array.isArray(result?.blocks)) return result.blocks;
-    if (Array.isArray(result?.cards)) return result.cards;
-    return [];
+    const cards = Array.isArray(result?.blocks) ? result.blocks : Array.isArray(result?.cards) ? result.cards : [];
+    return cards.map(card => {
+        if (typeof card.riffCardID !== 'string' || !card.riffCardID) return card;
+        const { riffCardID, riffCard, ...block } = card;
+        return { ...block, blockID: card.id as string, cardID: riffCardID,
+            ...(riffCard && typeof riffCard === 'object' ? riffCard : {}) };
+    });
 }
 
 function isUnresolvedFlashcardBlock(card: flashcardApi.Flashcard): boolean {
@@ -495,19 +508,30 @@ const handleGetCards: FlashcardActionHandler = async ({ client, permMgr, rawArgs
     });
 };
 
-const handleReviewCard: FlashcardActionHandler = async ({ client, rawArgs }) => {
+const handleReviewCard: FlashcardActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FlashcardReviewCardSchema.parse(rawArgs);
     if (parsed.deckID === '') {
         throw new Error('flashcard/review_card requires a concrete deckID. Use flashcard/get_cards first to resolve the card deck, then retry.');
     }
+    await readFlashcardReviewState(client, permMgr, parsed.deckID, parsed.cardID);
     if (parsed.skip === true) {
         const result = await flashcardApi.skipReviewRiffCard(client, parsed.deckID, parsed.cardID);
+        const reviewedCards = [
+            ...(parsed.reviewedCards ?? []).filter(card => card.cardID !== parsed.cardID),
+            { cardID: parsed.cardID },
+        ];
         return createJsonResult({
             action: 'review_card',
             skip: true,
             deckID: parsed.deckID,
             cardID: parsed.cardID,
-            result,
+            ...(result != null ? { result } : {}),
+            reviewSession: {
+                effect: 'skip_for_current_session',
+                persistedScheduleChanged: false,
+                nextListArgs: { action: 'list_cards', scope: 'deck', filter: 'due', deckID: parsed.deckID, reviewedCards },
+                hint: 'Skipping does not rate or reschedule the card. Continue with nextListArgs; omitting reviewedCards starts a new kernel review session and clears skips. A strict no_change receipt refers to the persisted schedule.',
+            },
         });
     }
     const result = await flashcardApi.reviewRiffCard(client, parsed.deckID, parsed.cardID, parsed.rating!, parsed.reviewedCards);
@@ -517,7 +541,12 @@ const handleReviewCard: FlashcardActionHandler = async ({ client, rawArgs }) => 
         cardID: parsed.cardID,
         rating: parsed.rating!,
         ...(parsed.reviewedCards !== undefined ? { reviewedCards: parsed.reviewedCards } : {}),
-        result,
+        ...(result != null ? { result } : {}),
+        nextSteps: [{
+            tool: 'flashcard',
+            args: { action: 'get_cards', deckID: parsed.deckID },
+            reason: 'Read this cardID to verify reps, state, lastReview and due. Use the strict safety receipt to determine whether the rating committed; an empty native response does not mean failure.',
+        }],
     });
 };
 

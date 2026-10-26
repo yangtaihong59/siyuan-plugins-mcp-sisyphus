@@ -284,6 +284,31 @@ export const DocumentLookupSchema = z.object({
     }
 });
 
+export const DOCUMENT_QUERY_FIELDS = ["id", "notebook", "title", "path", "hpath", "created", "updated", "blockCount", "contentChars", "sameTitleCount"] as const;
+
+export const DocumentQuerySchema = z.object({
+    action: z.literal("query"),
+    notebooks: z.array(z.string().min(1).max(256)).min(1).max(100).optional().describe("IDs; default readable open notebooks. Explicit unreadable/closed IDs are rejected."),
+    fields: z.array(z.enum(DOCUMENT_QUERY_FIELDS)).min(1).max(10).optional().describe("Columns; default all. Statistics describe the SQL index; see query help for definitions."),
+    title: z.string().min(1).max(512).refine(value => !value.includes('\0'), "NUL is not allowed").optional().describe("Literal case-sensitive title substring."),
+    hpathPrefix: z.string().min(1).max(4096).refine(value => value.startsWith('/') && !value.includes('\0'), "Use an absolute notebook-local hpath without NUL").optional().describe("Exact notebook-local hpath or descendants, e.g. /Projects."),
+    minBlocks: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    maxBlocks: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    minChars: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    maxChars: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    duplicatesOnly: z.boolean().optional().describe("Only repeated titles in scope; not proof of duplicate content."),
+    sortBy: z.enum(["id", "title", "created", "updated", "blockCount", "contentChars", "sameTitleCount"]).optional().describe("Default updated; ID breaks ties."),
+    sortOrder: z.enum(["asc", "desc"]).optional().describe("Default desc."),
+    page: z.number().int().min(1).max(1000000).optional().describe("1-based; default 1. Pages are not a snapshot."),
+    pageSize: z.number().int().min(1).max(100).optional().describe("Default 50, max 100."),
+}).strict().superRefine((value, ctx) => {
+    for (const [min, max] of [["minBlocks", "maxBlocks"], ["minChars", "maxChars"]] as const) {
+        if (value[min] !== undefined && value[max] !== undefined && value[min] > value[max]) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: [max], message: `${max} must be greater than or equal to ${min}.` });
+        }
+    }
+});
+
 const DocumentLinkTargetSchema = z.object({
     key: z.string().trim().min(1).max(256).describe('Stable caller key used in the returned link map. It is not resolved as a document title.'),
     id: z.string().trim().min(1).optional().describe('Explicit existing document ID. Required for mode="resolve" and mode="reuse".'),
@@ -347,10 +372,67 @@ export const DocumentEnsureLinkTargetsSchema = z.object({
     }
 });
 
-export const DocumentRenameSchema = z.object({
+const DocumentRenameItemSchema = z.object({
+    id: z.string().min(1).describe("Document ID to rename"),
+    title: z.string().min(1).describe("New document title"),
+});
+
+export const DocumentRenameSchema = DocumentReferenceSchema.extend({
     action: z.literal("rename"),
-    title: z.string().describe("New document title"),
-}).and(DocumentPathReferenceSchema);
+    title: z.string().optional().describe("New document title for single-document mode"),
+    items: z.array(DocumentRenameItemSchema).min(1).max(50).optional().describe("Bounded batch of {id,title}. Mutually exclusive with id/notebook/path/title. Maximum 50 items and 256 KiB serialized input."),
+}).superRefine((value, ctx) => {
+    if (value.items) {
+        if (value.id || value.notebook || value.path || value.title) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'items is mutually exclusive with id, notebook, path, and title.',
+                path: ['items'],
+            });
+            return;
+        }
+        const ids = value.items.map((item) => item.id);
+        if (new Set(ids).size !== ids.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'items[].id must be unique within the batch.',
+                path: ['items'],
+            });
+        }
+        const bytes = new TextEncoder().encode(JSON.stringify(value.items)).length;
+        if (bytes > 256 * 1024) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'items exceeds the 256 KiB serialized input limit.',
+                path: ['items'],
+            });
+        }
+        return;
+    }
+    if (typeof value.title !== 'string' || !value.title.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide title for single-document rename, or items for batch rename.',
+            path: ['title'],
+        });
+        return;
+    }
+    const hasId = typeof value.id === 'string';
+    const hasPathRef = typeof value.notebook === 'string' || typeof value.path === 'string';
+    if (hasId === hasPathRef) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide either id or notebook + path.',
+        });
+        return;
+    }
+    if (hasPathRef && (!value.notebook || !value.path)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Both notebook and path are required when id is not provided.',
+        });
+    }
+});
 
 export const DocumentRemoveSchema = z.object({
     action: z.literal("remove"),
@@ -471,14 +553,14 @@ export const DocumentHeadingToDocSchema = z.object({
     action: z.literal("heading_to_doc"),
     headingID: z.string().describe("Heading block ID to convert into a document"),
     targetNotebook: z.string().describe("Target notebook ID"),
-    targetPath: z.string().optional().describe("Optional target storage path"),
-    previousPath: z.string().optional().describe("Optional previous sibling storage path"),
+    targetPath: z.string().optional().describe("Existing parent document storage path ending in .sy; defaults to / (target notebook root). Not a human-readable path."),
+    previousPath: z.string().optional().describe("Existing sibling document storage path ending in .sy in targetNotebook; selects sibling placement. Do not combine with a non-root targetPath."),
 });
 
 export const DocumentDocToHeadingSchema = z.object({
     action: z.literal("doc_to_heading"),
-    srcID: z.string().describe("Source document ID"),
-    targetID: z.string().describe("Target document or heading block ID"),
+    srcID: z.string().describe("Source document root ID, without child documents"),
+    targetID: z.string().describe("Existing heading block ID in another document, from document.get_outline. Document root IDs are rejected."),
     after: z.boolean().optional().describe("When true, insert after the target heading instead of before it"),
 });
 
@@ -510,7 +592,7 @@ const FlashcardFilterSchema = z.enum(["due", "new", "old"]);
 export const FlashcardListCardsSchema = z.object({
     action: z.literal("list_cards"),
     scope: FlashcardScopeSchema.describe('Query scope: "all", "deck", "notebook", or "tree"'),
-    filter: FlashcardFilterSchema.describe('Filter returned cards: "due", "new", or "old"'),
+    filter: FlashcardFilterSchema.default('due').describe('Filter returned cards: "due" (default), "new", or "old"'),
     deckID: z.string().optional().describe('Deck ID, required when scope=deck. For scope="all", omit deckID; an empty string is treated as omitted.'),
     notebook: z.string().optional().describe("Notebook ID, required when scope=notebook"),
     rootID: z.string().optional().describe("Root document/block ID, required when scope=tree"),
@@ -849,12 +931,13 @@ export const AvQuerySchema = z.object({
     blockID: z.string().min(1).optional(),
     viewID: z.string().min(1).optional(),
     keyword: z.string().optional(),
+    fields: z.array(z.string().min(1)).min(1).max(200).optional().describe('Optional stable columnIDs to project. Row identity (rowID) is always kept; unrequested cells and columns are omitted.'),
     page: z.number().int().min(1).optional(),
     pageSize: z.number().int().refine(n => n === -1 || n > 0, 'Use -1 or a positive page size').optional(),
     groupPaging: z.record(z.string(), z.object({ page: z.number().int().min(1), pageSize: z.number().int().positive().optional() }).strict()).optional(),
 }).strict().superRefine((args, ctx) => {
     if (args.mode === 'primary_keys') {
-        for (const key of ['viewID', 'groupPaging'] as const) if (args[key] !== undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'primary_keys does not accept view-specific parameters' });
+        for (const key of ['viewID', 'groupPaging', 'fields'] as const) if (args[key] !== undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'primary_keys does not accept view-specific parameters' });
         if (args.pageSize === -1) ctx.addIssue({ code: 'custom', path: ['pageSize'], message: 'primary_keys requires a positive page size' });
     }
 });
@@ -865,23 +948,80 @@ export const AvSearchSchema = z.object({
     excludes: z.array(z.string()).optional().describe("Optional AV IDs to exclude"),
 });
 
+const AvAddRowsCellSchema = z.object({
+    columnID: z.string().min(1).describe("Existing writable column key ID"),
+}).and(AvSetCellValueFieldsSchema);
+
+const AvAddRowsItemSchema = z.object({
+    clientKey: z.string().min(1).max(128).describe("Batch-local unique key used only to map the returned rowID"),
+    primaryKeyText: z.string().min(1).describe("Detached row primary-key text"),
+    cells: z.array(AvAddRowsCellSchema).optional().describe("Initial non-primary-key cell values written after the rows are created"),
+});
+
 export const AvAddRowsSchema = z.object({
     action: z.literal("add_rows"),
     avID: z.string().describe("Attribute view ID"),
     blockIDs: z.array(z.string()).optional().describe("Existing block IDs to add as bound rows"),
     primaryKeyTexts: z.array(z.string()).optional().describe("Plain-text primary key values to add as detached rows"),
+    rows: z.array(AvAddRowsItemSchema).min(1).max(200).optional().describe("Composite detached rows with initial cells. Mutually exclusive with blockIDs and primaryKeyTexts. Each row receives a server-generated stable rowID before any cell write."),
     blockID: z.string().optional().describe("Optional database block ID used to pin a specific database-block view context"),
     viewID: z.string().optional().describe("Optional target view ID"),
-    groupID: z.string().optional().describe("Optional target group ID"),
+    groupID: z.string().optional().describe("Optional target group ID; composite rows require viewID"),
     previousID: z.string().optional().describe("Optional previous row item ID"),
     ignoreDefaultFill: z.boolean().optional().describe("When true, skip view/group default value filling"),
+}).superRefine((value, ctx) => {
+    const hasRows = Array.isArray(value.rows);
+    const hasLegacy = (value.blockIDs?.length ?? 0) > 0 || (value.primaryKeyTexts?.length ?? 0) > 0;
+    if (hasRows && hasLegacy) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'rows cannot be combined with blockIDs or primaryKeyTexts. Provide exactly one input mode.',
+            path: ['rows'],
+        });
+        return;
+    }
+    if (hasRows) {
+        const clientKeys = value.rows!.map((row) => row.clientKey);
+        if (new Set(clientKeys).size !== clientKeys.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'rows[].clientKey must be unique within the batch.',
+                path: ['rows'],
+            });
+        }
+        if (value.groupID && !value.viewID) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Composite rows with groupID require an explicit viewID.',
+                path: ['groupID'],
+            });
+        }
+    }
 });
 
 export const AvRemoveRowsSchema = z.object({
     action: z.literal("remove_rows"),
     avID: z.string().describe("Attribute view ID"),
     blockID: z.string().optional().describe("Registered database block ID for explicit database-block context"),
-    srcIDs: z.array(z.string()).min(1).describe("Bound row block/item IDs to remove"),
+    rowIDs: z.array(z.string()).min(1).optional().describe("Canonical AV row item IDs to remove. The server validates them against the current AV definition before dispatching the native removal. Do not mix with srcIDs."),
+    srcIDs: z.array(z.string()).min(1).optional().describe("Native interface removal IDs. This is not an interchangeable alias for rowIDs; use rowIDs unless caller has already resolved native removal identities."),
+}).superRefine((value, ctx) => {
+    if (Boolean(value.rowIDs) === Boolean(value.srcIDs)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide exactly one removal mode: rowIDs or srcIDs.',
+            path: ['rowIDs'],
+        });
+        return;
+    }
+    const ids = value.rowIDs ?? value.srcIDs ?? [];
+    if (new Set(ids).size !== ids.length) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Removal IDs must not contain duplicates.',
+            path: [value.rowIDs ? 'rowIDs' : 'srcIDs'],
+        });
+    }
 });
 
 export const AvAddColumnSchema = z.object({

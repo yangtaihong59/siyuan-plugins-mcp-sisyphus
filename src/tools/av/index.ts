@@ -32,12 +32,12 @@ export const AV_TOOL_NAME = 'av';
 
 export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('get', AvGetSchema, 'Read database structure (no rows), columns, exact view configuration, or full raw AV.'),
-    createZodActionVariant('query', AvQuerySchema, 'Query paginated database rows or lightweight primary keys; never creates a database.'),
+    createZodActionVariant('query', AvQuerySchema, 'Query paginated database rows (one canonical rows[] with columnID cells and kernel formatted text) or lightweight primary keys; never creates a database. Use get(scope="raw") for the complete native payload.'),
     createZodActionVariant('create', AvCreateSchema, 'Create a new database and carrier under parentID; replay preserves IDs and creation progress.'),
     createZodActionVariant('update_view', AvUpdateViewSchema, 'Update one carrier-selected view in a single transaction; omitted configurations remain unchanged.'),
     createZodActionVariant('search', AvSearchSchema, 'Search attribute views by name or primary-key values.'),
-    createZodActionVariant('add_rows', AvAddRowsSchema, 'Add bound block rows or detached plain-text primary-key rows to a database.'),
-    createZodActionVariant('remove_rows', AvRemoveRowsSchema, 'Remove rows from a database.'),
+    createZodActionVariant('add_rows', AvAddRowsSchema, 'Add bound rows, detached plain-text rows, or composite detached rows with initial cells. Composite rows use one preflight, stable rowIDs, and a persisted stage ledger.'),
+    createZodActionVariant('remove_rows', AvRemoveRowsSchema, 'Remove rows by validated canonical rowIDs, or by srcIDs through the explicitly native interface. Mixing is rejected before any write.'),
     createZodActionVariant('add_column', AvAddColumnSchema, 'Add a column to a database.'),
     createZodActionVariant('remove_column', AvRemoveColumnSchema, 'Remove a column from a database.'),
     createZodActionVariant('set_cells', AvSetCellsSchema, 'Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write.'),

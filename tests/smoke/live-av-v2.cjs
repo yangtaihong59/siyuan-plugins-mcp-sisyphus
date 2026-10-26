@@ -15,7 +15,7 @@ const payload=r=>r.structuredContent||JSON.parse(r.content.find(c=>c.type==='tex
 const executed=new Set();let proxy,child,client,stdio,direct,rt,docID,env,profile,mcpPort,proxyUrl;
 const ledger='/data/storage/petal/siyuan-plugins-mcp-sisyphus/writeSafetyLedger';const testLedger=ledger+'-'+prefix;
 const permissions='/data/storage/petal/siyuan-plugins-mcp-sisyphus/notebookPermissions';const testPermissions=permissions+'-'+prefix;
-const permissionNotebooks=[];report.permissionNotebooks=permissionNotebooks;let permissionsHash,sqlRequests=0,appendRequests=0,deleteRequests=0,backlinkDocRequests=0,transactionRequests=0;let backlinkTargetID, carrierOrderProbe;
+const permissionNotebooks=[];report.permissionNotebooks=permissionNotebooks;const batchRenameFixtures=[];report.batchRenameFixtures=batchRenameFixtures;let permissionsHash,sqlRequests=0,appendRequests=0,deleteRequests=0,renameDocRequests=0,backlinkDocRequests=0,transactionRequests=0;let backlinkTargetID, carrierOrderProbe;
 const templateFixtures=[];report.templateFixtures=templateFixtures;
 const settings='/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpHttpSettings';
 async function api(endpoint,args){const r=await fetch(profile.apiUrl+endpoint,{method:'POST',headers:{'Content-Type':'application/json',...(profile.token?{Authorization:'Token '+profile.token}:{})},body:JSON.stringify(args)});const v=await r.json();if(v.code!==0)throw Error(v.msg||'Kernel API failed');return v.data;}
@@ -32,6 +32,20 @@ async function mutation(tool,args,{replay=false,viaCli=false}={}){
  assert(!out.error,JSON.stringify(out));assert.equal(out.safety?.writeSafetyGuaranteed,true);assert(['committed','no_change'].includes(out.safety?.transactionState),JSON.stringify(out));executed.add(tool+'.'+args.action);
  if(replay){const again=await call(tool,input);assert.equal((again.safety||again).replayed,true);if(tool==='av'&&args.action==='create')assert.equal(again.blockID,out.blockID);}
  report.mutations.push({action:tool+'.'+args.action,transport:viaCli?'HTTP preflight / CLI commit':'fresh HTTP CJS',preflight:true,preconditionField:pre.preconditionField??null,requestId:pre.requestId,transactionState:out.safety.transactionState,replay,strictReadback:true});save();return out;
+}
+async function cleanupBatchRenameFixtures(){
+ for(const fixture of [...batchRenameFixtures].reverse()){
+  if(fixture.cleaned)continue;
+  try{
+   if(!await api('/api/block/checkBlockExist',{id:fixture.id})){fixture.cleaned=true;delete fixture.cleanupError;save();continue;}
+   const info=await api('/api/block/getBlockInfo',{id:fixture.id});assert.equal(info.box,notebook);assert.equal(info.rootID,fixture.id);
+   const hpath=await api('/api/filetree/getHPathByID',{id:fixture.id});
+   assert(hpath.startsWith('/'+prefix));
+   await mutation('document',{action:'remove',id:fixture.id});
+   assert.equal(await api('/api/block/checkBlockExist',{id:fixture.id}),false);
+   fixture.cleaned=true;delete fixture.cleanupError;save();
+  }catch(e){fixture.cleanupError=e.message;save();}
+ }
 }
 async function cleanupPermissionNotebooks(){
  for(const fixture of [...permissionNotebooks].reverse()){
@@ -66,6 +80,7 @@ async function main(){
   if(req.url==='/api/block/appendBlock')appendRequests++;
   if(req.url==='/api/ref/getBacklinkDoc'||req.url==='/api/ref/getBackmentionDoc')backlinkDocRequests++;
   if(/\/api\/filetree\/removeDoc(?:ByID|s)?$/.test(req.url))deleteRequests++;
+  if(req.url==='/api/filetree/renameDocByID')renameDocRequests++;
   if(req.url==='/api/file/getFile'){
    const args=JSON.parse(body.toString());
    if(args.path===settings){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({enabled:true,kernelEndpointEnabled:false,host:'127.0.0.1',port:mcpPort}));}
@@ -209,15 +224,15 @@ async function main(){
   await mutation('av',{action:'set_column_options',avID,blockID,keyID:status,options:[{name:'Todo',color:'',desc:'explicit carrier control'}]},{replay:true,viaCli:true});
  });
  const added=await check('add isolated detached rows',()=>mutation('av',{action:'add_rows',avID,blockID,primaryKeyTexts:['Alpha','Beta','Gamma']}));
- const rows=await check('query canonical row IDs and complete pagination',async()=>{const out=await call('av',{action:'query',avID,blockID,viewID,pageSize:2});assert.equal(out.resolvedRows.length,2);const step=out.nextSteps.find(s=>s.purpose==='continue_read');assert(step);const last=await call('av',step.arguments);assert(!last.nextSteps?.some(s=>s.purpose==='continue_read'));return out;});
+ const rows=await check('query canonical row IDs and complete pagination',async()=>{const out=await call('av',{action:'query',avID,blockID,viewID,pageSize:2});assert.equal(out.structureVersion,2);assert.equal(out.rows.length,2);assert.equal(out.resolvedRows,undefined);assert.equal(out.data,undefined);const step=out.nextSteps.find(s=>s.purpose==='continue_read');assert(step);const last=await call('av',step.arguments);assert(last.rows.length>0);assert(!last.nextSteps?.some(s=>s.purpose==='continue_read'));out.acceptanceAllRows=[...out.rows,...last.rows];assert.equal(out.acceptanceAllRows.length,3);return out;});
  await check('primary-key paging and keyword via direct CJS',async()=>{const out=await call('av',{action:'query',mode:'primary_keys',avID,blockID,keyword:'Alpha',pageSize:1},direct);assert(out.resolvedRows.length===1);});
- await check('set cell with query row ID',()=>mutation('av',{action:'set_cells',avID,blockID,rowID:rows.resolvedRows[0].rowID,columnID:status,valueType:'select',option:'Todo'}));
- await check('stale cell manifest is rejected and the current value survives',async()=>{const args={action:'set_cells',avID,blockID,rowID:rows.resolvedRows[0].rowID,columnID:status,valueType:'select',option:'StaleMustNotAppear'};const pre=await call('av',{...args,validateOnly:true});await mutation('av',{...args,option:'CurrentVerified'});const rejected=payload(await client.callTool({name:'av',arguments:{...args,requestId:pre.requestId,[pre.preconditionField]:pre[pre.preconditionField]}}));assert.equal(rejected.error?.code,'state_changed');assert.equal(rejected.writeAttempted,false);const after=JSON.stringify(await call('av',{action:'query',avID,blockID,viewID}));assert(after.includes('CurrentVerified'));assert(!after.includes('StaleMustNotAppear'));});
+ await check('set cell with query row ID',()=>mutation('av',{action:'set_cells',avID,blockID,rowID:rows.rows[0].rowID,columnID:status,valueType:'select',option:'Todo'}));
+ await check('stale cell manifest is rejected and the current value survives',async()=>{const args={action:'set_cells',avID,blockID,rowID:rows.rows[0].rowID,columnID:status,valueType:'select',option:'StaleMustNotAppear'};const pre=await call('av',{...args,validateOnly:true});await mutation('av',{...args,option:'CurrentVerified'});const rejected=payload(await client.callTool({name:'av',arguments:{...args,requestId:pre.requestId,[pre.preconditionField]:pre[pre.preconditionField]}}));assert.equal(rejected.error?.code,'state_changed');assert.equal(rejected.writeAttempted,false);const after=JSON.stringify(await call('av',{action:'query',avID,blockID,viewID}));assert(after.includes('CurrentVerified'));assert(!after.includes('StaleMustNotAppear'));});
  const selectFilter=[{column:status,operator:'=',value:{type:'select',mSelect:[{content:'CurrentVerified'}]}}];
  await check('select filter without color commits, replays and reads back its native default',async()=>{
   const before=transactionRequests;const out=await mutation('av',{action:'update_view',avID,blockID,viewID,filters:selectFilter},{replay:true});assert.equal(out.safety.transactionState,'committed');assert.equal(transactionRequests,before+1);
   const raw=(await api('/api/av/getAttributeView',{id:avID})).av;const filter=raw.views.find(v=>v.id===viewID).filters[0].filters[0];assert.deepEqual(filter.value.mSelect,[{content:'CurrentVerified',color:''}]);
-  const query=await call('av',{action:'query',avID,blockID,viewID});assert.deepEqual(query.resolvedRows.map(r=>r.rowID),[rows.resolvedRows[0].rowID]);
+  const query=await call('av',{action:'query',avID,blockID,viewID});assert.deepEqual(query.rows.map(r=>r.rowID),[rows.rows[0].rowID]);
  });
  await check('mixed group and leaf filters are rejected before any transaction',async()=>{
   const before=transactionRequests;
@@ -237,13 +252,13 @@ async function main(){
  await check('multi-select and nested OR filters preserve default colors and row membership',async()=>{
   await mutation('av',{action:'add_column',avID,blockID,keyName:'FilterLabels',keyType:'mSelect'});
   const columns=await call('av',{action:'get',scope:'columns',avID,blockID});const labels=columns.columns.find(c=>c.name==='FilterLabels').columnID;assert(labels);
-  await mutation('av',{action:'set_cells',avID,blockID,rowID:rows.resolvedRows[1].rowID,columnID:labels,valueType:'multi_select',options:['Review','Secondary']});
+  await mutation('av',{action:'set_cells',avID,blockID,rowID:rows.rows[1].rowID,columnID:labels,valueType:'multi_select',options:['Review','Secondary']});
   const multiFilter={column:labels,operator:'Contains',value:{type:'mSelect',mSelect:[{content:'Review'}]}};
   const first=await mutation('av',{action:'update_view',avID,blockID,viewID,filters:[multiFilter]},{replay:true});assert.equal(first.safety.transactionState,'committed');
-  let query=await call('av',{action:'query',avID,blockID,viewID});assert.deepEqual(query.resolvedRows.map(r=>r.rowID),[rows.resolvedRows[1].rowID]);
+  let query=await call('av',{action:'query',avID,blockID,viewID});assert.deepEqual(query.rows.map(r=>r.rowID),[rows.rows[1].rowID]);
   const before=transactionRequests;const same=await mutation('av',{action:'update_view',avID,blockID,viewID,filters:[multiFilter]});assert.equal(same.safety.transactionState,'no_change');assert.equal(transactionRequests,before);
   const filters=[{combination:'or',filters:[selectFilter[0],{combination:'and',filters:[multiFilter]}]}];const nested=await mutation('av',{action:'update_view',avID,blockID,viewID,filters},{replay:true});assert.equal(nested.safety.transactionState,'committed');
-  query=await call('av',{action:'query',avID,blockID,viewID});assert.deepEqual(query.resolvedRows.map(r=>r.rowID).sort(),rows.resolvedRows.map(r=>r.rowID).sort());
+  query=await call('av',{action:'query',avID,blockID,viewID});assert.deepEqual(query.rows.map(r=>r.rowID).sort(),rows.rows.map(r=>r.rowID).sort());
   const after=transactionRequests;const again=await mutation('av',{action:'update_view',avID,blockID,viewID,filters});assert.equal(again.safety.transactionState,'no_change');assert.equal(transactionRequests,after);
   report.filterDefaults={selectOmittedColorCommitted:true,replayVerified:true,omittedAndEmptyNoChange:true,noChangeTransactionRequests:0,explicitColor:'3',multiSelectCommitted:true,nestedOrCommitted:true};
  });
@@ -274,6 +289,89 @@ async function main(){
  });
  await check('new request cannot recreate existing AV',async()=>{const result=payload(await client.callTool({name:'av',arguments:{action:'create',parentID:docID,avID,validateOnly:true}}));assert(result.error);});
  await check('search points to get with real IDs',async()=>{const out=await call('av',{action:'search',keyword:'Alpha'});assert(out.results.some(r=>r.avID===avID));assert(out.results.find(r=>r.avID===avID).nextSteps.some(s=>s.arguments.action==='get'&&s.arguments.avID===avID));});
+ await check('four detached date events: preflight/commit via commitArgs and nested date formatted readback',async()=>{
+  await mutation('av',{action:'add_column',avID,blockID,keyName:'EventDate',keyType:'date'});
+  const dateViewID=new Date().toISOString().replace(/\D/g,'').slice(0,14)+'-'+crypto.randomBytes(4).toString('hex').slice(0,7);
+  await mutation('av',{action:'add_view',avID,blockID,viewID:dateViewID,layout:'table',name:'DateEvents'});
+  const dateColumns=await call('av',{action:'get',scope:'columns',avID,blockID});const dateKey=dateColumns.columns.find(column=>column.name==='EventDate').columnID;assert(dateKey);
+  const events=[
+   {clientKey:'date-1',primaryKeyText:prefix+' 事件-一',cells:[{columnID:dateKey,valueType:'date',date:'2026-03-01T09:30:00+08:00',includeTime:true}]},
+   {clientKey:'date-2',primaryKeyText:prefix+' 事件-二',cells:[{columnID:dateKey,valueType:'date',date:'2026-03-02',includeTime:false}]},
+   {clientKey:'date-3',primaryKeyText:prefix+' 事件-三',cells:[{columnID:dateKey,valueType:'date',date:'2026-03-03T00:00:00Z',endDate:'2026-03-05T00:00:00Z',includeTime:false}]},
+   {clientKey:'date-4',primaryKeyText:prefix+' 事件-四',cells:[{columnID:dateKey,valueType:'date',date:'2026-03-04T23:59:00+08:00',includeTime:true}]},
+  ];
+  const args={action:'add_rows',avID,blockID,viewID:dateViewID,rows:events};
+  const pre=await call('av',{...args,validateOnly:true});
+  assert.equal(pre.writeAttempted,false);assert.equal(pre.preflight?.version,2);
+  assert.equal(pre.preflight.commitArgs.action,'add_rows');assert.equal(pre.preflight.commitArgs.validateOnly,false);
+  assert.deepEqual(pre.preflight.commitArgs.rows,events);
+  const committed=await call('av',pre.preflight.commitArgs);
+  assert.equal(committed.safety?.writeSafetyGuaranteed,true);assert.equal(committed.safety?.transactionState,'committed');
+  assert.equal(committed.added,4);assert.equal(committed.stage,'verified');assert.equal(committed.cellsWritten,4);
+  const rowIDs=committed.rows.map(row=>row.rowID);assert.equal(new Set(rowIDs).size,4);
+  const queried=await call('av',{action:'query',avID,blockID,viewID:dateViewID,fields:[primary,dateKey]});
+  const native=(await api('/api/av/getAttributeView',{id:avID})).av;
+  const nativeKey=native.keyValues.find(entry=>entry.key.id===dateKey);assert(nativeKey);
+  const nativeRows=new Map(nativeKey.values.map(value=>[value.blockID,value]));
+  for(const rowID of rowIDs){
+   const projected=queried.rows.find(row=>row.rowID===rowID);assert(projected,'query must return detached date event '+rowID);
+   const cell=projected.cells[dateKey];assert(cell,JSON.stringify({rowID,projected}));
+   const nativeValue=nativeRows.get(rowID);assert(nativeValue,'native AV must contain date event '+rowID);
+   assert.equal(typeof nativeValue.date?.content,'number');
+   assert(nativeValue.date.formattedContent,'native date formattedContent must be present');
+   assert.equal(cell.value,nativeValue.date.content);
+   assert.equal(cell.formatted,nativeValue.date.formattedContent);
+  }
+  report.dateEvents={rowIDs,viewID:dateViewID,columnID:dateKey,formattedSource:'value.date.formattedContent',preflightRequestId:pre.requestId};
+  executed.add('av.add_rows');
+ });
+ await check('remove_rows deletes plain-text detached rows through canonical rowIDs',async()=>{
+  const removeIDs=rows.acceptanceAllRows.map(row=>row.rowID);
+  assert.equal(removeIDs.length,3);
+  const removed=await mutation('av',{action:'remove_rows',avID,blockID,rowIDs:removeIDs},{replay:true});
+  assert.equal(removed.removed,removeIDs.length);
+  const native=(await api('/api/av/getAttributeView',{id:avID})).av;
+  const remaining=new Set();
+  for(const entry of native.keyValues){if(Array.isArray(entry.values))for(const value of entry.values)if(value?.blockID)remaining.add(value.blockID);}
+  for(const rowID of removeIDs)assert(!remaining.has(rowID),'row '+rowID+' still exists after rowIDs removal');
+  const queried=await call('av',{action:'query',avID,blockID,viewID:report.dateEvents.viewID});
+  assert.equal(queried.rows.length,4);
+  assert(!queried.rows.some(row=>removeIDs.includes(row.rowID)));
+  report.rowIDsRemoval={removed:removeIDs,remainingRows:queried.rows.map(row=>row.rowID),nativeClean:true};
+ });
+ await check('18-document batch rename: preflight/commit via commitArgs, native check and idempotent replay',async()=>{
+  const items=[];
+  for(let index=1;index<=18;index+=1){
+   const ordinal=String(index).padStart(2,'0');
+   const created=await mutation('document',{action:'create',notebook,path:'/'+prefix+'/batch-'+ordinal,markdown:prefix+' batch rename '+ordinal});
+   const info=await api('/api/filetree/getPathByID',{id:created.id});
+   const fixture={id:created.id,originalPath:info.path,title:prefix+' batch renamed '+ordinal,cleaned:false};
+   batchRenameFixtures.push(fixture);save();
+   items.push({id:created.id,title:fixture.title});
+  }
+  const args={action:'rename',items};
+  const pre=await call('document',{...args,validateOnly:true});
+  assert.equal(pre.writeAttempted,false);assert.equal(pre.preflight?.commitArgs.action,'rename');
+  assert.equal(pre.preflight.commitArgs.items.length,18);
+  const beforeRenames=renameDocRequests;
+  const committed=await call('document',pre.preflight.commitArgs);
+  assert.equal(committed.overallState,'committed');assert.equal(committed.items.length,18);
+  assert.equal(committed.counts.committed,18);assert.equal(committed.safety?.transactionState,'committed');
+  assert.equal(renameDocRequests-beforeRenames,18);
+  for(let index=0;index<items.length;index+=1){
+   const item=items[index];
+   assert.equal(await api('/api/filetree/getHPathByID',{id:item.id}),'/'+prefix+'/'+item.title);
+   assert.equal((await api('/api/filetree/getPathByID',{id:item.id})).path,batchRenameFixtures[index].originalPath);
+   assert((await api('/api/filetree/getIDsByHPath',{path:'/'+prefix+'/'+item.title,notebook})).includes(item.id));
+  }
+  const replay=await call('document',pre.preflight.commitArgs);
+  assert.equal(replay.safety?.replayed,true);assert.equal(replay.overallState,'committed');
+  assert.deepEqual(replay.items,committed.items);assert.equal(renameDocRequests-beforeRenames,18);
+  report.batchRename={count:items.length,requestId:pre.requestId,items:committed.items,replayed:true,kernelRenameRequests:renameDocRequests-beforeRenames};
+  executed.add('document.rename');
+  await cleanupBatchRenameFixtures();
+  assert(batchRenameFixtures.every(fixture=>fixture.cleaned),'18-document batch fixtures must be cleaned by their own IDs');
+ });
  }
  for(const permission of ['rwd','rw','r','none'])await check('permission '+permission+': real notebook read, write and delete boundaries',async()=>{
   const name=prefix+'-permission-'+permission;const created=await mutation('notebook',{action:'create',name},{replay:true});assert(created.id);const fixture={id:created.id,name,permission,cleaned:false};permissionNotebooks.push(fixture);save();
@@ -319,11 +417,12 @@ async function main(){
  await check('all-readable mixed r/rw/rwd permissions allow aggregate SQL',async()=>{const hidden=permissionNotebooks.find(n=>n.permission==='none');await mutation('notebook',{action:'set_permission',notebook:hidden.id,permission:'r'});const sql="SELECT COUNT(*) AS n FROM blocks WHERE root_id='"+hidden.docID+"'";let rows;for(let i=0;i<20;i++){rows=await call('search',{action:'query_sql',sql});if(Number(rows.data?.[0]?.n)>0)break;await new Promise(r=>setTimeout(r,150));}assert(Number(rows.data?.[0]?.n)>0,JSON.stringify({sql,rows,notebook:hidden.id,docID:hidden.docID}));assert.equal(rows.reason,undefined);report.allReadableSql={sql,rows,notebook:hidden.id,docID:hidden.docID};});
  await check('cleanup temporary permission notebooks and preserve original permissions',async()=>{await cleanupPermissionNotebooks();const response=await fetch(profile.apiUrl+'/api/file/getFile',{method:'POST',headers:{'Content-Type':'application/json',...(profile.token?{Authorization:'Token '+profile.token}:{})},body:JSON.stringify({path:permissions})});assert.equal(crypto.createHash('sha256').update(await response.text()).digest('hex'),permissionsHash);report.originalPermissionsUnchanged=true;});
  if(!permissionsOnly)await check('cleanup isolated document',async()=>{const info=await api('/api/block/getBlockInfo',{id:docID});assert.equal(info.box,notebook);const hpath=await api('/api/filetree/getHPathByID',{id:docID});assert(hpath.includes(prefix));await mutation('document',{action:'remove',id:docID});report.fixtures.forEach(f=>f.cleaned=true);docID=undefined;});
- const note=await check('retain a user-readable acceptance report',()=>mutation('document',{action:'create',notebook,path:'/'+prefix+'-验收报告',markdown:'# v0.6.11 / CLI v0.2.12 真实验收\n\n- 时间：'+new Date().toISOString()+'\n- 思源内核：'+report.version+'\n- 测试产物：本轮 dist CJS；临时 Node 协调器连接同一真实工作区\n- 本轮夹具已清理；此报告保留\n\n'+report.checks.map(c=>'- '+c.name+'：'+c.status).join('\n')+'\n\n未覆盖：笔记本全局设置、排序模式、快照、同步、反馈、第三方写入、购买，以及本场景未逐项执行的其他 action。完整 action 矩阵见本轮本地 JSON 报告。'}));report.reportDocument={id:note.id,path:'/'+nb.name+'/'+prefix+'-验收报告',retained:true};
+ const note=await check('retain a user-readable acceptance report',()=>mutation('document',{action:'create',notebook,path:'/'+prefix+'-验收报告',markdown:'# Strict Write v2 真实验收\n\n- 时间：'+new Date().toISOString()+'\n- 思源内核：'+report.version+'\n- 测试产物：本轮 dist CJS；临时 Node 协调器连接同一真实工作区\n- 本轮夹具已清理；此报告保留\n\n'+report.checks.map(c=>'- '+c.name+'：'+c.status).join('\n')+'\n\n未覆盖：笔记本全局设置、排序模式、快照、同步、反馈、第三方写入、购买，以及本场景未逐项执行的其他 action。完整 action 矩阵见本轮本地 JSON 报告。'}));report.reportDocument={id:note.id,path:'/'+nb.name+'/'+prefix+'-验收报告',retained:true};
  for(const artifact of Object.keys(report.artifacts))assert.equal(crypto.createHash('sha256').update(fs.readFileSync(artifact)).digest('hex'),report.artifacts[artifact],'Artifact changed during acceptance');
 }
 main().catch(e=>{report.failure=e.message;console.error(e.message);process.exitCode=1;}).finally(async()=>{
  if(docID&&client){try{const info=await api('/api/block/getBlockInfo',{id:docID});const name=await api('/api/filetree/getHPathByID',{id:docID});assert.equal(info.box,notebook);assert(name.includes(prefix));await mutation('document',{action:'remove',id:docID});report.fixtures.forEach(f=>f.cleaned=true);docID=undefined;report.cleanup='completed after failure';}catch(e){report.cleanup='blocked: '+e.message;}}
+ if(client&&batchRenameFixtures.some(f=>!f.cleaned)){try{await cleanupBatchRenameFixtures();}catch(e){report.batchRenameCleanup='blocked: '+e.message;}}
  if(client&&permissionNotebooks.some(n=>!n.cleaned)){try{await cleanupPermissionNotebooks();}catch(e){report.permissionCleanup='blocked: '+e.message;}}
  for(const c of [client,stdio,direct])await c?.close().catch(()=>{});await rt?.close().catch(()=>{});if(child)child.kill();if(proxy)await new Promise(r=>proxy.close(r));
  if(profile&&!docID)await api('/api/file/removeFile',{path:testLedger}).catch(()=>{});if(profile&&permissionNotebooks.every(n=>n.cleaned))await api('/api/file/removeFile',{path:testPermissions}).catch(()=>{});if(fs.existsSync(cliConfigPath))fs.unlinkSync(cliConfigPath);

@@ -62,7 +62,7 @@ const VERSION_CONTROL_DOCK_ROOT_ID = "SisyphusTimelineDockPanel";
 const VERSION_CONTROL_ICON_ID = "iconSisyphusTimelineDock";
 const VERSION_CONTROL_ICON_SYMBOLS = [
     `<symbol id="${SNAPSHOT_ICON_ID}" viewBox="0 0 24 24"><path fill="currentColor" d="M7 3a3 3 0 0 1 2 5.24v1.27l6 3V8.24A3 3 0 1 1 17 9v5a1 1 0 0 1-1.45.89L9 11.62v4.14A3 3 0 1 1 7 15.76V8.24A3 3 0 0 1 7 3Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM7 17a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></symbol>`,
-    `<symbol id="${VERSION_CONTROL_ICON_ID}" viewBox="0 0 24 24"><path fill="currentColor" d="M4 5h6v14H4V5Zm10 0h6v14h-6V5ZM6 8v2h2V8H6Zm10 0v2h2V8h-2ZM6 13v2h2v-2H6Zm10 0v2h2v-2h-2Z"/></symbol>`,
+    `<symbol id="${VERSION_CONTROL_ICON_ID}" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 5h6v14H4zM14 5h6v14h-6z"/></symbol>`,
 ].join("");
 
 type CurrentDocumentContext = {

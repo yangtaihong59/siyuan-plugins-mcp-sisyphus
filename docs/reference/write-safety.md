@@ -1,5 +1,7 @@
 # Strict Safe Writes
 
+Strict preflight and the state check before commit reload notebook permissions. An existing lease cannot bypass a later permission revocation, and granting permission does not require restarting the server.
+
 Strict Safe Writes addresses three concrete risks: the target changing after it was read, a transport retry duplicating a mutation, and a repeated request being mistaken for a new one. It is enabled by default and does not create SiYuan data snapshots.
 
 ## Call flow
@@ -29,6 +31,30 @@ The preflight reads without mutating, computes a complete SHA-256 digest, and cr
   "leaseExpiresAt": 1786543200000
 }
 ```
+
+The same response also contains a normalized `preflight` object (`version: 2`). It is the preferred client contract:
+
+```json
+{
+  "preflight": {
+    "version": 2,
+    "requestId": "b72f",
+    "expiresAt": 1786543200000,
+    "ttlMs": 600000,
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "guardTargetCount": 1 },
+    "commitArgs": {
+      "action": "set_cells",
+      "avID": "20260812120000-abcdefg",
+      "cells": [],
+      "validateOnly": false,
+      "requestId": "b72f",
+      "expectedManifestHash": "8ac2"
+    }
+  }
+}
+```
+
+Copy `preflight.commitArgs` unchanged as the next call arguments. Do not reconstruct `requestId`, hash fields, or business arguments by hand. `counts` is action-specific: `operationCount` is always present; `rowCount`, `cellCount`, and `guardTargetCount` appear only when they can be computed, and equal values are never deduplicated into a smaller cell count. `expiresAt` and `ttlMs` describe the same ten-minute first-execution window. Top-level `requestId` and hash fields remain during the migration window for 0.6.13 clients; both describe one execution path, not a second retry mechanism. If a batch is too large to return executable arguments within the response limit, it is rejected explicitly rather than truncated.
 
 The credential field name matches the write parameter, so copy that field and value directly. Remove `validateOnly` (or set it to `false`) and copy the returned `requestId`:
 

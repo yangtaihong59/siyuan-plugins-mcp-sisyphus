@@ -239,7 +239,7 @@
     },
     {
       "name": "document",
-      "description": "📝 Document IDs, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown read/write. create uses notebook + notebook-local path (/Folder/Doc, omit notebook name). lookup accepts id, notebook+hpath, or notebook+path (.sy storage path); reuse returned storage paths for rename/move/remove. Read create help for parentPath + title.\nActions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · ensure_link_targets(notebook, parentId, mode, targets) · rename(title) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📝 Documents, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown. query lists readable documents with statistics and same-title candidates. create uses notebook + notebook-local path (/Folder/Doc). lookup accepts id, notebook+hpath, or notebook+path (.sy); reuse storage paths for rename/move/remove. Read create help for parentPath + title.\nActions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · query() · ensure_link_targets(notebook, parentId, mode, targets) · rename(id, title | notebook, path, title | items) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -248,6 +248,7 @@
             "enum": [
               "create",
               "lookup",
+              "query",
               "ensure_link_targets",
               "rename",
               "remove",
@@ -283,7 +284,9 @@
           },
           "title": {
             "description": "Required together with parentPath when create omits path; notebook + title alone is invalid",
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           },
           "markdown": {
             "description": "Markdown content, defaults to empty. Do not include a leading # Title; a matching H1 is stripped automatically.",
@@ -315,6 +318,101 @@
               ]
             }
           },
+          "notebooks": {
+            "description": "IDs; default readable open notebooks. Explicit unreadable/closed IDs are rejected.",
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "fields": {
+            "description": "Columns; default all. Statistics describe the SQL index; see query help for definitions.",
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "notebook",
+                "title",
+                "path",
+                "hpath",
+                "created",
+                "updated",
+                "blockCount",
+                "contentChars",
+                "sameTitleCount"
+              ]
+            }
+          },
+          "hpathPrefix": {
+            "description": "Exact notebook-local hpath or descendants, e.g. /Projects.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "minBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "minChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "duplicatesOnly": {
+            "description": "Only repeated titles in scope; not proof of duplicate content.",
+            "type": "boolean"
+          },
+          "sortBy": {
+            "description": "Default updated; ID breaks ties.",
+            "type": "string",
+            "enum": [
+              "id",
+              "title",
+              "created",
+              "updated",
+              "blockCount",
+              "contentChars",
+              "sameTitleCount"
+            ]
+          },
+          "sortOrder": {
+            "description": "Default desc.",
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "page": {
+            "description": "1-based; default 1. Pages are not a snapshot.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "pageSize": {
+            "description": "Default 50, max 100.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
           "parentId": {
             "type": "string",
             "minLength": 1,
@@ -341,6 +439,32 @@
           "dryRun": {
             "description": "Plan and inspect the explicit scope without creating documents. For strict creation preflight, use validateOnly=true instead.",
             "type": "boolean"
+          },
+          "items": {
+            "description": "Bounded batch of {id,title}. Mutually exclusive with id/notebook/path/title. Maximum 50 items and 256 KiB serialized input.",
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Document ID to rename"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "New document title"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
           },
           "ids": {
             "description": "One or more document IDs to remove",
@@ -466,20 +590,20 @@
             "description": "Target notebook ID"
           },
           "targetPath": {
-            "description": "Optional target storage path",
+            "description": "Existing parent document storage path ending in .sy; defaults to / (target notebook root). Not a human-readable path.",
             "type": "string"
           },
           "previousPath": {
-            "description": "Optional previous sibling storage path",
+            "description": "Existing sibling document storage path ending in .sy in targetNotebook; selects sibling placement. Do not combine with a non-root targetPath.",
             "type": "string"
           },
           "srcID": {
             "type": "string",
-            "description": "Source document ID"
+            "description": "Source document root ID, without child documents"
           },
           "targetID": {
             "type": "string",
-            "description": "Target document or heading block ID"
+            "description": "Existing heading block ID in another document, from document.get_outline. Document root IDs are rejected."
           },
           "after": {
             "description": "When true, insert after the target heading instead of before it",
@@ -749,7 +873,7 @@
     },
     {
       "name": "av",
-      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID, srcIDs) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -817,6 +941,16 @@
           "keyword": {
             "type": "string",
             "description": "Keyword to search in attribute view names"
+          },
+          "fields": {
+            "description": "Optional stable columnIDs to project. Row identity (rowID) is always kept; unrequested cells and columns are omitted.",
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "page": {
             "type": "integer",
@@ -982,8 +1116,15 @@
               "type": "string"
             }
           },
+          "rows": {
+            "description": "Composite detached rows with initial cells. Mutually exclusive with blockIDs and primaryKeyTexts. Each row receives a server-generated stable rowID before any cell write. Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
           "groupID": {
-            "description": "Optional target group ID",
+            "description": "Optional target group ID; composite rows require viewID",
             "type": "string",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
@@ -996,13 +1137,21 @@
             "description": "When true, skip view/group default value filling",
             "type": "boolean"
           },
-          "srcIDs": {
+          "rowIDs": {
+            "description": "Canonical AV row item IDs to remove. The server validates them against the current AV definition before dispatching the native removal. Do not mix with srcIDs.",
             "minItems": 1,
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Bound row block/item IDs to remove"
+            }
+          },
+          "srcIDs": {
+            "description": "Native interface removal IDs. This is not an interchangeable alias for rowIDs; use rowIDs unless caller has already resolved native removal identities.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "keyID": {
             "description": "Optional new column key ID; MCP generates one when omitted",
@@ -2033,13 +2182,14 @@
             "description": "Query scope: \"all\", \"deck\", \"notebook\", or \"tree\""
           },
           "filter": {
+            "default": "due",
+            "description": "Filter returned cards: \"due\" (default), \"new\", or \"old\"",
             "type": "string",
             "enum": [
               "due",
               "new",
               "old"
-            ],
-            "description": "Filter returned cards: \"due\", \"new\", or \"old\""
+            ]
           },
           "deckID": {
             "description": "Deck ID, required when scope=deck. For scope=\"all\", omit deckID; an empty string is treated as omitted.",
@@ -2291,6 +2441,16 @@
           "keyword": {
             "type": "string"
           },
+          "fields": {
+            "description": "Optional stable columnIDs to project. Row identity (rowID) is always kept; unrequested cells and columns are omitted.",
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
           "page": {
             "type": "integer",
             "minimum": 1,
@@ -2329,7 +2489,7 @@
           "avID"
         ],
         "additionalProperties": false,
-        "description": "Query paginated database rows or lightweight primary keys; never creates a database."
+        "description": "Query paginated database rows (one canonical rows[] with columnID cells and kernel formatted text) or lightweight primary keys; never creates a database. Use get(scope=\"raw\") for the complete native payload."
       },
       "create": {
         "type": "object",
@@ -4158,6 +4318,171 @@
               "type": "string"
             }
           },
+          "rows": {
+            "description": "Composite detached rows with initial cells. Mutually exclusive with blockIDs and primaryKeyTexts. Each row receives a server-generated stable rowID before any cell write.",
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "clientKey": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "Batch-local unique key used only to map the returned rowID"
+                },
+                "primaryKeyText": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Detached row primary-key text"
+                },
+                "cells": {
+                  "description": "Initial non-primary-key cell values written after the rows are created",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "columnID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Existing writable column key ID"
+                      },
+                      "valueType": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "number",
+                          "date",
+                          "checkbox",
+                          "select",
+                          "multi_select",
+                          "relation",
+                          "url",
+                          "email",
+                          "phone",
+                          "mAsset"
+                        ],
+                        "description": "Cell value type"
+                      },
+                      "text": {
+                        "description": "Text value for valueType=text",
+                        "type": "string"
+                      },
+                      "number": {
+                        "description": "Number value for valueType=number",
+                        "type": "number"
+                      },
+                      "numberFormat": {
+                        "description": "Optional number format such as commas, percent, USD, or CNY",
+                        "type": "string"
+                      },
+                      "date": {
+                        "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "endDate": {
+                        "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "includeTime": {
+                        "description": "When false, store the date without a time component",
+                        "type": "boolean"
+                      },
+                      "checked": {
+                        "description": "Checkbox state for valueType=checkbox",
+                        "type": "boolean"
+                      },
+                      "option": {
+                        "description": "Selected option label for valueType=select",
+                        "type": "string"
+                      },
+                      "options": {
+                        "description": "Selected option labels for valueType=multi_select",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "relationBlockIDs": {
+                        "description": "Related block IDs for valueType=relation",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "url": {
+                        "description": "URL value for valueType=url",
+                        "type": "string"
+                      },
+                      "email": {
+                        "description": "Email value for valueType=email",
+                        "type": "string"
+                      },
+                      "phone": {
+                        "description": "Phone value for valueType=phone",
+                        "type": "string"
+                      },
+                      "assets": {
+                        "description": "Asset entries for valueType=mAsset",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "image",
+                                "file"
+                              ],
+                              "description": "Asset entry type"
+                            },
+                            "content": {
+                              "type": "string",
+                              "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
+                            },
+                            "name": {
+                              "description": "Optional display name",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "columnID",
+                      "valueType"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "clientKey",
+                "primaryKeyText"
+              ],
+              "additionalProperties": false
+            }
+          },
           "blockID": {
             "description": "Optional database block ID used to pin a specific database-block view context",
             "type": "string"
@@ -4167,7 +4492,7 @@
             "type": "string"
           },
           "groupID": {
-            "description": "Optional target group ID",
+            "description": "Optional target group ID; composite rows require viewID",
             "type": "string"
           },
           "previousID": {
@@ -4184,7 +4509,7 @@
           "avID"
         ],
         "additionalProperties": false,
-        "description": "Add bound block rows or detached plain-text primary-key rows to a database."
+        "description": "Add bound rows, detached plain-text rows, or composite detached rows with initial cells. Composite rows use one preflight, stable rowIDs, and a persisted stage ledger."
       },
       "remove_rows": {
         "type": "object",
@@ -4201,22 +4526,29 @@
             "description": "Registered database block ID for explicit database-block context",
             "type": "string"
           },
-          "srcIDs": {
+          "rowIDs": {
+            "description": "Canonical AV row item IDs to remove. The server validates them against the current AV definition before dispatching the native removal. Do not mix with srcIDs.",
             "minItems": 1,
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Bound row block/item IDs to remove"
+            }
+          },
+          "srcIDs": {
+            "description": "Native interface removal IDs. This is not an interchangeable alias for rowIDs; use rowIDs unless caller has already resolved native removal identities.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "action",
-          "avID",
-          "srcIDs"
+          "avID"
         ],
         "additionalProperties": false,
-        "description": "Remove rows from a database."
+        "description": "Remove rows by validated canonical rowIDs, or by srcIDs through the explicitly native interface. Mixing is rejected before any write."
       },
       "add_column": {
         "type": "object",
@@ -6482,7 +6814,7 @@
           "notebook"
         ],
         "additionalProperties": false,
-        "description": "Create a new document. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.",
+        "description": "Create a new document. notebook is an ID from notebook.list, never a notebook name. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.",
         "oneOf": [
           {
             "required": [
@@ -6564,6 +6896,121 @@
         "additionalProperties": false,
         "description": "Look up document IDs, storage paths, human-readable paths, and document metadata from one document reference."
       },
+      "query": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "query"
+          },
+          "notebooks": {
+            "description": "IDs; default readable open notebooks. Explicit unreadable/closed IDs are rejected.",
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "fields": {
+            "description": "Columns; default all. Statistics describe the SQL index; see query help for definitions.",
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "notebook",
+                "title",
+                "path",
+                "hpath",
+                "created",
+                "updated",
+                "blockCount",
+                "contentChars",
+                "sameTitleCount"
+              ]
+            }
+          },
+          "title": {
+            "description": "Literal case-sensitive title substring.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "hpathPrefix": {
+            "description": "Exact notebook-local hpath or descendants, e.g. /Projects.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "minBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "minChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "duplicatesOnly": {
+            "description": "Only repeated titles in scope; not proof of duplicate content.",
+            "type": "boolean"
+          },
+          "sortBy": {
+            "description": "Default updated; ID breaks ties.",
+            "type": "string",
+            "enum": [
+              "id",
+              "title",
+              "created",
+              "updated",
+              "blockCount",
+              "contentChars",
+              "sameTitleCount"
+            ]
+          },
+          "sortOrder": {
+            "description": "Default desc.",
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "page": {
+            "description": "1-based; default 1. Pages are not a snapshot.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "pageSize": {
+            "description": "Default 50, max 100.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Query readable open notebooks with paginated document metadata, indexed body statistics, and same-title candidates. Works while other notebooks are unreadable."
+      },
       "ensure_link_targets": {
         "type": "object",
         "properties": {
@@ -6644,14 +7091,6 @@
       "rename": {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "rename"
-          },
-          "title": {
-            "type": "string",
-            "description": "New document title"
-          },
           "id": {
             "type": "string"
           },
@@ -6660,14 +7099,67 @@
           },
           "path": {
             "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "const": "rename"
+          },
+          "title": {
+            "description": "New document title for single-document mode",
+            "type": "string"
+          },
+          "items": {
+            "description": "Bounded batch of {id,title}. Mutually exclusive with id/notebook/path/title. Maximum 50 items and 256 KiB serialized input.",
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Document ID to rename"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "New document title"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
-          "action",
-          "title"
+          "action"
         ],
         "additionalProperties": false,
-        "description": "Rename a document"
+        "description": "Rename one document, or up to 50 documents through one bounded batch preflight with per-item receipts. Batch items are mutually exclusive with single-document arguments.",
+        "oneOf": [
+          {
+            "required": [
+              "id",
+              "title"
+            ]
+          },
+          {
+            "required": [
+              "notebook",
+              "path",
+              "title"
+            ]
+          },
+          {
+            "required": [
+              "items"
+            ]
+          }
+        ]
       },
       "remove": {
         "type": "object",
@@ -7041,11 +7533,11 @@
             "description": "Target notebook ID"
           },
           "targetPath": {
-            "description": "Optional target storage path",
+            "description": "Existing parent document storage path ending in .sy; defaults to / (target notebook root). Not a human-readable path.",
             "type": "string"
           },
           "previousPath": {
-            "description": "Optional previous sibling storage path",
+            "description": "Existing sibling document storage path ending in .sy in targetNotebook; selects sibling placement. Do not combine with a non-root targetPath.",
             "type": "string"
           }
         },
@@ -7066,11 +7558,11 @@
           },
           "srcID": {
             "type": "string",
-            "description": "Source document ID"
+            "description": "Source document root ID, without child documents"
           },
           "targetID": {
             "type": "string",
-            "description": "Target document or heading block ID"
+            "description": "Existing heading block ID in another document, from document.get_outline. Document root IDs are rejected."
           },
           "after": {
             "description": "When true, insert after the target heading instead of before it",
@@ -7694,13 +8186,14 @@
             "description": "Query scope: \"all\", \"deck\", \"notebook\", or \"tree\""
           },
           "filter": {
+            "default": "due",
+            "description": "Filter returned cards: \"due\" (default), \"new\", or \"old\"",
             "type": "string",
             "enum": [
               "due",
               "new",
               "old"
-            ],
-            "description": "Filter returned cards: \"due\", \"new\", or \"old\""
+            ]
           },
           "deckID": {
             "description": "Deck ID, required when scope=deck. For scope=\"all\", omit deckID; an empty string is treated as omitted.",

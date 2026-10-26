@@ -1,3 +1,5 @@
+import { prepareDocumentConversion } from './conversion';
+import { handleDocumentQuery } from './query';
 import { availableReadSteps, databaseReadSteps, documentReadInfo, kramdownDatabases, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
 import * as blockApi from '../../api/block';
@@ -6,6 +8,12 @@ import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import * as transactionApi from '../../api/transaction';
 import type { DocumentAction } from '../../core/config';
+import {
+    BATCH_RENAME_CONTEXT,
+    overallBatchRenameState,
+    type BatchRenameContext,
+    type BatchRenameItemReceipt,
+} from '../../core/batch-rename-plan';
 import type { PermissionManager } from '../../core/permissions';
 import {
     DocumentCreateSchema,
@@ -45,9 +53,9 @@ import {
     resolveNotebookForPath,
 } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
-import { resolveNotebookName } from '../internal/helpers/notebook-names';
+import { getNotebookNameArgumentHint, resolveNotebookName } from '../internal/helpers/notebook-names';
 import { filterBacklinkResultByPermission, filterItemsByPermissionAndPath } from '../search';
-import { createJsonResult, createPermissionDeniedResult, createSetIconReminder } from '../internal/shared';
+import { createJsonResult, createPermissionDeniedResult, createSetIconReminder, type ToolResult } from '../internal/shared';
 import { applyUiRefresh, type UiRefreshOperation } from '../internal/ui-refresh';
 import { sleep } from '../../shared/async';
 import { stripRedundantTitleHeading } from '../internal/kramdown-safe';
@@ -384,6 +392,20 @@ const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     const parsed = DocumentCreateSchema.parse(rawArgs);
     await permMgr.reload();
     if (!permMgr.canWrite(parsed.notebook)) {
+        // A notebook name must not be mistaken for an ID with default r
+        // permission, which misleadingly sends callers to change permissions.
+        const hint = await getNotebookNameArgumentHint(client, permMgr, parsed.notebook);
+        if (hint) {
+            return {
+                ...createJsonResult({ error: {
+                    type: 'validation_error',
+                    code: 'invalid_arguments',
+                    message: 'document.create notebook requires a notebook ID, not its name. No document was created.',
+                    hint,
+                } }),
+                isError: true,
+            };
+        }
         return createPermissionDeniedResult(parsed.notebook, permMgr.get(parsed.notebook), 'write');
     }
     const parentPath = parsed.parentPath
@@ -683,8 +705,136 @@ const handleEnsureLinkTargets: DocumentActionHandler = async ({ client, permMgr,
     }), created.length > 0 ? [{ type: 'reloadFiletree' }] : []);
 };
 
+const handleBatchRename = async (
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    rawArgs: Record<string, unknown>,
+): Promise<ToolResult> => {
+    const context = (rawArgs as Record<string | symbol, unknown>)[BATCH_RENAME_CONTEXT] as BatchRenameContext | undefined;
+    if (!context) {
+        throw new Error('Batch document.rename requires a coordinator-issued plan; run validateOnly preflight first.');
+    }
+    const plan = context.plan;
+    const receipts: BatchRenameItemReceipt[] = plan.items.map((item) => ({
+        index: item.index,
+        id: item.id,
+        title: item.title,
+        state: 'not_started',
+        previousHPath: item.currentHPath,
+        targetHPath: item.targetHPath,
+    }));
+    const reloadRefresh: Array<{ type: 'reloadProtyle'; id: string }> = [];
+    let stopped = false;
+
+    for (let position = 0; position < plan.items.length; position += 1) {
+        const item = plan.items[position];
+        const receipt = receipts[position];
+        if (stopped) continue;
+
+        if (!permMgr.canWrite(item.notebook)) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = 'permission_revoked';
+            stopped = true;
+            continue;
+        }
+
+        let currentPath: { notebook?: string; box?: string; path?: string } | undefined;
+        let currentHPath: string | undefined;
+        try {
+            currentPath = await documentApi.getPathByID(client, item.id);
+            currentHPath = await documentApi.getHPathByID(client, item.id);
+        } catch (error) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = `target_unreadable: ${error instanceof Error ? error.message : String(error)}`;
+            stopped = true;
+            continue;
+        }
+        const notebook = currentPath?.notebook || currentPath?.box || '';
+        if (notebook !== item.notebook || currentPath?.path !== item.currentPath) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = 'target_changed_after_preflight';
+            stopped = true;
+            continue;
+        }
+        if (currentHPath === item.targetHPath) {
+            receipt.state = 'no_change';
+            reloadRefresh.push({ type: 'reloadProtyle', id: item.id });
+            continue;
+        }
+        if (currentHPath !== item.currentHPath) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = 'target_path_changed_after_preflight';
+            stopped = true;
+            continue;
+        }
+
+        // Persist the exact item about to be dispatched before the kernel
+        // call. A crash after this point leaves that item unknown, never
+        // silently retried, while completed items keep their receipts.
+        await context.checkpoint({ overallState: 'unknown', items: receipts.map((entry) => ({ ...entry })), inProgressIndex: item.index });
+        try {
+            await documentApi.renameDocByID(client, item.id, item.title);
+        } catch (error) {
+            receipt.state = 'unknown';
+            receipt.reason = `kernel_error: ${error instanceof Error ? error.message : String(error)}`;
+            stopped = true;
+            continue;
+        }
+        try {
+            const readback = await documentApi.getHPathByID(client, item.id);
+            if (readback !== item.targetHPath) {
+                receipt.state = 'unknown';
+                receipt.reason = `readback_mismatch: expected ${item.targetHPath}, observed ${readback || '<empty>'}`;
+                stopped = true;
+                continue;
+            }
+        } catch (error) {
+            receipt.state = 'unknown';
+            receipt.reason = `readback_failed: ${error instanceof Error ? error.message : String(error)}`;
+            stopped = true;
+            continue;
+        }
+        receipt.state = 'committed';
+        reloadRefresh.push({ type: 'reloadProtyle', id: item.id });
+    }
+
+    const overallState = overallBatchRenameState(receipts);
+    await context.checkpoint({ overallState, items: receipts.map((entry) => ({ ...entry })) });
+    const count = (state: BatchRenameItemReceipt['state']) => receipts.filter((item) => item.state === state).length;
+    const payload = {
+        success: overallState === 'committed',
+        changed: count('committed') > 0,
+        overallState,
+        partial: overallState === 'partial' || overallState === 'unknown',
+        items: receipts,
+        counts: {
+            requested: receipts.length,
+            committed: count('committed'),
+            noChange: count('no_change'),
+            failedBeforeExecute: count('failed_before_execute'),
+            unknown: count('unknown'),
+            notStarted: count('not_started'),
+        },
+        ...(overallState === 'unknown' ? {
+            next: 'Inspect the unknown item before any retry. Only proven not_started items may be submitted as a new preflight.',
+        } : {}),
+    };
+    const result = createJsonResult(payload);
+    // An unknown item must stay an unknown tool outcome. Returning a plain
+    // success-shaped receipt would let the coordinator record this batch as
+    // committed even though one rename may have been applied.
+    return applyUiRefresh(
+        client,
+        overallState === 'unknown' ? { ...result, isError: true } : result,
+        [...reloadRefresh, { type: 'reloadFiletree' }],
+    );
+};
+
 const handleRename: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentRenameSchema.parse(rawArgs);
+    if (parsed.items) {
+        return handleBatchRename(client, permMgr, rawArgs);
+    }
     if (parsed.id) {
         const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
         if (denied) return denied;
@@ -1065,13 +1215,17 @@ const handleHeadingToDoc: DocumentActionHandler = async ({ client, permMgr, rawA
     if (source.denied) return source.denied;
     const denied = await ensurePermissionForNotebook(permMgr, parsed.targetNotebook, 'write');
     if (denied) return denied;
-    await documentApi.headingToDoc(client, parsed.headingID, parsed.targetNotebook, parsed.targetPath, parsed.previousPath);
+    const plan = await prepareDocumentConversion(client, permMgr, parsed.action, parsed);
+    await documentApi.headingToDoc(client, parsed.headingID, parsed.targetNotebook, plan.targetPath, plan.previousPath);
+    const converted = await client.requestRead<{ rootID: string; box: string }>('/api/block/getBlockInfo', { id: parsed.headingID });
+    if (converted.rootID !== parsed.headingID || converted.box !== parsed.targetNotebook) throw new Error('Heading conversion readback mismatch');
     return applyUiRefresh(client, createJsonResult({
         success: true,
+        id: parsed.headingID,
         headingID: parsed.headingID,
         targetNotebook: parsed.targetNotebook,
-        ...(parsed.targetPath ? { targetPath: parsed.targetPath } : {}),
-        ...(parsed.previousPath ? { previousPath: parsed.previousPath } : {}),
+        targetPath: plan.targetPath,
+        ...(plan.previousPath ? { previousPath: plan.previousPath } : {}),
     }), [
         { type: 'reloadProtyle', id: source.context.documentId },
         { type: 'reloadFiletree' },
@@ -1084,7 +1238,10 @@ const handleDocToHeading: DocumentActionHandler = async ({ client, permMgr, rawA
     if (source.denied) return source.denied;
     const target = await ensurePermissionForDocumentId(client, permMgr, parsed.targetID, 'write');
     if (target.denied) return target.denied;
+    const plan = await prepareDocumentConversion(client, permMgr, parsed.action, parsed);
     const result = await documentApi.docToHeading(client, parsed.srcID, parsed.targetID, parsed.after ?? false);
+    const converted = await client.requestRead<{ rootID: string }>('/api/block/getBlockInfo', { id: parsed.srcID });
+    if (converted.rootID !== plan.target.documentId) throw new Error('Document conversion readback mismatch');
     return applyUiRefresh(client, createJsonResult({
         success: true,
         srcID: parsed.srcID,
@@ -1101,6 +1258,7 @@ const handleDocToHeading: DocumentActionHandler = async ({ client, permMgr, rawA
 export const DOCUMENT_ACTION_HANDLERS: Record<DocumentAction, DocumentActionHandler> = {
     create: handleCreate,
     lookup: handleLookup,
+    query: handleDocumentQuery,
     ensure_link_targets: handleEnsureLinkTargets,
     rename: handleRename,
     remove: handleRemove,

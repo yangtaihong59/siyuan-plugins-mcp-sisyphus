@@ -28,7 +28,8 @@
 `databaseContext` 返回 `avID`、已明确的 `blockID`/`viewID`、列/行字段在现有响应中的位置及 `idUsage`。列类型与选项保留在 `columns`（`get`）或 `av.keyValues[].key`（`get(scope="raw")`） 中，避免再复制完整结构。
 
 - `avID` 标识数据库；`blockID` 标识数据库承载块。镜像可能共用同一个数据库，未指定精确承载块时不猜选。
-- `resolvedRows[].rowID` 是数据库行 ID；`sourceBlockID` 是绑定笔记块；单元格值 ID 不能替代它们。独立行没有源块。
+- `query(mode="rows")` 的规范投影中，`rows[].rowID` 是数据库行 ID；单元格按稳定 `columnID` 映射为 `{value, formatted}`。可选 `fields` 只投影指定 columnID，且始终保留 `rowID`。单元格值 ID 既不是列 ID，也不是行 ID。完整原生 payload 仍通过 `get(scope="raw")` 获取。
+- `query(mode="primary_keys")` 的 `resolvedRows[].rowID` 是数据库行 ID；`sourceBlockID` 是绑定笔记块；单元格值 ID 不能替代它们。独立行没有源块。
 - 列的 `key.id` 在 `set_cells` 中使用参数名 `columnID`，在列操作中按相应帮助使用 `keyID`。
 - `query(mode="primary_keys")` 的 `rows` 是 `{key, values}`，`blockIDs` 是数据库承载块列表，不能按位置与行配对。默认每页 16 条；`resolvedRows` 提供行映射，绑定行按源块权限过滤。
 
