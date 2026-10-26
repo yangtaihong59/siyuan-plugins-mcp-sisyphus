@@ -437,3 +437,9 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 8. **i18n 源文件为 JSON**：`public/i18n/*.json` 是最终产物源文件。如需 YAML，可用 `yaml-plugin.js` 转换，但当前项目直接使用 JSON。
 
 9. **文档站点**：VitePress 文档在 `docs/` 中，支持中英文。修改功能后应同步更新对应语言的文档。
+
+## 使用 pi 进行场景测试
+
+用户要求通过 pi 做真实验收、全面场景测试或发现使用卡点时，先读 `docs/testing/PI_ACCEPTANCE_PLAN.md` 与 `tests/acceptance/README.md`。默认模型使用当前 pi 模型目录中的 `deepseek/deepseek-flash`；先核实，不自动换模型。使用 `scripts/acceptance-plan.mjs --check` 核对源码 action 是否都已规划。
+
+区分功能回归与全新会话的角色体验，不把源码辅助结果当作新手盲测；分别统计真实正向、正常拒绝、mock、blocked 与未执行。现有测试范围授权明确且目标一致时不逐 action 重复确认；未知工作区或外部副作用仍需明确范围。计划、help、schema 与模型口述均不是实际执行证据。未经单独要求，不因测试而自动修产品、提交或发布。

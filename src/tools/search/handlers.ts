@@ -1,6 +1,5 @@
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
-import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import type { SearchAction } from '../../core/config';
 import {
@@ -39,7 +38,7 @@ import {
     filterItemsByPermission,
     isPermissionRelatedApiError,
 } from './permission-filter';
-import { assertReadOnlySql, getBacklinkDocWithFallback, getBackmentionDocWithFallback } from './sql-builder';
+import { ensureRawSqlReadAccess, getBacklinksWithFallback } from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';
 
@@ -271,12 +270,16 @@ async function resolveFindReplaceTargetIDs(
 export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     fulltext: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchFulltextSchema.parse(rawArgs);
+        const resolvedMethod = resolveSearchMethodMeta(parsed);
+        if (resolvedMethod.method === 2) {
+            const denied = await ensureRawSqlReadAccess(client, permMgr, parsed.query);
+            if (denied) return denied;
+        }
         if (parsed.parentId) {
             const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentId, 'read');
             if (denied) return denied;
         }
 
-        const resolvedMethod = resolveSearchMethodMeta(parsed);
         const resolvedOrderBy = resolveSortAlias(parsed.sortBy, parsed.orderBy);
         const result = await searchApi.fullTextSearchBlock(client, {
             query: parsed.query,
@@ -361,35 +364,8 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     query_sql: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchQuerySqlSchema.parse(rawArgs);
         const stmt = resolveAliasString(parsed.stmt, parsed.sql);
-        try {
-            assertReadOnlySql(stmt ?? '');
-        } catch (error) {
-            return createErrorResult(
-                error,
-                { tool: SEARCH_TOOL_NAME, action: 'query_sql', rawArgs },
-            );
-        }
-        await permMgr.reload();
-        const notebookList = await notebookApi.listNotebooks(client);
-        const restrictedNotebookCount = notebookList.notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).length;
-        if (restrictedNotebookCount > 0) {
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify({
-                        error: {
-                            type: 'permission_denied',
-                            code: 'raw_sql_unavailable_with_restricted_notebooks',
-                            reason: 'permission_scope_not_enforceable',
-                            restrictedNotebookCount,
-                            message: 'Raw SQL is unavailable while one or more notebooks are unreadable because aggregate, join, CTE, and subquery results cannot be safely post-filtered by notebook.',
-                            hint: 'Grant read access to every notebook before using query_sql, or use permission-aware search and document actions instead.',
-                        },
-                    }, null, 2),
-                }],
-                isError: true,
-            };
-        }
+        const denied = await ensureRawSqlReadAccess(client, permMgr, stmt ?? '');
+        if (denied) return denied;
 
         const result = await searchApi.querySQL(client, stmt ?? '');
         const rows = Array.isArray(result) ? result : [];
@@ -404,15 +380,27 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         const mode = parsed.mode ?? 'both';
         const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
         if (denied) return denied;
+        if (scopeRootId) {
+            const scope = await ensurePermissionForDocumentId(client, permMgr, scopeRootId, 'read');
+            if (scope.denied) return scope.denied;
+        }
         try {
-            const linkResult = mode !== 'mentions'
-                ? await getBacklinkDocWithFallback(client, parsed.id, parsed.keyword, scopeRootId)
-                : {};
-            const mentionResult = mode !== 'links'
-                ? await getBackmentionDocWithFallback(client, parsed.id, parsed.keyword, scopeRootId)
-                : {};
-            const result = { ...(linkResult as Record<string, unknown>), ...(mentionResult as Record<string, unknown>) };
-            const filtered = filterBacklinkResultByPermission(result, permMgr);
+            const result = await getBacklinksWithFallback(client, parsed.id, parsed.keyword, scopeRootId, mode);
+            let filtered;
+            if (scopeRootId) {
+                // Native Doc results lack box; their source document was authorized above.
+                filtered = filterBacklinkResultByPermission(result, permMgr);
+            } else {
+                // Both native global paths and SQL rows include box. Never expose unattributed rows.
+                const attributable = (item: unknown) => !!item && typeof item === 'object'
+                    && typeof (item as Record<string, unknown>).box === 'string'
+                    && ((item as Record<string, unknown>).box as string).length > 0;
+                const backlinks = result.backlinks.filter(attributable);
+                const backmentions = result.backmentions.filter(attributable);
+                const unattributedCount = result.backlinks.length + result.backmentions.length - backlinks.length - backmentions.length;
+                filtered = filterBacklinkResultByPermission({ ...result, backlinks, backmentions }, permMgr);
+                filtered = { ...filtered, ...createPartialMetadata(unattributedCount + (filtered.filteredOutCount ?? 0)) };
+            }
             return createJsonResult({
                 ...filtered,
                 mode,

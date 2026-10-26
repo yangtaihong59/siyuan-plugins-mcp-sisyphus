@@ -65,13 +65,14 @@ export class SiYuanClient {
     async requestResource(path: string): Promise<Pick<Response, 'ok' | 'status' | 'statusText' | 'text'>> {
         return this.fetchWithTimeout(`${this.baseUrl}${path}`, {
             method: 'GET', headers: this.getAuthHeaders(),
-        }, 'read');
+        }, 'read', true);
     }
 
     private async fetchWithTimeout(
         url: string,
         init: RequestInit,
         semantics: RequestSemantics,
+        allowNotFound = false,
     ): Promise<Response> {
         const DEFAULT_MAX_RETRIES = 3;
         const DEFAULT_RETRY_BASE_DELAY_MS = 300;
@@ -86,6 +87,9 @@ export class SiYuanClient {
                 const response = await fetch(url, { ...init, signal: controller.signal });
                 clearTimeout(timeoutId);
 
+                // Resource callers distinguish an absent template from failed
+                // authorization or transport. Keep the 404 body readable.
+                if (allowNotFound && response.status === 404) return response;
                 if (!response.ok) {
                     // Do not retry 4xx (except 429).
                     if (response.status >= 400 && response.status < 500 && response.status !== 429) {

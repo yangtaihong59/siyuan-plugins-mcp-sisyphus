@@ -1,0 +1,15 @@
+Asset: ../preview.png
+Generated: 2026-10-21
+Tool: built-in image_gen
+References: previous preview.png (old cover), ../icon.png (current brand icon)
+
+Use-case: ads-marketing. Redesign the SiYuan Sisyphus software plugin marketplace cover as one finished, premium minimal product hero, landscape 16:9, high resolution preferably 1920x1080.
+Reference image 1 (preview.png) is the OLD COVER TO REPLACE: retain the product identity only, discard its blue dashboard, diagrams, feature grids, all old copy and numbers.
+Reference image 2 (icon.png) is the CURRENT BRAND ICON: faithfully retain its crimson-red rounded square with black interlocking line symbol. Place it once, small and sharp, next to the product name near the upper-left; do not redesign the icon.
+Art direction: refined editorial software product launch artwork. Warm ivory / very pale warm-gray background, near-black typography, deep crimson accents matching the icon. Generous negative space, disciplined left alignment, about 8% outer safe margins. Beautiful crisp modern grotesk Latin and clean Chinese sans-serif typography. No noisy texture.
+Layout: a calm left text zone occupying about 58% of the width, and one sculptural product illustration occupying the right 35%. At upper-left, small icon and medium-size wordmark 'SiYuan Sisyphus'. The main central-left headline should be very large, bold, elegant Chinese, on TWO lines exactly:
+'让 AI 用好'
+'你的思源笔记'
+Below this headline put only a small muted line 'MCP  ·  CLI', set widely and cleanly. Keep ample space between wordmark, headline, and small line. The headline is the visual focus and readable at marketplace thumbnail size. Do not add any other text, CTA, author names, URLs, version numbers, feature counts, captions, labels or logos.
+Right illustration: one understated abstract connection between notes and AI: a small sculptural stack of three rounded ivory paper sheets tilted gently in perspective, front sheet with just three short charcoal lines and one small crimson square; a single elegant crimson rounded loop/ribbon arcs behind the paper stack as a connection motif inspired by the brand icon. A tiny simple four-point crimson spark near the paper corner suggests AI. Soft realistic ambient shadows, matte materials, subtle depth, restrained red, paper-white and black only. The illustration must read as one coherent object, not a flowchart or several floating UI cards.
+Avoid: blue tech background, network nodes, grids, particles, neon glow, robots, tool tiles, multiple panels, gradients behind text, oversized badges, screenshot, fake app UI, border frames, excessive rounded cards, decorative microcopy. Entire composition should feel like an actual polished software product cover, quiet, modern, confident, simple, and instantly legible. Exact text as specified, no gibberish. Opaque background.

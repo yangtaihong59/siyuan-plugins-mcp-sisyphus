@@ -21,9 +21,9 @@ const EXPECTED = Object.freeze({
     deprecated: 4,
     permissionChanges: 11,
     tools: 14,
-    actions: 137,
-    backendApiLiterals: 150,
-    validBackendApiLiterals: 149,
+    actions: 138,
+    backendApiLiterals: 151,
+    validBackendApiLiterals: 150,
     uiApiLiterals: 5,
 });
 
@@ -476,7 +476,7 @@ function actionEndpointMap(plugin) {
         'av.duplicate': ['/api/av/duplicateAttributeViewBlock'],
         'search.semantic': ['/api/search/semanticSearchBlock'],
         'search.query_sql': ['/api/query/sql'],
-        'search.get_backlinks': ['/api/ref/getBacklinkDoc', '/api/ref/getBackmentionDoc'],
+        'search.get_backlinks': ['/api/ref/getBacklink2', '/api/ref/getBacklinkDoc', '/api/ref/getBackmentionDoc'],
         'search.fulltext_asset_content': ['/api/search/getAssetContent', '/api/search/fullTextSearchAssetContent'],
         'file.read_template': ['/templates/*filepath'],
         'file.render': ['/api/template/render', '/api/template/renderSprig'],

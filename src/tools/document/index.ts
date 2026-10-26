@@ -16,6 +16,7 @@ import {
     DocumentHeadingToDocSchema,
     DocumentListTreeSchema,
     DocumentLookupSchema,
+    DocumentQuerySchema,
     DocumentMoveSchema,
     DocumentReorderSchema,
     DocumentRemoveSchema,
@@ -30,10 +31,11 @@ import { DOCUMENT_ACTION_HANDLERS } from './handlers';
 export const DOCUMENT_TOOL_NAME = 'document';
 
 export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
-    createZodActionVariant('create', DocumentCreateSchema, 'Create a new document. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.'),
+    createZodActionVariant('create', DocumentCreateSchema, 'Create a new document. notebook is an ID from notebook.list, never a notebook name. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.'),
     createZodActionVariant('lookup', DocumentLookupSchema, 'Look up document IDs, storage paths, human-readable paths, and document metadata from one document reference.'),
+    createZodActionVariant('query', DocumentQuerySchema, 'Query readable open notebooks with paginated document metadata, indexed body statistics, and same-title candidates. Works while other notebooks are unreadable.'),
     createZodActionVariant('ensure_link_targets', DocumentEnsureLinkTargetsSchema, 'Resolve, reuse, or create explicitly scoped direct-child document link targets. Existing targets require IDs; titles are never guessed as identities.'),
-    createZodActionVariant('rename', DocumentRenameSchema, 'Rename a document'),
+    createZodActionVariant('rename', DocumentRenameSchema, 'Rename one document, or up to 50 documents through one bounded batch preflight with per-item receipts. Batch items are mutually exclusive with single-document arguments.'),
     createZodActionVariant('remove', DocumentRemoveSchema, 'Delete a document'),
     createZodActionVariant('move', DocumentMoveSchema, 'Move a document to another location'),
     createZodActionVariant('reorder', DocumentReorderSchema, 'Apply a complete manual order to all visible direct child documents and enable custom sorting.'),
@@ -55,9 +57,15 @@ DOCUMENT_VARIANTS.find((variant) => variant.action === 'create')!.schema.oneOf =
     { required: ['parentPath', 'title'], not: { required: ['path'] } },
 ];
 
+DOCUMENT_VARIANTS.find((variant) => variant.action === 'rename')!.schema.oneOf = [
+    { required: ['id', 'title'] },
+    { required: ['notebook', 'path', 'title'] },
+    { required: ['items'] },
+];
+
 const documentTool = defineTool<DocumentAction>({
     name: 'document',
-    description: '📝 Document IDs, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown read/write. create uses notebook + notebook-local path (/Folder/Doc, omit notebook name). lookup accepts id, notebook+hpath, or notebook+path (.sy storage path); reuse returned storage paths for rename/move/remove. Read create help for parentPath + title.',
+    description: '📝 Documents, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown. query lists readable documents with statistics and same-title candidates. create uses notebook + notebook-local path (/Folder/Doc). lookup accepts id, notebook+hpath, or notebook+path (.sy); reuse storage paths for rename/move/remove. Read create help for parentPath + title.',
     variants: DOCUMENT_VARIANTS,
     actionSchema: DocumentActionSchema,
     aggregateOptions: {

@@ -318,6 +318,25 @@ describe('HTTP MCP concurrency', () => {
         expect(vi.mocked(global.fetch).mock.calls.some(([url]) => String(url).includes('/api/sync/performSync'))).toBe(true);
     });
 
+    it.each([{}, { elicitation: { url: {} } }])('runs without optional form UI but retains strict write checks: %j', async capabilities => {
+        serverHandle = await startHttpMcpServer({ host: '127.0.0.1', port: await getAvailablePort(), path: '/mcp', serverFactory: createSiYuanServer });
+        const client = new Client({ name: 'no-form-client', version: '1.0.0' }, {
+            capabilities, versionNegotiation: { mode: 'auto' },
+        });
+        const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serverHandle.port}/mcp`));
+        clients.push(client);
+        transports.push(transport);
+        await client.connect(transport);
+        expect(client.getNegotiatedProtocolVersion()).toBe('2026-07-28');
+        const sync = await client.callTool({ name: 'system', arguments: { action: 'perform_sync' } });
+        expect(sync.isError).not.toBe(true);
+        expect(vi.mocked(global.fetch).mock.calls.some(([url]) => String(url).includes('/api/sync/performSync'))).toBe(true);
+        const move = await client.callTool({ name: 'block', arguments: { action: 'move', id: 'source', parentID: 'doc' } });
+        expect(move.isError).toBe(true);
+        expect(JSON.stringify(parseToolResultText(move))).toContain('precondition_required');
+        expect(vi.mocked(global.fetch).mock.calls.some(([url]) => String(url).includes('/api/block/moveBlock'))).toBe(false);
+    });
+
     it.each([
         ['decline', { action: 'decline' }, 'confirmation_declined', false],
         ['cancel', { action: 'cancel' }, 'confirmation_cancelled', true],

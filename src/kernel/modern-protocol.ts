@@ -1,3 +1,4 @@
+import { supportsFormElicitation } from '../shared/mcp-capabilities';
 import { hashWriteState } from '../core/write-safety-hash';
 import { randomUUID } from './node-shims';
 
@@ -64,7 +65,7 @@ export class KernelConfirmations {
             if (!answer.content.confirm) return failure('confirmation_declined', 'Execution was not confirmed.');
             return;
         }
-        if (!isObject(context.capabilities.elicitation)) return failure('confirmation_unavailable', 'This action requires a client supporting form elicitation.');
+        if (!supportsFormElicitation(context.capabilities)) return;
         if (this.pending.size >= this.capacity) return failure('confirmation_capacity', 'Too many pending confirmations; wait for expiry.');
         const state = randomUUID();
         this.pending.set(state, { digest, expires: this.now() + this.ttl });

@@ -1,5 +1,7 @@
 import { renderAiLayoutGuide } from './ai-layout-guide';
 import { formatDangerousActionsList, isDangerousAction, type ToolCategory } from './config';
+import { getActionSafetyPolicy } from './write-safety-policy';
+import { WRITE_WORKFLOW_STEPS } from './write-preflight';
 import {
     ACTION_RESOURCE_TEMPLATE_URI,
     ACTIONS_BY_CATEGORY,
@@ -296,6 +298,9 @@ function renderActionHelp(tool: ToolCategory, action: string): string {
     const confirmationNote = isDangerousAction(tool, action)
         ? 'This action requires explicit user confirmation before execution.'
         : null;
+    const writeWorkflow = getActionSafetyPolicy(tool, action).mode === 'mutation'
+        ? ['## Write workflow', '', ...WRITE_WORKFLOW_STEPS.map((step) => `- ${step}`)]
+        : [];
 
     return [
         `# ${tool}(action="${action}")`,
@@ -312,6 +317,8 @@ function renderActionHelp(tool: ToolCategory, action: string): string {
         ...(hint ? [`- ${hint}`] : []),
         ...(confirmationNote ? [`- ${confirmationNote}`] : []),
         '',
+        ...writeWorkflow,
+        ...(writeWorkflow.length > 0 ? [''] : []),
         '## Parameter schema',
         '',
         ...actionVariants.map((variant) => formatJsonExample(variant.schema)),

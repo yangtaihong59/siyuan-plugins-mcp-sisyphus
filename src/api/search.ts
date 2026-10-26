@@ -43,8 +43,18 @@ export async function getBacklinkDoc(
     keyword?: string,
     refTreeID?: string,
 ): Promise<IResGetBacklinkDoc | null> {
-    const request: IReqGetBacklinkDoc = { defID, keyword, refTreeID };
+    const request: IReqGetBacklinkDoc = { defID, keyword: keyword ?? '', refTreeID: refTreeID ?? '' };
     return client.requestRead<IResGetBacklinkDoc | null>('/api/ref/getBacklinkDoc', request);
+}
+
+export async function getBacklink2(
+    client: SiYuanClient,
+    id: string,
+    keyword?: string,
+): Promise<IResGetBacklinkDoc | null> {
+    return client.requestRead<IResGetBacklinkDoc | null>('/api/ref/getBacklink2', {
+        id, k: keyword ?? '', mk: keyword ?? '',
+    });
 }
 
 export async function getBackmentionDoc(
@@ -53,7 +63,7 @@ export async function getBackmentionDoc(
     keyword?: string,
     refTreeID?: string,
 ): Promise<IResGetBackmentionDoc | null> {
-    const request: IReqGetBackmentionDoc = { defID, keyword, refTreeID };
+    const request: IReqGetBackmentionDoc = { defID, keyword: keyword ?? '', refTreeID: refTreeID ?? '' };
     return client.requestRead<IResGetBackmentionDoc | null>('/api/ref/getBackmentionDoc', request);
 }
 

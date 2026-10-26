@@ -1,6 +1,23 @@
+import { prepareDocumentConversion } from '../tools/document/conversion';
+import { readFlashcardReviewState } from '../tools/flashcard/review-state';
 import { firstJsonDifferencePath } from '../shared/canonical-state';
 import { AV_CREATION_CONTEXT, type AvCreationProgress, type AvCreationContext } from './av-creation-context';
 import { generateSiYuanNodeId } from '../shared/siyuan-id';
+import {
+    BATCH_RENAME_CONTEXT,
+    buildBatchRenamePlan,
+    initialBatchRenameProgress,
+    type BatchRenamePlan,
+    type BatchRenameProgress,
+} from './batch-rename-plan';
+import {
+    AV_ADD_ROWS_CONTEXT,
+    assertAvAddRowsStructure,
+    createAvAddRowsPlan,
+    summarizeAvAddRowsPlan,
+    type AvAddRowsPlan,
+    type AvAddRowsProgress,
+} from '../tools/av/add-rows-plan';
 import { ensurePermissionForDocumentId } from '../tools/internal/context';
 import { translateError } from '../tools/internal/errorTranslation';
 import { prepareViewUpdate, normalizeAvFilters, normalizeAvGroup, expectedAvGroup, viewFields as rawViewFields } from '../tools/av/view-config';
@@ -14,6 +31,7 @@ import { normalizeTemplatePath, readTemplateSource } from '../api/template';
 import { readPuppyStats } from './puppy-state';
 import { readLinkTargetScope } from './document-link-targets';
 import type { PermissionManager } from './permissions';
+import { getNotebookNameArgumentHint } from '../tools/internal/helpers/notebook-names';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 import {
     listDocumentBlocksInTreeOrder,
@@ -34,9 +52,11 @@ import {
 import { canonicalizeWriteState, compactWriteHashFields, hashWriteBytes, hashWriteBytesAsync, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
 import {
     WritePreflightLeasePool,
+    WRITE_PREFLIGHT_LEASE_TTL_MS,
     type WritePreflightLease,
     type WritePreflightLeaseScope,
 } from './write-preflight-lease';
+import { assertPreflightCommitArgsSize, buildWritePreflight } from './write-preflight';
 import {
     PRECONDITION_FIELD,
     getActionSafetyPolicy,
@@ -131,6 +151,17 @@ export class WriteSafetyCoordinator {
         if (execution.category === 'av' && execution.action === 'create') {
             return this.exclusive(() => this.runStrict(execution, policy));
         }
+        // Composite row+cell creation always owns a stage ledger, even when
+        // general strict mode is disabled. There is no safe legacy path that
+        // could lose stable row identities or retry the row insertion.
+        if (execution.category === 'av' && execution.action === 'add_rows' && Array.isArray(execution.args.rows)) {
+            return this.exclusive(() => this.runStrict(execution, policy));
+        }
+        // A bounded batch rename always uses one preflight and one ordered
+        // receipt, even when general strict mode is disabled.
+        if (execution.category === 'document' && execution.action === 'rename' && Array.isArray(execution.args.items)) {
+            return this.exclusive(() => this.runStrict(execution, policy));
+        }
         if (!execution.strictMode) {
             if (execution.args.validateOnly === true) {
                 return writeSafetyFailure(
@@ -156,6 +187,10 @@ export class WriteSafetyCoordinator {
         const requestId = typeof args.requestId === 'string' ? args.requestId : '';
         let inspected: Awaited<ReturnType<WriteSafetyLedger['inspect']>> | undefined;
         let activeLease: WritePreflightLease | undefined;
+        let addRowsPlan: AvAddRowsPlan | undefined;
+        let addRowsProgress: AvAddRowsProgress | undefined;
+        let batchRenamePlan: BatchRenamePlan | undefined;
+        let batchRenameProgress: BatchRenameProgress | undefined;
 
         if (!validateOnly) {
             if (!requestId) {
@@ -169,7 +204,36 @@ export class WriteSafetyCoordinator {
             if (inspected.entry) return replayLedgerEntry(inspected.entry);
         }
 
+        // Creation has no existing target hash, but still needs current
+        // permission and notebook-identity validation before issuing a lease.
+        if (category === 'document' && action === 'create' && typeof args.notebook === 'string') {
+            try {
+                await permMgr.reload();
+                if (!permMgr.canWrite(args.notebook)) {
+                    const hint = await getNotebookNameArgumentHint(client, permMgr, args.notebook);
+                    throw safetyError(hint ? 'invalid_arguments' : 'permission_denied',
+                        hint ?? `Notebook ${args.notebook} does not allow this write.`);
+                }
+            } catch (error) {
+                return fromSafetyError(error);
+            }
+        }
+
         if (category === 'av' && action === 'create') return this.runAvCreate(execution, inspected?.argsHash);
+
+        if (category === 'document' && action === 'rename' && Array.isArray(args.items)) {
+            try {
+                batchRenamePlan = await buildBatchRenamePlan(client, permMgr, args.items);
+            } catch (error) {
+                return fromSafetyError(error);
+            }
+        }
+
+        let conversion: Awaited<ReturnType<typeof prepareDocumentConversion>> | undefined;
+        if (category === 'document' && ['heading_to_doc', 'doc_to_heading'].includes(action)) {
+            try { conversion = await prepareDocumentConversion(client, permMgr, action, args); }
+            catch (error) { return fromSafetyError(error); }
+        }
 
         let before: StateProbe | undefined;
         if (policy.precondition !== 'none') {
@@ -184,7 +248,15 @@ export class WriteSafetyCoordinator {
                 );
             }
             try {
-                before = await probeCurrentState(client, permMgr, category, action, args, policy);
+                before = await probeCurrentState(
+                    client,
+                    permMgr,
+                    category,
+                    action,
+                    args,
+                    policy,
+                    { ...(batchRenamePlan ? { batchRename: batchRenamePlan } : {}), ...(conversion ? { conversion } : {}) },
+                );
             } catch (error) {
                 return fromSafetyError(error);
             }
@@ -197,11 +269,16 @@ export class WriteSafetyCoordinator {
             if (validateOnly) {
                 let request;
                 try {
+                    assertPreflightCommitArgsSize(args);
                     request = await this.ledger.issue(category, action, args);
                 } catch (error) {
                     return fromSafetyError(error);
                 }
                 const issued = this.preflightLeases.issue(leaseScope, before.hash);
+                // The requestId is issued before the hash lease is signed. Never
+                // advertise a deadline later than either credential actually
+                // remains valid; report the earliest real cutoff.
+                const effectiveExpiresAt = Math.min(request.requestIdExpiresAt, issued.leaseExpiresAt);
                 return jsonResult({
                     action,
                     validateOnly: true,
@@ -213,8 +290,20 @@ export class WriteSafetyCoordinator {
                     [expectedField]: issued.credential,
                     hashPrefixLength: issued.hashPrefixLength,
                     leaseExpiresAt: issued.leaseExpiresAt,
+                    expiresAt: effectiveExpiresAt,
+                    ttlMs: WRITE_PREFLIGHT_LEASE_TTL_MS,
                     targetCount: before.targetIds.length,
                     ...before.summary,
+                    ...buildWritePreflight({
+                        category,
+                        action,
+                        args,
+                        requestId: request.requestId,
+                        expiresAt: effectiveExpiresAt,
+                        guardTargetCount: before.targetIds.length,
+                        credentialField: expectedField,
+                        credential: issued.credential,
+                    }),
                 });
             }
             const resolved = this.preflightLeases.resolve(leaseScope, digestPrefix!);
@@ -236,6 +325,7 @@ export class WriteSafetyCoordinator {
         } else if (validateOnly) {
             let request;
             try {
+                assertPreflightCommitArgsSize(args);
                 request = await this.ledger.issue(category, action, args);
             } catch (error) {
                 return fromSafetyError(error);
@@ -247,11 +337,58 @@ export class WriteSafetyCoordinator {
                 writeAttempted: false,
                 writeExecuted: false,
                 ...request,
+                expiresAt: request.requestIdExpiresAt,
+                ttlMs: WRITE_PREFLIGHT_LEASE_TTL_MS,
+                ...buildWritePreflight({
+                    category,
+                    action,
+                    args,
+                    requestId: request.requestId,
+                    expiresAt: request.requestIdExpiresAt,
+                }),
             });
         }
 
         try { execution.beforeCommit?.(); } catch (error) { return fromSafetyError(error); }
         const targetIds = before?.targetIds ?? collectTargetSelectors(args);
+        const executeArgs = stripSafetyFields(args);
+        if (category === 'document' && action === 'rename' && batchRenamePlan) {
+            batchRenameProgress = initialBatchRenameProgress(batchRenamePlan);
+            (executeArgs as Record<symbol, unknown>)[BATCH_RENAME_CONTEXT] = {
+                plan: batchRenamePlan,
+                checkpoint: async (progress: BatchRenameProgress) => {
+                    batchRenameProgress = progress;
+                    await this.ledger.record({
+                        requestId,
+                        tool: category,
+                        action,
+                        argsHash: inspected!.argsHash,
+                        targetIds,
+                        state: 'executing',
+                        rename: progress,
+                    });
+                },
+            };
+        }
+        if (category === 'av' && action === 'add_rows' && Array.isArray(args.rows)) {
+            addRowsPlan = createAvAddRowsPlan(args.rows);
+            addRowsProgress = summarizeAvAddRowsPlan(addRowsPlan, 'reserved', 'insert_rows');
+            (executeArgs as Record<symbol, unknown>)[AV_ADD_ROWS_CONTEXT] = {
+                plan: addRowsPlan,
+                checkpoint: async (progress: AvAddRowsProgress) => {
+                    addRowsProgress = progress;
+                    await this.ledger.record({
+                        requestId,
+                        tool: category,
+                        action,
+                        argsHash: inspected!.argsHash,
+                        targetIds,
+                        state: 'executing',
+                        addRows: progress,
+                    });
+                },
+            };
+        }
         try {
             await this.ledger.record({
                 requestId,
@@ -260,6 +397,8 @@ export class WriteSafetyCoordinator {
                 argsHash: inspected!.argsHash,
                 targetIds,
                 state: 'executing',
+                ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+                ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
             });
         } catch (error) {
             return fromSafetyError(error);
@@ -267,13 +406,15 @@ export class WriteSafetyCoordinator {
 
         let result: ToolResult;
         try {
-            result = await execution.execute(stripSafetyFields(args));
+            result = await execution.execute(executeArgs);
         } catch (error) {
-            await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, error);
+            await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, error, addRowsProgress, batchRenameProgress);
             if (activeLease) this.preflightLeases.consume(activeLease);
             return writeSafetyFailureAfterAttempt('outcome_unknown', 'The write transport failed after execution began. Do not retry with a new requestId until the target has been inspected.', {
                 requestId,
                 cause: error instanceof Error ? error.message : String(error),
+                ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+                ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
             });
         }
 
@@ -303,7 +444,7 @@ export class WriteSafetyCoordinator {
                     transactionState: 'rejected',
                 });
             }
-            await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, new Error('handler returned an error after execution began'));
+            await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, new Error('handler returned an error after execution began'), addRowsProgress, batchRenameProgress);
             if (activeLease) this.preflightLeases.consume(activeLease);
             return addSafetyMetadata(result, {
                 requestId,
@@ -312,6 +453,8 @@ export class WriteSafetyCoordinator {
                 writeExecuted: false,
                 replayed: false,
                 transactionState: 'unknown',
+                ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+                ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
                 error: { code: 'outcome_unknown' },
             });
         }
@@ -362,11 +505,13 @@ export class WriteSafetyCoordinator {
                 : await probePostWriteState(client, permMgr, category, action, postWriteArgs, policy, before);
             await verifyPostWriteSemanticState(client, permMgr, category, action, args, before, after);
         } catch (error) {
-            await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, error);
+            await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, error, addRowsProgress, batchRenameProgress);
             if (activeLease) this.preflightLeases.consume(activeLease);
             return writeSafetyFailureAfterAttempt('readback_mismatch', 'The write returned, but its result could not be read back. Do not retry automatically.', {
                 requestId,
                 cause: error instanceof Error ? error.message : String(error),
+                ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+                ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
             });
         }
 
@@ -378,26 +523,47 @@ export class WriteSafetyCoordinator {
                 inspected!.argsHash,
                 targetIds,
                 new Error('handler reported a mutation but readback state did not change'),
+                addRowsProgress,
+                batchRenameProgress,
             );
             if (activeLease) this.preflightLeases.consume(activeLease);
             return writeSafetyFailureAfterAttempt(
                 'readback_mismatch',
                 'The handler reported a mutation, but bounded readback did not observe the requested state change. Inspect the target before retrying.',
-                { requestId, previousHash: before.hash, resultHash: after.hash },
+                {
+                    requestId,
+                    previousHash: before.hash,
+                    resultHash: after.hash,
+                    ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+                    ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
+                },
             );
         }
 
+        const resultPayload = parseResultObject(result);
+        const batchOverall = category === 'document' && action === 'rename' && batchRenameProgress
+            && resultPayload && typeof resultPayload.overallState === 'string'
+            ? resultPayload.overallState
+            : undefined;
+        const batchCommitted = batchOverall === 'committed'
+            ? true
+            : batchOverall === 'partial' || batchOverall === 'failed'
+                ? (isRecord(resultPayload?.counts) && typeof resultPayload.counts.committed === 'number' && resultPayload.counts.committed > 0)
+                : true;
         const safetyResult = {
             requestId,
             writeSafetyMode: 'strict',
             writeSafetyGuaranteed: true,
-            writeAttempted: true,
-            writeExecuted: true,
+            writeAttempted: batchOverall === 'failed' ? false : true,
+            writeExecuted: batchOverall ? batchCommitted : true,
             replayed: false,
             transactionState: policy.precondition !== 'source' && before && after.hash === before.hash ? 'no_change' : 'committed',
             previousHash: before?.hash,
             resultHash: after.hash,
+            ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+            ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
         };
+        const response = addSafetyMetadata(result, safetyResult);
         try {
             await this.ledger.record({
                 requestId,
@@ -407,16 +573,21 @@ export class WriteSafetyCoordinator {
                 targetIds: after.targetIds.length > 0 ? after.targetIds : targetIds,
                 state: 'committed',
                 result: safetyResult,
+                ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+                ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
+                ...((addRowsProgress || batchRenameProgress) ? { response } : {}),
             });
         } catch (error) {
             if (activeLease) this.preflightLeases.consume(activeLease);
             return writeSafetyFailureAfterAttempt('outcome_unknown', 'The write was observed, but its idempotency record could not be committed. Do not retry automatically.', {
                 requestId,
                 resultHash: after.hash,
+                ...(addRowsProgress ? { addRows: addRowsProgress } : {}),
+                ...(batchRenameProgress ? { rename: batchRenameProgress } : {}),
             });
         }
         if (activeLease) this.preflightLeases.consume(activeLease);
-        return addSafetyMetadata(result, safetyResult);
+        return response;
     }
 
     /** Multi-step creation owns a durable identity and result, independent of transport lifetime. */
@@ -433,7 +604,26 @@ export class WriteSafetyCoordinator {
                 catch (error) { if (translateError(error)?.code !== 'av_not_found') throw error; }
                 if (existing?.av) throw safetyError('already_exists', 'A new create request cannot reuse an existing AV.');
             }
-            if (args.validateOnly === true) return jsonResult({ action: 'create', validateOnly: true, writeAttempted: false, writeExecuted: false, ...await this.ledger.issue('av', 'create', args) });
+            if (args.validateOnly === true) {
+                assertPreflightCommitArgsSize(args);
+                const request = await this.ledger.issue('av', 'create', args);
+                return jsonResult({
+                    action: 'create',
+                    validateOnly: true,
+                    writeAttempted: false,
+                    writeExecuted: false,
+                    ...request,
+                    expiresAt: request.requestIdExpiresAt,
+                    ttlMs: WRITE_PREFLIGHT_LEASE_TTL_MS,
+                    ...buildWritePreflight({
+                        category: 'av',
+                        action: 'create',
+                        args,
+                        requestId: request.requestId,
+                        expiresAt: request.requestIdExpiresAt,
+                    }),
+                });
+            }
             execution.beforeCommit?.();
         } catch (error) { return fromSafetyError(error); }
         let progress: AvCreationProgress = {
@@ -481,6 +671,8 @@ export class WriteSafetyCoordinator {
         argsHash: string,
         targetIds: string[],
         error: unknown,
+        addRows?: AvAddRowsProgress,
+        rename?: BatchRenameProgress,
     ): Promise<void> {
         try {
             await this.ledger.record({
@@ -492,7 +684,11 @@ export class WriteSafetyCoordinator {
                 state: 'unknown',
                 result: {
                     error: error instanceof WriteOutcomeUnknownError ? error.code : 'outcome_unknown',
+                    ...(addRows ? { addRows } : {}),
+                    ...(rename ? { rename } : {}),
                 },
+                ...(addRows ? { addRows } : {}),
+                ...(rename ? { rename } : {}),
             });
         } catch {
             // The caller is already receiving outcome_unknown. Never mask it
@@ -520,6 +716,14 @@ function derivePostWriteProbeArgs(
     result: ToolResult,
 ): Record<string, unknown> {
     const payload = parseResultObject(result);
+    if (category === 'document' && (action === 'create' || action === 'create_daily_note')) {
+        if (!payload || typeof payload.id !== 'string' || !payload.id) {
+            throw safetyError('readback_mismatch', 'Document creation did not identify the created document.');
+        }
+        // A human path can exist in several notebooks and its SQL index may
+        // lag. Inspect only the returned document and its intended notebook.
+        return { id: payload.id, notebook: args.notebook };
+    }
     if (category === 'document' && action === 'duplicate' && payload && typeof payload.id === 'string') {
         return { ...args, id: payload.id };
     }
@@ -625,6 +829,7 @@ async function probeCurrentState(
     action: string,
     args: Record<string, unknown>,
     policy: Extract<ActionSafetyPolicy, { mode: 'mutation' }>,
+    precomputed?: Record<string, unknown>,
 ): Promise<StateProbe> {
     if (policy.precondition === 'source') {
         if (typeof args.uploadSource === 'string') {
@@ -648,7 +853,13 @@ async function probeCurrentState(
         selectors: collectStateSelectors(args),
     };
 
-    if ((category === 'fs' || category === 'document') && action === 'reorder') {
+    if (isRecord(precomputed?.conversion)) {
+        state.conversion = precomputed.conversion;
+        const conversion = precomputed.conversion as Awaited<ReturnType<typeof prepareDocumentConversion>>;
+        const ids = [conversion.source.documentId, conversion.target.documentId].filter(Boolean);
+        targetIds = [...new Set([...targetIds, ...ids, conversion.target.notebook])].sort();
+        await appendBlockRows(client, { ids }, state);
+    } else if ((category === 'fs' || category === 'document') && action === 'reorder') {
         const reorder = await probeDocumentReorderState(client, permMgr, category, args);
         state.reorder = reorder.state;
         targetIds = reorder.targetIds;
@@ -670,6 +881,30 @@ async function probeCurrentState(
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
         state.av = await client.requestRead('/api/av/getAttributeView', { id: args.avID });
+        if (action === 'add_rows' && Array.isArray(args.rows)) {
+            // Composite rows write into an existing AV, so the carrier and
+            // every column/type/view/group involved in the batch must enter
+            // the strict preimage. A structural problem is rejected before
+            // any row is inserted.
+            const carrier = await requireCarrierWritePermission(
+                client,
+                permMgr,
+                args.avID,
+                typeof args.blockID === 'string' ? args.blockID : undefined,
+            );
+            state.avCarrier = carrier.carrier;
+            for (const id of [carrier.carrierBlockID, carrier.notebook]) {
+                if (!targetIds.includes(id)) targetIds.push(id);
+            }
+            targetIds.sort();
+            assertAvAddRowsStructure(
+                state.av,
+                args.rows,
+                typeof args.viewID === 'string' ? args.viewID : undefined,
+                typeof args.groupID === 'string' ? args.groupID : undefined,
+                typeof args.previousID === 'string' ? args.previousID : undefined,
+            );
+        }
         if (action === 'create') {
             const definition = extractRawAvDefinition(state.av);
             if (definition.id !== args.avID) throw safetyError('readback_mismatch', 'Rendered AV identity was not persisted.');
@@ -742,7 +977,11 @@ async function probeCurrentState(
             };
         }
     } else if (category === 'flashcard') {
-        if (typeof args.deckID === 'string') {
+        if (action === 'review_card') {
+            const card = await readFlashcardReviewState(client, permMgr, String(args.deckID), String(args.cardID));
+            state.flashcardReview = card;
+            targetIds = [...new Set([...targetIds, card.blockID, card.box])].sort();
+        } else if (typeof args.deckID === 'string') {
             const cards = await client.requestRead<Record<string, unknown>>('/api/riff/getRiffCards', {
                 id: args.deckID,
                 page: 1,
@@ -791,6 +1030,22 @@ async function probeCurrentState(
         await appendBlockRows(client, args, state);
     } else if (category === 'system') {
         state.system = await client.requestRead('/api/system/getConf', {});
+    } else if (category === 'document' && action === 'rename' && Array.isArray(args.items)) {
+        if (isRecord(precomputed?.batchRename)) {
+            state.batchRename = precomputed.batchRename;
+            for (const item of Array.isArray(precomputed.batchRename.items) ? precomputed.batchRename.items : []) {
+                if (!isRecord(item)) continue;
+                for (const value of [item.id, item.notebook, item.targetHPath]) {
+                    if (typeof value === 'string' && value && !targetIds.includes(value)) targetIds.push(value);
+                }
+            }
+            targetIds.sort();
+        } else {
+            // Post-write probes only need the live block rows for the exact
+            // batch items; rebuilding target-conflict state after a partial
+            // rename would misreport the already-committed items.
+            await appendBlockRows(client, args, state);
+        }
     } else if (category === 'document' && action === 'ensure_link_targets') {
         const notebook = typeof args.notebook === 'string' ? args.notebook : '';
         const parentId = typeof args.parentId === 'string' ? args.parentId : '';
@@ -818,6 +1073,9 @@ async function probeCurrentState(
     }
 
     const managesNotebookPermission = category === 'notebook' && action === 'set_permission';
+    // The coordinator can outlive permission changes. Refresh for every
+    // permission decision, including preflight and the final commit probe.
+    if (!managesNotebookPermission) await permMgr.reload();
     if (category === 'notebook' && !managesNotebookPermission) {
         for (const notebook of targetIds) {
             const allowed = isDangerousAction(category, action)
@@ -827,13 +1085,6 @@ async function probeCurrentState(
         }
     }
     if (!managesNotebookPermission) {
-        if (category === 'av' && AV_VIEW_CONFIGURATION_ACTIONS.has(action)) {
-            // Validate-only also resolves permission so an execution cannot
-            // acquire a lease against a target the current permission file no
-            // longer permits. Handler-level checks repeat this immediately
-            // before dispatch as the final authorization boundary.
-            await permMgr.reload();
-        }
         enforceNotebookPermission(permMgr, state, targetIds, requiresDeletePermission(category, action));
     }
     return {
@@ -1087,7 +1338,7 @@ async function appendBlockRows(
         return;
     }
     state.blocks = await client.requestRead<unknown[]>('/api/query/sql', {
-        stmt: `SELECT * FROM blocks WHERE ${clauses.join(' OR ')} ORDER BY id`,
+        stmt: `SELECT * FROM blocks WHERE ${typeof args.notebook === 'string' ? `box = ${sqlString(args.notebook)} AND ` : ''}(${clauses.join(' OR ')}) ORDER BY id`,
     });
 }
 
@@ -1165,6 +1416,14 @@ async function verifyPostWriteSemanticState(
     before?: StateProbe,
     after?: StateProbe,
 ): Promise<void> {
+    if (category === 'document' && (action === 'create' || action === 'create_daily_note')) {
+        const blocks = isRecord(after?.state?.liveBlocks) ? Object.values(after.state.liveBlocks) : [];
+        const documents = blocks.flatMap(block => isRecord(block) && isRecord(block.info) ? [block.info] : []);
+        if (documents.length !== 1 || documents[0].box !== args.notebook) {
+            throw safetyError('readback_mismatch', 'The created document was not observed in the requested notebook.');
+        }
+        return;
+    }
     if ((category === 'fs' || category === 'document') && action === 'reorder') {
         const { state } = await probeDocumentReorderState(client, permMgr, category, args);
         const currentIDs = Array.isArray(state.children)
@@ -1657,46 +1916,55 @@ function inspectDuplicateRowsRelationDestinations(
     return [...destinations.values()];
 }
 
+function isExactAvCarrierDom(dom: string, blockID: string, avID: string): boolean {
+    // A document's DOM may start with its child AV. Verify the requested
+    // block itself, with all three attributes on the same opening tag.
+    const tag = /^\s*<[A-Za-z][A-Za-z0-9:-]*\b/.exec(dom);
+    if (!tag) return false;
+    const end = findHtmlOpeningTagEnd(dom, tag[0].length);
+    if (end === undefined) return false;
+    const parsed = parseHtmlOpeningTagAttributes(dom.slice(tag[0].length, end));
+    if (!parsed) return false;
+    const expected = { 'data-node-id': blockID, 'data-type': 'NodeAttributeView', 'data-av-id': avID };
+    return Object.entries(expected).every(([name, value]) => {
+        const attributes = parsed.attributes.filter((attribute) => attribute.name.toLowerCase() === name);
+        return attributes.length === 1 && attributes[0].value === value;
+    });
+}
+
 async function resolveVerifiedAvCarrier(
     client: SiYuanClient,
     avID: string,
     explicitBlockID?: string,
 ): Promise<string | undefined> {
     const candidates: string[] = explicitBlockID ? [explicitBlockID] : [];
-    if (explicitBlockID) {
+    if (!explicitBlockID) {
         try {
-            const response = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: explicitBlockID });
-            const dom = typeof response?.dom === 'string' ? response.dom : '';
-            return dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)
-                ? explicitBlockID
-                : undefined;
+            const mirrors = await client.requestRead<{ refDefs?: Array<{ refID?: string }> }>('/api/av/getMirrorDatabaseBlocks', { avID });
+            for (const ref of mirrors?.refDefs ?? []) {
+                if (typeof ref.refID === 'string' && ref.refID && !candidates.includes(ref.refID)) candidates.push(ref.refID);
+            }
         } catch {
-            return undefined;
+            // SQL lookup below is the compatibility path for databases without
+            // registered mirrors; a missing mirror response alone is not a reason
+            // to grant a cross-AV write.
+        }
+        const escapedAvID = avID.replace(/\0/g, '').replace(/'/g, "''");
+        const rows = await client.requestRead<unknown[]>('/api/query/sql', {
+            stmt: `SELECT id FROM blocks WHERE type = 'av' AND (markdown LIKE '%${escapedAvID}%' OR ial LIKE '%${escapedAvID}%' OR content LIKE '%${escapedAvID}%') ORDER BY updated DESC LIMIT 20`,
+        });
+        for (const row of Array.isArray(rows) ? rows : []) {
+            const id = stringField(row, ['id']);
+            if (id && !candidates.includes(id)) candidates.push(id);
         }
     }
-    try {
-        const mirrors = await client.requestRead<{ refDefs?: Array<{ refID?: string }> }>('/api/av/getMirrorDatabaseBlocks', { avID });
-        for (const ref of mirrors?.refDefs ?? []) {
-            if (typeof ref.refID === 'string' && ref.refID && !candidates.includes(ref.refID)) candidates.push(ref.refID);
-        }
-    } catch {
-        // SQL lookup below is the compatibility path for databases without
-        // registered mirrors; a missing mirror response alone is not a reason
-        // to grant a cross-AV write.
-    }
-    const escapedAvID = avID.replace(/\0/g, '').replace(/'/g, "''");
-    const rows = await client.requestRead<unknown[]>('/api/query/sql', {
-        stmt: `SELECT id FROM blocks WHERE type = 'av' AND (markdown LIKE '%${escapedAvID}%' OR ial LIKE '%${escapedAvID}%' OR content LIKE '%${escapedAvID}%') ORDER BY updated DESC LIMIT 20`,
-    });
-    for (const row of Array.isArray(rows) ? rows : []) {
-        const id = stringField(row, ['id']);
-        if (id && !candidates.includes(id)) candidates.push(id);
-    }
-    for (const candidate of candidates) {
+    // Native mirror and SQL ordering can change without any AV mutation.
+    // A stable choice keeps the permission target and lease scope identical.
+    for (const candidate of candidates.sort()) {
         try {
             const response = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: candidate });
             const dom = typeof response?.dom === 'string' ? response.dom : '';
-            if (dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)) return candidate;
+            if (isExactAvCarrierDom(dom, candidate, avID)) return candidate;
         } catch {
             // A stale candidate is not evidence of AV ownership; continue to
             // the next exact carrier candidate and fail closed if none remain.
@@ -1735,7 +2003,7 @@ async function requireCarrierWritePermission(
     const rawDom = typeof domResponse?.dom === 'string' ? domResponse.dom : '';
     const dom = canonicalizeAvCarrierDom(rawDom);
     const currentNotebook = stringField(info, ['box', 'notebook', 'notebookID']);
-    if (!rawDom.includes('data-type="NodeAttributeView"') || !rawDom.includes(`data-av-id="${avID}"`) || currentNotebook !== notebook) {
+    if (!isExactAvCarrierDom(rawDom, carrierBlockID, avID) || currentNotebook !== notebook) {
         throw safetyError('precondition_required', `The verified database carrier for attribute view "${avID}" changed while establishing the strict lease. No write was attempted.`);
     }
     return {
@@ -2120,6 +2388,53 @@ function replayLedgerEntry(entry: WriteLedgerEntry): ToolResult {
         });
     }
     if (entry.creation) return jsonResult({ success: false, ...entry.creation, carrierConfirmed: entry.creation.stage === 'carrier_inserted' || entry.creation.stage === 'verified', partial: entry.creation.stage !== 'ids_reserved' && entry.creation.stage !== 'verified', requestId: entry.requestId, replayed: true, transactionState: 'unknown', error: { code: 'outcome_unknown', message: 'Creation was interrupted. Inspect the reserved IDs; do not recreate automatically.' } }, true);
+    if (entry.rename) {
+        // inProgressIndex is persisted immediately before dispatch. If the
+        // process stopped after that point without a receipt, the item cannot
+        // be called not_started; surface it as unknown for manual inspection.
+        const items = entry.rename.items.map((item) => (
+            item.index === entry.rename!.inProgressIndex
+                && item.state !== 'committed'
+                && item.state !== 'no_change'
+                && item.state !== 'failed_before_execute'
+                ? { ...item, state: 'unknown' as const, reason: 'interrupted_before_receipt' }
+                : item
+        ));
+        return jsonResult({
+            success: false,
+            requestId: entry.requestId,
+            replayed: true,
+            writeSafetyMode: 'strict',
+            writeAttempted: entry.rename.inProgressIndex !== undefined
+                || entry.rename.items.some((item) => item.state === 'committed' || item.state === 'unknown'),
+            writeExecuted: false,
+            transactionState: 'unknown',
+            overallState: 'unknown',
+            items,
+            ...(entry.result ?? {}),
+            error: {
+                code: 'outcome_unknown',
+                message: 'Batch rename was interrupted. Inspect each item; only proven not_started items may be submitted as a new preflight.',
+            },
+        }, true);
+    }
+    if (entry.addRows) return jsonResult({
+        success: false,
+        requestId: entry.requestId,
+        replayed: true,
+        writeSafetyMode: 'strict',
+        // A reserved stage alone cannot prove the insert never dispatched.
+        // Keep the receipt conservative instead of reporting "not attempted".
+        writeAttempted: true,
+        writeExecuted: false,
+        transactionState: 'unknown',
+        addRows: entry.addRows,
+        ...(entry.result ?? {}),
+        error: {
+            code: 'outcome_unknown',
+            message: 'Composite add_rows was interrupted. Inspect the exact rowIDs and stage; do not run add_rows again for these rows.',
+        },
+    }, true);
     return writeSafetyFailure('outcome_unknown', `requestId ${entry.requestId} is in ${entry.state} state. Inspect the target before retrying.`, {
         requestId: entry.requestId,
         ledgerState: entry.state,

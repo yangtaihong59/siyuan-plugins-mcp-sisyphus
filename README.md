@@ -23,7 +23,11 @@
 
 > Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
 
-> **Latest:** `v0.6.11` — Introduces AV v2 structure reads, paginated queries, explicit database creation, and combined view updates, with durable creation receipts and configuration checks. Legacy AV actions and the top-level `id` alias are removed; see the [migration guide](./docs/reference/tools/av.md#configuration-migration). CLI is now `v0.2.12`.
+> **Latest:** `v0.6.13` — Fixes DSH compatibility: clients without form confirmation support no longer trigger elicitation errors, while permissions and safe-write preflight remain enforced. MCP settings now provide DSH Cordis YAML configuration.
+
+> **v0.6.12：** — Fixes database filter defaults, validation, and carrier identification for reliable preflight, commits, and no-change detection; fixes same-path document creation across notebooks, template readback, and scoped reference queries; preserves complete link-target mappings and clarifies SQL permissions and bilingual help. CLI is now `v0.2.13`.
+
+> **v0.6.11：** — Introduces AV v2 structure reads, paginated queries, explicit database creation, and combined view updates, with durable creation receipts and configuration checks. Legacy AV actions and the top-level `id` alias are removed; see the [migration guide](./docs/reference/tools/av.md#configuration-migration). CLI is now `v0.2.12`.
 
 > **v0.6.4:** `v0.6.4` — Expands guarded AV configuration, adds auditable Markdown snapshots, image-reference auditing, permission-scoped visual image delivery, extension diagnostics, and clearer path semantics. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58). CLI is now `v0.2.6`.
 
@@ -91,6 +95,7 @@ For complete installation and connection instructions, see [Getting Started](./d
 - **AI-friendly note access**: use human-readable `fs` paths such as `/Notebook/Project/Note` without requiring agents to understand block IDs or document-tree internals.
 - **MCP and CLI entry points**: use MCP for multi-step agent workflows and CLI for scripts, automation, and small one-shot tasks.
 - **Notebook-level safety**: assign each notebook `none`, `r`, `rw`, or `rwd` access.
+- **Permission-scoped document statistics**: [`document.query`](./docs/reference/tools/document.md#permission-scoped-document-queries) paginates metadata, indexed block/character counts, skeleton candidates, and same-title groups across readable, open notebooks. Other notebooks can stay hidden; raw SQL retains its all-notebooks-readable requirement.
 - **Low-context tool design**: group 100+ SiYuan capabilities into 14 action-routed tools and load detailed guidance only when needed.
 - **Scenario Skills for agents**: provide guidance for browsing, editing, search, databases, exports, tags, flashcards, document timelines, system safety, and SiYuan markup.
 - **MCP Apps views**: dedicated launch tools open flashcard review, document timeline, and mascot shop exactly once; ordinary aggregate tools never render duplicate Apps, and human actions are managed on a separate MCP Apps settings page.

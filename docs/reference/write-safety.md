@@ -1,5 +1,7 @@
 # Strict Safe Writes
 
+Strict preflight and the state check before commit reload notebook permissions. An existing lease cannot bypass a later permission revocation, and granting permission does not require restarting the server.
+
 Strict Safe Writes addresses three concrete risks: the target changing after it was read, a transport retry duplicating a mutation, and a repeated request being mistaken for a new one. It is enabled by default and does not create SiYuan data snapshots.
 
 ## Call flow
@@ -29,6 +31,30 @@ The preflight reads without mutating, computes a complete SHA-256 digest, and cr
   "leaseExpiresAt": 1786543200000
 }
 ```
+
+The same response also contains a normalized `preflight` object (`version: 2`). It is the preferred client contract:
+
+```json
+{
+  "preflight": {
+    "version": 2,
+    "requestId": "b72f",
+    "expiresAt": 1786543200000,
+    "ttlMs": 600000,
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "guardTargetCount": 1 },
+    "commitArgs": {
+      "action": "set_cells",
+      "avID": "20260812120000-abcdefg",
+      "cells": [],
+      "validateOnly": false,
+      "requestId": "b72f",
+      "expectedManifestHash": "8ac2"
+    }
+  }
+}
+```
+
+Copy `preflight.commitArgs` unchanged as the next call arguments. Do not reconstruct `requestId`, hash fields, or business arguments by hand. `counts` is action-specific: `operationCount` is always present; `rowCount`, `cellCount`, and `guardTargetCount` appear only when they can be computed, and equal values are never deduplicated into a smaller cell count. `expiresAt` and `ttlMs` describe the same ten-minute first-execution window. Top-level `requestId` and hash fields remain during the migration window for 0.6.13 clients; both describe one execution path, not a second retry mechanism. If a batch is too large to return executable arguments within the response limit, it is rejected explicitly rather than truncated.
 
 The credential field name matches the write parameter, so copy that field and value directly. Remove `validateOnly` (or set it to `false`) and copy the returned `requestId`:
 
@@ -83,7 +109,7 @@ The pool stores no note content. Aliases remain reserved for the process lifetim
 
 After user authorization, invoke external actions such as `feedback.submit` with business arguments only, without `validateOnly`, `requestId`, or hash credentials. Tool schemas advertise preflight fields only for enabled strict mutations; mixed tools name the applicable actions. An accidental `validateOnly` request returns a zero-execution error with a recovery hint.
 
-MCP 2026-07-28 confirmation distinguishes `confirmation_declined` (explicit client refusal or `confirm=false`), `confirmation_cancelled` (explicit client cancellation), and `confirmation_invalid` (malformed, missing, or incorrectly typed content). Only explicit cancellation sets `cancelled=true`. Invalid content does not mean the user withdrew authorization: check client elicitation support without bypassing confirmation. Accepted confirmation still passes through permission and strict preflight checks.
+For clients supporting form elicitation, MCP 2026-07-28 confirmation distinguishes `confirmation_declined` (explicit client refusal or `confirm=false`), `confirmation_cancelled` (explicit client cancellation), and `confirmation_invalid` (malformed, missing, or incorrectly typed content). Only explicit cancellation sets `cancelled=true`. Invalid content does not mean the user withdrew authorization: check client elicitation support without bypassing confirmation. Accepted confirmation still passes through permission and strict preflight checks.
 
 Third-party and native SiYuan tools forwarded through `extension` are outside Sisyphus control and do not receive this guarantee. Local exports, notifications, sync, and feedback are also external side effects that cannot be verified through SiYuan state readback: `validateOnly` rejects without executing, while a real call still uses single-attempt transport and returns `writeSafetyGuaranteed: false`.
 
@@ -109,7 +135,7 @@ To change authorities, stop new writes, drain active calls, restart the plugin r
 
 The kernel supports stateless MCP `2026-07-28` alongside legacy initialization through `2025-11-25`. Modern clients use `server/discover` and include protocol version and client capabilities in each request's `params._meta`. Help, rules, validation, App tools and HTML resources share the Node implementation. Modern App capabilities are per-request; legacy capabilities are session-scoped with a 30-minute idle expiry.
 
-Modern dangerous calls use multi-round `input_required` / `elicitation/create` form confirmation; `confirm=true` alone cannot bypass it. An issued requestState binds the authenticated context, client declaration and normalized operation, expires after 5 minutes, and is consumed once on acceptance, decline or cancellation. At most 128 confirmations are retained. Changed arguments, forged, expired or reused states are rejected. Business requestId replay requires fresh confirmation, then the ledger deduplicates execution. Elicitation trusts the client to collect the user's choice; it is not cryptographic human attestation. Access control remains the host private route. Legacy callers retain the convention of passing `confirm=true` after obtaining confirmation. Authorized CLI calls and Node calls already confirmed at ingress answer confirmation on the internal hop.
+When the client supports form elicitation, modern dangerous calls use multi-round `input_required` / `elicitation/create` form confirmation; `confirm=true` alone cannot bypass it. An issued requestState binds the authenticated context, client declaration and normalized operation, expires after 5 minutes, and is consumed once on acceptance, decline or cancellation. At most 128 confirmations are retained. Changed arguments, forged, expired or reused states are rejected. Business requestId replay requires fresh confirmation, then the ledger deduplicates execution. Elicitation trusts the client to collect the user's choice; it is not cryptographic human attestation. Access control remains the host private route. Legacy callers retain the convention of passing `confirm=true` after obtaining confirmation. Authorized CLI calls and Node calls already confirmed at ingress answer confirmation on the internal hop.
 
 Kernel template creation and updates use `/api/file/putFile` multipart, with a default 16 MiB template body budget (configurable to 32 MiB) and 64 KiB multipart overhead. The kernel cannot directly read the caller's `localFilePath`; CLI/Node provide the staging and download workflow described below. Local saving still requires a filesystem-capable client. Response size checks run after the Go host has buffered the response and do not impose a streaming memory limit on the host HTTP client.
 
@@ -147,3 +173,5 @@ Owned ordinary read-only kernel actions allow at most 128 scoped API calls and 8
 Authenticated /health includes events, taskResults and readBudget counters without task IDs, authentication values or content. Drain committing writes before rollback/reload, then rediscover capabilities and repeat preflight. Result caches, SSE connections and upload staging do not survive reload.
 
 See [kernel options](kernel-options.md) for image/template budgets, read retries, pagination and Origin configuration. The exclusive streaming saver applies to kernel delegation; Node-only export behavior remains unchanged.
+
+Form capability follows MCP conventions: `elicitation: {}` or `elicitation: { form: {} }` supports the dialog; absent or URL-only declarations do not. Skipping the dialog does not imply user consent; agents must still follow the authorized scope. Removing capabilities cannot bypass an issued kernel confirmation: its bound request state remains validated.

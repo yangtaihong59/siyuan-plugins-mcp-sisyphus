@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isDangerousAction } from '@/core/config';
 import { callAvTool, listAvTools } from '@/tools/av';
 import { projectAvStateWithoutColumnOptions } from '@/tools/av/handlers';
+import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
 import type { ToolResult } from '@/tools/internal/shared';
 
 vi.mock('@/tools/internal/context', () => ({
@@ -3025,6 +3026,201 @@ describe('av tool', () => {
         });
     });
 
+    it('creates composite rows and writes their initial cells in two native phases', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        let insertOperation: any;
+        let cellOperations: any[] = [];
+        vi.mocked(transactionApi.performTransactions).mockImplementation(async (_clientArg, transactions) => {
+            const operation = transactions[0].doOperations[0];
+            if (operation.action === 'insertAttrViewBlock') insertOperation = operation;
+            if (operation.action === 'updateAttrViewCell') cellOperations = transactions[0].doOperations;
+            return null;
+        });
+        vi.mocked(avApi.getAttributeView).mockImplementation(async () => {
+            const srcs = insertOperation?.srcs ?? [];
+            return {
+                av: {
+                    id: 'av-1',
+                    keyValues: [
+                        {
+                            key: { id: 'key-title', type: 'block' },
+                            values: srcs.map((src: any) => ({
+                                id: `value-${src.itemID}`,
+                                blockID: src.itemID,
+                                isDetached: true,
+                                block: { content: src.content },
+                            })),
+                        },
+                        {
+                            key: { id: 'key-status', type: 'select' },
+                            values: cellOperations.length > 0
+                                ? srcs.map((src: any) => ({ blockID: src.itemID, mSelect: [{ content: 'Done' }] }))
+                                : [],
+                        },
+                    ],
+                    views: [{ id: 'view-1', type: 'table', groups: [{ id: 'group-1' }] }],
+                },
+            };
+        });
+
+        const plan = {
+            rows: [{
+                index: 0,
+                clientKey: 'event-1',
+                primaryKeyText: '会议',
+                rowID: '20260101000000-event01',
+                srcID: '20260101000000-event02',
+                cells: [{ columnID: 'key-status', valueType: 'select', option: 'Done' }],
+            }],
+        };
+        const checkpoints: any[] = [];
+        const context = { plan, checkpoint: vi.fn(async (progress: any) => { checkpoints.push(progress); }) };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            blockID: 'db-block-1',
+            viewID: 'view-1',
+            groupID: 'group-1',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议', cells: [{ columnID: 'key-status', valueType: 'select', option: 'Done' }] }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBeUndefined();
+        expect(insertOperation).toMatchObject({
+            action: 'insertAttrViewBlock',
+            avID: 'av-1',
+            viewID: 'view-1',
+            groupID: 'group-1',
+            srcs: [{ itemID: '20260101000000-event01', id: '20260101000000-event02', isDetached: true, content: '会议' }],
+        });
+        expect(cellOperations.filter((operation) => operation.action === 'updateAttrViewCell')).toEqual([{
+            action: 'updateAttrViewCell',
+            avID: 'av-1',
+            keyID: 'key-status',
+            rowID: '20260101000000-event01',
+            data: expect.objectContaining({ keyID: 'key-status', blockID: '20260101000000-event01' }),
+        }]);
+        expect(checkpoints.map((item) => item.stage)).toEqual(['rows_created', 'rows_created', 'cells_written', 'verified']);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{
+                index: 0,
+                clientKey: 'event-1',
+                rowID: '20260101000000-event01',
+                primaryKeyText: '会议',
+                cellCount: 1,
+            }],
+            added: 1,
+            cellsWritten: 1,
+            stage: 'verified',
+        });
+    });
+
+    it('rejects composite add_rows with an unknown column before any write', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const context = {
+            plan: { rows: [{ index: 0, clientKey: 'event-1', primaryKeyText: '会议', rowID: '20260101000000-event01', srcID: '20260101000000-event02', cells: [] }] },
+            checkpoint: vi.fn(async () => undefined),
+        };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议', cells: [{ columnID: 'missing-column', valueType: 'text', text: 'x' }] }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'add_rows', reason: 'batch_validation_failed' },
+        });
+    });
+
+    it('rejects relation initial cells before any insert because the destination AV is not preflighted', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: 'av-1',
+                keyValues: [
+                    { key: { id: 'key-title', type: 'block' }, values: [] },
+                    { key: { id: 'key-related', type: 'relation' }, values: [] },
+                ],
+                views: [{ id: 'view-1', type: 'table', groups: [] }],
+            },
+        });
+        const context = {
+            plan: { rows: [{ index: 0, clientKey: 'event-1', primaryKeyText: '会议', rowID: '20260101000000-event01', srcID: '20260101000000-event02', cells: [] }] },
+            checkpoint: vi.fn(async () => undefined),
+        };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            blockID: 'db-block-1',
+            rows: [{
+                clientKey: 'event-1',
+                primaryKeyText: '会议',
+                cells: [{ columnID: 'key-related', valueType: 'relation', relationBlockIDs: ['row-destination'] }],
+            }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'add_rows', reason: 'batch_validation_failed' },
+        });
+        expect(JSON.parse(result.content[0].text).error.message).toContain('relation');
+    });
+
+    it('rejects duplicate columns in one composite row before any insert', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const context = {
+            plan: { rows: [{ index: 0, clientKey: 'event-1', primaryKeyText: '会议', rowID: '20260101000000-event01', srcID: '20260101000000-event02', cells: [] }] },
+            checkpoint: vi.fn(async () => undefined),
+        };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{
+                clientKey: 'event-1',
+                primaryKeyText: '会议',
+                cells: [
+                    { columnID: 'key-status', valueType: 'select', option: 'Done' },
+                    { columnID: 'key-status', valueType: 'select', option: 'Todo' },
+                ],
+            }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text).error.message).toContain('more than once');
+    });
+
+    it('rejects mixing composite rows with legacy row inputs before any write', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议' }],
+            primaryKeyTexts: ['会议'],
+        }, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'add_rows' },
+        });
+    });
+
     it('polls until add_rows can resolve writable rowIDs', async () => {
         const avApi = await import('@/api/av');
         vi.useFakeTimers();
@@ -3215,6 +3411,69 @@ describe('av tool', () => {
             avID: 'av-1',
             srcIDs: ['row-a', 'row-b'],
             removed: 2,
+        });
+    });
+
+    it('maps canonical rowIDs to native removal IDs after validation', async () => {
+        const transactionApi = await import('@/api/transaction');
+
+        const result = await callAvTool(client, {
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['row-1'],
+        }, enabledActions('remove_rows'), permMgr);
+
+        expect(result.isError).toBeUndefined();
+        expect(vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations[0]).toMatchObject({
+            action: 'removeAttrViewBlock',
+            avID: 'av-1',
+            srcIDs: ['row-1'],
+        });
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            success: true,
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['row-1'],
+            srcIDs: ['row-1'],
+            removed: 1,
+        });
+    });
+
+    it('rejects remove_rows rowIDs that are not canonical AV row items without writing', async () => {
+        const transactionApi = await import('@/api/transaction');
+
+        const result = await callAvTool(client, {
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['not-a-row'],
+        }, enabledActions('remove_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: {
+                type: 'validation_error',
+                action: 'remove_rows',
+                reason: 'row_id_not_canonical',
+                rowIDs: ['not-a-row'],
+            },
+        });
+    });
+
+    it('rejects mixing remove_rows rowIDs and srcIDs before any write', async () => {
+        const transactionApi = await import('@/api/transaction');
+
+        const result = await callAvTool(client, {
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['row-1'],
+            srcIDs: ['row-1'],
+        }, enabledActions('remove_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'remove_rows' },
         });
     });
 
@@ -3858,8 +4117,11 @@ describe('av tool', () => {
             page: 2,
         }, enabledActions('query'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toMatchObject({
-            data: [],
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).toMatchObject({
+            structureVersion: 2,
+            rows: [],
+            columns: [],
             total: 0,
             page: 2,
             pageSize: 50,
@@ -3869,14 +4131,13 @@ describe('av tool', () => {
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
-            view: {
-                id: 'view-1',
-                pageSize: 50,
-                columns: [],
-                rows: [],
-                rowCount: 0,
-            },
+            readInfo: { representation: 'database_rows' },
         });
+        // The previous duplicate projections must not return alongside rows.
+        expect(parsed.data).toBeUndefined();
+        expect(parsed.table).toBeUndefined();
+        expect(parsed.view).toBeUndefined();
+        expect(parsed.resolvedRows).toBeUndefined();
     });
 
     it('accepts avID alias and reads rows/columns from the kernel nested view structure', async () => {
@@ -3917,31 +4178,179 @@ describe('av tool', () => {
         expect(parsed).toMatchObject({
             avID: 'av-1',
             id: 'av-1',
-            data: [{ id: 'row-1', cells: { 'col-title': 'Paper A', 'col-done': true } }],
+            structureVersion: 2,
+            rows: [{
+                rowID: 'row-1',
+                cells: {
+                    'col-title': { value: 'Paper A', formatted: 'Paper A' },
+                    'col-done': { value: true, formatted: 'true' },
+                },
+            }],
+            columns: [
+                { columnID: 'col-title', name: 'Title', type: 'text' },
+                { columnID: 'col-done', name: '完成', type: 'checkbox' },
+            ],
             total: 1,
             pageSize: 50,
-            table: {
+            pageCount: 1,
+            hasNextPage: false,
+            readInfo: {
+                representation: 'database_rows',
+                limitations: expect.arrayContaining(['cells_projected_by_columnID', 'complete_native_payload_requires_get_scope_raw']),
+            },
+            migration: { fromVersion: 1, toVersion: 2 },
+        });
+        expect(parsed.data).toBeUndefined();
+        expect(parsed.table).toBeUndefined();
+        expect(parsed.view).toBeUndefined();
+    });
+
+    it('reads real nested date formattedContent and keeps valid rows without projected cells', async () => {
+        const avApi = await import('@/api/av');
+        const epoch = 1767225600000;
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [{ id: 'col-date', name: 'Event date', type: 'date' }],
+                rows: [
+                    {
+                        id: 'row-date',
+                        cells: [{
+                            id: 'val-date',
+                            value: {
+                                keyID: 'col-date',
+                                blockID: 'row-date',
+                                date: { content: epoch, isNotEmpty: true, formattedContent: '2026年1月1日' },
+                            },
+                            valueType: 1,
+                        }],
+                    },
+                    {
+                        id: 'row-wrapper-formatted',
+                        cells: [{
+                            id: 'val-wrapper',
+                            value: { keyID: 'col-date', blockID: 'row-wrapper-formatted', text: { content: 'fallback' } },
+                            formattedContent: 'wrapper display text',
+                        }],
+                    },
+                    { id: 'row-empty-projection' },
+                ],
+                rowCount: 3,
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+        }, enabledActions('query'), permMgr);
+        const parsed = JSON.parse(result.content[0].text);
+
+        expect(parsed.rows).toHaveLength(3);
+        expect(parsed.rows[0].cells['col-date']).toEqual({ value: epoch, formatted: '2026年1月1日' });
+        expect(parsed.rows[1].cells['col-date']).toEqual({ value: 'fallback', formatted: 'wrapper display text' });
+        expect(parsed.rows[2]).toEqual({ rowID: 'row-empty-projection', cells: {} });
+        expect(parsed.total).toBe(3);
+    });
+
+    it('projects requested fields on the callTool path while always keeping rowID', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
                 columns: [
                     { id: 'col-title', name: 'Title', type: 'text' },
                     { id: 'col-done', name: '完成', type: 'checkbox' },
+                    { id: 'col-note', name: 'Note', type: 'text' },
                 ],
-                rows: [{ id: 'row-1', cells: { 'col-title': 'Paper A', 'col-done': true } }],
-                rowCount: 1,
-            },
-            view: {
-                id: 'view-1',
-                name: '表格',
-                pageSize: 50,
                 rows: [{
                     id: 'row-1',
                     cells: [
-                        { id: 'val-1', value: { keyID: 'col-title', blockID: 'row-1', text: { content: 'Paper A' } } },
-                        { id: 'val-2', value: { keyID: 'col-done', blockID: 'row-1', checkbox: { checked: true } } },
+                        { id: 'val-1', value: { keyID: 'col-title', blockID: 'row-1', text: { content: 'Paper A' } }, valueType: 0 },
+                        { id: 'val-2', value: { keyID: 'col-done', blockID: 'row-1', checkbox: { checked: true } }, valueType: 10 },
+                        { id: 'val-3', value: { keyID: 'col-note', blockID: 'row-1', text: { content: 'private note' } }, valueType: 0 },
                     ],
                 }],
                 rowCount: 1,
             },
         });
+
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+            viewID: 'view-1',
+            fields: ['col-done'],
+        }, enabledActions('query'), permMgr);
+
+        const parsed = JSON.parse(result.content[0].text);
+        expect(result.isError).toBeUndefined();
+        expect(parsed.rows).toEqual([
+            { rowID: 'row-1', cells: { 'col-done': { value: true, formatted: 'true' } } },
+        ]);
+        expect(parsed.rows[0].cells['col-title']).toBeUndefined();
+        expect(parsed.rows[0].cells['col-note']).toBeUndefined();
+        expect(parsed.columns).toEqual([{ columnID: 'col-done', name: '完成', type: 'checkbox' }]);
+        expect(parsed.total).toBe(1);
+    });
+
+    it('rejects unknown fields through the callTool validation path', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [{ id: 'col-title', name: 'Title', type: 'text' }],
+                rows: [{ id: 'row-1', cells: [] }],
+                rowCount: 1,
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+            fields: ['col-missing'],
+        }, enabledActions('query'), permMgr);
+        const parsed = JSON.parse(result.content[0].text);
+
+        expect(result.isError).toBe(true);
+        expect(parsed).toMatchObject({
+            error: {
+                type: 'validation_error',
+                tool: 'av',
+                action: 'query',
+                fields: [expect.objectContaining({ path: 'fields', message: expect.stringContaining('col-missing') })],
+            },
+        });
+        expect(parsed.rows).toBeUndefined();
+    });
+
+    it('rejects fields in primary-key mode', async () => {
+        const avApi = await import('@/api/av');
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+            mode: 'primary_keys',
+            fields: ['col-title'],
+        }, enabledActions('query'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: {
+                type: 'validation_error',
+                fields: [expect.objectContaining({ path: 'fields', message: expect.stringContaining('primary_keys') })],
+            },
+        });
+        expect(vi.mocked(avApi.getAttributeViewPrimaryKeyValues)).not.toHaveBeenCalled();
+        expect(vi.mocked(avApi.renderAttributeView)).not.toHaveBeenCalled();
     });
 
     it('computes pagination from kernel rowCount and the effective page size', async () => {
@@ -3965,9 +4374,9 @@ describe('av tool', () => {
         }, enabledActions('query'), permMgr);
 
         const parsed = JSON.parse(result.content[0].text);
-        expect(parsed.data).toHaveLength(20);
-        expect(parsed.data[0]).toMatchObject({ id: 'row-1', cells: { 'col-title': 'Item 1' } });
-        expect(parsed.data[19]).toMatchObject({ id: 'row-20', cells: { 'col-title': 'Item 20' } });
+        expect(parsed.rows).toHaveLength(20);
+        expect(parsed.rows[0]).toMatchObject({ rowID: 'row-1', cells: { 'col-title': { value: 'Item 1' } } });
+        expect(parsed.rows[19]).toMatchObject({ rowID: 'row-20', cells: { 'col-title': { value: 'Item 20' } } });
         expect(parsed).toMatchObject({
             total: 120,
             page: 3,
@@ -4000,7 +4409,7 @@ describe('av tool', () => {
 
         const parsed = JSON.parse(result.content[0].text);
         expect(parsed).toMatchObject({
-            data: [],
+            rows: [],
             total: 120,
             page: 1,
             pageSize: 50,
@@ -4052,23 +4461,20 @@ describe('av tool', () => {
         }, enabledActions('query'), permMgr);
 
         const parsed = JSON.parse(result.content[0].text);
-        expect(parsed.data).toHaveLength(3);
-        expect(parsed.data[0]).toMatchObject({ id: 'grow-1', cells: { 'col-title': 'Alpha' } });
-        expect(parsed.data[2]).toMatchObject({ id: 'grow-3', cells: { 'col-title': 'Gamma' } });
+        expect(parsed.rows).toHaveLength(3);
+        expect(parsed.rows[0]).toMatchObject({ rowID: 'grow-1', groupID: 'grp-1', cells: { 'col-title': { value: 'Alpha' } } });
+        expect(parsed.rows[2]).toMatchObject({ rowID: 'grow-3', groupID: 'grp-2', cells: { 'col-title': { value: 'Gamma' } } });
         expect(parsed).toMatchObject({
             total: 3,
             pageSize: 50,
             pageCount: 1,
             hasNextPage: false,
-            table: {
-                rows: [
-                    { id: 'grow-1', cells: { 'col-title': 'Alpha' } },
-                    { id: 'grow-2', cells: { 'col-title': 'Beta' } },
-                    { id: 'grow-3', cells: { 'col-title': 'Gamma' } },
-                ],
-                rowCount: 3,
-            },
+            groups: [
+                { groupID: 'grp-1', name: 'A 组', rowCount: 2 },
+                { groupID: 'grp-2', name: 'B 组', rowCount: 1 },
+            ],
         });
+        expect(parsed.table).toBeUndefined();
     });
 
     it('computes grouped pagination from the largest group instead of summed rowCount', async () => {
@@ -4215,6 +4621,25 @@ describe('av tool', () => {
         expect(result.isError).toBe(true);
         expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { message: expect.stringContaining('requires an existing select column') } });
         expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+    });
+
+    it.each(['select', 'mSelect'])('skips an already applied %s filter when the request omits its native empty color', async (type) => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: {
+            id: 'av-1', keyValues: [{ key: { id: 'key-status', type }, values: [] }],
+            views: [{ id: 'view-1', type: 'table', table: { columns: [{ id: 'key-status' }] },
+                filters: [{ column: '', operator: '', value: null, combination: 'and', filters: [{ column: 'key-status', operator: '=', value: { type, mSelect: [{ content: '待办', color: '' }] } }] }],
+            }],
+        } });
+
+        const result = await callAvTool(client, {
+            action: 'update_view', avID: 'av-1', blockID: 'db-block-explicit', viewID: 'view-1',
+            filters: [{ column: 'key-status', operator: '=', value: { type, mSelect: [{ content: '待办' }] } }],
+        }, enabledActions('update_view'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ changed: false, skipped: true, reason: 'already_applied' });
+        expect(transactionApi.performTransactions).not.toHaveBeenCalled();
     });
 
     it('combines filter, sort and group updates in one transaction and rejects a stale carrier', async () => {

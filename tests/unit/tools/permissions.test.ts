@@ -154,7 +154,7 @@ describe('tool permission and filtering behavior', () => {
             notebook: 'allowed',
             path: '/root-doc.sy',
         });
-        vi.spyOn(searchApi, 'getBacklinkDoc').mockResolvedValue({
+        vi.spyOn(searchApi, 'getBacklink2').mockResolvedValue({
             backlinks: [
                 { id: '1', box: 'allowed' },
                 { id: '2', box: 'blocked' },
@@ -223,7 +223,7 @@ describe('tool permission and filtering behavior', () => {
             notebook: 'allowed',
             path: '/root-doc.sy',
         });
-        vi.spyOn(searchApi, 'getBacklinkDoc').mockResolvedValue(null as never);
+        vi.spyOn(searchApi, 'getBacklink2').mockResolvedValue(null as never);
         vi.spyOn(searchApi, 'getBackmentionDoc').mockResolvedValue(null as never);
 
         const result = await callSearchTool({} as never, {
@@ -242,7 +242,7 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.warning).toMatch(/SQL fallback/);
     });
 
-    it('falls back to SQL when SiYuan backmention API returns null', async () => {
+    it('falls back to SQL when the native global backmention payload is missing', async () => {
         vi.spyOn(searchApi, 'querySQL').mockImplementation(async (_client, stmt) => {
             if (stmt.includes("WHERE id = 'target-block'") && stmt.includes('LIMIT 1')) {
                 return [{
@@ -278,7 +278,7 @@ describe('tool permission and filtering behavior', () => {
             notebook: 'allowed',
             path: '/root-doc.sy',
         });
-        vi.spyOn(searchApi, 'getBackmentionDoc').mockResolvedValue(null as never);
+        vi.spyOn(searchApi, 'getBacklink2').mockResolvedValue({ backlinks: [] } as never);
 
         const result = await callSearchTool({} as never, {
             action: 'get_backlinks',
@@ -348,7 +348,7 @@ describe('tool permission and filtering behavior', () => {
             notebook: 'blocked',
             path: '/doc-in-allowed.sy',
         });
-        vi.spyOn(searchApi, 'getBacklinkDoc').mockResolvedValue({
+        vi.spyOn(searchApi, 'getBacklink2').mockResolvedValue({
             backlinks: [{ id: '1', box: 'allowed' }],
             backmentions: [],
         } as never);

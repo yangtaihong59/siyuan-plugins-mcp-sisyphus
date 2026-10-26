@@ -402,13 +402,13 @@ MCP Server (tool-lifecycle.ts)          Puppy UI (ToolPuppy.svelte)
 1. **`DANGEROUS_ACTIONS` 集合**：在 `config.ts` 中硬编码 15 个高危 action
 2. **自动注入警告**：`buildAggregatedTool()` 自动在 tool description 中附加 `"⚠️ 危险动作: ... 需要用户确认"`
 3. **Server Instructions**：`server-instructions.ts` 在 MCP instructions 中强调高危操作需确认
-4. **Modern 代码级门禁**：MCP 2026-07-28 调用在进入工具生命周期前执行多轮 elicitation；取消或拒绝时不会执行 action
+4. **Modern 代码级门禁**：支持表单 elicitation 的 MCP 2026-07-28 调用在进入工具生命周期前执行多轮 elicitation；取消或拒绝时不会执行 action
 5. **兼容回退**：legacy MCP 客户端无法表达新确认交换，继续使用 instructions/help 警告；CLI 中用户输入命令本身即确认
 6. **工具元数据**：通过保守 annotations 向支持的客户端声明 destructive/read-only 提示
 
 ### 拒绝的替代方案
 
-- **方案 A：所有客户端强制使用 modern elicitation**：会破坏未声明该能力的 legacy 客户端，因此拒绝。
+- **方案 A：所有客户端强制使用 modern elicitation**：会破坏未声明表单能力的 modern 和 legacy 客户端，因此拒绝；不支持时跳过协议弹框，仍执行权限与严格预检。
 - **方案 B：完全禁止危险 action**：过于保守，很多合理的自动化场景需要 delete/remove。
 - **方案 C：每个危险 action 要求额外 token/密码**：增加使用门槛，不符合 MCP 协议设计哲学。
 

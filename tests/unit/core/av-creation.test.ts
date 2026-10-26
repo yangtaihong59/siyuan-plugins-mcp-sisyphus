@@ -65,6 +65,20 @@ describe('durable multi-step AV creation', () => {
         const args = { action: 'create', parentID: 'parent', avID: '20261008120000-abcdefg' };
         const pre = f.payload(await f.run({ ...args, validateOnly: true }));
         expect(f.writes()).toBe(0);
+        expect(pre.preflight).toMatchObject({
+            version: 2,
+            requestId: pre.requestId,
+            expiresAt: pre.requestIdExpiresAt,
+            ttlMs: 600000,
+            counts: { operationCount: 1 },
+            commitArgs: {
+                action: 'create',
+                parentID: 'parent',
+                avID: '20261008120000-abcdefg',
+                validateOnly: false,
+                requestId: pre.requestId,
+            },
+        });
         const result = f.payload(await f.run({ ...args, requestId: pre.requestId }));
         expect(result.stage).toBe('verified');
         expect(result.safety.transactionState).toBe('committed');

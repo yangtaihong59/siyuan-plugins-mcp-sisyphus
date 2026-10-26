@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
 import { DocumentEnsureLinkTargetsSchema, DocumentMoveSchema, DocumentReorderSchema } from '@/core/types';
+import { BATCH_RENAME_CONTEXT } from '@/core/batch-rename-plan';
 import { callDocumentTool, DOCUMENT_VARIANTS, listDocumentTools } from '@/tools/document';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
@@ -21,6 +22,146 @@ describe('document tool extended actions', () => {
         expect(actionEnum).toContain('doc_to_heading');
         expect(actionEnum).toContain('get_outline');
         expect(actionEnum).toContain('ensure_link_targets');
+    });
+});
+
+describe('document.rename batch receipts', () => {
+    const permMgr = {
+        reload: vi.fn(async () => undefined),
+        canRead: vi.fn(() => true),
+        canWrite: vi.fn(() => true),
+        get: vi.fn(() => 'rw'),
+    };
+
+    function createRenameClient(options: {
+        failRenameID?: string;
+        changedHPathID?: string;
+    } = {}) {
+        const titles: Record<string, string> = { a: 'Alpha', b: 'Beta', c: 'Gamma' };
+        const calls: string[] = [];
+        const client = createMockClient({
+            request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                const id = String(body?.id ?? '');
+                if (endpoint === '/api/filetree/getPathByID') {
+                    return { notebook: 'nb-1', path: `/${id}.sy` };
+                }
+                if (endpoint === '/api/filetree/getHPathByID') {
+                    return id === options.changedHPathID ? '/Changed/Path' : `/${titles[id] ?? id}`;
+                }
+                if (endpoint === '/api/filetree/renameDocByID') {
+                    calls.push(id);
+                    if (id === options.failRenameID) throw new Error('kernel rejected rename');
+                    titles[id] = String(body?.title ?? '');
+                    return null;
+                }
+                if (endpoint.startsWith('/api/ui/')) return null;
+                throw new Error(`Unexpected endpoint: ${endpoint}`);
+            }),
+        });
+        return { client, calls };
+    }
+
+    function plan(items: Array<{ id: string; title: string; currentHPath: string; targetHPath: string }>) {
+        return {
+            items: items.map((item, index) => ({
+                index,
+                id: item.id,
+                title: item.title,
+                notebook: 'nb-1',
+                currentPath: `/${item.id}.sy`,
+                currentHPath: item.currentHPath,
+                parentID: 'nb-1',
+                parentHPath: '',
+                targetHPath: item.targetHPath,
+                noChange: item.currentHPath === item.targetHPath,
+            })),
+        };
+    }
+
+    it('commits a bounded batch and returns per-item receipts in one call', async () => {
+        const { client, calls } = createRenameClient();
+        const checkpoints: any[] = [];
+        const context = { plan: plan([
+            { id: 'a', title: 'Alpha 2', currentHPath: '/Alpha', targetHPath: '/Alpha 2' },
+            { id: 'b', title: 'Beta 2', currentHPath: '/Beta', targetHPath: '/Beta 2' },
+        ]), checkpoint: vi.fn(async (progress: any) => { checkpoints.push(progress); }) };
+
+        const result = await callDocumentTool(client, {
+            action: 'rename',
+            items: [{ id: 'a', title: 'Alpha 2' }, { id: 'b', title: 'Beta 2' }],
+            [BATCH_RENAME_CONTEXT]: context,
+        } as any, buildDefaultToolConfig().document, permMgr as never);
+
+        const payload = parseResult(result);
+        expect(result.isError).toBeUndefined();
+        expect(payload).toMatchObject({
+            success: true,
+            changed: true,
+            overallState: 'committed',
+            items: [
+                { index: 0, id: 'a', state: 'committed', targetHPath: '/Alpha 2' },
+                { index: 1, id: 'b', state: 'committed', targetHPath: '/Beta 2' },
+            ],
+            counts: { requested: 2, committed: 2, noChange: 0, failedBeforeExecute: 0, unknown: 0, notStarted: 0 },
+        });
+        expect(calls).toEqual(['a', 'b']);
+        expect(checkpoints.at(-1)).toMatchObject({ overallState: 'committed' });
+    });
+
+    it('stops at an unknown item and leaves the remaining item not_started', async () => {
+        const { client, calls } = createRenameClient({ failRenameID: 'b' });
+        const context = { plan: plan([
+            { id: 'a', title: 'Alpha 2', currentHPath: '/Alpha', targetHPath: '/Alpha 2' },
+            { id: 'b', title: 'Beta 2', currentHPath: '/Beta', targetHPath: '/Beta 2' },
+            { id: 'c', title: 'Gamma 2', currentHPath: '/Gamma', targetHPath: '/Gamma 2' },
+        ]), checkpoint: vi.fn(async () => undefined) };
+
+        const result = await callDocumentTool(client, {
+            action: 'rename',
+            items: [{ id: 'a', title: 'Alpha 2' }, { id: 'b', title: 'Beta 2' }, { id: 'c', title: 'Gamma 2' }],
+            [BATCH_RENAME_CONTEXT]: context,
+        } as any, buildDefaultToolConfig().document, permMgr as never);
+        const payload = parseResult(result);
+
+        expect(result.isError).toBe(true);
+        expect(payload).toMatchObject({
+            success: false,
+            overallState: 'unknown',
+            items: [
+                { id: 'a', state: 'committed' },
+                { id: 'b', state: 'unknown' },
+                { id: 'c', state: 'not_started' },
+            ],
+            counts: { committed: 1, unknown: 1, notStarted: 1 },
+        });
+        expect(calls).toEqual(['a', 'b']);
+    });
+
+    it('reports a real partial failure before dispatch and does not touch later items', async () => {
+        const { client, calls } = createRenameClient({ changedHPathID: 'b' });
+        const context = { plan: plan([
+            { id: 'a', title: 'Alpha 2', currentHPath: '/Alpha', targetHPath: '/Alpha 2' },
+            { id: 'b', title: 'Beta 2', currentHPath: '/Beta', targetHPath: '/Beta 2' },
+            { id: 'c', title: 'Gamma 2', currentHPath: '/Gamma', targetHPath: '/Gamma 2' },
+        ]), checkpoint: vi.fn(async () => undefined) };
+
+        const payload = parseResult(await callDocumentTool(client, {
+            action: 'rename',
+            items: [{ id: 'a', title: 'Alpha 2' }, { id: 'b', title: 'Beta 2' }, { id: 'c', title: 'Gamma 2' }],
+            [BATCH_RENAME_CONTEXT]: context,
+        } as any, buildDefaultToolConfig().document, permMgr as never));
+
+        expect(payload).toMatchObject({
+            success: false,
+            overallState: 'partial',
+            items: [
+                { id: 'a', state: 'committed' },
+                { id: 'b', state: 'failed_before_execute', reason: 'target_path_changed_after_preflight' },
+                { id: 'c', state: 'not_started' },
+            ],
+            counts: { committed: 1, failedBeforeExecute: 1, notStarted: 1 },
+        });
+        expect(calls).toEqual(['a']);
     });
 });
 
@@ -512,6 +653,30 @@ describe('document.reorder', () => {
 });
 
 describe('document.lookup path compatibility', () => {
+    it.each([true, false])('identifies a notebook name without exposing unreadable IDs (readable=%s)', async (readable) => {
+        const client = createMockClient({
+            request: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: '20261020120000-testnb1', name: '测试用' }] };
+                throw new Error(`Unexpected endpoint: ${endpoint}`);
+            }),
+        });
+        const result = await callDocumentTool(client,
+            { action: 'create', notebook: '测试用', path: '/New', markdown: 'body' },
+            buildDefaultToolConfig().document,
+            { reload: async () => {}, canWrite: () => false, canRead: () => readable, get: () => 'r' } as never);
+        expect(result.isError).toBe(true);
+        const error = parseResult(result).error;
+        if (readable) {
+            expect(error.code).toBe('invalid_arguments');
+            expect(error.hint).toContain('20261020120000-testnb1');
+            expect(error.hint).toContain('do not change permissions');
+        } else {
+            expect(error.type).toBe('permission_denied');
+            expect(JSON.stringify(error)).not.toContain('20261020120000-testnb1');
+        }
+        expect(client.request).not.toHaveBeenCalledWith('/api/filetree/createDocWithMd', expect.anything());
+    });
+
     it('strips duplicate leading title heading when creating a document', async () => {
         const client = createMockClient({
             request: vi.fn(async (endpoint: string) => {

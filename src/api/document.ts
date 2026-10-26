@@ -284,8 +284,8 @@ export async function headingToDoc(
     client: SiYuanClient,
     srcHeadingID: string,
     targetNotebook: string,
-    targetPath?: string,
-    previousPath?: string,
+    targetPath = '/',
+    previousPath = '',
 ): Promise<null> {
     return client.requestWrite('/api/filetree/heading2Doc', {
         srcHeadingID,

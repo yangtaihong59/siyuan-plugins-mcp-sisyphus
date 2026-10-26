@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
+import { BATCH_RENAME_CONTEXT } from '@/core/batch-rename-plan';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';
 
@@ -122,7 +124,7 @@ function createCrossObjectAvFixture() {
                 const carrier = carriers[String(body?.id)];
                 if (!carrier) return { dom: '' };
                 return {
-                    dom: `<div data-type="NodeAttributeView" data-av-id="${carrier.avID}" data-lease-revision="${carrier.domRevision}"></div>`,
+                    dom: `<div data-node-id="${body?.id}" data-type="NodeAttributeView" data-av-id="${carrier.avID}" data-lease-revision="${carrier.domRevision}"></div>`,
                 };
             }
             if (endpoint === '/api/block/getBlockInfo') {
@@ -231,6 +233,52 @@ async function assertStableCrossObjectActionThenRejectDrift(
 }
 
 describe('write safety coordinator', () => {
+    it.each([true, false])('diagnoses notebook names before issuing a create lease without leaking unreadable IDs (readable=%s)', async (readable) => {
+        const fixture = createCrossObjectAvFixture();
+        const read = vi.mocked((fixture.client as any).requestRead).getMockImplementation()!;
+        vi.mocked((fixture.client as any).requestRead).mockImplementation((endpoint: string, args: unknown) =>
+            endpoint === '/api/notebook/lsNotebooks'
+                ? Promise.resolve({ notebooks: [{ id: '20261020120000-testnb1', name: '测试用' }] })
+                : read(endpoint, args));
+        fixture.permMgr.canWrite.mockReturnValue(false);
+        fixture.permMgr.canRead.mockReturnValue(readable);
+        const execute = vi.fn();
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const out = parseResult(await coordinator.run({
+            client: fixture.client, permMgr: fixture.permMgr, category: 'document', action: 'create', strictMode: true,
+            args: { action: 'create', notebook: '测试用', path: '/New', validateOnly: true }, execute,
+        }));
+        expect(out.error.code).toBe(readable ? 'invalid_arguments' : 'permission_denied');
+        expect(JSON.stringify(out).includes('20261020120000-testnb1')).toBe(readable);
+        expect(out.preflight).toBeUndefined();
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('refreshes permissions for generic preflight and refuses a lease after permission is revoked', async () => {
+        const fixture = createCrossObjectAvFixture();
+        const read = vi.mocked((fixture.client as any).requestRead).getMockImplementation()!;
+        vi.mocked((fixture.client as any).requestRead).mockImplementation((endpoint: string, args: unknown) =>
+            endpoint === '/api/block/checkBlockExist' ? Promise.resolve(true) : read(endpoint, args));
+        let stored = 'rwd';
+        let cached = 'rw';
+        fixture.permMgr.reload.mockImplementation(async () => { cached = stored; });
+        fixture.permMgr.canDelete.mockImplementation(() => cached === 'rwd');
+        const coordinator = new WriteSafetyCoordinator(fixture.client);
+        const execute = vi.fn();
+        const context = { client: fixture.client, permMgr: fixture.permMgr,
+            category: 'block' as const, action: 'delete', strictMode: true, execute };
+        const pre = parseResult(await coordinator.run({ ...context,
+            args: { action: 'delete', id: fixture.ids.sourceBlockID, validateOnly: true } }));
+        expect(pre.error).toBeUndefined();
+        expect(pre.preflight.commitArgs.requestId).toBeTruthy();
+        expect(cached).toBe('rwd');
+        stored = 'r';
+        const rejected = parseResult(await coordinator.run({ ...context, args: pre.preflight.commitArgs }));
+        expect(rejected.error.code).toBe('permission_denied');
+        expect(cached).toBe('r');
+        expect(execute).not.toHaveBeenCalled();
+    });
+
     it.each([
         ['commit', 1], ['drift', 1], ['unchanged', 1],
         ['commit', 11], ['drift', 11], ['unchanged', 11],
@@ -372,8 +420,8 @@ describe('write safety coordinator', () => {
                 const carrier = fixture.carriers[String(body?.id)];
                 if (!carrier) return { dom: '' };
                 const attributes = alternateCarrierAttributeOrder
-                    ? `class="av" data-av-id="${carrier.avID}" data-type="NodeAttributeView" updated="stable" custom-sy-av-view="view-1"`
-                    : `class="av" custom-sy-av-view="view-1" updated="stable" data-type="NodeAttributeView" data-av-id="${carrier.avID}"`;
+                    ? `class="av" data-node-id="${body?.id}" data-av-id="${carrier.avID}" data-type="NodeAttributeView" updated="stable" custom-sy-av-view="view-1"`
+                    : `class="av" data-node-id="${body?.id}" custom-sy-av-view="view-1" updated="stable" data-type="NodeAttributeView" data-av-id="${carrier.avID}"`;
                 return { dom: `<div ${attributes}></div>` };
             }
             return originalRequestRead(endpoint, body);
@@ -505,7 +553,7 @@ describe('write safety coordinator', () => {
                 }
                 if (endpoint === '/api/block/getBlockDOM') {
                     const isDestination = body?.id === destinationBlockID;
-                    return { id: body?.id, dom: `<div data-type="NodeAttributeView" data-av-id="${isDestination ? destinationAvID : avID}"></div>` };
+                    return { id: body?.id, dom: `<div data-node-id="${body?.id}" data-type="NodeAttributeView" data-av-id="${isDestination ? destinationAvID : avID}"></div>` };
                 }
                 if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, box: 'nb-rw' };
                 if (endpoint === '/api/av/getMirrorDatabaseBlocks') return { refDefs: [{ refID: destinationBlockID }] };
@@ -732,6 +780,68 @@ describe('write safety coordinator', () => {
         expect(permMgr.canDelete).not.toHaveBeenCalled();
     });
 
+    it.each(['create', 'create_daily_note'])('reads %s by the returned ID without mixing another notebook at the same hpath', async (action) => {
+        const docID = '20261019000000-newdoc1';
+        const target = '20261019000001-target1';
+        const neighbor = '20261019000002-readonl';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/block/checkBlockExist') return body?.id === docID;
+                if (endpoint === '/api/block/getBlockInfo') return { id: docID, box: target };
+                if (endpoint === '/api/attr/getBlockAttrs') return {};
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: 'new document' };
+                if (endpoint === '/api/block/getChildBlocks') return [];
+                if (endpoint === '/api/block/getBlockDOM') return { dom: '<p>new document</p>' };
+                // A stale/path-only SQL lookup would also see the read-only neighbor.
+                if (endpoint === '/api/query/sql') return [{ id: 'other-doc', box: neighbor, hpath: '/Shared' }];
+                throw new Error(`Unexpected endpoint ${endpoint}`);
+            }),
+        } as any;
+        const permMgr = createMockPermissionManager({ canWrite: (id) => id === target });
+        permMgr.getAll = vi.fn(() => ({ [target]: 'rwd', [neighbor]: 'r' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action, notebook: target, ...(action === 'create' ? { path: '/Shared' } : {}) };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action, args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => success({ success: true, id: docID }));
+        const input = { ...args, requestId: preflight.requestId };
+        const result = parseResult(await coordinator.run({ client, permMgr, category: 'document', action, args: input, strictMode: true, execute }));
+        expect(result.safety).toMatchObject({ transactionState: 'committed', writeSafetyGuaranteed: true });
+        expect(client.requestRead).toHaveBeenCalledWith('/api/block/getBlockInfo', { id: docID });
+        expect(permMgr.canWrite).not.toHaveBeenCalledWith(neighbor);
+        const replay = parseResult(await coordinator.run({ client, permMgr, category: 'document', action, args: input, strictMode: true, execute }));
+        expect((replay.safety ?? replay).replayed).toBe(true);
+        expect(execute).toHaveBeenCalledOnce();
+    });
+
+    it.each(['missing_id', 'missing_document', 'wrong_notebook'])('does not commit document creation with %s readback', async (failure) => {
+        const id = '20261019000000-newdoc1';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/block/checkBlockExist') return failure !== 'missing_document';
+                if (endpoint === '/api/block/getBlockInfo') return { id, box: failure === 'wrong_notebook' ? 'other-nb' : 'nb-1' };
+                if (endpoint === '/api/attr/getBlockAttrs') return {};
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: 'created' };
+                if (endpoint === '/api/block/getChildBlocks' || endpoint === '/api/query/sql') return [];
+                if (endpoint === '/api/block/getBlockDOM') return { dom: '<p>created</p>' };
+                throw new Error(`Unexpected endpoint ${endpoint}`);
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager();
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rwd', 'other-nb': 'rwd' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'create', notebook: 'nb-1', path: '/Created' };
+        const preflight = parseResult(await coordinator.run({ client, permMgr, category: 'document', action: 'create', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn() }));
+        const result = parseResult(await coordinator.run({ client, permMgr, category: 'document', action: 'create', args: { ...args, requestId: preflight.requestId }, strictMode: true, execute: async () => success({ success: true, ...(failure === 'missing_id' ? {} : { id }) }) }));
+        expect(result.error.code).toBe('readback_mismatch');
+        expect(result.transactionState).toBe('unknown');
+    });
+
     it('reads back the newly created document when duplicating a source document', async () => {
         const sourceID = '20260812000000-source1';
         const duplicateID = '20260812000001-copy001';
@@ -769,6 +879,499 @@ describe('write safety coordinator', () => {
 
         expect(result.safety).toMatchObject({ writeExecuted: true, transactionState: 'committed' });
         expect(client.requestRead).toHaveBeenCalledWith('/api/block/getBlockInfo', { id: duplicateID });
+    });
+
+    it('returns a commitArgs preflight for an additive mutation without inventing a state hash', async () => {
+        const coordinator = new WriteSafetyCoordinator({
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async () => null),
+        } as never);
+        const result = parseResult(await coordinator.run({
+            client: { readFile: vi.fn(), writeFile: vi.fn(), requestRead: vi.fn() } as never,
+            permMgr: createMockPermissionManager(),
+            category: 'block',
+            action: 'append',
+            args: { action: 'append', parentID: 'doc-1', dataType: 'markdown', data: 'x', validateOnly: true },
+            strictMode: true,
+            execute: vi.fn(),
+        }));
+        expect(result.preflight).toMatchObject({
+            version: 2,
+            requestId: result.requestId,
+            expiresAt: result.requestIdExpiresAt,
+            ttlMs: 600000,
+            counts: { operationCount: 1 },
+            commitArgs: {
+                action: 'append',
+                parentID: 'doc-1',
+                dataType: 'markdown',
+                data: 'x',
+                validateOnly: false,
+                requestId: result.requestId,
+            },
+        });
+        expect(result.preflight.commitArgs).not.toHaveProperty('expectedStateHash');
+        expect(result.preflight.commitArgs).not.toHaveProperty('expectedManifestHash');
+    });
+
+    it('returns an executable v2 preflight for composite add_rows with counts and TTL', async () => {
+        const revision = { value: 1 };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/av/getAttributeView') {
+                    return { av: {
+                        id: 'av-batch',
+                        revision: revision.value,
+                        keyValues: [
+                            { key: { id: 'key-title', type: 'block' }, values: [] },
+                            { key: { id: 'key-note', type: 'text' }, values: [] },
+                        ],
+                        views: [{ id: 'view-1', type: 'table', groups: [] }],
+                    } };
+                }
+                if (endpoint === '/api/av/getMirrorDatabaseBlocks') return { refDefs: [{ refID: 'db-batch' }] };
+                if (endpoint === '/api/block/getBlockDOM') {
+                    return { dom: '<div data-node-id="db-batch" data-type="NodeAttributeView" data-av-id="av-batch"></div>' };
+                }
+                if (endpoint === '/api/block/getBlockInfo') return { id: 'db-batch', box: 'nb-batch' };
+                if (endpoint === '/api/query/sql') return [];
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-batch': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'add_rows',
+            avID: 'av-batch',
+            blockID: 'db-batch',
+            rows: [
+                { clientKey: 'event-1', primaryKeyText: '会议', cells: [{ columnID: 'key-note', valueType: 'text', text: 'A' }] },
+                { clientKey: 'event-2', primaryKeyText: '评审', cells: [{ columnID: 'key-note', valueType: 'text', text: 'B' }] },
+            ],
+        };
+
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+
+        expect(preflight.preflight).toMatchObject({
+            version: 2,
+            requestId: preflight.requestId,
+            ttlMs: 600000,
+            counts: { operationCount: 2, rowCount: 2, cellCount: 2, guardTargetCount: 3 },
+            commitArgs: {
+                action: 'add_rows',
+                avID: 'av-batch',
+                blockID: 'db-batch',
+                validateOnly: false,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
+                rows: args.rows,
+            },
+        });
+        // The requestId is issued slightly before the hash lease. The advertised
+        // deadline must be the earliest real cutoff, never the later lease.
+        expect(preflight.expiresAt).toBe(Math.min(preflight.requestIdExpiresAt, preflight.leaseExpiresAt));
+        expect(preflight.expiresAt).toBeLessThanOrEqual(preflight.requestIdExpiresAt);
+        expect(preflight.expiresAt).toBeLessThanOrEqual(preflight.leaseExpiresAt);
+        expect(preflight.preflight.expiresAt).toBe(preflight.expiresAt);
+        expect(preflight.expiresAt - Date.now()).toBeGreaterThan(9 * 60 * 1000);
+
+        let committed = false;
+        const execute = vi.fn(async (safeArgs: Record<string, unknown>) => {
+            const context = (safeArgs as Record<symbol, unknown>)[AV_ADD_ROWS_CONTEXT] as {
+                plan: { rows: Array<{ rowID: string }> };
+                checkpoint(progress: Record<string, unknown>): Promise<void>;
+            };
+            await context.checkpoint({ stage: 'rows_created', currentStep: 'write_cells', rows: context.plan.rows.map((row, index) => ({ index, clientKey: `event-${index + 1}`, rowID: row.rowID, cellCount: 1, rowResolved: true })) });
+            await context.checkpoint({ stage: 'cells_written', currentStep: 'verify', rows: context.plan.rows.map((row, index) => ({ index, clientKey: `event-${index + 1}`, rowID: row.rowID, cellCount: 1, rowResolved: true })) });
+            await context.checkpoint({ stage: 'verified', currentStep: 'complete', rows: context.plan.rows.map((row, index) => ({ index, clientKey: `event-${index + 1}`, rowID: row.rowID, cellCount: 1, rowResolved: true })) });
+            revision.value += 1;
+            committed = true;
+            return success({ success: true, changed: true, action: 'add_rows', added: 2, rows: context.plan.rows.map((row) => ({ rowID: row.rowID })) });
+        });
+
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(result.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true, replayed: false });
+        expect(result.safety.addRows.stage).toBe('verified');
+        expect(committed).toBe(true);
+
+        const replay = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(replay.safety.replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(revision.value).toBe(2);
+    });
+
+    it('counts explicit cells and distinct rows in a set_cells preflight and executes its commitArgs unchanged', async () => {
+        const revision = { value: 1 };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') {
+                    const values = revision.value > 1
+                        ? [{ blockID: 'row-a', text: { content: 'same' } }, { blockID: 'row-b', text: { content: 'same' } }]
+                        : [];
+                    return { av: {
+                        id: 'av-cells',
+                        revision: revision.value,
+                        keyValues: [
+                            { key: { id: 'key-title', type: 'text' }, values },
+                            { key: { id: 'key-note', type: 'text' }, values },
+                        ],
+                        views: [{ id: 'view-1', type: 'table' }],
+                    } };
+                }
+                if (endpoint === '/api/query/sql') return [];
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'set_cells',
+            avID: 'av-cells',
+            cells: [
+                { rowID: 'row-a', columnID: 'key-note', valueType: 'text', text: 'same' },
+                { rowID: 'row-a', columnID: 'key-title', valueType: 'text', text: 'same' },
+                { rowID: 'row-b', columnID: 'key-note', valueType: 'text', text: 'same' },
+                { rowID: 'row-b', columnID: 'key-title', valueType: 'text', text: 'same' },
+            ],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'set_cells', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        expect(preflight.preflight).toMatchObject({
+            counts: { operationCount: 1, rowCount: 2, cellCount: 4, guardTargetCount: 1 },
+            commitArgs: {
+                action: 'set_cells',
+                avID: 'av-cells',
+                cells: args.cells,
+                validateOnly: false,
+                requestId: preflight.requestId,
+                expectedManifestHash: preflight.expectedManifestHash,
+            },
+        });
+
+        const execute = vi.fn(async () => {
+            revision.value += 1;
+            return success({ success: true, changed: true });
+        });
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'set_cells', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(result.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true });
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns one executable preflight for batch document.rename and replays its receipt', async () => {
+        const docA = '20260101000000-doc0001';
+        const docB = '20260101000000-doc0002';
+        const titles: Record<string, string> = { [docA]: 'Alpha', [docB]: 'Beta' };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                const id = String(body?.id ?? '');
+                if (endpoint === '/api/filetree/getPathByID') return { notebook: 'nb-1', path: `/${id}.sy` };
+                if (endpoint === '/api/filetree/getHPathByID') return `/${titles[id]}`;
+                if (endpoint === '/api/block/getBlockInfo') return { box: 'nb-1', path: `/${id}.sy`, rootID: id, rootChildID: '', rootTitle: titles[id] };
+                if (endpoint === '/api/filetree/getIDsByHPath') return [];
+                if (endpoint === '/api/block/checkBlockExist') return true;
+                if (endpoint === '/api/block/getBlockAttrs') return {};
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: `# ${titles[id]}` };
+                if (endpoint === '/api/block/getChildBlocks') return [];
+                if (endpoint === '/api/block/getBlockDOM') return { dom: `<div data-node-id="${id}"></div>` };
+                if (endpoint === '/api/query/sql') return [];
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'rename',
+            items: [
+                { id: docA, title: 'Alpha 2' },
+                { id: docB, title: 'Beta 2' },
+            ],
+        };
+
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        expect(preflight.preflight).toMatchObject({
+            version: 2,
+            counts: { operationCount: 2, guardTargetCount: 5 },
+            commitArgs: {
+                action: 'rename',
+                items: args.items,
+                validateOnly: false,
+                requestId: preflight.requestId,
+                expectedStateHash: preflight.expectedStateHash,
+            },
+        });
+        expect(preflight.expiresAt - Date.now()).toBeGreaterThan(9 * 60 * 1000);
+
+        const execute = vi.fn(async (safeArgs: Record<string, unknown>) => {
+            const context = (safeArgs as Record<symbol, unknown>)[BATCH_RENAME_CONTEXT] as {
+                checkpoint(progress: Record<string, unknown>): Promise<void>;
+            };
+            const receipts = [
+                { index: 0, id: docA, title: 'Alpha 2', state: 'committed' },
+                { index: 1, id: docB, title: 'Beta 2', state: 'committed' },
+            ];
+            await context.checkpoint({ overallState: 'committed', items: receipts });
+            titles[docA] = 'Alpha 2';
+            titles[docB] = 'Beta 2';
+            return success({ success: true, changed: true, overallState: 'committed', items: receipts });
+        });
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(result.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true });
+        expect(result.safety.rename.overallState).toBe('committed');
+
+        const replay = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(replay.safety.replayed).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(1);
+
+        const interruptedPreflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename',
+            args: { action: 'rename', items: [{ id: docA, title: 'Alpha 3' }], validateOnly: true },
+            strictMode: true, execute: vi.fn(),
+        }));
+        const interruptedExecute = vi.fn(async (safeArgs: Record<string, unknown>) => {
+            const context = (safeArgs as Record<symbol, unknown>)[BATCH_RENAME_CONTEXT] as {
+                checkpoint(progress: Record<string, unknown>): Promise<void>;
+            };
+            await context.checkpoint({
+                overallState: 'unknown',
+                inProgressIndex: 0,
+                items: [{ index: 0, id: docA, title: 'Alpha 3', state: 'not_started' }],
+            });
+            throw new Error('process interrupted after dispatch');
+        });
+        const interrupted = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename',
+            args: interruptedPreflight.preflight.commitArgs, strictMode: true, execute: interruptedExecute,
+        }));
+        expect(interrupted.error.code).toBe('outcome_unknown');
+        const interruptedReplay = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename',
+            args: interruptedPreflight.preflight.commitArgs, strictMode: true, execute: interruptedExecute,
+        }));
+        expect(interruptedReplay).toMatchObject({
+            replayed: true,
+            writeAttempted: true,
+            transactionState: 'unknown',
+            overallState: 'unknown',
+            items: [{ index: 0, id: docA, state: 'unknown', reason: 'interrupted_before_receipt' }],
+        });
+        expect(interruptedExecute).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a tampered batch rename commit without dispatching it', async () => {
+        const docA = '20260101000000-doc0001';
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/filetree/getPathByID') return { notebook: 'nb-1', path: '/20260101000000-doc0001.sy' };
+                if (endpoint === '/api/filetree/getHPathByID') return '/Alpha';
+                if (endpoint === '/api/block/getBlockInfo') return { box: 'nb-1', path: `/${docA}.sy`, rootID: docA, rootChildID: '', rootTitle: 'Alpha' };
+                if (endpoint === '/api/filetree/getIDsByHPath') return [];
+                if (endpoint === '/api/block/checkBlockExist') return true;
+                if (endpoint === '/api/block/getBlockAttrs') return {};
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: '# Alpha' };
+                if (endpoint === '/api/block/getChildBlocks') return [];
+                if (endpoint === '/api/block/getBlockDOM') return { dom: '<div></div>' };
+                if (endpoint === '/api/query/sql') return [];
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename',
+            args: { action: 'rename', items: [{ id: docA, title: 'Alpha 2' }], validateOnly: true },
+            strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn();
+        const commitArgs = structuredClone(preflight.preflight.commitArgs);
+        commitArgs.items = [{ id: docA, title: 'Tampered' }];
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'document', action: 'rename', args: commitArgs, strictMode: true, execute,
+        }));
+        expect(result.error).toMatchObject({ code: 'idempotency_conflict' });
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('persists composite add_rows progress after a transport failure and replays it without a second insert', async () => {
+        const revision = { value: 1 };
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') {
+                    return { av: {
+                        id: 'av-batch',
+                        revision: revision.value,
+                        keyValues: [
+                            { key: { id: 'key-title', type: 'block' }, values: [] },
+                            { key: { id: 'key-note', type: 'text' }, values: [] },
+                        ],
+                        views: [{ id: 'view-1', type: 'table', groups: [] }],
+                    } };
+                }
+                if (endpoint === '/api/av/getMirrorDatabaseBlocks') return { refDefs: [{ refID: 'db-batch' }] };
+                if (endpoint === '/api/block/getBlockDOM') {
+                    return { dom: '<div data-node-id="db-batch" data-type="NodeAttributeView" data-av-id="av-batch"></div>' };
+                }
+                if (endpoint === '/api/block/getBlockInfo') return { id: 'db-batch', box: 'nb-batch' };
+                if (endpoint === '/api/query/sql') return [];
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-batch': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'add_rows',
+            avID: 'av-batch',
+            blockID: 'db-batch',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议', cells: [{ columnID: 'key-note', valueType: 'text', text: 'A' }] }],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async (safeArgs: Record<string, unknown>) => {
+            const context = (safeArgs as Record<symbol, unknown>)[AV_ADD_ROWS_CONTEXT] as {
+                plan: { rows: Array<{ rowID: string }> };
+                checkpoint(progress: Record<string, unknown>): Promise<void>;
+            };
+            await context.checkpoint({
+                stage: 'rows_created',
+                currentStep: 'resolve_rows',
+                rows: context.plan.rows.map((row, index) => ({ index, clientKey: 'event-1', rowID: row.rowID, cellCount: 1, rowResolved: true })),
+            });
+            revision.value += 1;
+            throw new Error('transport lost after row insert');
+        });
+
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(result.error.code).toBe('outcome_unknown');
+        expect(result.error.addRows).toMatchObject({ stage: 'rows_created', currentStep: 'resolve_rows' });
+        expect(result.error.addRows.rows[0].rowID).toMatch(/^\d{14}-[a-z0-9]{7}$/);
+
+        const replay = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(replay).toMatchObject({
+            success: false,
+            replayed: true,
+            transactionState: 'unknown',
+            addRows: { stage: 'rows_created' },
+            error: { code: 'outcome_unknown' },
+        });
+        expect(replay.addRows.rows[0].rowID).toBe(result.error.addRows.rows[0].rowID);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('replays a reserved composite add_rows stage as attempted unknown, never zero-write', async () => {
+        const client = {
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') {
+                    return { av: {
+                        id: 'av-batch',
+                        keyValues: [
+                            { key: { id: 'key-title', type: 'block' }, values: [] },
+                            { key: { id: 'key-note', type: 'text' }, values: [] },
+                        ],
+                        views: [{ id: 'view-1', type: 'table', groups: [] }],
+                    } };
+                }
+                if (endpoint === '/api/av/getMirrorDatabaseBlocks') return { refDefs: [{ refID: 'db-batch' }] };
+                if (endpoint === '/api/block/getBlockDOM') {
+                    return { dom: '<div data-node-id="db-batch" data-type="NodeAttributeView" data-av-id="av-batch"></div>' };
+                }
+                if (endpoint === '/api/block/getBlockInfo') return { id: 'db-batch', box: 'nb-batch' };
+                if (endpoint === '/api/query/sql') return [];
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-batch': 'rw' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = {
+            action: 'add_rows',
+            avID: 'av-batch',
+            blockID: 'db-batch',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议', cells: [{ columnID: 'key-note', valueType: 'text', text: 'A' }] }],
+        };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
+        }));
+        // Fail before any handler checkpoint. The ledger still persisted the
+        // reserved rowIDs, so the insert may already have been dispatched.
+        const execute = vi.fn(async () => { throw new Error('transport lost before first checkpoint'); });
+
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(result.writeAttempted).toBe(true);
+        expect(result.error).toMatchObject({ code: 'outcome_unknown' });
+        expect(result.error.addRows).toMatchObject({ stage: 'reserved', currentStep: 'insert_rows' });
+
+        const replay = parseResult(await coordinator.run({
+            client, permMgr, category: 'av', action: 'add_rows', args: preflight.preflight.commitArgs, strictMode: true, execute,
+        }));
+        expect(replay).toMatchObject({
+            success: false,
+            replayed: true,
+            writeAttempted: true,
+            writeExecuted: false,
+            transactionState: 'unknown',
+            addRows: { stage: 'reserved' },
+            error: { code: 'outcome_unknown' },
+        });
+        expect(replay.addRows.rows[0].rowID).toBe(result.error.addRows.rows[0].rowID);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects composite add_rows without a complete preflight before any dispatch', async () => {
+        const coordinator = new WriteSafetyCoordinator({
+            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async () => null),
+        } as never);
+        const execute = vi.fn();
+        const result = parseResult(await coordinator.run({
+            client: { readFile: vi.fn(), writeFile: vi.fn(), requestRead: vi.fn() } as never,
+            permMgr: createMockPermissionManager({ canRead: () => true, canWrite: () => true, canDelete: () => true }),
+            category: 'av',
+            action: 'add_rows',
+            args: { avID: 'av-batch', rows: [{ clientKey: 'event-1', primaryKeyText: '会议' }] },
+            strictMode: true,
+            execute,
+        }));
+        expect(result.error).toMatchObject({ code: 'precondition_required' });
+        expect(execute).not.toHaveBeenCalled();
     });
 
     it('preflights, rejects stale state, commits once, and replays requestIds', async () => {
@@ -1506,7 +2109,7 @@ describe('write safety coordinator', () => {
                 if (endpoint === '/api/block/getBlockDOM') {
                     const attrs = [`updated="20260907205737"`, `custom-sy-av-view="${viewID}"`];
                     if (++domReadCount % 2) attrs.reverse();
-                    return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" ${attrs.join(' ')}></div>` };
+                    return { id: blockID, dom: `<div data-node-id="${blockID}" data-type="NodeAttributeView" data-av-id="${avID}" ${attrs.join(' ')}></div>` };
                 }
                 if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
                 return null;
@@ -1560,7 +2163,7 @@ describe('write safety coordinator', () => {
         const requestRead = vi.fn(async (endpoint: string) => {
             if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
             if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
-            if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+            if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-node-id="${blockID}" data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
             if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
             return null;
         });
@@ -1625,7 +2228,7 @@ describe('write safety coordinator', () => {
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
                 if (endpoint === '/api/attr/getBlockAttrs') return carrierAttrs;
-                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-node-id="${blockID}" data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
                 if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
                 return null;
             }),

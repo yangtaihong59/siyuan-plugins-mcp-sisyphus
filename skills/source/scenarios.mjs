@@ -205,12 +205,15 @@ Before rename, move, delete, or broad replacement, resolve the exact target, sho
 {{call fulltext}}
 {{call semantic}}
 {{call scoped}}
+{{call documents}}
 {{call sql}}
 {{call backlinks}}
 {{call refs}}
 {{call assets}}
 
-SQL must be read-only and must include \`LIMIT\`. Useful tables include \`blocks\`, \`blocks_fts\`, \`attributes\`, \`refs\`, \`spans\`, and \`assets\`.
+Use \`document.query\` for document inventories, indexed block/character statistics, title-only skeleton candidates (\`maxBlocks: 0\`), or same-title candidates (\`duplicatesOnly: true\`). It queries readable, open notebooks by default; explicit unknown, unreadable, or closed notebooks are rejected. Continue with \`page\` while \`hasNextPage\` is true. \`blockCount\` counts non-document index rows including containers; \`contentChars\` sums their indexed content lengths, not native word counts or deduplicated body characters. \`sameTitleCount\` is scoped before statistic bounds; matching titles or sizes do not prove duplicate content. The index may lag writes and pages are not a frozen snapshot.
+
+Raw SQL must be read-only and must include \`LIMIT\`. Both \`query_sql\` and fulltext SQL mode require every notebook to be readable; do not bypass that gate. Useful tables include \`blocks\`, \`blocks_fts\`, \`attributes\`, \`refs\`, \`spans\`, and \`assets\`.
 
 ## Find and replace
 
@@ -224,6 +227,7 @@ Read the changed blocks again. Recent writes can take time to enter the search i
             fulltext: call('search', 'fulltext', { query: 'keyword', page: 1, pageSize: 20 }),
             semantic: call('search', 'semantic', { query: 'concept or meaning', typeShortcodes: ['h', 'p'], page: 1, pageSize: 20 }),
             scoped: call('search', 'fulltext', { query: 'keyword', parentId: '<doc-id>', typeShortcodes: ['h', 'p'] }),
+            documents: call('document', 'query', { fields: ['id', 'notebook', 'title', 'hpath', 'blockCount', 'contentChars', 'sameTitleCount'], sortBy: 'blockCount', page: 1, pageSize: 50 }),
             sql: call('search', 'query_sql', { stmt: "SELECT id, hpath, content FROM blocks WHERE type = 'p' ORDER BY updated DESC LIMIT 10" }),
             backlinks: call('search', 'get_backlinks', { id: '<block-or-doc-id>', mode: 'both' }),
             refs: call('search', 'search_refs', { id: '<block-id>', beforeLen: 512 }),

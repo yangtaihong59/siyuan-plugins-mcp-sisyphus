@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AV_FILTER_MAX_DEPTH } from '@/core/types';
 import { buildDefaultToolConfig, type AvAction, type CategoryToolConfig } from '@/core/config';
 import { AV_TOOL_NAME, AV_VARIANTS, listAvTools } from '@/tools/av';
+import { prepareViewUpdate } from '@/tools/av/view-config';
 
 const setFiltersVariant = AV_VARIANTS.find((variant) => variant.action === 'update_view');
 
@@ -38,6 +39,26 @@ describe('av update_view schema depth bounding', () => {
             viewID: 'view-1',
             filters: [{ column: 'col-1', operator: 'Contains' }],
         });
+    });
+
+    it.each([
+        ['column', 'status'], ['operator', '='], ['value', { type: 'select', mSelect: [{ content: '待办' }] }],
+        ['quantifier', 'Any'], ['relativeDate', { count: 1, unit: 0, direction: -1 }], ['relativeDate2', { count: 2, unit: 0, direction: 1 }],
+    ])('rejects the leaf field %s on a group before any dispatch', (field, value) => {
+        expect(() => setFiltersVariant!.validate({
+            action: 'update_view', avID: 'av-1', blockID: 'block-1', viewID: 'view-1',
+            filters: [{ combination: 'and', filters: [], [field as string]: value }],
+        })).toThrow(/group|Group/);
+    });
+
+    it('treats an empty child list without combination as a leaf and still checks its column', () => {
+        expect(() => prepareViewUpdate({ keyValues: [{ key: { id: 'status' } }], views: [{ id: 'view-1', type: 'table', table: { columns: [{ id: 'status' }] } }] }, {
+            action: 'update_view', avID: 'av-1', blockID: 'block-1', viewID: 'view-1',
+            filters: [{ column: 'unknown', operator: '=', filters: [] }],
+        })).toThrow('Unknown AV column');
+        expect(() => setFiltersVariant!.validate({
+            action: 'update_view', avID: 'av-1', blockID: 'block-1', viewID: 'view-1', filters: [{ filters: [] }],
+        })).toThrow('leaf filter requires');
     });
 
     it('accepts a tree nested exactly AV_FILTER_MAX_DEPTH levels', () => {

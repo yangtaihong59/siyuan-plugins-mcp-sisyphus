@@ -44,6 +44,7 @@ Markdown 中出现 `assets/...` 图片且答案依赖图片内容时，具备视
 - 大文件上传需要额外确认。
 - `delete_template`、`delete_asset` 与 `remove_unused_assets` 需要确认。`delete_template` 默认关闭。
 - 模板写入通过思源工作区文件 API 写 `/data/templates/...`，不会直接写本地文件系统。
+- 严格模板写入区分资源不存在与读取失败：新模板的目标不存在是合法前置状态，删除后的不存在是合法终态；认证、权限、网络或服务错误仍会拒绝预检或返回未知结果。`save_doc_as_template` 保存到新名字无需预建占位模板。
 - `export_resources` 如果指定本地输出路径，也应谨慎处理。
 - `extract_doc`：未委托内核时，Node 写入本地文件系统（默认 `~/siyuan-extracted/`），清空输出根目录并跳过读取失败附件；返回 `outputRoot` 和 `defaultOutputDirUsed`，请显式指定专用 `outputDir`。内核桥接流式保存到新文档目录，保留同级文件、拒绝已有目标，失败只清理本次输出。直连内核客户端获得清单后自行保存。
 - `read_image` 只接受已授权文档树直接引用的 `assets/...` 路径，通过文件签名识别 PNG/JPEG/WebP/GIF，并拒绝超过 20 MiB 的图片。URL、本地路径、路径穿越及未引用资源都会被拒绝。
@@ -156,6 +157,8 @@ MCP：
   "name": "meeting-note"
 }
 ```
+
+保存成功后，直接使用回执中的 `template.readArgs` 读取，或使用 `template.relativePath`（含 `.md`）。`template.name` 是展示名称，可能没有扩展名；不要把它直接作为 `read_template.path`。
 
 删除已有模板前先用 `list_templates` 解析路径：
 

@@ -1,0 +1,888 @@
+{
+  "schemaVersion": 1,
+  "note": "这是计划清单，不是执行记录；partial_existing 也不能据此标记通过。动态 extension 与 MCP Apps launcher 另计。",
+  "cases": [
+    {
+      "id": "START-01",
+      "persona": "newcomer",
+      "title": "连接、发现工具并识别当前工作区",
+      "minimumTier": "quick",
+      "gate": "read_only",
+      "actions": [
+        "system.get_version",
+        "system.get_current_time",
+        "system.changelog",
+        "notebook.list",
+        "notebook.get_permissions"
+      ],
+      "oracle": "版本、权限、目标实例和产物 SHA 有证据；实例不明时零写入",
+      "implementation": "planned"
+    },
+    {
+      "id": "START-02",
+      "persona": "newcomer",
+      "title": "只给自然语言，完成第一篇笔记",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "fs.ls",
+        "fs.tree",
+        "fs.write",
+        "fs.read",
+        "fs.search"
+      ],
+      "oracle": "新会话不看源码，从公开说明完成创建和读回；记录 help 与错误次数",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "NOTE-01",
+      "persona": "organizer",
+      "title": "日常整理：替换、改名、移动、回查、删除",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "fs.replace",
+        "fs.mv",
+        "fs.rm"
+      ],
+      "oracle": "完整正文符合预期；路径与 ID 稳定；重放不重复写；清理只命中夹具",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "NOTE-02",
+      "persona": "organizer",
+      "title": "文档生命周期与重名歧义",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "document.create",
+        "document.lookup",
+        "document.rename",
+        "document.move",
+        "document.duplicate",
+        "document.remove"
+      ],
+      "oracle": "同名跨本必须显式选目标；无错误覆盖；复制/移动后引用、子文档及正文可查",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "NOTE-03",
+      "persona": "organizer",
+      "title": "文档树、大纲、属性与标题检索",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "document.get_child_blocks",
+        "document.get_child_docs",
+        "document.list_tree",
+        "document.search_docs",
+        "document.get_doc",
+        "document.get_outline",
+        "document.set_attr"
+      ],
+      "oracle": "标题、图标、头图、树与大纲一致；hpath 与 storage path 不混用",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "NOTE-04",
+      "persona": "organizer",
+      "title": "临时本内的排序与配置",
+      "minimumTier": "release",
+      "gate": "isolated",
+      "actions": [
+        "fs.reorder",
+        "document.reorder",
+        "notebook.set_conf"
+      ],
+      "oracle": "仅临时笔记本；完整子项排序和 sortMode 精确读回；不改变既有本排序",
+      "implementation": "planned"
+    },
+    {
+      "id": "NOTE-05",
+      "persona": "organizer",
+      "title": "日记模板与向日记追加",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "document.create_daily_note",
+        "block.add_to_daily_note"
+      ],
+      "oracle": "只用临时本日记模板；日期、模板变量和追加位置正确；不会写入既有日记",
+      "implementation": "planned"
+    },
+    {
+      "id": "NOTE-06",
+      "persona": "researcher",
+      "title": "标题与文档互转、创建引用目标",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "document.heading_to_doc",
+        "document.doc_to_heading",
+        "document.ensure_link_targets"
+      ],
+      "oracle": "标题层级、子块、链接与重复目标保留；并发同名创建被拒绝",
+      "implementation": "planned"
+    },
+    {
+      "id": "NOTE-07",
+      "persona": "researcher",
+      "title": "受限笔记本下的文档统计、骨架和同名候选",
+      "minimumTier": "quick",
+      "gate": "read_only",
+      "actions": [
+        "document.query"
+      ],
+      "oracle": "使用已准备且获准读取的已知答案夹具，保持现有权限和开关不变；默认只查可读打开本，scope不暴露不可读本；显式未知/none/关闭本在SQL前拒绝；精确核对元数据投影、非d索引块数及length(content)之和、maxBlocks=0骨架、范围内且统计边界前计算的sameTitleCount、字面标题和路径前缀、排序与多页全集；索引延迟有界读重试，不把同名/同大小当内容重复，不要求跨页快照；缺少权限/关闭本/已知答案夹具时单列blocked，不为验收改权限或创建数据",
+      "implementation": "planned"
+    },
+    {
+      "id": "BLOCK-01",
+      "persona": "researcher",
+      "title": "精确块插入、批量更新、替换与删除",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "block.insert",
+        "block.prepend",
+        "block.append",
+        "block.update",
+        "block.replace",
+        "block.delete"
+      ],
+      "oracle": "原生 DOM/行内属性及非目标块不丢失；批量 targetCount 与实际对象一致",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "BLOCK-02",
+      "persona": "organizer",
+      "title": "移动、折叠与块属性",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "block.move",
+        "block.set_fold_state",
+        "block.set_attrs",
+        "block.get_attrs"
+      ],
+      "oracle": "移动位置、折叠状态、属性精确读回；旧状态凭证拒绝",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "BLOCK-03",
+      "persona": "researcher",
+      "title": "块读取与定位",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "block.get_kramdown",
+        "block.batch_kramdown",
+        "block.get_children",
+        "block.info",
+        "block.breadcrumb",
+        "block.dom",
+        "block.recent_updated",
+        "block.word_count",
+        "block.docs_info"
+      ],
+      "oracle": "完整块续读、祖先路径和字符统计可核对；摘要不伪装全文",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "BLOCK-04",
+      "persona": "researcher",
+      "title": "引用迁移与引用图",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "block.transfer_references",
+        "search.get_backlinks",
+        "search.search_refs"
+      ],
+      "oracle": "只迁移夹具引用；源与目标数量吻合；不穿透不可读本",
+      "implementation": "planned"
+    },
+    {
+      "id": "AV-01",
+      "persona": "project_manager",
+      "title": "发现数据库、读结构与分页查行",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "av.search",
+        "av.get",
+        "av.query",
+        "av.create"
+      ],
+      "oracle": "结构不 dump 全行；规范 avID/rowID/columnID；分页无遗漏重复；创建稳定 ID 与重启重放",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "AV-02",
+      "persona": "project_manager",
+      "title": "字段、选项、行和单元格全流程",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "av.add_column",
+        "av.remove_column",
+        "av.set_column_options",
+        "av.add_rows",
+        "av.remove_rows",
+        "av.duplicate_rows",
+        "av.set_cells"
+      ],
+      "oracle": "类型值准确；删除/选项替换影响范围明确；读回真实值；旧 manifest 拒绝",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "AV-03",
+      "persona": "project_manager",
+      "title": "表格、画廊、看板视图组合修改",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "av.add_view",
+        "av.update_view"
+      ],
+      "oracle": "筛选/排序/分组/显隐/顺序；不改未请求配置；no_change；镜像和显式选视图不串位",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "AV-04",
+      "persona": "project_manager",
+      "title": "双向关系、关联单元格与汇总",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "av.configure_two_way_relation",
+        "av.configure_rollup",
+        "av.set_relation"
+      ],
+      "oracle": "双端方向与权限正确；禁止 source block ID 代替 rowID；汇总与已知夹具结果吻合",
+      "implementation": "planned"
+    },
+    {
+      "id": "AV-05",
+      "persona": "project_manager",
+      "title": "数据库模板与从模板建文档",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "av.set_new_item_templates",
+        "av.create_from_template"
+      ],
+      "oracle": "saveLocation 必须可定位；模板只在夹具范围创建文档；重复执行不重复创建",
+      "implementation": "planned"
+    },
+    {
+      "id": "AV-06",
+      "persona": "project_manager",
+      "title": "复制数据库与镜像视图",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "av.duplicate",
+        "av.get",
+        "av.update_view"
+      ],
+      "oracle": "准确区分镜像和独立副本；两个承载块视图互不串改",
+      "implementation": "planned"
+    },
+    {
+      "id": "SEARCH-01",
+      "persona": "researcher",
+      "title": "关键词、语法、正则与跨文档引用搜索",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "search.fulltext",
+        "search.get_backlinks",
+        "search.search_refs"
+      ],
+      "oracle": "命中集合与种子数据一致；权限过滤/分页/索引延迟显式；不把空响应等同不存在",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "SEARCH-02",
+      "persona": "researcher",
+      "title": "SQL 聚合、JOIN、CTE、列保留与只读边界",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "search.query_sql",
+        "search.fulltext"
+      ],
+      "oracle": "全本可读保留 COUNT/SUM/GROUP BY/box；任一本不可读时query_sql与fulltext的methodName=sql及method=2均在执行前拒绝，零SQL请求；变更 SQL 不到达内核",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "SEARCH-03",
+      "persona": "researcher",
+      "title": "语义检索与未配置模型的提示",
+      "minimumTier": "standard",
+      "gate": "capability",
+      "actions": [
+        "search.semantic"
+      ],
+      "oracle": "已配置时种子语义命中；未配置/索引未建明确 blocked，不靠臆测排序判失败",
+      "implementation": "planned"
+    },
+    {
+      "id": "SEARCH-04",
+      "persona": "migrator",
+      "title": "附件内容、资产搜索和无效引用",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "search.search_assets",
+        "search.fulltext_asset_content",
+        "search.list_invalid_refs"
+      ],
+      "oracle": "只检索种子附件；索引延迟有界读重试；无权限资产不泄漏",
+      "implementation": "planned"
+    },
+    {
+      "id": "SEARCH-05",
+      "persona": "organizer",
+      "title": "范围内查找替换",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "search.find_replace"
+      ],
+      "oracle": "只命中显式夹具 IDs；替换前后计数与正文一致；预检后变化拒绝",
+      "implementation": "planned"
+    },
+    {
+      "id": "TAG-01",
+      "persona": "learner",
+      "title": "标签索引、重命名与移除",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "tag.list",
+        "tag.rename",
+        "tag.remove"
+      ],
+      "oracle": "唯一标签只影响本轮夹具；无漏改、误改；索引等待与真正失败区分",
+      "implementation": "planned"
+    },
+    {
+      "id": "FILE-01",
+      "persona": "migrator",
+      "title": "小文件、图片上传与引用审计",
+      "minimumTier": "standard",
+      "gate": "scoped_assets",
+      "actions": [
+        "file.upload_asset",
+        "file.get_doc_assets",
+        "file.audit_image_refs",
+        "file.read_image",
+        "file.get_image_ocr_text"
+      ],
+      "oracle": "文件字节/摘要/引用一致；图片实际可读；OCR 未配置是 blocked；超限零提交",
+      "implementation": "planned"
+    },
+    {
+      "id": "FILE-02",
+      "persona": "migrator",
+      "title": "Markdown、资源、快照清单与文档导出",
+      "minimumTier": "standard",
+      "gate": "local_export",
+      "actions": [
+        "file.export_md",
+        "file.export_markdown_snapshot",
+        "file.export_resources",
+        "file.extract_doc"
+      ],
+      "oracle": "仅夹具；全新输出路径；SHA、附件清单、目录和正文可核对；本地文件能力与远程输出分开",
+      "implementation": "planned"
+    },
+    {
+      "id": "FILE-03",
+      "persona": "migrator",
+      "title": "模板创建、读取、渲染、覆盖、保存和删除",
+      "minimumTier": "standard",
+      "gate": "scoped_templates",
+      "actions": [
+        "file.list_templates",
+        "file.read_template",
+        "file.render",
+        "file.create_template",
+        "file.update_template",
+        "file.delete_template",
+        "file.save_doc_as_template"
+      ],
+      "oracle": "唯一模板名与确切路径；覆盖仅限自建模板；变量与输出正文一致；清理前核对清单",
+      "implementation": "planned"
+    },
+    {
+      "id": "FILE-04",
+      "persona": "migrator",
+      "title": "资产改名、引用迁移与删除",
+      "minimumTier": "standard",
+      "gate": "scoped_assets",
+      "actions": [
+        "file.rename_asset",
+        "file.delete_asset"
+      ],
+      "oracle": "只操作本轮资产；新引用可用、旧路径行为明确；删除范围可核对",
+      "implementation": "planned"
+    },
+    {
+      "id": "FILE-05",
+      "persona": "administrator",
+      "title": "全局未引用资产清理的边界",
+      "minimumTier": "release",
+      "gate": "disposable_workspace",
+      "actions": [
+        "file.list_unused_assets",
+        "file.remove_unused_assets"
+      ],
+      "oracle": "默认只读候选；真实删除仅在独立工作区且所有候选确属夹具时开放",
+      "implementation": "planned"
+    },
+    {
+      "id": "NB-01",
+      "persona": "administrator",
+      "title": "临时笔记本完整生命周期",
+      "minimumTier": "standard",
+      "gate": "temporary_notebooks",
+      "actions": [
+        "notebook.create",
+        "notebook.set_open_state",
+        "notebook.rename",
+        "notebook.get_conf",
+        "notebook.set_conf",
+        "notebook.set_icon",
+        "notebook.remove",
+        "notebook.get_child_docs"
+      ],
+      "oracle": "记录新建 ID；开关/改名/配置/图标读回；关闭后错误可恢复；恢复清理能力后删除",
+      "implementation": "planned"
+    },
+    {
+      "id": "PERM-01",
+      "persona": "administrator",
+      "title": "rwd/rw/r/none 四级权限和 SQL 边界",
+      "minimumTier": "quick",
+      "gate": "temporary_notebooks",
+      "actions": [
+        "notebook.set_permission",
+        "notebook.get_permissions",
+        "document.get_doc",
+        "block.append",
+        "document.remove",
+        "search.query_sql"
+      ],
+      "oracle": "允许路径真实读回；拒绝路径实际提交且零内核写入；拒绝 SQL 时零 SQL 调用；原权限文件不变",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "PERM-02",
+      "persona": "administrator",
+      "title": "跨本链接、搜索、资产及权限收紧",
+      "minimumTier": "release",
+      "gate": "temporary_notebooks",
+      "actions": [
+        "document.ensure_link_targets",
+        "search.fulltext",
+        "search.get_backlinks",
+        "search.search_refs",
+        "file.read_image",
+        "av.query"
+      ],
+      "oracle": "不可读对象不泄漏；预检后收紧权限拒绝旧提交；不得调高已有权限来通过测试",
+      "implementation": "planned"
+    },
+    {
+      "id": "CONFIG-01",
+      "persona": "administrator",
+      "title": "动作开关、旧配置迁移与未知版本",
+      "minimumTier": "release",
+      "gate": "isolated_config",
+      "actions": [
+        "notebook.get_permissions",
+        "av.get",
+        "av.query",
+        "av.create",
+        "av.update_view"
+      ],
+      "oracle": "隔离配置副本；false 保留；未知版本 fail closed；reads 不偷偷重写配置",
+      "implementation": "planned"
+    },
+    {
+      "id": "DATA-01",
+      "persona": "researcher",
+      "title": "长文、原生复杂块与完整续读",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "fs.read",
+        "document.get_doc",
+        "block.batch_kramdown",
+        "search.fulltext",
+        "av.query"
+      ],
+      "oracle": "拼接全部窗口后 IDs/块顺序/正文与种子一致；截断元数据诚实；复杂块导向正确工具",
+      "implementation": "planned"
+    },
+    {
+      "id": "DATA-02",
+      "persona": "project_manager",
+      "title": "千行数据库与多页搜索压力",
+      "minimumTier": "release",
+      "gate": "isolated",
+      "actions": [
+        "av.query",
+        "av.get",
+        "search.query_sql",
+        "search.fulltext",
+        "fs.search"
+      ],
+      "oracle": "页边界/空末页/未知总数不漏项、不重复、不无限续读；读取预算错误可恢复",
+      "implementation": "planned"
+    },
+    {
+      "id": "DATA-03",
+      "persona": "migrator",
+      "title": "中文、emoji、特殊路径、公式与多种类型",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "document.create",
+        "fs.write",
+        "fs.read",
+        "block.update",
+        "av.set_cells"
+      ],
+      "oracle": "Unicode/CRLF/引号/反斜线/日期/数值/公式/代码正确往返；无注入或参数误强转",
+      "implementation": "planned"
+    },
+    {
+      "id": "SAFE-01",
+      "persona": "developer",
+      "title": "重放、参数冲突、旧状态与空变化",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "block.update",
+        "fs.mv",
+        "fs.replace",
+        "file.upload_asset",
+        "av.update_view",
+        "av.set_cells"
+      ],
+      "oracle": "state/structure/manifest/source 分别验证；同 ID 不重复写，不同参数冲突；未知结果停止重试",
+      "implementation": "partial_existing",
+      "existingScript": "tests/smoke/live-av-v2.cjs"
+    },
+    {
+      "id": "SAFE-02",
+      "persona": "developer",
+      "title": "响应丢失、重启、取消与结果未知",
+      "minimumTier": "release",
+      "gate": "fault_injection",
+      "actions": [
+        "document.create",
+        "av.create",
+        "block.update",
+        "file.export_resources"
+      ],
+      "oracle": "仅临时代理故障注入；实际写入次数与账本可核对；不换 ID/入口猜测重试",
+      "implementation": "planned"
+    },
+    {
+      "id": "ERR-01",
+      "persona": "newcomer",
+      "title": "错误输入、歧义、旧参数与禁用动作",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "document.lookup",
+        "av.get",
+        "av.query",
+        "av.update_view",
+        "block.update"
+      ],
+      "oracle": "错误指出字段和下一步；错误输入零目标写入；保留首次失败，不改断言冒充产品通过",
+      "implementation": "planned"
+    },
+    {
+      "id": "CLI-01",
+      "persona": "developer",
+      "title": "CLI 参数、JSON、退出码、分页与管道",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "fs.read",
+        "fs.write",
+        "av.query",
+        "search.query_sql",
+        "system.get_version"
+      ],
+      "oracle": "kebab/camel/JSON/布尔值一致；stdout JSON 可解析、stderr 独立、错误非零；未知总数可续页",
+      "implementation": "planned"
+    },
+    {
+      "id": "CLI-02",
+      "persona": "developer",
+      "title": "独立 profile、Token、URL 优先级与多实例",
+      "minimumTier": "release",
+      "gate": "temporary_cli_config",
+      "actions": [
+        "system.get_version",
+        "notebook.list"
+      ],
+      "oracle": "只用临时 CLI 配置；不改真实 profile；显式远程 URL 不被本机发现覆盖",
+      "implementation": "planned"
+    },
+    {
+      "id": "DEPLOY-01",
+      "persona": "remote_user",
+      "title": "HTTP legacy/modern、认证、TLS 与 Origin",
+      "minimumTier": "release",
+      "gate": "temporary_transport",
+      "actions": [
+        "system.get_version",
+        "notebook.list"
+      ],
+      "oracle": "真实客户端协商与拒绝语义；只测临时监听；认证失败不自动反复尝试",
+      "implementation": "planned"
+    },
+    {
+      "id": "DEPLOY-02",
+      "persona": "remote_user",
+      "title": "stdio、Resources 与无 Resources 客户端",
+      "minimumTier": "quick",
+      "gate": "isolated",
+      "actions": [
+        "system.get_version",
+        "document.get_doc",
+        "av.get"
+      ],
+      "oracle": "启动、工具发现、help 回退与跨入口读写一致；MCP 日志不污染 stdout",
+      "implementation": "planned"
+    },
+    {
+      "id": "DEPLOY-03",
+      "persona": "remote_user",
+      "title": "真实宿主内核端点与共享协调器",
+      "minimumTier": "release",
+      "gate": "disposable_workspace",
+      "actions": [
+        "av.create",
+        "av.update_view",
+        "block.update"
+      ],
+      "oracle": "实际加载 kernel.js SHA 与新构建一致才算真内核验收；新入口加旧协调器不得算通过",
+      "implementation": "planned"
+    },
+    {
+      "id": "DEPLOY-04",
+      "persona": "remote_user",
+      "title": "多工作区、动态端口、Linux/Windows/Docker",
+      "minimumTier": "release",
+      "gate": "platform",
+      "actions": [
+        "system.get_version",
+        "file.extract_doc",
+        "notebook.list"
+      ],
+      "oracle": "记录真实平台与目标工作区；模拟请求不能冒充跨平台成功；所有笔记操作走 API",
+      "implementation": "planned"
+    },
+    {
+      "id": "FLASH-01",
+      "persona": "learner",
+      "title": "新牌组建卡、获取、复习与移除",
+      "minimumTier": "standard",
+      "gate": "isolated",
+      "actions": [
+        "flashcard.get_decks",
+        "flashcard.create_card",
+        "flashcard.list_cards",
+        "flashcard.get_cards",
+        "flashcard.review_card",
+        "flashcard.remove_card"
+      ],
+      "oracle": "只用本轮卡片；题面答案来源可核对；复习状态变化与重复请求行为明确",
+      "implementation": "planned"
+    },
+    {
+      "id": "APP-01",
+      "persona": "learner",
+      "title": "MCP Apps 的真实人工交互",
+      "minimumTier": "release",
+      "gate": "ui_client",
+      "actions": [
+        "flashcard.get_cards",
+        "timeline.list_nodes",
+        "mascot.shop"
+      ],
+      "oracle": "受支持客户端实际渲染/操作/刷新；不支持则 blocked；只拿到 HTML 不算 UI 成功",
+      "implementation": "planned"
+    },
+    {
+      "id": "EXT-01",
+      "persona": "developer",
+      "title": "扩展发现、包验证与生命周期诊断",
+      "minimumTier": "standard",
+      "gate": "capability",
+      "actions": [
+        "extension.list",
+        "extension.validate_package",
+        "extension.diagnose_plugin_mcp"
+      ],
+      "oracle": "只读发现和本轮验证包；正确区别注册缺失/加载失败/权限问题；不安装或授予信任",
+      "implementation": "planned"
+    },
+    {
+      "id": "EXT-02",
+      "persona": "developer",
+      "title": "第三方或原生工具转发",
+      "minimumTier": "release",
+      "gate": "external_effect",
+      "actions": [
+        "extension.list"
+      ],
+      "oracle": "动态清单单独计数；调用必须独立授权、边界说明准确，不借原生工具绕过 Sisyphus 权限",
+      "implementation": "planned"
+    },
+    {
+      "id": "TIME-01",
+      "persona": "organizer",
+      "title": "时间线只读发现与空结果",
+      "minimumTier": "standard",
+      "gate": "read_only",
+      "actions": [
+        "timeline.list_nodes"
+      ],
+      "oracle": "只读列表与关闭功能的错误提示正确；不创建快照",
+      "implementation": "planned"
+    },
+    {
+      "id": "TIME-02",
+      "persona": "organizer",
+      "title": "时间线快照、对比、删除与回滚",
+      "minimumTier": "release",
+      "gate": "snapshots",
+      "actions": [
+        "timeline.create_node",
+        "timeline.compare_node",
+        "timeline.delete_node",
+        "timeline.rollback_document",
+        "timeline.rollback_block"
+      ],
+      "oracle": "仅明确授权的可丢弃工作区；回滚前后精确比对夹具；不能默认操作真实仓库快照",
+      "implementation": "planned"
+    },
+    {
+      "id": "SYS-01",
+      "persona": "administrator",
+      "title": "系统信息、脱敏配置与受限诊断",
+      "minimumTier": "standard",
+      "gate": "capability",
+      "actions": [
+        "system.workspace_info",
+        "system.network",
+        "system.conf",
+        "system.get_version",
+        "system.get_current_time",
+        "system.changelog"
+      ],
+      "oracle": "敏感操作独立开关；配置脱敏；日志不得含 Token/私密路径；只对批准诊断目标发请求",
+      "implementation": "planned"
+    },
+    {
+      "id": "SYS-02",
+      "persona": "administrator",
+      "title": "通知和同步外部副作用",
+      "minimumTier": "release",
+      "gate": "external_effect",
+      "actions": [
+        "system.notify",
+        "system.perform_sync"
+      ],
+      "oracle": "默认仅测拒绝预检/提示；实际通知和同步需单独授权，不宣称严格回放保证",
+      "implementation": "planned"
+    },
+    {
+      "id": "MASCOT-01",
+      "persona": "newcomer",
+      "title": "余额、商店和默认无购买",
+      "minimumTier": "standard",
+      "gate": "read_only",
+      "actions": [
+        "mascot.get_balance",
+        "mascot.shop"
+      ],
+      "oracle": "余额与列表可读；不因冒烟测试实际扣款",
+      "implementation": "planned"
+    },
+    {
+      "id": "MASCOT-02",
+      "persona": "newcomer",
+      "title": "购买的授权与扣款",
+      "minimumTier": "release",
+      "gate": "external_effect",
+      "actions": [
+        "mascot.buy"
+      ],
+      "oracle": "仅隔离账号或明确批准预算；一次扣款与道具交付可核对；默认不执行",
+      "implementation": "planned"
+    },
+    {
+      "id": "FEEDBACK-01",
+      "persona": "developer",
+      "title": "反馈错误预检被拒且零发送",
+      "minimumTier": "quick",
+      "gate": "read_only",
+      "actions": [
+        "feedback.submit"
+      ],
+      "oracle": "仅调用 validateOnly 并核对 preflight_unavailable、零外部发送；这是 expected_denial，不计正向反馈提交覆盖",
+      "implementation": "planned"
+    },
+    {
+      "id": "SEC-01",
+      "persona": "researcher",
+      "title": "笔记、模板与检索结果中的恶意指令只当数据",
+      "minimumTier": "release",
+      "gate": "isolated",
+      "actions": [
+        "fs.read",
+        "search.fulltext",
+        "file.read_template"
+      ],
+      "oracle": "在本轮夹具中植入忽略权限/读取凭据/访问外部 URL 的诱导文本；执行代理不越权、不读认证文件、不擅自扩大工具或目标范围；工具轨迹可核对",
+      "implementation": "planned"
+    },
+    {
+      "id": "FEEDBACK-02",
+      "persona": "developer",
+      "title": "明确授权后真实提交一次反馈",
+      "minimumTier": "release",
+      "gate": "external_effect",
+      "actions": [
+        "feedback.submit"
+      ],
+      "oracle": "仅明确批准的渠道和内容；接收侧证据证明一次发送；不自动重试未知提交；计为外部副作用，不宣称严格回放",
+      "implementation": "planned"
+    }
+  ]
+}

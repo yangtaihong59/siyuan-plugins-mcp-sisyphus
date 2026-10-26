@@ -1,5 +1,7 @@
 # 严格安全写入
 
+严格预检和提交前的状态核对都会重新加载笔记本权限；已有预检租约不能绕过后续撤销的权限，授权提升后也无需重启服务。
+
 严格安全写入解决的不是“写接口是否返回成功”，而是三个更具体的问题：目标在读取后是否被别人改过、网络失败时是否会重复写、以及重复请求能否被识别。该功能默认开启，且不创建思源数据快照。
 
 ## 调用流程
@@ -29,6 +31,30 @@
   "leaseExpiresAt": 1786543200000
 }
 ```
+
+同一响应还包含规范化的 `preflight` 对象（`version: 2`），这是首选客户端契约：
+
+```json
+{
+  "preflight": {
+    "version": 2,
+    "requestId": "b72f",
+    "expiresAt": 1786543200000,
+    "ttlMs": 600000,
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "guardTargetCount": 1 },
+    "commitArgs": {
+      "action": "set_cells",
+      "avID": "20260812120000-abcdefg",
+      "cells": [],
+      "validateOnly": false,
+      "requestId": "b72f",
+      "expectedManifestHash": "8ac2"
+    }
+  }
+}
+```
+
+提交时原样复制 `preflight.commitArgs`，不要自行重建 `requestId`、哈希字段或业务参数。`counts` 按 action 计算：`operationCount` 总是存在；`rowCount`、`cellCount`、`guardTargetCount` 只在可计算时出现，相同值不会把显式单元格数去重变小。`expiresAt` 与 `ttlMs` 表示同一个 10 分钟首次提交窗口。迁移期仍保留顶层 `requestId` 与哈希字段，供 0.6.13 客户端使用；两者指向同一条执行路径，不是第二条重试通道。若批次过大无法在响应上限内给出完整可执行参数，会明确拒绝而不是截断。
 
 凭证字段名与正式写入参数一致，可直接复制该字段和值；正式执行时移除 `validateOnly`（或设为 `false`），并复制预检返回的 `requestId`：
 
@@ -83,7 +109,7 @@
 
 外部操作（包括 `feedback.submit`）在用户授权后使用业务参数直接调用，不传 `validateOnly`、`requestId` 或哈希凭证。工具声明仅对已启用的严格修改操作提供预检字段；混合工具会列出哪些 action 需要预检。误传 `validateOnly` 会返回零执行错误和后续操作提示。
 
-MCP 2026-07-28 高危操作确认会区分 `confirmation_declined`（客户端明确拒绝或 `confirm=false`）、`confirmation_cancelled`（客户端明确取消）和 `confirmation_invalid`（响应格式无效、字段缺失或类型错误）。只有明确取消才返回 `cancelled=true`。无效响应不代表用户撤回授权；应检查客户端的 elicitation 支持，不能跳过确认。确认通过后仍执行原有权限与严格预检校验。
+客户端支持表单 elicitation 时，MCP 2026-07-28 高危操作确认会区分 `confirmation_declined`（客户端明确拒绝或 `confirm=false`）、`confirmation_cancelled`（客户端明确取消）和 `confirmation_invalid`（响应格式无效、字段缺失或类型错误）。只有明确取消才返回 `cancelled=true`。无效响应不代表用户撤回授权；应检查客户端的 elicitation 支持，不能跳过确认。确认通过后仍执行原有权限与严格预检校验。
 
 `extension` 转发的第三方或思源原生 Tool 不在 Sisyphus 的控制范围内，因此不会宣称严格写入保证。本地导出、通知、同步和反馈等外部副作用也无法通过思源状态读回验证：`validateOnly` 会拒绝且保证不执行；真实调用仍保持单次传输，但响应会明确给出 `writeSafetyGuaranteed: false`。
 
@@ -109,7 +135,7 @@ MCP 2026-07-28 高危操作确认会区分 `confirmation_declined`（客户端�
 
 内核同时支持 `2026-07-28` 无会话 MCP 和最高 `2025-11-25` 的 legacy 初始化。现代客户端通过 `server/discover` 发现能力，每个请求在 `params._meta` 携带协议版本和客户端能力；帮助、规则、参数校验、App 工具及 HTML 资源共用 Node 实现。现代 App 能力随请求传入；legacy App 能力按会话保存，闲置 30 分钟失效。
 
-现代危险调用使用多轮 `input_required` / `elicitation/create` 表单确认；单传 `confirm=true` 不能跳过确认。内核签发的 requestState 绑定客户端身份声明、认证上下文及规范化操作参数，5 分钟过期，最多保留 128 项，确认、拒绝或取消后均消费一次。修改参数、伪造、过期或重复使用状态会拒绝执行；重放业务 requestId 也需新一轮确认，之后由原账本去重。确认依赖可信客户端收集用户选择，不是人类批准的密码学证明；端点访问控制仍由思源 private 路由负责。legacy 保留调用方取得确认后传 `confirm=true` 的兼容约定。CLI 主动调用和已经完成确认的 Node 入口，在内部转发时应答内核确认。
+客户端支持表单 elicitation 时，现代危险调用使用多轮 `input_required` / `elicitation/create` 表单确认；单传 `confirm=true` 不能跳过确认。内核签发的 requestState 绑定客户端身份声明、认证上下文及规范化操作参数，5 分钟过期，最多保留 128 项，确认、拒绝或取消后均消费一次。修改参数、伪造、过期或重复使用状态会拒绝执行；重放业务 requestId 也需新一轮确认，之后由原账本去重。确认依赖可信客户端收集用户选择，不是人类批准的密码学证明；端点访问控制仍由思源 private 路由负责。legacy 保留调用方取得确认后传 `confirm=true` 的兼容约定。CLI 主动调用和已经完成确认的 Node 入口，在内部转发时应答内核确认。
 
 模板创建/更新可通过内核 `/api/file/putFile` multipart 写入，正文默认上限为 16 MiB、可配置至 32 MiB，multipart 另预留 64 KiB。内核不直接读取调用者电脑上的 `localFilePath`。CLI/Node 会自动将不超过 10 MiB 的文件传到认证的 `/transfer/upload` 暂存接口，再以 `uploadSource` 进行内核预检/提交，保持唯一协调器。传输使用 `application/octet-stream`，文件名经百分号编码放入 `X-Sisyphus-File-Name`，暂存等待上限为 120 秒；兼容 JSON `{fileName,dataBase64}` 入口。二进制传输减少编码开销，摘要计算仍由内核 JavaScript 执行。哈希按 64 KiB 增量处理并在批次间让出事件循环；暂存接口最多同时接纳 2 个请求，满额返回 HTTP 429。CLI/Node 先向 `/transfer/lookup` 查询相同文件名、完整 SHA-256 和大小对应的已验证暂存项，命中后复用；未命中才传输字节。查询不会依据调用方声明创建新暂存。暂存仅在内存保留 10 分钟，最多 64 项、合计 32 MiB；内容和文件名共同确定标识，修改本地文件后旧 requestId 无法提交新内容。预检会返回 uploadSource，重放可只传该标识，无需再次读取本地文件。超限文件仍需 Node 协调器，切换时遵循上述排空/重启步骤。
 
@@ -144,3 +170,5 @@ CLI/Node 每次内核委托均生成传输 taskId。工具响应丢失后，仅�
 /health 提供 events、taskResults 和 readBudget 汇总，可查看连接数、缓存项数及字节数；不暴露任务 ID、认证值或正文。回滚前排空正在提交的写入，重载后重新发现能力和预检；终态缓存、SSE 连接和上传暂存均不会跨重载保留。
 
 图片/模板预算、只读重试、分页及 Origin 配置见 [内核高级选项](kernel-options.md)。流式、拒绝覆盖保存器仅用于内核委托；Node 自行导出时，ZIP 可覆盖，文档提取清空输出根目录并跳过读取失败附件。
+
+表单能力按 MCP 约定识别：`elicitation: {}` 或 `elicitation: { form: {} }` 支持弹框，未声明或仅有 `url` 不支持。跳过弹框不代表用户已同意；AI 仍需遵守用户授权范围。已经发起的确认不能通过删除能力声明绕过，内核会继续校验已签发的请求状态。

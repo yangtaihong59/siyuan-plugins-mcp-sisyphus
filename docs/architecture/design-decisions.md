@@ -402,13 +402,13 @@ Certain operations (delete/remove/find_replace etc.) are destructive and need to
 1. **`DANGEROUS_ACTIONS` set**: Hard-coded in `config.ts` with 15 high-risk actions
 2. **Auto-injected warnings**: `buildAggregatedTool()` automatically appends `"⚠️ Dangerous action: ... requires user confirmation"` to tool descriptions
 3. **Server Instructions**: `server-instructions.ts` emphasizes high-risk operations requiring confirmation in MCP instructions
-4. **Modern code-level gate**: MCP 2026-07-28 calls use multi-round elicitation before the tool lifecycle begins; cancellation or rejection returns without executing the action
+4. **Modern code-level gate**: MCP 2026-07-28 calls from clients supporting forms use multi-round elicitation before the tool lifecycle begins; cancellation or rejection returns without executing the action
 5. **Compatibility fallback**: Legacy MCP clients keep the instruction/help warning flow because they cannot express the new confirmation exchange; CLI command entry remains the user's confirmation
 6. **Tool metadata**: Conservative annotations expose destructive/read-only hints to capable clients
 
 ### Rejected Alternatives
 
-- **Option A: Require modern elicitation from every client**: Rejected because it would break legacy clients that do not advertise the capability.
+- **Option A: Require modern elicitation from every client**: Rejected because it would break modern and legacy clients without form support. Unsupported clients skip the dialog while retaining permissions and strict preflight checks.
 - **Option B: Completely prohibit dangerous actions**: Too conservative; many legitimate automation scenarios need delete/remove.
 - **Option C: Each dangerous action requires extra token/password**: Increases usage barrier, inconsistent with MCP protocol design philosophy.
 

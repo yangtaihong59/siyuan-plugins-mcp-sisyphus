@@ -13,7 +13,7 @@ it('confirmation requires an issued state, binds arguments and principal, and co
     expect(c.check(context(retry), 'block', args)).toBeUndefined();
     expect(c.check(context(retry), 'block', args).isError).toBe(true);
 });
-it('decline, expiry, capacity, and missing elicitation never approve a write', () => {
+it('decline, expiry, and capacity never approve a write', () => {
     let now = 1; const c = new KernelConfirmations(() => now, 100, 1); const args = { action: 'delete' };
     const first = c.check(context(), 'block', args);
     expect(c.check(context(), 'block', args).structuredContent.error.code).toBe('confirmation_capacity');
@@ -21,7 +21,7 @@ it('decline, expiry, capacity, and missing elicitation never approve a write', (
     expect(c.check(context(retry), 'block', args).structuredContent.writeAttempted).toBe(false);
     const next = c.check(context(), 'block', args); now = 102;
     expect(c.check(context({ requestState: next.requestState, inputResponses: answer }), 'block', args).isError).toBe(true);
-    expect(c.check({ ...context(), capabilities: {} }, 'block', args).isError).toBe(true);
+    expect(c.check({ ...context(), capabilities: {} }, 'block', args)).toBeUndefined();
 });
 it('rejects mismatched versions and malformed modern envelopes', () => {
     const request = { request: { headers: { 'MCP-Protocol-Version': MODERN_VERSION } } };
@@ -49,3 +49,9 @@ it.each([
     expect(result.structuredContent).toMatchObject({ cancelled, writeAttempted: false, writeExecuted: false, error: { code } });
     expect(confirmations.check(context({ requestState: prompt.requestState, inputResponses: answer }), 'block', args).isError).toBe(true);
 });
+
+ it.each([{}, { elicitation: { url: {} } }])('skips optional form confirmation for unsupported capabilities %j', capabilities => {
+    const c = new KernelConfirmations();
+    expect(c.check({ ...context(), capabilities }, 'block', { action: 'delete' })).toBeUndefined();
+    expect(c.check({ ...context({ requestState: 'forged', inputResponses: answer }), capabilities }, 'block', { action: 'delete' }).isError).toBe(true);
+ });

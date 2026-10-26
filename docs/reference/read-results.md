@@ -6,7 +6,7 @@ Primary document, block, search and database reads expose `readInfo`. Coverage a
 | --- | --- |
 | `scope` | Document, block(s), database, columns, view query, search query, SQL query or primary-key query |
 | `coverage` | `complete`: this response covers that scope; `partial`: a known subset; `unknown`: insufficient kernel evidence |
-| `representation` | `markdown`, `kramdown`, `textmark`, `html`, `database_raw`, `database_columns`, `view`, `search_snippets`, `sql_rows`, `primary_key_values` |
+| `representation` | `markdown`, `kramdown`, `textmark`, `html`, `database_raw`, `database_columns`, `database_rows`, `view`, `search_snippets`, `sql_rows`, `primary_key_values` |
 | `limitations` | Known limits such as pagination, a nonzero window offset, permission filtering, unknown totals or database placeholders |
 
 A complete view query still reflects its filters and hidden columns. Search snippets are not document bodies. A Markdown database placeholder does not include database rows or cells. Reaching the last page does not make that response include earlier pages.
@@ -28,7 +28,8 @@ Disabled tools/actions are omitted using current configuration. Configuration fa
 `databaseContext` identifies the AV, any exact carrier/view, locations of existing column/row fields, and `idUsage`. Column types and options remain in `columns` (`get`) or `av.keyValues[].key` (`get(scope="raw")`) rather than being duplicated.
 
 - `avID` identifies the database; `blockID` identifies a carrier. Mirrors may share the same AV; an unspecified carrier is not guessed.
-- `resolvedRows[].rowID` identifies an AV row. `sourceBlockID` identifies its bound note block. A cell value ID is neither. Detached rows have no source block.
+- `rows[].rowID` identifies an AV row in the canonical `query(mode="rows")` projection. Cells map stable `columnID` to `{value, formatted}`. Optional `fields` projects requested columnIDs and always keeps `rowID`. A cell value ID is neither a column ID nor a row ID. The complete native payload remains under `get(scope="raw")`.
+- `resolvedRows[].rowID` in `query(mode="primary_keys")` identifies an AV row; `sourceBlockID` identifies its bound note block. Detached rows have no source block.
 - Column `key.id` is passed as `columnID` to `set_cells`; column operations use `keyID` as documented by their action help.
 - `query(mode="primary_keys")` returns `{key, values}` in `rows`. Its `blockIDs` are database carriers and must not be zipped with rows. The default page size is 16. `resolvedRows` supplies identities; bound rows are filtered by source-block permissions.
 

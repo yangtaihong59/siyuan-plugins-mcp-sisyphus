@@ -391,9 +391,9 @@ function formatDiscovery(
             : {}),
         hint: snapshot.error
             ? 'Official MCP tools require SiYuan 3.7.0+, an administrator session, and a valid API token.'
-            : config.includeNativeTools
-                ? 'Plugin and native SiYuan tools are exposed. Call extension(action="<official tool name>", arguments={...}).'
-                : 'Plugin tools are exposed. Enable includeNativeTools in settings to expose native SiYuan tools.',
+            : exposed.length === 0
+                ? 'No official tools are currently exposed. Check discoveredBySource, blockedTools and includeNativeTools in settings.'
+                : `${exposed.length} official tools are exposed. Call extension(action="<official tool name>", arguments={...}).${config.includeNativeTools ? '' : ' Native tools are disabled; enable includeNativeTools in settings to expose them.'}`,
     };
 }
 
