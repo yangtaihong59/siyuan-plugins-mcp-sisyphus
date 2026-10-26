@@ -31,6 +31,7 @@ import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { normalizeActionAlias } from '../core/action-aliases';
 import { normalizeToolArguments } from '../core/argument-aliases';
 import { buildServerInstructions } from '../core/server-instructions';
+import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../core/mcp-initial-cost';
 import { kernelOfficialRuntime } from './official-mcp';
 import { getExposedExtensionTools } from '../tools/extension';
 import {
@@ -74,8 +75,8 @@ let uploadsInFlight = 0;
 async function ensureRuntime(refreshConfig = false) {
     if (!client) {
         client = new KernelSiYuanClient();
-        permMgr = new PermissionManager(client as any);
-        coordinator = new WriteSafetyCoordinator(client as any);
+        permMgr = new PermissionManager(client);
+        coordinator = new WriteSafetyCoordinator(client);
         try { await permMgr.load(); } catch { /* Calls reload permissions before executing. */ }
     }
     // Re-read the tool config on every call so that tools/list and callTool
@@ -166,7 +167,7 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     const budget = new KernelReadBudget(options.readMaxRequests, (options.readMaxMiB + (imageRead ? 20 : 0)) * 1024 * 1024);
     c.configure(options);
     const scoped = taskClient(c, scheduler, task, budget);
-    const pm = new PermissionManager(scoped as any);
+    const pm = new PermissionManager(scoped);
     const appEntries = {
         [FLASHCARD_REVIEW_SESSION_TOOL_NAME]: { config: cfg.mcpApps.flashcardReview, call: callFlashcardReviewSessionTool },
         [TIMELINE_APP_TOOL_NAME]: { config: cfg.mcpApps.timeline, call: callTimelineAppTool },
@@ -180,7 +181,7 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
         }
         return scheduler.run(task, 'exclusive', async () => {
             await pm.load();
-            const result = await appEntry.call(scoped as any, pm, input, appEntry.config);
+            const result = await appEntry.call(scoped, pm, input, appEntry.config);
             scheduler.checkpoint(task);
             return toolResultToMcp(result);
         });
@@ -226,13 +227,13 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     const execute = async () => {
         if (task.readOnly) task.deadline = Date.now() + options.readTimeoutMs;
         await pm.reload();
-        return runToolCall({ client: c as any, category, name, action, args: cleanArgs, slimResponses: cfg.debug.slimResponses && args.delivery !== 'download' },
+        return runToolCall({ client: c, category, name, action, args: cleanArgs, slimResponses: cfg.debug.slimResponses && args.delivery !== 'download' },
             () => coord.run({
-                client: scoped as any, permMgr: pm, category, action, args: cleanArgs,
+                client: scoped, permMgr: pm, category, action, args: cleanArgs,
                 strictMode: cfg.writeSafety.strictMode,
                 beforeCommit: () => scheduler.beginCommit(task),
                 validateArgs: safeArgs => validateRegisteredToolArguments(category, safeArgs),
-                execute: safeArgs => TOOL_REGISTRY[category].callTool(scoped as any, safeArgs, actionConfig, pm, kernelOfficialRuntime),
+                execute: safeArgs => TOOL_REGISTRY[category].callTool(scoped, safeArgs, actionConfig, pm, kernelOfficialRuntime),
             }));
     };
     const policy = getActionSafetyPolicy(category, action, cleanArgs);
@@ -352,6 +353,7 @@ async function handleMcp(request: any): Promise<any> {
                         })) } : {}),
                     },
                 }));
+                await recordMcpInitialTokenCost(client!, measureMcpInitialTokenCost(cfg, tools));
                 return result({ tools });
             }
             case 'tools/call': {
@@ -450,7 +452,7 @@ async function handleRequest(request: any): Promise<any> {
         });
     }
     if (path.endsWith('/health') || path.endsWith('/ping')) {
-        return plainResponse(200, { ok: true, plugin: siyuan.plugin?.name ?? 'unknown', version: siyuan.plugin?.version ?? '', queue: scheduler.snapshot(), uploadsInFlight, events: events.snapshot(), taskResults: taskResults.snapshot(), readBudget: { maxRequests: options.readMaxRequests, maxBytes: options.readMaxMiB * 1024 * 1024, imageExtraBytes: 20 * 1024 * 1024, timeoutMs: options.readTimeoutMs, hostAbort: false }, telemetry: client ? getTelemetryStatus(client as any) : { status: 'idle' }, kernelOptions: options, taskControl: { version: '2', path: '/tasks', meta: TASK_META } });
+        return plainResponse(200, { ok: true, plugin: siyuan.plugin?.name ?? 'unknown', version: siyuan.plugin?.version ?? '', queue: scheduler.snapshot(), uploadsInFlight, events: events.snapshot(), taskResults: taskResults.snapshot(), readBudget: { maxRequests: options.readMaxRequests, maxBytes: options.readMaxMiB * 1024 * 1024, imageExtraBytes: 20 * 1024 * 1024, timeoutMs: options.readTimeoutMs, hostAbort: false }, telemetry: client ? getTelemetryStatus(client) : { status: 'idle' }, kernelOptions: options, taskControl: { version: '2', path: '/tasks', meta: TASK_META } });
     }
     const method = request?.request?.method;
     if (path.endsWith('/tasks')) {

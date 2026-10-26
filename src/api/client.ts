@@ -30,7 +30,30 @@ export class WriteOutcomeUnknownError extends Error {
     }
 }
 
-export class SiYuanClient {
+/**
+ * Transport contract every tool, API wrapper and coordinator depends on.
+ * Implemented by HttpSiYuanClient (Node / CLI / renderer) and
+ * KernelSiYuanClient (goja kernel sandbox).
+ */
+export interface SiYuanClient {
+    setToken(token: string): void;
+    getBaseUrl(): string;
+    getAuthHeaders(): Record<string, string>;
+    requestResource(path: string): Promise<Pick<Response, 'ok' | 'status' | 'statusText' | 'text'>>;
+    requestRead<T>(endpoint: string, data?: object, maxResponseBytes?: number): Promise<T>;
+    requestWrite<T>(endpoint: string, data?: object): Promise<T>;
+    requestFormDataRead<T>(endpoint: string, formData: FormData): Promise<T>;
+    requestFormDataWrite<T>(endpoint: string, formData: FormData): Promise<T>;
+    readFile(path: string): Promise<string>;
+    readFileBinary(path: string): Promise<Uint8Array>;
+    writeFile(path: string, content: string): Promise<void>;
+    /** HTTP-only streaming download; absent inside the kernel sandbox. */
+    streamFile?(path: string, consume: (chunk: Uint8Array) => Promise<void>, options?: {
+        signal?: AbortSignal; maxBytes?: number; timeoutMs?: number;
+    }): Promise<number>;
+}
+
+export class HttpSiYuanClient implements SiYuanClient {
     private baseUrl: string;
     private timeout: number;
     private token: string = '';

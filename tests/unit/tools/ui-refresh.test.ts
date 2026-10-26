@@ -71,11 +71,12 @@ vi.mock('@/api/transaction', () => ({
 }));
 
 import { parseResult } from '../../helpers/parse-result';
+import { withRequestSemantics } from '../../helpers/mock-client';
 
 describe('UI refresh integration', () => {
-    const client = {
+    const client = withRequestSemantics({
         request: vi.fn(async () => null),
-    } as any;
+    } as any);
 
     const permMgr = {
         reload: vi.fn(async () => undefined),

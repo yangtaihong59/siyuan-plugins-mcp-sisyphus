@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '../../../src/core/config';
 import {
@@ -7,7 +7,8 @@ import {
     measureApproxContent,
     measureApproxText,
 } from '../../../src/core/token-usage';
-import { calculateMcpInitialTokenCost } from '../../../src/core/analytics';
+import { MCP_INITIAL_COST_PATH, parseMcpInitialTokenCost } from '../../../src/core/analytics';
+import { calculateMcpInitialTokenCost, recordMcpInitialTokenCost } from '../../../src/core/mcp-initial-cost';
 
 describe('token usage helpers', () => {
     it('converts chars to approximate tokens', () => {
@@ -43,5 +44,25 @@ describe('token usage helpers', () => {
         expect(full.mcpInitialApproxTokens).toBeGreaterThan(0);
         expect(reducedCost.mcpInitialChars).not.toBe(full.mcpInitialChars);
         expect(reducedCost.mcpInitialApproxTokens).not.toBe(full.mcpInitialApproxTokens);
+    });
+
+    it('records the served initial cost once per value and round-trips through the parser', async () => {
+        const writes: Array<[string, string]> = [];
+        const client = { writeFile: vi.fn(async (path: string, content: string) => { writes.push([path, content]); }) };
+        const cost = { mcpInitialChars: 123_457, mcpInitialApproxTokens: 30_865 };
+
+        await recordMcpInitialTokenCost(client, cost);
+        await recordMcpInitialTokenCost(client, cost);
+
+        expect(writes).toHaveLength(1);
+        expect(writes[0][0]).toBe(MCP_INITIAL_COST_PATH);
+        expect(parseMcpInitialTokenCost(writes[0][1])).toMatchObject(cost);
+        expect(parseMcpInitialTokenCost('not json')).toBeNull();
+        expect(parseMcpInitialTokenCost(JSON.stringify({ mcpInitialChars: 'x' }))).toBeNull();
+    });
+
+    it('never throws when recording the initial cost fails', async () => {
+        const client = { writeFile: vi.fn(async () => { throw new Error('offline'); }) };
+        await expect(recordMcpInitialTokenCost(client, { mcpInitialChars: 98_765, mcpInitialApproxTokens: 24_692 })).resolves.toBeUndefined();
     });
 });

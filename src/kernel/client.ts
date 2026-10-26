@@ -2,6 +2,7 @@ import { normalizeKernelOptions, type KernelOptions } from '../core/kernel-optio
 import type { ExternalResponse } from '../core/external-fetch';
 import { UploadStagingStore, MAX_TRANSFER_FILE_BYTES } from '../core/upload-source';
 import { randomUUID } from './node-shims';
+import type { SiYuanClient } from '../api/client';
 /*
  * KernelSiYuanClient — a SiYuanClient-compatible adapter backed by the
  * kernel petal's siyuan.client.fetch API.
@@ -32,7 +33,7 @@ export class KernelResponseError extends Error {
     }
 }
 
-export class KernelSiYuanClient {
+export class KernelSiYuanClient implements SiYuanClient {
     declare readonly storageIdentity: object;
     constructor() {
         // Object.create task scopes inherit this non-writable identity; task

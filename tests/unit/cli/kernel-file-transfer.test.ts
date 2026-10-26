@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { UploadStagingStore, UPLOAD_STAGE_TTL_MS, MAX_TRANSFER_FILE_BYTES } from '@/core/upload-source';
 import { stageKernelUpload, saveKernelExport } from '@/cli/kernel-file-transfer';
-import { SiYuanClient } from '@/api/client';
+import { HttpSiYuanClient } from '@/api/client';
 import { hashWriteBytes } from '@/core/write-safety-hash';
 
 const dirs: string[] = [];
@@ -97,7 +97,7 @@ it('removes a partially streamed ZIP after cancellation and preserves other file
     const dir = temp(), outputPath = path.join(dir, 'partial.zip');
     fs.writeFileSync(path.join(dir, 'keep'), 'keep');
     const stop = new AbortController();
-    const client = new SiYuanClient({ baseUrl: 'http://test' });
+    const client = new HttpSiYuanClient({ baseUrl: 'http://test' });
     vi.stubGlobal('fetch', vi.fn(async () => new Response(new ReadableStream({
         start(c) { c.enqueue(new Uint8Array([1, 2])); },
     }))));
@@ -109,7 +109,7 @@ it('removes a partially streamed ZIP after cancellation and preserves other file
     expect(fs.readFileSync(path.join(dir, 'keep'), 'utf8')).toBe('keep');
 });
 it('rejects oversized streams without Content-Length and HTTP 202 error envelopes', async () => {
-    const client = new SiYuanClient({ baseUrl: 'http://test' });
+    const client = new HttpSiYuanClient({ baseUrl: 'http://test' });
     const consume = vi.fn(async () => {});
     vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array(4))));
     await expect(client.streamFile('/x', consume, { maxBytes: 3 })).rejects.toThrow('exceeds');
@@ -119,7 +119,7 @@ it('rejects oversized streams without Content-Length and HTTP 202 error envelope
     expect(consume).not.toHaveBeenCalled();
 });
 it('times out a stalled body and does not retry after receiving bytes', async () => {
-    const client = new SiYuanClient({ baseUrl: 'http://test' });
+    const client = new HttpSiYuanClient({ baseUrl: 'http://test' });
     const fetcher = vi.fn(async () => new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array([1])); } })));
     vi.stubGlobal('fetch', fetcher);
     const consume = vi.fn(async () => {});

@@ -7,7 +7,7 @@ const path = require('node:path');
 const { Client, InMemoryTransport } = require('@modelcontextprotocol/client');
 const { createSiYuanServer } = require(path.join(__dirname, '..', '..', 'dist', 'mcp-server.cjs'));
 
-const SIYUAN_URL = 'http://127.0.0.1:6806';
+const SIYUAN_URL = (process.env.SIYUAN_API_URL || 'http://127.0.0.1:6806').replace(/\/+$/, '');
 const CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
 
 const ALL_ENABLED_CONFIG = {
@@ -1200,7 +1200,10 @@ async function runLiveSmoke() {
 async function main() {
     const versionCheck = await fetch(`${SIYUAN_URL}/api/system/version`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(process.env.SIYUAN_TOKEN ? { Authorization: `Token ${process.env.SIYUAN_TOKEN}` } : {}),
+        },
         body: '{}',
     });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDefaultToolConfig, TOOL_CATEGORIES } from '@/core/config';
-import { calculateMcpInitialTokenCost } from '@/core/analytics';
+import { calculateMcpInitialTokenCost } from '@/core/mcp-initial-cost';
 import { buildServerInstructions } from '@/core/server-instructions';
 import { listAllTools, TOOL_REGISTRY } from '@/core/tool-registry';
 import { readHelpResource } from '@/core/resources';

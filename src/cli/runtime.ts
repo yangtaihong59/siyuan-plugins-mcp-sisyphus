@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { loadWriteCoordinatorSettings, type CliWriteCoordinatorSettings } from '../core/write-coordinator-settings';
 export { deriveKernelEndpointUrl, loadWriteCoordinatorSettings, selectWriteCoordinatorSettings } from '../core/write-coordinator-settings';
 export type { CliWriteCoordinatorSettings, CliWriteCoordinatorEndpoint } from '../core/write-coordinator-settings';
-import { SiYuanClient } from '../api/client';
+import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
 import {
     loadToolConfigFromApiFileWithStatus,
     type ToolConfig,
@@ -45,7 +45,7 @@ export async function loadCliRuntimeState(
     const apiUrl = await retargetLoopbackProfile(cli, resolved.apiUrl, resolved.token, resolved.profileName);
     applyConfigToEnv({ ...resolved, apiUrl });
 
-    const client = new SiYuanClient({ baseUrl: apiUrl });
+    const client = new HttpSiYuanClient({ baseUrl: apiUrl });
     if (resolved.token) client.setToken(resolved.token);
 
     await ensureRequiredPluginInstalled(client);

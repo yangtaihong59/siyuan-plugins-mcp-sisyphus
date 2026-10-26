@@ -98,26 +98,29 @@
         ];
     }
 
+    function readStorageFile(path: string): Promise<string> {
+        return new Promise<string>((resolve, reject) => {
+            fetchPost("/api/file/getFile", { path }, (resp: any) => {
+                if (typeof resp === "string") {
+                    resolve(resp);
+                } else if (resp?.data && typeof resp.data === "string") {
+                    resolve(resp.data);
+                } else {
+                    // getFile returns raw text on success; on failure resp may have code !== 0
+                    reject(new Error("Failed to read file"));
+                }
+            });
+        });
+    }
+
     async function loadAnalyticsSummary() {
         analyticsLoading = true;
         analyticsError = "";
         try {
-            const { readAnalyticsEvents, computeAnalyticsSummary, getRecentAnalyticsEvents } = await import("../../../core/analytics");
+            const { readAnalyticsEvents, computeAnalyticsSummary, getRecentAnalyticsEvents, MCP_INITIAL_COST_PATH, parseMcpInitialTokenCost } = await import("../../../core/analytics");
+            const initialCost = parseMcpInitialTokenCost(await readStorageFile(MCP_INITIAL_COST_PATH).catch(() => null));
             const events = await readAnalyticsEvents({
-                readFile: async (path: string) => {
-                    return new Promise<string>((resolve, reject) => {
-                        fetchPost("/api/file/getFile", { path }, (resp: any) => {
-                            if (typeof resp === "string") {
-                                resolve(resp);
-                            } else if (resp?.data && typeof resp.data === "string") {
-                                resolve(resp.data);
-                            } else {
-                                // getFile returns raw text on success; on failure resp may have code !== 0
-                                reject(new Error("Failed to read file"));
-                            }
-                        });
-                    });
-                },
+                readFile: readStorageFile,
                 writeFile: async () => { /* not used in read path */ },
                 request: async () => { throw new Error("not implemented"); },
                 readFileBinary: async () => { throw new Error("not implemented"); },
@@ -127,7 +130,7 @@
             } as any, Number.POSITIVE_INFINITY);
             const summaryCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
             const heatmapCutoff = Date.now() - 52 * 7 * 24 * 60 * 60 * 1000;
-            analyticsSummary = computeAnalyticsSummary(events.filter((event: any) => event.ts >= summaryCutoff), { currentToolConfig });
+            analyticsSummary = computeAnalyticsSummary(events.filter((event: any) => event.ts >= summaryCutoff), { initialCost });
             heatmapTrend = computeAnalyticsSummary(events.filter((event: any) => event.ts >= heatmapCutoff)).dailyTrend;
             recentAnalyticsEvents = getRecentAnalyticsEvents(events, 100);
         } catch (e) {
@@ -165,19 +168,13 @@
 
     async function exportAnalyticsReport() {
         try {
-            const { ANALYTICS_PATH, ANALYTICS_ROTATED_PATH, computeAnalyticsSummary, parseJsonl } = await import("../../../core/analytics");
-            const readFile = (path: string): Promise<string> => new Promise((resolve, reject) => {
-                fetchPost("/api/file/getFile", { path }, (resp: any) => {
-                    if (typeof resp === "string") resolve(resp);
-                    else if (resp?.data && typeof resp.data === "string") resolve(resp.data);
-                    else reject(new Error("Failed to read file"));
-                });
-            });
+            const { ANALYTICS_PATH, ANALYTICS_ROTATED_PATH, MCP_INITIAL_COST_PATH, computeAnalyticsSummary, parseJsonl, parseMcpInitialTokenCost } = await import("../../../core/analytics");
             const parts: string[] = [];
-            try { parts.push(await readFile(ANALYTICS_PATH)); } catch { /* ignore */ }
-            try { parts.push(await readFile(ANALYTICS_ROTATED_PATH)); } catch { /* ignore */ }
+            try { parts.push(await readStorageFile(ANALYTICS_PATH)); } catch { /* ignore */ }
+            try { parts.push(await readStorageFile(ANALYTICS_ROTATED_PATH)); } catch { /* ignore */ }
             const events = parseJsonl(parts.join("\n"));
-            const summary = computeAnalyticsSummary(events, { currentToolConfig });
+            const initialCost = parseMcpInitialTokenCost(await readStorageFile(MCP_INITIAL_COST_PATH).catch(() => null));
+            const summary = computeAnalyticsSummary(events, { initialCost });
             const report = {
                 generatedAt: new Date().toISOString(),
                 summary,

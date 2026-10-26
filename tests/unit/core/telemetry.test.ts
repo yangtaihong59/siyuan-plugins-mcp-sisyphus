@@ -8,14 +8,14 @@ import {
 } from '../../../src/core/telemetry';
 import { ANALYTICS_PATH, ANALYTICS_ROTATED_PATH } from '../../../src/core/analytics';
 import { TELEMETRY_CONFIG_PATH } from '../../../src/core/telemetry-config';
-import { SiYuanClient } from '../../../src/api/client';
+import { HttpSiYuanClient } from '../../../src/api/client';
 
 describe('telemetry', () => {
     let writtenFiles: Record<string, string> = {};
 
-    function createMockClient(): SiYuanClient {
+    function createMockClient(): HttpSiYuanClient {
         writtenFiles = {};
-        const client = new SiYuanClient();
+        const client = new HttpSiYuanClient();
         client.readFile = vi.fn(async (path: string) => {
             if (path in writtenFiles) {
                 return writtenFiles[path];

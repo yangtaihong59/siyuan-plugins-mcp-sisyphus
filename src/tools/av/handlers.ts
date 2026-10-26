@@ -1358,7 +1358,6 @@ async function searchAttributeViewPrimaryKeys(
     excludes?: string[],
 ): Promise<unknown[]> {
     if (!keyword.trim()) return [];
-    if (typeof client.request !== 'function') return [];
     const excludeSet = new Set(excludes ?? []);
     const avIDs = await listAllAttributeViewIDs(client);
     const results: unknown[] = [];

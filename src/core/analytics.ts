@@ -1,44 +1,38 @@
 import { queueStorage } from './storage-queue';
 import type { SiYuanClient } from '../api/client';
-import type { ToolConfig } from './config';
 import type { InvocationTransport } from './runtime';
-import { listAllTools } from './tool-registry';
-import { buildServerInstructions } from './server-instructions';
-import {
-    APPROX_TOKEN_MODE,
-    approximateTokensFromChars,
-} from './token-usage';
+import { APPROX_TOKEN_MODE } from './token-usage';
 
 export interface McpInitialTokenCost {
     mcpInitialChars: number;
     mcpInitialApproxTokens: number;
 }
 
-/**
- * Approximate the one-off token cost of mounting the MCP server (instructions +
- * tool schema list). Lives here rather than in token-usage.ts so that
- * token-usage stays a pure, dependency-free re-export usable inside the goja
- * kernel sandbox (which cannot load tool-registry's top-level z.toJSONSchema).
- */
-export function calculateMcpInitialTokenCost(config: ToolConfig): McpInitialTokenCost {
-    const instructions = buildServerInstructions({
-        userRulesText: config.userRulesText,
-        agentSiyuanMemoryText: config.agentSiyuanMemoryText,
-        agentSiyuanMemoryUpdatedAt: config.agentSiyuanMemoryUpdatedAt,
-        writeSafety: config.writeSafety,
-    }).trim();
-    const toolsPayload = JSON.stringify({ tools: listAllTools(config) });
-    const totalChars = instructions.length + toolsPayload.length;
-    return {
-        mcpInitialChars: totalChars,
-        mcpInitialApproxTokens: approximateTokensFromChars(totalChars),
-    };
+export interface RecordedMcpInitialTokenCost extends McpInitialTokenCost {
+    measuredAt: number;
 }
 
 export const ANALYTICS_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/analytics.jsonl';
 export const ANALYTICS_ROTATED_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/analytics.jsonl.1';
 const MAX_ANALYTICS_BYTES = 2 * 1024 * 1024; // 2 MB
 export const MAX_ANALYTICS_TEXT_CHARS = 20_000;
+/** Written by the MCP server on tools/list (see mcp-initial-cost.ts), read by the settings panel. */
+export const MCP_INITIAL_COST_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcp-initial-cost.json';
+
+export function parseMcpInitialTokenCost(text: string | null | undefined): RecordedMcpInitialTokenCost | null {
+    if (!text) return null;
+    try {
+        const value = JSON.parse(text);
+        if (typeof value?.mcpInitialChars !== 'number' || typeof value?.mcpInitialApproxTokens !== 'number') return null;
+        return {
+            mcpInitialChars: value.mcpInitialChars,
+            mcpInitialApproxTokens: value.mcpInitialApproxTokens,
+            measuredAt: typeof value.measuredAt === 'number' ? value.measuredAt : 0,
+        };
+    } catch {
+        return null;
+    }
+}
 
 export interface AnalyticsEvent {
     seq: number;
@@ -218,7 +212,7 @@ export async function readAnalyticsEvents(
 
 export function buildTokenUsageSummary(
     events: AnalyticsEvent[],
-    currentToolConfig?: ToolConfig,
+    initialCost?: McpInitialTokenCost | null,
 ): TokenUsageSummary {
     let cliMeasuredCalls = 0;
     let mcpMeasuredCalls = 0;
@@ -239,15 +233,16 @@ export function buildTokenUsageSummary(
         mcpTotalApproxTokens += measuredTokens;
     }
 
-    const initialCost = currentToolConfig ? calculateMcpInitialTokenCost(currentToolConfig) : null;
-
     return {
         tokenMode: APPROX_TOKEN_MODE,
         cliMeasuredCalls,
         mcpMeasuredCalls,
         cliAvgApproxTokens: cliMeasuredCalls > 0 ? cliTotalApproxTokens / cliMeasuredCalls : null,
         mcpAvgApproxTokens: mcpMeasuredCalls > 0 ? mcpTotalApproxTokens / mcpMeasuredCalls : null,
-        ...(initialCost ?? {}),
+        ...(initialCost ? {
+            mcpInitialChars: initialCost.mcpInitialChars,
+            mcpInitialApproxTokens: initialCost.mcpInitialApproxTokens,
+        } : {}),
     };
 }
 
@@ -262,7 +257,7 @@ export function getRecentAnalyticsEvents(events: AnalyticsEvent[], limit = 100):
 
 export function computeAnalyticsSummary(
     events: AnalyticsEvent[],
-    options: { currentToolConfig?: ToolConfig } = {},
+    options: { initialCost?: McpInitialTokenCost | null } = {},
 ): AnalyticsSummary {
     const totalCalls = events.length;
     const errorCalls = events.filter((e) => e.status === 'error').length;
@@ -327,7 +322,7 @@ export function computeAnalyticsSummary(
         topActions,
         dailyTrend,
         transportDistribution,
-        tokenUsage: buildTokenUsageSummary(events, options.currentToolConfig),
+        tokenUsage: buildTokenUsageSummary(events, options.initialCost),
     };
 }
 

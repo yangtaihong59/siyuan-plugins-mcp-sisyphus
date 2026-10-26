@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SiYuanClient } from '@/api/client';
+import { HttpSiYuanClient } from '@/api/client';
 import * as notebookApi from '@/api/notebook';
 import * as documentApi from '@/api/document';
 import * as blockApi from '@/api/block';
@@ -9,7 +9,7 @@ import * as searchApi from '@/api/search';
 import { PermissionManager } from '@/core/permissions';
 
 describe('MCP End-to-End Flow', () => {
-    let client: SiYuanClient;
+    let client: HttpSiYuanClient;
     let mockFetch: any;
 
     const jsonResponse = (payload: unknown): Response => ({
@@ -22,7 +22,7 @@ describe('MCP End-to-End Flow', () => {
         mockFetch = vi.fn();
         global.fetch = mockFetch as typeof fetch;
 
-        client = new SiYuanClient({
+        client = new HttpSiYuanClient({
             baseUrl: 'http://127.0.0.1:6806',
             timeout: 5000,
         });
@@ -248,7 +248,7 @@ describe('MCP End-to-End Flow', () => {
                 }, 10);
             }));
 
-            const timeoutClient = new SiYuanClient({ timeout: 5 });
+            const timeoutClient = new HttpSiYuanClient({ timeout: 5 });
             await expect(notebookApi.listNotebooks(timeoutClient)).rejects.toThrow();
         });
 

@@ -18,7 +18,7 @@ vi.mock('@modelcontextprotocol/client', () => ({
     },
 }));
 
-import { SiYuanClient } from '@/api/client';
+import { HttpSiYuanClient } from '@/api/client';
 import {
     OfficialMcpBridge,
     normalizeOfficialInputSchema,
@@ -31,7 +31,7 @@ import {
 
 function createBridge(version = '3.7.3') {
     return new OfficialMcpBridge(
-        new SiYuanClient({ baseUrl: 'http://127.0.0.1:6806' }),
+        new HttpSiYuanClient({ baseUrl: 'http://127.0.0.1:6806' }),
         { getSiYuanVersion: vi.fn().mockResolvedValue(version) },
     );
 }
@@ -132,7 +132,7 @@ describe('official MCP bridge', () => {
     it('marks old SiYuan versions unsupported without connecting to /mcp', async () => {
         const getSiYuanVersion = vi.fn().mockResolvedValue('3.6.9');
         const bridge = new OfficialMcpBridge(
-            new SiYuanClient({ baseUrl: 'http://127.0.0.1:6806' }),
+            new HttpSiYuanClient({ baseUrl: 'http://127.0.0.1:6806' }),
             { getSiYuanVersion },
         );
 

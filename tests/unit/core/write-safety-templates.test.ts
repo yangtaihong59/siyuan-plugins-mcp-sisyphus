@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SiYuanClient } from '@/api/client';
+import { HttpSiYuanClient } from '@/api/client';
 import { deleteTemplate, saveDocAsTemplate, writeTemplateSource } from '@/api/template';
 import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
@@ -49,7 +49,7 @@ function fixture() {
         if (endpoint === '/api/block/getChildBlocks' || endpoint === '/api/query/sql') return ok([]);
         throw new Error(`Unexpected endpoint: ${endpoint}`);
     }) as typeof fetch;
-    const client = new SiYuanClient({ baseUrl: 'http://fixture.test' });
+    const client = new HttpSiYuanClient({ baseUrl: 'http://fixture.test' });
     const permMgr = createMockPermissionManager();
     permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rwd' }));
     const coordinator = new WriteSafetyCoordinator(client);

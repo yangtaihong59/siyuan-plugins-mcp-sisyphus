@@ -5,6 +5,7 @@ import { callBlockTool } from '@/tools/block';
 import { callDocumentTool } from '@/tools/document';
 import { callFileTool } from '@/tools/file';
 import { callSearchTool } from '@/tools/search';
+import { withRequestSemantics } from '../../helpers/mock-client';
 
 vi.mock('@/tools/internal/context', () => ({
     escapeSqlString: (value: string) => value.replace(/\0/g, '').replace(/'/g, "''"),
@@ -56,6 +57,12 @@ vi.mock('@/api/search', () => ({
     querySQL: vi.fn(),
     searchTag: vi.fn(),
 }));
+
+/** Write results carry a uiRefresh report; strip it to compare the slim business payload. */
+function withoutUiRefresh(result: { content: Array<{ text?: string }> }): Record<string, unknown> {
+    const { uiRefresh: _uiRefresh, ...payload } = JSON.parse(result.content[0].text!);
+    return payload;
+}
 
 describe('tool result normalization', () => {
     const enabledActions = <T extends string>(...actions: T[]) => ({
@@ -327,7 +334,7 @@ describe('tool result normalization', () => {
             data: '# Title\n\n| A | B |\n| - | - |',
         }, enabledActions('update'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(withoutUiRefresh(result)).toEqual({
             success: true,
             id: 'block-1',
             dataType: 'markdown',
@@ -347,7 +354,7 @@ describe('tool result normalization', () => {
             data: 'hello',
         }, enabledActions('update'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(withoutUiRefresh(result)).toEqual({
             success: true,
             id: 'block-1',
             dataType: 'markdown',
@@ -472,7 +479,7 @@ describe('tool result normalization', () => {
             data: 'updated\u200B text',
         }, enabledActions('update'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(withoutUiRefresh(result)).toEqual({
             success: true,
             id: 'block-1',
             dataType: 'markdown',
@@ -507,7 +514,7 @@ describe('tool result normalization', () => {
 
     it('normalizes document cover sources into title-img attributes', async () => {
         const transactionApi = await import('@/api/transaction');
-        const refreshClient = { request: vi.fn().mockResolvedValue(null) } as any;
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
 
         const result = await callDocumentTool(refreshClient, {
             action: 'set_attr',
@@ -542,7 +549,7 @@ describe('tool result normalization', () => {
 
     it('clears document cover attributes', async () => {
         const transactionApi = await import('@/api/transaction');
-        const refreshClient = { request: vi.fn().mockResolvedValue(null) } as any;
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
 
         const result = await callDocumentTool(refreshClient, {
             action: 'set_attr',
@@ -576,7 +583,7 @@ describe('tool result normalization', () => {
 
     it('refreshes icon cache and file tree for document icon changes', async () => {
         const transactionApi = await import('@/api/transaction');
-        const refreshClient = { request: vi.fn().mockResolvedValue(null) } as any;
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
 
         const result = await callDocumentTool(refreshClient, {
             action: 'set_attr',

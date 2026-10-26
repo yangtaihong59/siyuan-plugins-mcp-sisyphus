@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SiYuanClient, ResponseSizeLimitError } from '@/api/client';
+import { HttpSiYuanClient, ResponseSizeLimitError } from '@/api/client';
 
-describe('SiYuanClient', () => {
-    let client: SiYuanClient;
+describe('HttpSiYuanClient', () => {
+    let client: HttpSiYuanClient;
     let mockFetch: any;
 
     beforeEach(() => {
         mockFetch = vi.fn();
         global.fetch = mockFetch as typeof fetch;
-        client = new SiYuanClient({
+        client = new HttpSiYuanClient({
             baseUrl: 'http://127.0.0.1:6806',
             timeout: 5000,
         });
@@ -16,12 +16,12 @@ describe('SiYuanClient', () => {
 
     describe('constructor', () => {
         it('should use default config when no config provided', () => {
-            const defaultClient = new SiYuanClient();
+            const defaultClient = new HttpSiYuanClient();
             expect(defaultClient).toBeDefined();
         });
 
         it('should use custom config when provided', () => {
-            const customClient = new SiYuanClient({
+            const customClient = new HttpSiYuanClient({
                 baseUrl: 'http://custom:8080',
                 timeout: 10000,
             });
@@ -84,7 +84,7 @@ describe('SiYuanClient', () => {
         it('times out and cancels a stalled response body', async () => {
             const cancel = vi.fn();
             mockFetch.mockResolvedValue(new Response(new ReadableStream({ cancel })));
-            const timedClient = new SiYuanClient({ timeout: 20 });
+            const timedClient = new HttpSiYuanClient({ timeout: 20 });
             await expect(timedClient.requestRead('/api/test', {}, 100)).rejects.toThrow('timeout');
             expect(cancel).toHaveBeenCalledOnce();
         });
@@ -162,7 +162,7 @@ describe('SiYuanClient', () => {
                 });
             });
 
-            const timeoutClient = new SiYuanClient({ timeout: 5 });
+            const timeoutClient = new HttpSiYuanClient({ timeout: 5 });
             await expect(timeoutClient.request('/api/test')).rejects.toThrow('timeout');
         });
 
@@ -331,7 +331,7 @@ describe('SiYuanClient', () => {
                 });
             });
 
-            const timeoutClient = new SiYuanClient({ timeout: 5 });
+            const timeoutClient = new HttpSiYuanClient({ timeout: 5 });
             await expect(timeoutClient.writeFile('/data/test.txt', 'content')).rejects.toThrow('timeout');
         });
     });

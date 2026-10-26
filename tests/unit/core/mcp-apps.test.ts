@@ -25,6 +25,7 @@ import {
 } from '@/core/mcp-apps';
 import { buildDefaultToolConfig } from '@/core/config';
 import { SHOP_ITEMS } from '@/tools/mascot';
+import { withRequestSemantics } from '../../helpers/mock-client';
 
 describe('MCP Apps', () => {
     it('requires the official UI extension and HTML profile', () => {
@@ -180,7 +181,7 @@ describe('MCP Apps', () => {
 
     it('preserves timeline nodes when adding App presentation fields', async () => {
         const config = buildDefaultToolConfig();
-        const client = {
+        const client = withRequestSemantics({
             request: vi.fn().mockResolvedValue({
                 snapshots: [{
                     id: 'snapshot-1',
@@ -189,7 +190,7 @@ describe('MCP Apps', () => {
                     created: 123,
                 }],
             }),
-        };
+        });
 
         const result = await callTimelineAppTool(
             client as any,

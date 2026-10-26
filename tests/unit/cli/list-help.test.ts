@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import type { ParsedArgs } from '@/cli/args';
-import { SiYuanClient } from '@/api/client';
+import { HttpSiYuanClient } from '@/api/client';
 import { runHelp, runList } from '@/cli/list-help';
 import * as pluginCheck from '@/cli/plugin-check';
 import { buildDefaultToolConfig } from '@/core/config';
@@ -43,9 +43,9 @@ describe('cli/list-help', () => {
         Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: false });
         Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: false });
         vi.spyOn(pluginCheck, 'ensureRequiredPluginInstalled').mockResolvedValue(undefined);
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue('');
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue('');
         // Extension discovery must not probe the user's running kernel or reuse its CLI profile token.
-        vi.spyOn(SiYuanClient.prototype, 'requestRead').mockRejectedValue(new Error('Live API access is disabled in CLI help unit tests'));
+        vi.spyOn(HttpSiYuanClient.prototype, 'requestRead').mockRejectedValue(new Error('Live API access is disabled in CLI help unit tests'));
         delete process.env.SIYUAN_API_URL;
         delete process.env.SIYUAN_TOKEN;
     });
@@ -142,7 +142,7 @@ describe('cli/list-help', () => {
         const config = buildDefaultToolConfig();
         config.document.enabled = false;
         config.mascot.actions.buy = false;
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
 
         const overviewCode = await runList({
             command: 'list',
@@ -170,7 +170,7 @@ describe('cli/list-help', () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();
         config.document.enabled = false;
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
 
         const code = await runList({
             command: 'list',
@@ -223,7 +223,7 @@ describe('cli/list-help', () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();
         config.notebook.enabled = false;
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
         const callToolSpy = vi.spyOn(TOOL_REGISTRY.notebook, 'callTool');
 
         const code = await runHelp({
@@ -244,7 +244,7 @@ describe('cli/list-help', () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();
         config.mascot.actions.buy = false;
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
 
         const code = await runHelp({
             command: 'help',

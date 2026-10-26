@@ -6,6 +6,13 @@ import { callAvTool, listAvTools } from '@/tools/av';
 import { projectAvStateWithoutColumnOptions } from '@/tools/av/handlers';
 import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
 import type { ToolResult } from '@/tools/internal/shared';
+import { withRequestSemantics } from '../../helpers/mock-client';
+
+// UI refresh is covered by ui-refresh.test.ts; AV assertions compare the bare tool payload.
+vi.mock('@/tools/internal/ui-refresh', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/tools/internal/ui-refresh')>()),
+    applyUiRefresh: vi.fn(async (_client: unknown, result: unknown) => result),
+}));
 
 vi.mock('@/tools/internal/context', () => ({
     ensurePermissionForDocumentId: vi.fn(async () => ({
@@ -74,7 +81,7 @@ describe('av tool', () => {
         actions: Object.fromEntries(actions.map((action) => [action, true])) as Record<T, boolean>,
     });
 
-    const client = {} as any;
+    const client = withRequestSemantics({} as any);
     const permMgr = {
         reload: vi.fn(async () => undefined),
         canRead: vi.fn(() => true),
@@ -184,8 +191,8 @@ describe('av tool', () => {
             sorts: [{ field: 'updated' }],
         });
 
-        // Reset client.request so applyUiRefresh is skipped by default in AV tests
-        client.request = undefined;
+        // Default kernel stub: readDir lists no AV files for the primary-key fallback.
+        client.request = vi.fn(async () => null);
     });
 
     it('exports set_cells cells with nested array item schemas intact', () => {

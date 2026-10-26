@@ -7,8 +7,9 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
 import { buildServerInstructions } from './server-instructions';
+import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from './mcp-initial-cost';
 
-import { SiYuanClient } from '../api/client';
+import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
 import { buildDefaultToolConfig, isDangerousAction, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
 import { getActionSafetyPolicy } from './write-safety-policy';
@@ -85,7 +86,7 @@ async function tryReadConfigFromAPI(client: SiYuanClient): Promise<ToolConfig | 
 }
 
 async function initSiYuanClient(): Promise<SiYuanClient> {
-    const client = new SiYuanClient();
+    const client = new HttpSiYuanClient();
 
     const envToken = process.env.SIYUAN_TOKEN;
     if (envToken) {
@@ -96,7 +97,7 @@ async function initSiYuanClient(): Promise<SiYuanClient> {
 }
 
 function createFastClient(): SiYuanClient {
-    const client = new SiYuanClient({ timeout: 3000 });
+    const client = new HttpSiYuanClient({ timeout: 3000 });
     const envToken = process.env.SIYUAN_TOKEN;
     if (envToken) {
         client.setToken(envToken);
@@ -105,7 +106,7 @@ function createFastClient(): SiYuanClient {
 }
 
 function createInstructionClient(): SiYuanClient {
-    const client = new SiYuanClient({ timeout: 10000 });
+    const client = new HttpSiYuanClient({ timeout: 10000 });
     const envToken = process.env.SIYUAN_TOKEN;
     if (envToken) {
         client.setToken(envToken);
@@ -239,6 +240,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             supportsMcpApps(clientCapabilities),
             config.mcpApps,
         );
+        void recordMcpInitialTokenCost(client, measureMcpInitialTokenCost(config, tools));
         return { tools: tools as Tool[] };
     });
 
