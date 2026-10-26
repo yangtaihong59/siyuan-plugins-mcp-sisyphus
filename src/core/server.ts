@@ -8,9 +8,10 @@ import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
 import { buildServerInstructions } from './server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from './mcp-initial-cost';
+import { isActionEnabled, requiresCoordinatedWrite, requiresDangerConfirmation, resolveToolCallTarget } from './tool-call-gate';
 
 import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
-import { buildDefaultToolConfig, isDangerousAction, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
+import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
 import { getActionSafetyPolicy } from './write-safety-policy';
 import { callCliWriteCoordinator } from '../cli/write-coordinator';
@@ -38,7 +39,7 @@ import {
     TIMELINE_APP_TOOL_NAME,
 } from './mcp-apps';
 import { listHelpResources, listHelpResourceTemplates, readHelpResource } from './resources';
-import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory, TOOL_REGISTRY } from './tool-registry';
+import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, TOOL_REGISTRY } from './tool-registry';
 import { runToolCall } from './tool-lifecycle';
 import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from './skills';
 import type { ToolResult } from '../tools/internal/shared';
@@ -360,30 +361,16 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 }), GENERIC_TOOL_OUTPUT_SCHEMA);
             }
         }
-        const appActionCategory = name === TIMELINE_APP_ACTION_TOOL_NAME
-            ? 'timeline'
-            : name === FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME
-                ? 'flashcard'
-                : name === MASCOT_SHOP_APP_ACTION_TOOL_NAME
-                    ? 'mascot'
-                    : undefined;
-        const category = appActionCategory ?? resolveCategory(name);
-        if (!category) {
+        const config = await getToolConfig();
+        const target = resolveToolCallTarget(name, config);
+        if (!target) {
             return {
                 content: [{ type: 'text' as const, text: `Unknown tool: ${name}` }],
                 isError: true,
             };
         }
-
-        const config = await getToolConfig();
-        const appActionConfig = name === TIMELINE_APP_ACTION_TOOL_NAME
-            ? config.mcpApps.timeline
-            : name === FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME
-                ? config.mcpApps.flashcardReview
-                : name === MASCOT_SHOP_APP_ACTION_TOOL_NAME
-                    ? config.mcpApps.mascotShop
-                    : undefined;
-        if (appActionConfig ? !appActionConfig.enabled : !config[category].enabled) {
+        const { category } = target;
+        if (!target.actionConfig.enabled) {
             return {
                 content: [{ type: 'text' as const, text: `Tool "${name}" is disabled.` }],
                 isError: true,
@@ -391,17 +378,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         }
 
         const module = TOOL_REGISTRY[category];
-        const actionEnabled = appActionConfig
-            ? (appActionConfig.actions as Record<string, boolean>)[action] === true
-            : category === 'extension'
-                // Official MCP actions are discovered dynamically and remain
-                // governed by bridge discovery/trust. The named diagnostics
-                // are Sisyphus-owned actions, so their persisted action
-                // switches must still work like every other category.
-                ? (Object.prototype.hasOwnProperty.call(config.extension.actions, action)
-                    ? config.extension.actions[action as keyof typeof config.extension.actions] === true
-                    : true)
-                : (config[category].actions as Record<string, boolean>)[action] === true;
+        const actionEnabled = isActionEnabled(target, action);
         if (action !== 'help' && !actionEnabled) {
             const disabled = {
                 content: [{
@@ -424,12 +401,8 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         const extensionTool = category === 'extension'
             ? officialMcpBridge.getTools().find((tool) => tool.name === action)
             : undefined;
-        const extensionDynamicAction = category === 'extension'
-            && !['list', 'help', 'validate_package', 'diagnose_plugin_mcp'].includes(action);
-        const requiresConfirmation = actionEnabled && args?.validateOnly !== true && (
-            isDangerousAction(category as ToolCategory, action)
-            || (extensionDynamicAction && extensionTool?.readOnlyHint !== true)
-        );
+        const requiresConfirmation = actionEnabled && args?.validateOnly !== true
+            && requiresDangerConfirmation(category, action, extensionTool);
 
         // 2026-07-28 carries confirmation in-band through MRTR. Legacy
         // clients and clients without form support keep instruction-level confirmation.
@@ -515,7 +488,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
 
         const policy = getActionSafetyPolicy(category, action, args ?? {});
         const transportMode = options.transportMode ?? parseTransportMode();
-        const coordinatedMutation = policy.mode === 'mutation' && (config.writeSafety.strictMode || (category === 'av' && action === 'create'));
+        const coordinatedMutation = requiresCoordinatedWrite(policy, config, category, action);
         const coordinatorSettings = (coordinatedMutation || isKernelExport(name, args ?? {}))
             ? await loadWriteCoordinatorSettings(client, process.env.SIYUAN_TOKEN)
             : undefined;
@@ -567,9 +540,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                     args: args ?? {},
                     strictMode: config.writeSafety.strictMode,
                     validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
-                    execute: (safeArgs) => appActionConfig
-                        ? module.callTool(client, safeArgs, appActionConfig, permMgr, officialMcpRuntime)
-                        : module.callTool(client, safeArgs, config[category], permMgr, officialMcpRuntime),
+                    execute: (safeArgs) => module.callTool(client, safeArgs, target.actionConfig as ToolConfig[ToolCategory], permMgr, officialMcpRuntime),
                 });
             },
         );

@@ -15,16 +15,26 @@ import type { PermissionManager } from './permissions';
 import type { ToolDescriptor } from './tool-registry';
 
 import MCP_APP_HTML from 'virtual:siyuan-mcp-app-html';
+import {
+    FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME,
+    FLASHCARD_REVIEW_SESSION_TOOL_NAME,
+    MASCOT_SHOP_APP_ACTION_TOOL_NAME,
+    MASCOT_SHOP_APP_TOOL_NAME,
+    TIMELINE_APP_ACTION_TOOL_NAME,
+    TIMELINE_APP_TOOL_NAME,
+} from './mcp-app-names';
 
 export const MCP_APPS_EXTENSION_ID = 'io.modelcontextprotocol/ui';
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
 export const MCP_APP_LEGACY_RESOURCE_URI_META_KEY = 'ui/resourceUri';
-export const FLASHCARD_REVIEW_SESSION_TOOL_NAME = 'flashcard_review_session';
-export const TIMELINE_APP_TOOL_NAME = 'timeline_app';
-export const MASCOT_SHOP_APP_TOOL_NAME = 'mascot_shop_app';
-export const TIMELINE_APP_ACTION_TOOL_NAME = 'timeline_app_action';
-export const FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME = 'flashcard_review_app_action';
-export const MASCOT_SHOP_APP_ACTION_TOOL_NAME = 'mascot_shop_app_action';
+export {
+    FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME,
+    FLASHCARD_REVIEW_SESSION_TOOL_NAME,
+    MASCOT_SHOP_APP_ACTION_TOOL_NAME,
+    MASCOT_SHOP_APP_TOOL_NAME,
+    TIMELINE_APP_ACTION_TOOL_NAME,
+    TIMELINE_APP_TOOL_NAME,
+};
 export const FLASHCARD_APP_PRESENTATION_MODE = 'mcp-app-only';
 export const FLASHCARD_APP_HANDOFF_MESSAGE = '复习界面已打开，请在卡片中完成本轮。';
 export const FLASHCARD_APP_MODEL_INSTRUCTION = [

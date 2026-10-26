@@ -18,9 +18,10 @@ const EXTENSION_DESCRIPTION = [
     'action="list" shows discovery status; call a discovered tool with action="<official name>", arguments={...}.',
     'Confirm with the user before any tool lacking readOnlyHint=true. validate_package and diagnose_plugin_mcp are read-only diagnostics.',
 ].join(' ');
+
 // The aggregate owns these names. Filtering them prevents a discovered
 // official tool from silently being routed to a different local action.
-const RESERVED_EXTENSION_ACTIONS = new Set(['help', 'list', 'validate_package', 'diagnose_plugin_mcp']);
+export const RESERVED_EXTENSION_ACTIONS: ReadonlySet<string> = new Set(['help', 'list', 'validate_package', 'diagnose_plugin_mcp']);
 
 export const EXTENSION_VARIANTS: ActionVariant<'list' | 'validate_package' | 'diagnose_plugin_mcp'>[] = [{
     action: 'list',

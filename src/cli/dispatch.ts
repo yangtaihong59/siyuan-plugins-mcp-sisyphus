@@ -18,6 +18,7 @@ import { extractPaginationInfo, renderCliError, renderToolResult } from './rende
 import { loadCliRuntimeState } from './runtime';
 import { callCliWriteCoordinator } from './write-coordinator';
 import { getActionSafetyPolicy } from '../core/write-safety-policy';
+import { requiresCoordinatedWrite } from '../core/tool-call-gate';
 import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
 
 import type { ToolResult } from '../tools/internal/shared';
@@ -96,13 +97,13 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
                 officialMcpRuntime,
             );
             if (!handlesInterrupt && writeCoordinator?.owner === 'kernel'
-                && (isKernelExport(tool, payload) || (policy.mode === 'mutation' && (toolConfig.writeSafety.strictMode || (category === 'av' && normalizedAction === 'create'))))) {
+                && (isKernelExport(tool, payload) || requiresCoordinatedWrite(policy, toolConfig, category, normalizedAction))) {
                 process.on('SIGINT', interrupt);
                 handlesInterrupt = true;
             }
             const invoke = writeCoordinator?.owner === 'kernel' && isKernelExport(tool, payload)
                 ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
-                : policy.mode === 'mutation' && (toolConfig.writeSafety.strictMode || (category === 'av' && normalizedAction === 'create'))
+                : requiresCoordinatedWrite(policy, toolConfig, category, normalizedAction)
                 ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
                 : toolConfig.writeSafety.strictMode && policy.mode === 'external'
                     ? () => new WriteSafetyCoordinator(client).run({

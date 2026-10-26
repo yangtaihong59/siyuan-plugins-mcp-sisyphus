@@ -22,7 +22,7 @@ process.env.SIYUAN_MCP_TRANSPORT = 'kernel';
 import { KernelSiYuanClient } from './client';
 import { PermissionManager } from '../core/permissions';
 import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
-import { buildDefaultToolConfig, normalizeToolConfig, isDangerousAction } from '../core/config';
+import { buildDefaultToolConfig, normalizeToolConfig } from '../core/config';
 import { runToolCall } from '../core/tool-lifecycle';
 import { translateError } from '../tools/internal/errorTranslation';
 import type { ToolResult } from '../tools/internal/shared';
@@ -32,13 +32,13 @@ import { normalizeActionAlias } from '../core/action-aliases';
 import { normalizeToolArguments } from '../core/argument-aliases';
 import { buildServerInstructions } from '../core/server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../core/mcp-initial-cost';
+import { isActionEnabled, requiresDangerConfirmation, resolveToolCallTarget } from '../core/tool-call-gate';
 import { kernelOfficialRuntime } from './official-mcp';
 import { getExposedExtensionTools } from '../tools/extension';
 import {
     MCP_APPS_EXTENSION_ID, MCP_APP_MIME_TYPE, supportsMcpApps, decorateToolsWithMcpApps, listMcpAppResources, readMcpAppResource,
     compactMcpAppToolResult, callFlashcardReviewSessionTool, callTimelineAppTool, callMascotShopAppTool,
     FLASHCARD_REVIEW_SESSION_TOOL_NAME, TIMELINE_APP_TOOL_NAME, MASCOT_SHOP_APP_TOOL_NAME,
-    FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME, TIMELINE_APP_ACTION_TOOL_NAME, MASCOT_SHOP_APP_ACTION_TOOL_NAME,
 } from '../core/mcp-apps';
 import {
     kernelGetPrompt,
@@ -186,21 +186,16 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
             return toolResultToMcp(result);
         });
     }
-    const appActionCategory = name === TIMELINE_APP_ACTION_TOOL_NAME ? 'timeline'
-        : name === FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME ? 'flashcard'
-        : name === MASCOT_SHOP_APP_ACTION_TOOL_NAME ? 'mascot' : undefined;
-    const category = appActionCategory ?? resolveCategory(name);
-    if (!category) return toolResultToMcp(errorResult('unknown_tool', `Unknown tool '${name}'`));
+    const target = resolveToolCallTarget(name, cfg);
+    if (!target) return toolResultToMcp(errorResult('unknown_tool', `Unknown tool '${name}'`));
+    const { category, actionConfig } = target;
     const args = normalizeToolArguments(category, {
         ...input,
         action: category === 'extension' ? input.action : normalizeActionAlias(category, typeof input.action === 'string' ? input.action : ''),
     });
     const action = String(args.action ?? '');
-    const actionConfig = appActionCategory === 'timeline' ? cfg.mcpApps.timeline
-        : appActionCategory === 'flashcard' ? cfg.mcpApps.flashcardReview
-        : appActionCategory === 'mascot' ? cfg.mcpApps.mascotShop : cfg[category];
     if (!actionConfig.enabled) return toolResultToMcp(errorResult('tool_disabled', `${name} is disabled.`));
-    if (action !== 'help' && (category !== 'extension' || Object.prototype.hasOwnProperty.call(actionConfig.actions, action)) && !actionConfig.actions[action]) {
+    if (!isActionEnabled(target, action)) {
         return toolResultToMcp(errorResult('action_disabled', `${name}.${action} is disabled or unknown.`));
     }
     if (category === 'file' && action === 'upload_asset' && !args.uploadSource) {
@@ -211,9 +206,7 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     const extensionTool = category === 'extension'
         ? getExposedExtensionTools(cfg.extension, kernelOfficialRuntime).find(t => t.name === action)
         : undefined;
-    const needsConfirmation = category === 'extension'
-        ? extensionTool !== undefined && !extensionTool.readOnlyHint
-        : isDangerousAction(category, action);
+    const needsConfirmation = requiresDangerConfirmation(category, action, extensionTool);
     if (needsConfirmation && args.validateOnly !== true && modern) {
         const challenge = confirmations.check(modern, name, args);
         if (challenge) return challenge;
