@@ -433,11 +433,11 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 - **core 承载工具业务**：`write-safety-coordinator.ts`（AV 校验约千行）、`core/types.ts`（全部工具 schema）、`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`。
 - **依赖方向**：`core/server.ts` 依赖 `cli/write-coordinator`、`cli/kernel-file-transfer`；`shared/timeline-service.ts` 依赖 `ui/version-control`。
 - **哈希实现**：`sha256:v1:` 有 3 条实现（`write-safety-hash`、`canonical-state`、`markdown-snapshot`），运行时约束与规范化输入不同，且值会被持久化/比对，暂不合并。
-- **av/handlers.ts**：写入收尾序列重复十余次，可提取公共提交函数。
 
 ### 已收敛的约定（勿回退）
 
 - 路径与 SQL 小工具统一放在 `src/shared/`：`siyuan-path.ts`（`stripSySuffix` / `normalizeFsPath`）、`sql.ts`（`escapeSqlString`）。不要在模块内再写本地副本。
+- `av/handlers.ts` 的写入用 `dispatchAvTransaction`（载体解析 + `updated` 戳 + 派发）与 `avWriteSuccess`（刷新目标 + 成功结果）；仅当操作体本身要引用载体 ID 时才手写 `withUpdatedOperation`。
 - AV 载体块判定统一用 `shared/av-carrier-dom.ts` 的 `isExactAvCarrierDom`（要求块自身开标签上同时有 `data-node-id`、`data-type="NodeAttributeView"`、`data-av-id`）；不要用 `dom.includes(...)` 粗判。
 - 工具层只依赖 `SiYuanClient` **接口**（`api/client.ts`）；HTTP 实现为 `HttpSiYuanClient`，内核实现为 `KernelSiYuanClient`。不要在生产代码里探测 `request` 等废弃方法，测试替身用 `tests/helpers/mock-client.ts`。
 - renderer（UI）不得 import `tool-registry` 或任何工具实现；MCP 初始成本由 server/kernel 在 tools/list 时写入 `mcp-initial-cost.json`，UI 只读取。

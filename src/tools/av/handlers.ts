@@ -1663,6 +1663,38 @@ function withUpdatedOperation(
     };
 }
 
+/**
+ * Dispatch AV operations as one native transaction that also stamps the
+ * carrier block's `updated`. `undoOperations` run before the stamp restore.
+ */
+async function dispatchAvTransaction(
+    client: SiYuanClient,
+    avID: string,
+    avData: unknown,
+    explicitBlockID: string | undefined,
+    operations: TransactionOperation[],
+    undoOperations: TransactionOperation[] = [],
+): Promise<void> {
+    const transactionBlockID = await resolveAvTransactionBlockId(client, avID, avData, explicitBlockID);
+    const updatedOps = withUpdatedOperation(operations, transactionBlockID);
+    await transactionApi.performTransactions(client, [{
+        doOperations: updatedOps.doOperations,
+        undoOperations: [...undoOperations, ...updatedOps.undoOperations],
+    }]);
+}
+
+/** Success result plus a best-effort UI refresh of the database blocks showing this AV. */
+async function avWriteSuccess(
+    client: SiYuanClient,
+    avID: string,
+    avData: unknown,
+    explicitBlockID: string | undefined,
+    payload: Record<string, unknown>,
+): Promise<ToolResult> {
+    const refreshOperations = await resolveAvWriteRefreshOperations(client, avID, avData, explicitBlockID);
+    return applyUiRefresh(client, createWriteSuccessResult(payload), refreshOperations);
+}
+
 function buildStrongCellValue(
     columnID: string,
     rowID: string,
@@ -2445,15 +2477,14 @@ async function handleAddRows({ client, permMgr, rawArgs }: ToolHandlerContext): 
         return createAddRowsSyncTimeoutResult(parsed.avID, blockIDs, resolution, primaryKeyTexts);
     }
 
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'add_rows',
         avID: parsed.avID,
         ...(blockIDs.length > 0 ? { blockIDs } : {}),
         ...(primaryKeyTexts.length > 0 ? { primaryKeyTexts } : {}),
         rows: resolution.rows,
         added: blockIDs.length + primaryKeyTexts.length,
-    }), refreshOperations);
+    });
 }
 
 /**
@@ -2585,8 +2616,7 @@ async function handleCompositeAddRows(
         index: row.index, clientKey: row.clientKey, rowID: row.rowID, cellCount: row.cells.length, rowResolved: true,
     })) });
 
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'add_rows',
         avID: parsed.avID,
         rows: plan.rows.map((row) => ({
@@ -2599,7 +2629,7 @@ async function handleCompositeAddRows(
         added: plan.rows.length,
         cellsWritten: cells.length,
         stage: 'verified',
-    }), refreshOperations);
+    });
 }
 
 async function handleRemoveRows({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -2629,24 +2659,18 @@ async function handleRemoveRows({ client, permMgr, rawArgs }: ToolHandlerContext
         nativeSrcIDs = parsed.srcIDs!;
     }
 
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation([{
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
         action: 'removeAttrViewBlock',
         srcIDs: nativeSrcIDs,
         avID: parsed.avID,
-    }], transactionBlockID);
-    await transactionApi.performTransactions(client, [{
-        doOperations: updatedOps.doOperations,
-        undoOperations: updatedOps.undoOperations,
     }]);
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'remove_rows',
         avID: parsed.avID,
         ...(parsed.rowIDs ? { rowIDs: parsed.rowIDs } : { srcIDs: parsed.srcIDs }),
         srcIDs: nativeSrcIDs,
         removed: nativeSrcIDs.length,
-    }), refreshOperations);
+    });
 }
 
 async function handleAddColumn({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -2655,8 +2679,7 @@ async function handleAddColumn({ client, permMgr, rawArgs }: ToolHandlerContext)
     if (denied) return denied;
 
     const keyID = parsed.keyID ?? generateSiYuanNodeId();
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation([{
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
         action: 'addAttrViewCol',
         name: parsed.keyName,
         avID: parsed.avID,
@@ -2664,26 +2687,20 @@ async function handleAddColumn({ client, permMgr, rawArgs }: ToolHandlerContext)
         id: keyID,
         data: parsed.keyIcon ?? '',
         previousID: parsed.previousKeyID ?? '',
-    }], transactionBlockID);
-    await transactionApi.performTransactions(client, [{
-        doOperations: updatedOps.doOperations,
-        undoOperations: [
-            {
-                action: 'removeAttrViewCol',
-                id: keyID,
-                avID: parsed.avID,
-            },
-            ...updatedOps.undoOperations,
-        ],
-    }]);
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    }], [
+        {
+            action: 'removeAttrViewCol',
+            id: keyID,
+            avID: parsed.avID,
+        },
+    ]);
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'add_column',
         avID: parsed.avID,
         keyID,
         keyName: parsed.keyName,
         keyType: parsed.keyType,
-    }), refreshOperations);
+    });
 }
 
 async function handleRemoveColumn({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -2692,24 +2709,18 @@ async function handleRemoveColumn({ client, permMgr, rawArgs }: ToolHandlerConte
     if (denied) return denied;
     const keyID = parsed.keyID ?? parsed.columnID!;
 
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation([{
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
         action: 'removeAttrViewCol',
         id: keyID,
         avID: parsed.avID,
         removeDest: parsed.removeRelationDest ?? false,
-    }], transactionBlockID);
-    await transactionApi.performTransactions(client, [{
-        doOperations: updatedOps.doOperations,
-        undoOperations: updatedOps.undoOperations,
     }]);
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'remove_column',
         avID: parsed.avID,
         keyID,
         removeRelationDest: parsed.removeRelationDest ?? false,
-    }), refreshOperations);
+    });
 }
 
 async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -2757,26 +2768,20 @@ async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerContext):
         const validatedRowID = validateRowIdForAv(parsed.avID, 'set_cells', rowLookup, item.rowID, isSingleCellCall ? undefined : index);
         if (validatedRowID.ok === false) return validatedRowID.result;
         if (isSingleCellCall) {
-            const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-            const updatedOps = withUpdatedOperation([{
+            await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
                 action: 'updateAttrViewCell',
                 avID: parsed.avID,
                 keyID: item.columnID,
                 rowID: validatedRowID.rowID,
                 data: buildStrongCellValue(item.columnID, validatedRowID.rowID, item),
-            }], transactionBlockID);
-            await transactionApi.performTransactions(client, [{
-                doOperations: updatedOps.doOperations,
-                undoOperations: updatedOps.undoOperations,
             }]);
-            const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-            return applyUiRefresh(client, createWriteSuccessResult({
+            return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
                 action: 'set_cells',
                 avID: parsed.avID,
                 rowID: item.rowID,
                 columnID: item.columnID,
                 valueType: item.valueType,
-            }), refreshOperations);
+            });
         }
         values.push({
             action: 'updateAttrViewCell',
@@ -2786,19 +2791,13 @@ async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerContext):
             data: buildStrongCellValue(item.columnID, validatedRowID.rowID, item),
         });
     }
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation(values, transactionBlockID);
-    await transactionApi.performTransactions(client, [{
-        doOperations: updatedOps.doOperations,
-        undoOperations: updatedOps.undoOperations,
-    }]);
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, values);
 
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'set_cells',
         avID: parsed.avID,
         updated: items.length,
-    }), refreshOperations);
+    });
 }
 
 async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -2835,7 +2834,6 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
             observedOptions: beforeOptions,
         });
     }
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     const operations: TransactionOperation[] = [
         ...(options.length > 0 ? [{
             action: 'updateAttrViewColOptions',
@@ -2850,11 +2848,7 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
             data: name,
         })),
     ];
-    const updatedOps = withUpdatedOperation(operations, transactionBlockID);
-    await transactionApi.performTransactions(client, [{
-        doOperations: updatedOps.doOperations,
-        undoOperations: updatedOps.undoOperations,
-    }]);
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, operations);
 
     // The kernel may acknowledge an options write before its derived select
     // groups have caught up. Read exactly once here to prove the requested
@@ -2885,8 +2879,7 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
         throw new Error(`Select option readback for key "${parsed.keyID}" does not match the complete requested option list.`);
     }
 
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'set_column_options',
         avID: parsed.avID,
         keyID: parsed.keyID,
@@ -2897,7 +2890,7 @@ async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolHandlerC
             observedOptions: actualOptions,
             message: 'SiYuan accepted the full option set but retained its append order for new names. No second write was sent; run a new strict preflight before an explicit reorder request.',
         } : { status: 'applied', observedOptions: actualOptions }),
-    }), refreshOperations);
+    });
 }
 
 async function handleDuplicateRows({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -2935,7 +2928,6 @@ async function handleDuplicateRows({ client, permMgr, rawArgs }: ToolHandlerCont
     );
     if (relationDestinations.denied) return relationDestinations.denied;
 
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
     let previousID = parsed.previousID ?? '';
     const createdRowIDs: string[] = [];
     const operations: TransactionOperation[] = [];
@@ -2951,18 +2943,13 @@ async function handleDuplicateRows({ client, permMgr, rawArgs }: ToolHandlerCont
         });
         previousID = rowID;
     }
-    const updatedOps = withUpdatedOperation(operations, transactionBlockID);
-    await transactionApi.performTransactions(client, [{
-        doOperations: updatedOps.doOperations,
-        undoOperations: [
-            {
-                action: 'removeAttrViewBlock',
-                avID: parsed.avID,
-                srcIDs: createdRowIDs,
-            },
-            ...updatedOps.undoOperations,
-        ],
-    }]);
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, operations, [
+        {
+            action: 'removeAttrViewBlock',
+            avID: parsed.avID,
+            srcIDs: createdRowIDs,
+        },
+    ]);
 
     // A transport error intentionally reaches the single strict coordinator:
     // it records outcome_unknown and never resends duplicateAttrViewRow. Only
@@ -2988,8 +2975,7 @@ async function handleDuplicateRows({ client, permMgr, rawArgs }: ToolHandlerCont
     );
     if (relationError) throw new Error(relationError);
 
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'duplicate_rows',
         avID: parsed.avID,
         sourceRowIDs: parsed.sourceRowIDs,
@@ -2997,7 +2983,7 @@ async function handleDuplicateRows({ client, permMgr, rawArgs }: ToolHandlerCont
         copied: createdRowIDs.length,
         relationDestinationAVIDs: relationDestinations.destinations.map((destination) => destination.avID),
         semantics: 'detached_row_copies_with_verified_source_and_two_way_relation_readback',
-    }), refreshOperations);
+    });
 }
 
 // Template, relation, and rollup writes remain separate from the scalar and
@@ -3044,14 +3030,6 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
             templatePostimageHash: writeHashPool.issue(await rawTemplateConfigHash(definition)),
         });
     }
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation([{
-        action: 'setAttrViewNewItemTemplates',
-        avID: parsed.avID,
-        blockID: parsed.blockID,
-        data: expected,
-    }], transactionBlockID);
-
     const verifyExactPostimage = async (): Promise<{ definition: AttributeViewDefinition; config: { templates: Record<string, unknown>[]; defaultTemplateID: string } }> => {
         const after = await readTemplateConfig(client, parsed.avID, 'set_new_item_templates readback');
         if (await templateConfigHash(after.config) !== await templateConfigHash(expected)) {
@@ -3060,30 +3038,26 @@ async function handleSetNewItemTemplates({ client, permMgr, rawArgs }: ToolHandl
         return after;
     };
 
-    try {
-        await transactionApi.performTransactions(client, [{
-            doOperations: updatedOps.doOperations,
-            // A complete replacement may cross a concurrent template edit. The
-            // strict preflight protects its preimage; do not fabricate a lossy
-            // undo operation that could erase another template field.
-            undoOperations: updatedOps.undoOperations,
-        }]);
-    } catch (error) {
-        // A matching readback cannot prove this request wrote it: another
-        // actor may have installed the postimage before dispatch. No native
-        // request marker survives here, so strict mode must record unknown.
-        throw error;
-    }
+    // A complete replacement may cross a concurrent template edit. The strict
+    // preflight protects its preimage; do not fabricate a lossy undo operation
+    // that could erase another template field. A lost response must propagate:
+    // a matching readback cannot prove this request wrote it, so strict mode
+    // records outcome_unknown.
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
+        action: 'setAttrViewNewItemTemplates',
+        avID: parsed.avID,
+        blockID: parsed.blockID,
+        data: expected,
+    }]);
     const after = await verifyExactPostimage();
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'set_new_item_templates',
         avID: parsed.avID,
         templateCount: expected.templates.length,
         defaultTemplateID: expected.defaultTemplateID,
         templatePreimageHash: writeHashPool.issue(await rawTemplateConfigHash(definition)),
         templatePostimageHash: writeHashPool.issue(await rawTemplateConfigHash(after.definition)),
-    }), refreshOperations);
+    });
 }
 
 async function templateConfigHash(config: { templates: Record<string, unknown>[]; defaultTemplateID: string }): Promise<string> {
@@ -3204,8 +3178,7 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
         value: relationCellValue(parsed.relatedItemIDs),
     });
     const after = await verifyExactPostimage();
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'set_relation', avID: parsed.avID, keyID: parsed.keyID, itemID: parsed.itemID,
         destinationAvID: target.destinationAvID, relatedItemIDs: parsed.relatedItemIDs,
         cleared: parsed.relatedItemIDs.length === 0,
@@ -3214,7 +3187,7 @@ async function handleSetRelation({ client, permMgr, rawArgs }: ToolHandlerContex
         destinationPreimageHash: writeHashPool.issue(await hashCanonicalState(target.destination)),
         destinationPostimageHash: writeHashPool.issue(await hashCanonicalState(after.destination)),
         ...(target.backKeyID ? { backRelationKeyID: target.backKeyID, reverseReadback: 'verified' } : {}),
-    }), refreshOperations);
+    });
 }
 
 async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
@@ -3271,33 +3244,26 @@ async function handleConfigureTwoWayRelation({ client, permMgr, rawArgs }: ToolH
             ...(sourceRelation?.avID ? { priorDestinationAvID: sourceRelation.avID } : {}),
         });
     }
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation([{
-        action: 'updateAttrViewColRelation', avID: parsed.avID, keyID: parsed.keyID, id: parsed.destinationAvID,
-        backRelationKeyID: parsed.backRelationKeyID, isTwoWay: true,
-        name: parsed.destinationName, format: parsed.sourceName,
-    }], transactionBlockID);
     const verifyExactPostimage = async (): Promise<{ source: AttributeViewDefinition; destination: AttributeViewDefinition }> => {
         const actualSource = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.avID)).av, parsed.avID);
         const actualDestination = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.destinationAvID)).av, parsed.destinationAvID);
         verifyTwoWayRelationMetadata(actualSource, actualDestination, expected, 'configure_two_way_relation readback');
         return { source: actualSource, destination: actualDestination };
     };
-    try {
-        await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
-    } catch (error) {
-        // Exact source/destination state is not a request-specific marker.
-        // Preserve a lost response so the strict coordinator fails closed.
-        throw error;
-    }
+    // Exact source/destination state is not a request-specific marker. A lost
+    // response must propagate so the strict coordinator fails closed.
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
+        action: 'updateAttrViewColRelation', avID: parsed.avID, keyID: parsed.keyID, id: parsed.destinationAvID,
+        backRelationKeyID: parsed.backRelationKeyID, isTwoWay: true,
+        name: parsed.destinationName, format: parsed.sourceName,
+    }]);
     const after = await verifyExactPostimage();
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'configure_two_way_relation', ...expected,
         sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(source)), sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(after.source)),
         destinationPreimageHash: writeHashPool.issue(await hashCanonicalState(destination)), destinationPostimageHash: writeHashPool.issue(await hashCanonicalState(after.destination)),
         ...(sourceRelation?.avID ? { priorDestinationAvID: sourceRelation.avID } : {}),
-    }), refreshOperations);
+    });
 }
 
 function getRelationMetadata(key: AvKeyDefinition, context: string): Record<string, unknown> {
@@ -3384,31 +3350,24 @@ async function handleConfigureRollup({ client, permMgr, rawArgs }: ToolHandlerCo
         });
     }
 
-    const transactionBlockID = await resolveAvTransactionBlockId(client, parsed.avID, avData, parsed.blockID);
-    const updatedOps = withUpdatedOperation([{
-        action: 'updateAttrViewColRollup', id: parsed.keyID, avID: parsed.avID,
-        parentID: parsed.relationKeyID, keyID: parsed.destinationKeyID, data: { calc: parsed.calc },
-    }], transactionBlockID);
     const verifyExactPostimage = async (): Promise<AttributeViewDefinition> => {
         const actual = asAttributeViewDefinition((await avApi.getAttributeView(client, parsed.avID)).av, parsed.avID);
         await verifyRollupMetadata(actual, parsed.keyID, parsed.relationKeyID, parsed.destinationKeyID, parsed.calc, 'configure_rollup readback');
         return actual;
     };
-    try {
-        await transactionApi.performTransactions(client, [{ doOperations: updatedOps.doOperations, undoOperations: updatedOps.undoOperations }]);
-    } catch (error) {
-        // The native rollup definition has no request identity. It may equal
-        // the postimage before this call, so a transport error stays unknown.
-        throw error;
-    }
+    // The native rollup definition has no request identity. It may equal the
+    // postimage before this call, so a transport error must stay unknown.
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
+        action: 'updateAttrViewColRollup', id: parsed.keyID, avID: parsed.avID,
+        parentID: parsed.relationKeyID, keyID: parsed.destinationKeyID, data: { calc: parsed.calc },
+    }]);
     const after = await verifyExactPostimage();
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
         action: 'configure_rollup', avID: parsed.avID, keyID: parsed.keyID, relationKeyID: parsed.relationKeyID,
         destinationAvID: relationDestinationAvID!, destinationKeyID: parsed.destinationKeyID, calc: parsed.calc,
         sourcePreimageHash: writeHashPool.issue(await hashCanonicalState(source)), sourcePostimageHash: writeHashPool.issue(await hashCanonicalState(after)),
         nativeFilterSideEffect: 'filters referencing this rollup key may be removed by SiYuan',
-    }), refreshOperations);
+    });
 }
 
 async function verifyRollupMetadata(
@@ -3518,13 +3477,12 @@ async function handleCreateFromTemplate({ client, permMgr, rawArgs }: ToolHandle
         const hPath = await documentApi.getHPathByID(client, response.blockID);
         if (!hPath || (response.content && !hPath.endsWith(`/${response.content}`))) throw new Error('create_from_template readback: returned document content did not match its persisted document path.');
     }
-    const refreshOperations = await resolveAvWriteRefreshOperations(client, parsed.avID, sourcePermission.avData, parsed.blockID);
-    return applyUiRefresh(client, createWriteSuccessResult({
+    return avWriteSuccess(client, parsed.avID, sourcePermission.avData, parsed.blockID, {
         action: 'create_from_template', avID: parsed.avID, templateID: parsed.templateID, itemID: response.itemID,
         blockID: response.blockID, isDetached: response.isDetached, content: response.content, fieldReadback: 'verified',
         ...(relationTargets.size > 0 ? { relationReadback: 'verified' } : {}),
         ...(response.warnings && response.warnings.length > 0 ? { warnings: response.warnings } : {}),
-    }), refreshOperations);
+    });
 }
 
 function getCellValueForItem(definition: AttributeViewDefinition, keyID: string, itemID: string, context: string): Record<string, unknown> {
