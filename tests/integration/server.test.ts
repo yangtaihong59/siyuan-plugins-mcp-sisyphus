@@ -406,7 +406,7 @@ describe('MCP Server Integration', () => {
                 arguments: { action: 'create_node', name: 'hidden', scope: 'global' },
             });
             expect(hiddenCall.isError).toBe(true);
-            expect(hiddenCall.content.find((item) => item.type === 'text')?.text).toContain('Unknown tool');
+            expect(JSON.parse(hiddenCall.content.find((item) => item.type === 'text')?.text ?? '{}').error.type).toBe('unknown_tool');
         });
 
         it('loads tool config from SiYuan API in standalone mode', async () => {
@@ -719,7 +719,11 @@ describe('MCP Server Integration', () => {
                 arguments: { action: 'get_doc', id: 'doc-1' },
             });
             expect(result.isError).toBe(true);
-            expect((result.content[0] as { text: string }).text).toContain('Tool "document" is disabled.');
+            expect(JSON.parse((result.content[0] as { text: string }).text).error).toMatchObject({
+                type: 'tool_disabled',
+                tool: 'document',
+                message: 'Tool "document" is disabled.',
+            });
         });
 
         it('sends user custom rules once at initialize without repeating them per tool', async () => {

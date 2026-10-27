@@ -37,9 +37,8 @@ src/
 │   ├── internal/             # Shared infrastructure for the tool layer
 │   │   ├── types.ts          # Shared types for the tool layer
 │   │   ├── define-tool.ts    # Tool factory
-│   │   ├── shared.ts         # Shared infrastructure
+│   │   ├── shared.ts         # Shared infrastructure, result and error builders
 │   │   ├── schema-analyzer.ts# Schema analysis & description trimming
-│   │   ├── result-factory.ts # Standard result factory (JSON / paginated / error)
 │   │   ├── pagination.ts     # Pagination utilities
 │   │   ├── context.ts        # Permission context resolution
 │   │   ├── errorTranslation.ts # SiYuan error code → user-friendly text

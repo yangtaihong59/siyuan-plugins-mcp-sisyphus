@@ -432,12 +432,13 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 以下问题已确认、尚未重构；改动相关代码时优先顺手收敛，不要再新增同类重复：
 
-- **调用前置的响应格式不一致**：判定逻辑已统一到 `core/tool-call-gate.ts`，但 server 对未知/禁用工具返回纯文本，kernel 返回 `{error:{code}}` JSON；统一前需评估客户端兼容性。
+- **旧客户端的危险动作确认**：不支持 MRTR 确认的旧客户端，server 只靠指令层提示确认、不拦截执行；kernel 要求 `confirm=true` 否则拒绝。收紧 server 会破坏旧客户端，待决定。
 - **core 与 tools 互相引用**：工具依赖 `core/config`、`core/permissions` 等基础模块，而 `core` 的注册表与写协调器又依赖工具层。彻底解环需把 core 拆成“基础层”与“装配层”，改动面大，暂缓；工具与协调器共用的业务契约（如 `tools/av/add-rows-plan.ts`、`tools/document/batch-rename-plan.ts`）放在对应工具目录。
 - **哈希实现**：`sha256:v1:` 有 3 条实现（`write-safety-hash`、`canonical-state`、`markdown-snapshot`），运行时约束与规范化输入不同，且值会被持久化/比对，暂不合并。
 
 ### 已收敛的约定（勿回退）
 
+- tools/call 前置错误统一用 `tools/internal/shared.ts` 的 `createUnknownToolResult` / `createDisabledToolResult` / `createDisabledActionResult`；执行中逃逸的异常用 `createErrorResult` 包成工具错误。server、kernel、CLI 不要再各写一份。
 - 依赖方向：`ui` / `cli` 可依赖 `core` / `tools` / `shared`，反之不可；`shared` 只依赖 `api` / `types`。
 - 路径与 SQL 小工具统一放在 `src/shared/`：`siyuan-path.ts`（`stripSySuffix` / `normalizeFsPath`）、`sql.ts`（`escapeSqlString`）。不要在模块内再写本地副本。
 - `av/handlers.ts` 的写入用 `dispatchAvTransaction`（载体解析 + `updated` 戳 + 派发）与 `avWriteSuccess`（刷新目标 + 成功结果）；仅当操作体本身要引用载体 ID 时才手写 `withUpdatedOperation`。

@@ -1,8 +1,11 @@
 import { isDangerousAction, type ToolCategory, type ToolConfig } from './config';
 import {
     FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME,
+    FLASHCARD_REVIEW_SESSION_TOOL_NAME,
     MASCOT_SHOP_APP_ACTION_TOOL_NAME,
+    MASCOT_SHOP_APP_TOOL_NAME,
     TIMELINE_APP_ACTION_TOOL_NAME,
+    TIMELINE_APP_TOOL_NAME,
 } from './mcp-app-names';
 import { resolveCategory } from './tool-registry';
 import { RESERVED_EXTENSION_ACTIONS } from '../tools/extension';
@@ -25,6 +28,20 @@ export interface ToolCallTarget {
     appAction?: 'timeline' | 'flashcard' | 'mascot';
     /** The switches that govern this call: the App config for App actions, else the category config. */
     actionConfig: ActionSwitches;
+}
+
+const MCP_APP_TOOL_NAMES = new Set([
+    FLASHCARD_REVIEW_SESSION_TOOL_NAME,
+    TIMELINE_APP_TOOL_NAME,
+    MASCOT_SHOP_APP_TOOL_NAME,
+    FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME,
+    TIMELINE_APP_ACTION_TOOL_NAME,
+    MASCOT_SHOP_APP_ACTION_TOOL_NAME,
+]);
+
+/** MCP App tools are only listed for App-capable clients; any other client gets unknown_tool. */
+export function isHiddenMcpAppTool(name: string, appsEnabled: boolean): boolean {
+    return !appsEnabled && MCP_APP_TOOL_NAMES.has(name);
 }
 
 export function resolveToolCallTarget(name: string, config: ToolConfig): ToolCallTarget | null {

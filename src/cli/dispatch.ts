@@ -21,7 +21,7 @@ import { getActionSafetyPolicy } from '../core/write-safety-policy';
 import { requiresCoordinatedWrite } from '../core/tool-call-gate';
 import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
 
-import type { ToolResult } from '../tools/internal/shared';
+import { createDisabledToolResult, type ToolResult } from '../tools/internal/shared';
 
 export async function runDispatch(cli: ParsedArgs): Promise<number> {
     const { tool, action, rest } = cli;
@@ -51,10 +51,7 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
     try {
         const { client, toolConfig, permMgr, officialMcpRuntime, writeCoordinator } = await loadCliRuntimeState(cli);
         if (!toolConfig[category].enabled) {
-            return renderToolResult({
-                content: [{ type: 'text', text: `Tool "${tool}" is disabled.` }],
-                isError: true,
-            }, { json: cli.json, debug: cli.debug });
+            return renderToolResult(createDisabledToolResult(tool), { json: cli.json, debug: cli.debug });
         }
 
         const module = TOOL_REGISTRY[category];

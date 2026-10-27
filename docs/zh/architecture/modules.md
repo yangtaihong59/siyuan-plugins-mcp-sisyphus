@@ -39,7 +39,6 @@ src/
 │   │   ├── define-tool.ts    # 工具工厂
 │   │   ├── shared.ts         # 共享基础设施
 │   │   ├── schema-analyzer.ts# schema 分析与描述裁剪
-│   │   ├── result-factory.ts # 标准结果工厂
 │   │   ├── pagination.ts     # 分页工具
 │   │   ├── context.ts        # 权限上下文解析
 │   │   ├── errorTranslation.ts # 思源错误码 → 用户友好文案

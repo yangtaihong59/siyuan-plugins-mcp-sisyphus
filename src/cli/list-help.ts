@@ -20,6 +20,7 @@ import {
     writeSection,
 } from './render';
 import { loadCliRuntimeState } from './runtime';
+import { createDisabledToolResult } from '../tools/internal/shared';
 
 export async function runList(cli: ParsedArgs): Promise<number> {
     const out = process.stdout;
@@ -99,10 +100,7 @@ export async function runHelp(cli: ParsedArgs): Promise<number> {
     try {
         const { client, toolConfig, permMgr, officialMcpRuntime } = await loadCliRuntimeState(cli, { loadPermissions: false });
         if (!toolConfig[category].enabled) {
-            return renderToolResult({
-                content: [{ type: 'text', text: `Tool "${tool}" is disabled.` }],
-                isError: true,
-            }, { json: cli.json, debug: cli.debug });
+            return renderToolResult(createDisabledToolResult(tool), { json: cli.json, debug: cli.debug });
         }
 
         const module = TOOL_REGISTRY[category];

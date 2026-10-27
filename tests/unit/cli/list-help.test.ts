@@ -236,7 +236,7 @@ describe('cli/list-help', () => {
 
         expect(code).toBe(1);
         expect(callToolSpy).not.toHaveBeenCalled();
-        expect(io.stdout).toContain('Tool "notebook" is disabled.');
+        expect(io.stderr).toContain('[tool_disabled] Tool "notebook" is disabled.');
         io.restore();
     });
 

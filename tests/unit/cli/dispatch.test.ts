@@ -497,7 +497,7 @@ describe('cli/dispatch', () => {
 
         expect(code).toBe(1);
         expect(callToolSpy).not.toHaveBeenCalled();
-        expect(io.stdout).toContain('Tool "mascot" is disabled.');
+        expect(io.stderr).toContain('[tool_disabled] Tool "mascot" is disabled.');
         io.restore();
     });
 

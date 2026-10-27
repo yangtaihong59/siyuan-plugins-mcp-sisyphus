@@ -51,7 +51,7 @@ Step 1: Parse tool name
     resolveCategory("notebook") → "notebook"
     getToolConfig() → config
     If config.notebook.enabled === false
-        → Return "Tool \"notebook\" is disabled."
+        → Return { error: { type: "tool_disabled", tool: "notebook", ... } }
 
 Step 2: Lifecycle wrapping
     runToolCall(ctx, handler)

@@ -1,10 +1,13 @@
 import { usesBakedActionSchemas } from '../../core/action-schema-runtime';
 import { renderAiLayoutGuide } from '../../core/ai-layout-guide';
-import { z, ZodError, type ZodIssue } from 'zod';
+import { z, ZodError } from 'zod';
 
 import { getEnabledActions, isDangerousAction, type CategoryToolConfig, type ToolCategory } from '../../core/config';
-import { getActionHint } from '../../core/help';
 import { translateError } from './errorTranslation';
+import type { ActionVariant, AggregatedToolOptions, JsonSchema, PaginatedPayload, ToolErrorContext, ToolResult } from './types';
+import { formatZodIssues, getValidationMessage, includeDebugDetails, isApiError, resolveHint } from './validation';
+export { applyTruncation, paginate } from './pagination';
+export type { ToolTextContent, ToolImageContent, ToolContent, ToolResult, JsonSchema, ActionVariant, AggregatedToolOptions, TruncationMeta, PaginationResult, PaginatedPayload } from './types';
 import { buildActionHelp, buildActionSignatures, buildHelpIndex } from './help-render';
 import {
     getSchemaProperties,
@@ -13,59 +16,9 @@ import {
     normalizeJsonSchema,
 } from './schema-analyzer';
 
-export interface ToolTextContent {
-    type: 'text';
-    text: string;
-    data?: undefined;
-    mimeType?: undefined;
-}
-
-export interface ToolImageContent {
-    type: 'image';
-    data: string;
-    mimeType: string;
-    text?: undefined;
-    _meta?: Record<string, unknown>;
-}
-
-export type ToolContent = ToolTextContent | ToolImageContent;
-
-export interface ToolResult {
-    _meta?: Record<string, unknown>;
-    content: ToolContent[];
-    isError?: boolean;
-    structuredContent?: Record<string, unknown>;
-}
-
-export type JsonSchema = Record<string, any>;
-
-export interface ActionVariant<Action extends string> {
-    action: Action;
-    schema: JsonSchema;
-    validate?: (args: Record<string, unknown>) => void;
-}
-
 export const ACTION_SCHEMA_BRANCHES_KEY = 'x-sisyphus-actionSchemas';
 
 export { getSchemaProperties, getSchemaRequired, normalizeJsonSchema };
-
-export interface AggregatedToolOptions<Action extends string> {
-    guidance?: string[];
-    actionHints?: Partial<Record<Action, string>>;
-    propertyDescriptionOverrides?: Record<string, string>;
-}
-
-interface ToolErrorContext {
-    tool?: string;
-    action?: string;
-    rawArgs?: Record<string, unknown>;
-    hint?: string;
-}
-
-interface ToolFieldError {
-    path: string;
-    message: string;
-}
 
 export function createActionSchema(
     action: string,
@@ -230,83 +183,11 @@ function buildHelpActionSchema(enabledActions: string[]): JsonSchema {
     };
 }
 
-function formatIssuePath(path: PropertyKey[]): string {
-    return path
-        .map((segment) => typeof segment === 'number' ? `[${segment}]` : String(segment))
-        .join('.')
-        .replace(/\.\[/g, '[');
-}
-
-function getValueAtPath(value: unknown, path: PropertyKey[]): unknown {
-    let current = value;
-    for (const segment of path) {
-        if (current === null || current === undefined) return undefined;
-        if (typeof segment === 'number') {
-            if (!Array.isArray(current)) return undefined;
-            current = current[segment];
-            continue;
-        }
-        if (typeof current !== 'object') return undefined;
-        current = (current as Record<string, unknown>)[String(segment)];
-    }
-    return current;
-}
-
-function formatIssueMessage(issue: ZodIssue, rawArgs?: Record<string, unknown>): string {
-    const path = formatIssuePath(issue.path);
-    const valueAtPath = path ? getValueAtPath(rawArgs, issue.path) : undefined;
-
-    if (issue.code === 'invalid_type') {
-        if (valueAtPath === undefined && path) {
-            return `${path} is required.`;
-        }
-        return path ? `${path} has an invalid type.` : 'Invalid input type.';
-    }
-
-    if (issue.code === 'unrecognized_keys' && 'keys' in issue && Array.isArray(issue.keys)) {
-        return `Unexpected field(s): ${issue.keys.join(', ')}.`;
-    }
-
-    if (issue.message && issue.message !== 'Invalid input') {
-        return issue.message;
-    }
-
-    return path ? `Invalid value for ${path}.` : 'Invalid input.';
-}
-
-function formatZodIssues(error: ZodError, rawArgs?: Record<string, unknown>): ToolFieldError[] {
-    return error.issues.map((issue) => ({
-        path: formatIssuePath(issue.path),
-        message: formatIssueMessage(issue, rawArgs),
-    }));
-}
-
-function getValidationMessage(tool?: string, action?: string): string {
-    if (tool && action) return `Invalid arguments for ${tool}(action="${action}").`;
-    if (tool) return `Invalid arguments for tool "${tool}".`;
-    return 'Invalid arguments.';
-}
-
-function resolveHint(context?: ToolErrorContext): string | undefined {
-    return context?.hint ?? getActionHint(context?.tool, context?.action);
-}
-
 function toErrorText(payload: Record<string, unknown>, isError = true): ToolResult {
     return {
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
         isError,
     };
-}
-
-function isApiError(error: Error): boolean {
-    return error.name === 'SiYuanError'
-        || error.message.startsWith('SiYuan API error:')
-        || error.message.startsWith('HTTP error:')
-        || error.message.startsWith('Request timeout');
-}
-
-function includeDebugDetails(): boolean {
-    return process.env.SIYUAN_MCP_DEBUG_ERRORS === '1';
 }
 
 /**
@@ -447,68 +328,6 @@ export function tryHandleHelpAction<Action extends string>(
     return createJsonResult(buildHelpIndex(category, enabledActions, enabledVariants));
 }
 
-export interface TruncationMeta {
-    truncated: boolean;
-    showing: number;
-    total: number;
-    hint: string;
-}
-
-export function applyTruncation<T>(
-    items: T[],
-    limit: number,
-    hint: string,
-): { items: T[]; meta?: TruncationMeta } {
-    if (items.length <= limit) return { items };
-    return {
-        items: items.slice(0, limit),
-        meta: {
-            truncated: true,
-            showing: limit,
-            total: items.length,
-            hint,
-        },
-    };
-}
-
-export interface PaginationResult<T> {
-    items: T[];
-    total: number;
-    page: number;
-    pageSize: number;
-    pageCount: number;
-    showing: number;
-    truncated: boolean;
-    hasNextPage: boolean;
-}
-
-export function paginate<T>(items: T[], page: number, pageSize: number): PaginationResult<T> {
-    const total = items.length;
-    const pageCount = Math.max(1, Math.ceil(total / pageSize));
-    const normalizedPage = Math.min(page, pageCount);
-    const start = (normalizedPage - 1) * pageSize;
-    const paged = items.slice(start, start + pageSize);
-    return {
-        items: paged,
-        total,
-        page: normalizedPage,
-        pageSize,
-        pageCount,
-        showing: paged.length,
-        truncated: pageCount > 1,
-        hasNextPage: normalizedPage < pageCount,
-    };
-}
-
-export interface PaginatedPayload<T> {
-    data: T[];
-    total: number | null;
-    page: number;
-    pageSize: number;
-    pageCount: number;
-    hasNextPage: boolean;
-}
-
 /**
  * Build the standard `{ data, total, page, pageSize, pageCount, hasNextPage }` shape
  * used by every list-style action. `extras` are merged at the top level (e.g. avID,
@@ -613,14 +432,46 @@ export function createPermissionDeniedResult(notebookId: string, currentPerm: st
     });
 }
 
-export function createDisabledActionResult(name: ToolCategory, action: string): ToolResult {
+const ENABLE_IN_SETTINGS_HINT = 'Enable it in Settings -> Plugins -> SiYuan MCP sisyphus, or call listTools() again to inspect the currently enabled tools and actions.';
+
+/*
+ * tools/call gate errors. The Node server, kernel endpoint and CLI all return
+ * these exact shapes, so clients can branch on error.type regardless of transport.
+ */
+export function createUnknownToolResult(name: string): ToolResult {
+    return toErrorText({
+        error: {
+            type: 'unknown_tool',
+            message: `Unknown tool "${name}".`,
+            tool: name,
+            hint: 'Call listTools() to see the tools currently exposed by this server.',
+        },
+    });
+}
+
+export function createDisabledToolResult(name: string): ToolResult {
+    return toErrorText({
+        error: {
+            type: 'tool_disabled',
+            message: `Tool "${name}" is disabled.`,
+            tool: name,
+            hint: ENABLE_IN_SETTINGS_HINT,
+        },
+    });
+}
+
+export function createDisabledActionResult(
+    name: string,
+    action: string,
+    message = `Action "${action}" is disabled for tool "${name}".`,
+): ToolResult {
     return toErrorText({
         error: {
             type: 'action_disabled',
-            message: `Action "${action}" is disabled for tool "${name}".`,
+            message,
             tool: name,
             action,
-            hint: 'Enable the action in Settings -> Plugins -> SiYuan MCP sisyphus, or call listTools() again to inspect the currently enabled actions.',
+            hint: ENABLE_IN_SETTINGS_HINT,
         },
     });
 }

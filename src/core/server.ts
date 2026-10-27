@@ -2,13 +2,13 @@ import { supportsFormElicitation } from '../shared/mcp-capabilities';
 import { withStructuredContent } from './structured-result';
 import { isKernelExport } from './kernel-file-transfer';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
-import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server, type CallToolResult, type Tool } from '@modelcontextprotocol/server';
+import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server, type Tool } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
 import { buildServerInstructions } from './server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from './mcp-initial-cost';
-import { isActionEnabled, requiresCoordinatedWrite, requiresDangerConfirmation, resolveToolCallTarget } from './tool-call-gate';
+import { isActionEnabled, isHiddenMcpAppTool, requiresCoordinatedWrite, requiresDangerConfirmation, resolveToolCallTarget } from './tool-call-gate';
 
 import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
 import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
@@ -27,22 +27,19 @@ import {
     compactMcpAppToolResult,
     decorateToolsWithMcpApps,
     FLASHCARD_REVIEW_SESSION_TOOL_NAME,
-    FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME,
     listMcpAppResources,
     MCP_APPS_EXTENSION_ID,
     MCP_APP_MIME_TYPE,
-    MASCOT_SHOP_APP_ACTION_TOOL_NAME,
     MASCOT_SHOP_APP_TOOL_NAME,
     readMcpAppResource,
     supportsMcpApps,
-    TIMELINE_APP_ACTION_TOOL_NAME,
     TIMELINE_APP_TOOL_NAME,
 } from './mcp-apps';
 import { listHelpResources, listHelpResourceTemplates, readHelpResource } from './resources';
 import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, TOOL_REGISTRY } from './tool-registry';
 import { runToolCall } from './tool-lifecycle';
 import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from './skills';
-import type { ToolResult } from '../tools/internal/shared';
+import { createDisabledActionResult, createDisabledToolResult, createErrorResult, createUnknownToolResult, type ToolResult } from '../tools/internal/shared';
 
 export { buildServerInstructions } from './server-instructions';
 
@@ -308,24 +305,14 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
 
     server.setRequestHandler('tools/call', async (request, ctx) => {
         const { name, arguments: args } = request.params;
+        const gateError = (result: ToolResult) => server.projectCallToolResult(withStructuredContent(result), GENERIC_TOOL_OUTPUT_SCHEMA);
         const action = typeof args?.action === 'string' ? args.action : 'unknown';
         const clientCapabilities = (
             ctx.mcpReq.envelope as { clientCapabilities?: Parameters<typeof supportsMcpApps>[0] } | undefined
         )?.clientCapabilities ?? server.getClientCapabilities();
         const appsEnabled = supportsMcpApps(clientCapabilities);
-        const appToolNames = new Set([
-            TIMELINE_APP_TOOL_NAME,
-            TIMELINE_APP_ACTION_TOOL_NAME,
-            FLASHCARD_REVIEW_SESSION_TOOL_NAME,
-            FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME,
-            MASCOT_SHOP_APP_TOOL_NAME,
-            MASCOT_SHOP_APP_ACTION_TOOL_NAME,
-        ]);
-        if (appToolNames.has(name) && !appsEnabled) {
-            return {
-                content: [{ type: 'text' as const, text: `Unknown tool: ${name}` }],
-                isError: true,
-            };
+        if (isHiddenMcpAppTool(name, appsEnabled)) {
+            return gateError(createUnknownToolResult(name));
         }
         if ([FLASHCARD_REVIEW_SESSION_TOOL_NAME, TIMELINE_APP_TOOL_NAME, MASCOT_SHOP_APP_TOOL_NAME].includes(name)) {
             const config = await getToolConfig();
@@ -335,13 +322,10 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                     ? config.mcpApps.timeline.enabled
                     : config.mcpApps.mascotShop.enabled;
             if (!appEnabled) {
-                return {
-                    content: [{ type: 'text' as const, text: `Tool "${name}" is disabled.` }],
-                    isError: true,
-                };
+                return gateError(createDisabledToolResult(name));
             }
             if (name === FLASHCARD_REVIEW_SESSION_TOOL_NAME && (!config.flashcard.enabled || config.flashcard.actions.list_cards !== true)) {
-                return { content: [{ type: 'text' as const, text: 'flashcard_review_session requires flashcard(action="list_cards") to be enabled for candidate selection.' }], isError: true };
+                return gateError(createDisabledActionResult('flashcard', 'list_cards', 'flashcard_review_session requires flashcard(action="list_cards") to be enabled for candidate selection.'));
             }
             try {
                 const result = name === FLASHCARD_REVIEW_SESSION_TOOL_NAME
@@ -364,39 +348,17 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         const config = await getToolConfig();
         const target = resolveToolCallTarget(name, config);
         if (!target) {
-            return {
-                content: [{ type: 'text' as const, text: `Unknown tool: ${name}` }],
-                isError: true,
-            };
+            return gateError(createUnknownToolResult(name));
         }
         const { category } = target;
         if (!target.actionConfig.enabled) {
-            return {
-                content: [{ type: 'text' as const, text: `Tool "${name}" is disabled.` }],
-                isError: true,
-            };
+            return gateError(createDisabledToolResult(name));
         }
 
         const module = TOOL_REGISTRY[category];
         const actionEnabled = isActionEnabled(target, action);
         if (action !== 'help' && !actionEnabled) {
-            const disabled = {
-                content: [{
-                    type: 'text' as const,
-                    text: JSON.stringify({
-                        error: {
-                            type: 'action_disabled',
-                            message: `Action "${action}" is disabled for tool "${name}".`,
-                            hint: 'Enable the action in Settings -> Plugins -> SiYuan MCP sisyphus, or call listTools() again to inspect the currently enabled actions.',
-                        },
-                    }, null, 2),
-                }],
-                isError: true,
-            };
-            return server.projectCallToolResult(
-                withStructuredContent(disabled),
-                GENERIC_TOOL_OUTPUT_SCHEMA,
-            );
+            return gateError(createDisabledActionResult(name, action));
         }
         const extensionTool = category === 'extension'
             ? officialMcpBridge.getTools().find((tool) => tool.name === action)
@@ -501,49 +463,57 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         const routeToRemoteCoordinator = (coordinatedMutation
             && (transportMode !== 'http' || owner === 'kernel'))
             || (owner === 'kernel' && isKernelExport(name, args ?? {}));
-        const result = await runToolCall(
-            {
-                client,
-                category,
-                name,
-                action,
-                args,
-                requestText: category === 'extension'
-                    ? JSON.stringify({ name, action })
-                    : JSON.stringify({ name, arguments: args ?? {} }),
-                slimResponses: config.debug.slimResponses,
-            },
-            async () => {
-                if (coordinatedMutation && !coordinatorSettings) {
-                    return callCliWriteCoordinator(undefined, name, args ?? {});
-                }
-                if (ownerChanged) {
-                    return { isError: true, content: [{ type: 'text', text: JSON.stringify({
-                        success: false, writeAttempted: false,
-                        error: { code: 'write_coordinator_changed', message: 'Write coordinator settings changed. Drain pending writes, restart the MCP server, and repeat preflight.' },
-                    }) }] };
-                }
-                if (routeToRemoteCoordinator) {
-                    return callCliWriteCoordinator(
-                        coordinatorSettings,
-                        name,
-                        args ?? {},
-                        client,
-                        ctx.mcpReq.signal,
-                    );
-                }
-                return writeSafetyCoordinator.run({
+        let result: ToolResult;
+        try {
+            result = await runToolCall(
+                {
                     client,
-                    permMgr,
                     category,
+                    name,
                     action,
-                    args: args ?? {},
-                    strictMode: config.writeSafety.strictMode,
-                    validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
-                    execute: (safeArgs) => module.callTool(client, safeArgs, target.actionConfig as ToolConfig[ToolCategory], permMgr, officialMcpRuntime),
-                });
-            },
-        );
+                    args,
+                    requestText: category === 'extension'
+                        ? JSON.stringify({ name, action })
+                        : JSON.stringify({ name, arguments: args ?? {} }),
+                    slimResponses: config.debug.slimResponses,
+                },
+                async () => {
+                    if (coordinatedMutation && !coordinatorSettings) {
+                        return callCliWriteCoordinator(undefined, name, args ?? {});
+                    }
+                    if (ownerChanged) {
+                        return { isError: true, content: [{ type: 'text', text: JSON.stringify({
+                            success: false, writeAttempted: false,
+                            error: { code: 'write_coordinator_changed', message: 'Write coordinator settings changed. Drain pending writes, restart the MCP server, and repeat preflight.' },
+                        }) }] };
+                    }
+                    if (routeToRemoteCoordinator) {
+                        return callCliWriteCoordinator(
+                            coordinatorSettings,
+                            name,
+                            args ?? {},
+                            client,
+                            ctx.mcpReq.signal,
+                        );
+                    }
+                    return writeSafetyCoordinator.run({
+                        client,
+                        permMgr,
+                        category,
+                        action,
+                        args: args ?? {},
+                        strictMode: config.writeSafety.strictMode,
+                        validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
+                        execute: (safeArgs) => module.callTool(client, safeArgs, target.actionConfig as ToolConfig[ToolCategory], permMgr, officialMcpRuntime),
+                    });
+                },
+            );
+        } catch (error) {
+            if (error instanceof ProtocolError) throw error;
+            // Report escaped failures as tool errors (as the kernel does) so the
+            // model sees them instead of a bare JSON-RPC error.
+            return gateError(createErrorResult(error, { tool: name, action }));
+        }
         // The low-level v2 Server leaves cross-era result projection to the
         // handler. Project the complete mixed-content result here so text,
         // image, and structured metadata stay aligned in both protocol eras.

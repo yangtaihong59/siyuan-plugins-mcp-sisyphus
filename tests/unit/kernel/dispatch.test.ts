@@ -385,6 +385,13 @@ it('rejects oversized read bodies even when the tool handler catches the budget 
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result)).toContain('read_budget_exceeded');
 });
+it('returns the shared tools/call gate error shape for unknown and hidden App tools', async () => {
+    for (const name of ['no_such_tool', 'timeline_app_action']) {
+        const result = await call(name, { action: 'create_node' });
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text).error).toMatchObject({ type: 'unknown_tool', tool: name });
+    }
+});
 it('advertises App capabilities and honors the persisted Skills switch', async () => {
     storage.set('mcpHttpSettings', JSON.stringify({ kernelEndpointEnabled: true, skillsExtensionEnabled: false }));
     const init = (await rpc('initialize')).result;

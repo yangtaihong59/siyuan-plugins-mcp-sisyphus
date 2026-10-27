@@ -51,7 +51,7 @@ Step 1: 解析工具名
     resolveCategory("notebook") → "notebook"
     getToolConfig() → config
     若 config.notebook.enabled === false
-        → 直接返回 "Tool \"notebook\" is disabled."
+        → 直接返回 { error: { type: "tool_disabled", tool: "notebook", ... } }
 
 Step 2: 生命周期包装
     runToolCall(ctx, handler)

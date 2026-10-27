@@ -9,13 +9,17 @@
 - [权限模型](./permissions.md)
 - [故障排查](../getting-started/troubleshooting.md)
 
+所有入口（Node server、内核端点、CLI）都以 `{ "error": { "type", "message", "tool"?, "action"?, "hint"? } }` 返回这些错误，客户端按 `error.type` 分支。严格写入的结果另用 `success` / `error.code` 契约，见[严格安全写入](./write-safety.md)。
+
 | 错误类型 | 含义 |
 |----------|------|
 | `validation_error` | 参数无效或缺少必填字段 |
 | `permission_denied` | 笔记本权限不允许当前操作 |
 | `api_error` | 思源 API 返回错误 |
 | `internal_error` | MCP 服务内部失败 |
-| `action_disabled` | 工具或 action 在配置中被禁用 |
+| `unknown_tool` | 工具名未暴露（含客户端不支持 MCP Apps 时的 App 工具） |
+| `tool_disabled` | 工具在配置中被禁用 |
+| `action_disabled` | action 在配置中被禁用 |
 
 ## 排查顺序
 

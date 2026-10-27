@@ -24,15 +24,14 @@ import { PermissionManager } from '../core/permissions';
 import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
 import { buildDefaultToolConfig, normalizeToolConfig } from '../core/config';
 import { runToolCall } from '../core/tool-lifecycle';
-import { translateError } from '../tools/internal/errorTranslation';
-import type { ToolResult } from '../tools/internal/shared';
+import { createDisabledActionResult, createDisabledToolResult, createErrorResult, createUnknownToolResult, type ToolResult } from '../tools/internal/shared';
 import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../core/tool-registry';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { normalizeActionAlias } from '../core/action-aliases';
 import { normalizeToolArguments } from '../core/argument-aliases';
 import { buildServerInstructions } from '../core/server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../core/mcp-initial-cost';
-import { isActionEnabled, requiresDangerConfirmation, resolveToolCallTarget } from '../core/tool-call-gate';
+import { isActionEnabled, isHiddenMcpAppTool, requiresDangerConfirmation, resolveToolCallTarget } from '../core/tool-call-gate';
 import { kernelOfficialRuntime } from './official-mcp';
 import { getExposedExtensionTools } from '../tools/extension';
 import {
@@ -168,6 +167,7 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     c.configure(options);
     const scoped = taskClient(c, scheduler, task, budget);
     const pm = new PermissionManager(scoped);
+    if (isHiddenMcpAppTool(name, appsEnabled)) return toolResultToMcp(createUnknownToolResult(name));
     const appEntries = {
         [FLASHCARD_REVIEW_SESSION_TOOL_NAME]: { config: cfg.mcpApps.flashcardReview, call: callFlashcardReviewSessionTool },
         [TIMELINE_APP_TOOL_NAME]: { config: cfg.mcpApps.timeline, call: callTimelineAppTool },
@@ -175,9 +175,9 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     };
     const appEntry = appEntries[name];
     if (appEntry) {
-        if (!appEntry.config.enabled) return toolResultToMcp(errorResult('tool_disabled', `${name} is disabled.`));
+        if (!appEntry.config.enabled) return toolResultToMcp(createDisabledToolResult(name));
         if (name === FLASHCARD_REVIEW_SESSION_TOOL_NAME && (!cfg.flashcard.enabled || !cfg.flashcard.actions.list_cards)) {
-            return toolResultToMcp(errorResult('action_disabled', 'Flashcard candidate selection is disabled.'));
+            return toolResultToMcp(createDisabledActionResult('flashcard', 'list_cards', 'flashcard_review_session requires flashcard(action="list_cards") to be enabled for candidate selection.'));
         }
         return scheduler.run(task, 'exclusive', async () => {
             await pm.load();
@@ -187,16 +187,16 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
         });
     }
     const target = resolveToolCallTarget(name, cfg);
-    if (!target) return toolResultToMcp(errorResult('unknown_tool', `Unknown tool '${name}'`));
+    if (!target) return toolResultToMcp(createUnknownToolResult(name));
     const { category, actionConfig } = target;
     const args = normalizeToolArguments(category, {
         ...input,
         action: category === 'extension' ? input.action : normalizeActionAlias(category, typeof input.action === 'string' ? input.action : ''),
     });
     const action = String(args.action ?? '');
-    if (!actionConfig.enabled) return toolResultToMcp(errorResult('tool_disabled', `${name} is disabled.`));
+    if (!actionConfig.enabled) return toolResultToMcp(createDisabledToolResult(name));
     if (!isActionEnabled(target, action)) {
-        return toolResultToMcp(errorResult('action_disabled', `${name}.${action} is disabled or unknown.`));
+        return toolResultToMcp(createDisabledActionResult(name, action));
     }
     if (category === 'file' && action === 'upload_asset' && !args.uploadSource) {
         return toolResultToMcp(errorResult('kernel_local_file_unavailable',
@@ -236,8 +236,8 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     task.readOnly = lane === 'read';
     const result = await scheduler.run(task, lane, execute).catch(error => {
         if (error instanceof KernelQueueError) throw error;
-        const translated = translateError(error instanceof Error ? error : new Error(String(error)));
-        return errorResult(translated?.code ?? 'handler_error', translated?.hint ?? String(error));
+        // Same shape as an error raised inside a tool handler on any transport.
+        return createErrorResult(error, { tool: name, action });
     });
     scheduler.checkpoint(task);
     if (task.readOnly) budget.check();
