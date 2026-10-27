@@ -273,13 +273,15 @@ describe('setting and mcp config stay behaviorally aligned', () => {
     });
 
     it('wires the permission indicator into plugin lifecycle and websocket file-tree refreshes', () => {
-        const source = readFileSync(resolve(process.cwd(), 'src/index.ts'), 'utf8');
+        const source = ['src/index.ts', 'src/ui/plugin/permission-tree-feature.ts']
+            .map((file) => readFileSync(resolve(process.cwd(), file), 'utf8'))
+            .join('\n');
 
-        expect(source).toContain('this.syncPermissionTreeFeature();');
+        expect(source).toContain('this.permissionTree.syncPermissionTreeFeature();');
         expect(source).toContain('eventBus.on("ws-main", this.handlePermissionTreeWebSocket as any)');
         expect(source).toContain('event?.detail?.cmd === "reloadFiletree"');
         expect(source).toContain('clearPermissionTreeIndicators(document)');
-        expect(source).toContain('this.disablePermissionTreeFeature();');
+        expect(source).toContain('this.permissionTree.disablePermissionTreeFeature();');
         expect(source).toContain('handlePermissionTreeBadgeClick');
         expect(source).toContain('getNextNotebookPermission(currentPermission)');
         expect(source).toContain('event.stopImmediatePropagation()');

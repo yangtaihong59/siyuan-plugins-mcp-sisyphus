@@ -257,7 +257,7 @@ describe('HTTP settings sync', () => {
         loadData.mockImplementation(async (name: string) => stored[name]);
         saveData.mockImplementation(async (name: string, value: unknown) => { stored[name] = value; });
         await plugin.onload();
-        const handler = eventBusOn.mock.calls.find(([name, fn]) => name === 'ws-main' && fn === (plugin as any).handleNewNotebookWebSocket)?.[1];
+        const handler = eventBusOn.mock.calls.find(([name, fn]) => name === 'ws-main' && fn === (plugin as any).permissionTree.handleNewNotebookWebSocket)?.[1];
         expect(handler).toBeTypeOf('function');
 
         await handler({ detail: { cmd: 'createnotebook', data: { box: { id: 'nb-new' }, existed: false } } });
@@ -1051,8 +1051,8 @@ describe('HTTP settings sync', () => {
         const snapshotDock = addDock.mock.calls.find(([options]) => options.type === SNAPSHOT_DOCK_TYPE)?.[0];
         const diffDock = addDock.mock.calls.find(([options]) => options.type === TIMELINE_DOCK_TYPE)?.[0];
         snapshotDock.init({ element: new FakeElement() });
-        (plugin as any).currentDocument = { id: 'doc-1', title: 'Doc 1' };
-        (plugin as any).updateVersionControlDocument({ id: 'doc-1', title: 'Doc 1' }, { force: true });
+        (plugin as any).versionControl.currentDocument = { id: 'doc-1', title: 'Doc 1' };
+        (plugin as any).versionControl.updateVersionControlDocument({ id: 'doc-1', title: 'Doc 1' }, { force: true });
         const selection = {
             documentId: 'doc-1',
             documentTitle: 'Doc 1',
@@ -1080,14 +1080,14 @@ describe('HTTP settings sync', () => {
         await plugin.onload();
         addDock.mock.calls[0][0].init({ element: new FakeElement() });
         addDock.mock.calls[1][0].init({ element: new FakeElement() });
-        (plugin as any).currentDocument = { id: 'doc-1', title: 'Doc 1' };
-        (plugin as any).timelineSelection = {
+        (plugin as any).versionControl.currentDocument = { id: 'doc-1', title: 'Doc 1' };
+        (plugin as any).versionControl.timelineSelection = {
             documentId: 'doc-1',
             documentTitle: 'Doc 1',
             node: { name: 'A', created: 1, snapshotId: 'snapshot-a', scope: 'document' },
         };
 
-        (plugin as any).updateVersionControlDocument({ id: 'doc-2', title: 'Doc 2' });
+        (plugin as any).versionControl.updateVersionControlDocument({ id: 'doc-2', title: 'Doc 2' });
 
         expect(diffPanelInstances[0].$set).toHaveBeenLastCalledWith(expect.objectContaining({
             currentDocumentId: 'doc-2',

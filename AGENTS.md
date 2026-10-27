@@ -132,6 +132,7 @@ siyuan-plugins-mcp-sisyphus/
 │   ├── mcp-apps/                # mcp-app target：MCP Apps 富交互页面（单文件 HTML）
 │   │
 │   ├── ui/                      # Svelte UI 与设置面板
+│   │   ├── plugin/              # 插件入口的功能控制器：版本控制、权限树（含新建笔记本授权）、宠物、反馈传输；src/index.ts 只做组装
 │   │   ├── components/          # 桌面悬浮宠物组件与行为逻辑
 │   │   ├── setting/             # 插件设置面板
 │   │   ├── version-control/     # 快照与版本对比面板（Svelte；逻辑在 shared/version-control）
@@ -439,6 +440,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 ### 已收敛的约定（勿回退）
 
 - tools/call 前置错误统一用 `tools/internal/shared.ts` 的 `createUnknownToolResult` / `createDisabledToolResult` / `createDisabledActionResult`；执行中逃逸的异常用 `createErrorResult` 包成工具错误。server、kernel、CLI 不要再各写一份。
+- 插件入口 `src/index.ts` 只负责生命周期组装与对外方法；新功能放进 `src/ui/plugin/<feature>.ts` 控制器（构造时拿到 plugin 实例），不要再往入口类里堆状态。
 - 依赖方向：`ui` / `cli` 可依赖 `core` / `tools` / `shared`，反之不可；`shared` 只依赖 `api` / `types`。
 - 路径与 SQL 小工具统一放在 `src/shared/`：`siyuan-path.ts`（`stripSySuffix` / `normalizeFsPath`）、`sql.ts`（`escapeSqlString`）。不要在模块内再写本地副本。
 - `av/handlers.ts` 的写入用 `dispatchAvTransaction`（载体解析 + `updated` 戳 + 派发）与 `avWriteSuccess`（刷新目标 + 成功结果）；仅当操作体本身要引用载体 ID 时才手写 `withUpdatedOperation`。

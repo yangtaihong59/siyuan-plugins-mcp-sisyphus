@@ -1,22 +1,16 @@
 import { getWorkspaceApiUrl } from './shared/workspace-api-url';
-import { NEW_NOTEBOOK_PERMISSION } from "@/shared/constants";
 import {
     Plugin,
     showMessage,
     Dialog,
-    getAllEditor,
 } from "siyuan";
 import "./index.scss";
 
 import {
     buildDefaultHttpServerSettings,
-    buildDefaultPermissionDisplaySettings,
-    buildDefaultPuppySettings,
-    buildDefaultVersionControlSettings,
     hasValidHttpTlsFiles,
     loadPersistedHttpServerSettings,
     loadPersistedPermissionDisplaySettings,
-    normalizePermissionDisplaySettings,
     loadPersistedPuppySettings,
     loadPersistedToolConfigState,
     loadPersistedVersionControlSettings,
@@ -28,90 +22,28 @@ import {
     type PuppySettings,
     type VersionControlSettings,
 } from "@/ui/setting/tool-config-storage";
-import {
-    clearPermissionTreeIndicators,
-    decoratePermissionTree,
-    getNextNotebookPermission,
-    normalizeNotebookPermissions,
-    PERMISSION_TREE_BADGE_CLASS,
-    PERMISSION_TREE_CHANGED_EVENT,
-    PERMISSION_TREE_ROOT_SELECTOR,
-    type NotebookPermission,
-    type PermissionTreeLabels,
-} from "@/ui/permission-tree-indicator";
 import { emitToolConfigWarningOnce } from "@/core/config";
 import { submitFeedback, type FeedbackInput, type FeedbackSubmitResult } from "@/core/feedback";
 import McpConfig from "@/ui/setting/mcp-config.svelte";
-import ToolPuppy from "@/ui/components/ToolPuppy.svelte";
-import SnapshotPanel from "@/ui/version-control/SnapshotPanel.svelte";
-import VersionDiffPanel from "@/ui/version-control/VersionDiffPanel.svelte";
-import {
-    getTimelineNodeSelectionKey,
-    type TimelineNodeSelection,
-} from "@/shared/version-control/timeline";
+import { createFeedbackFetch } from "@/ui/plugin/feedback-fetch";
+import { PermissionTreeFeature } from "@/ui/plugin/permission-tree-feature";
+import { PuppyFeature } from "@/ui/plugin/puppy-feature";
+import { VersionControlFeature } from "@/ui/plugin/version-control-feature";
 
 import { HttpServerLauncher, appendHttpLifecycleLog } from "@/server-launcher";
 
-const PUPPY_ROOT_ID = "sy-puppy-root";
-const SNAPSHOT_DOCK_TYPE = "sisyphusSnapshotDock";
-const SNAPSHOT_DOCK_POSITION = "LeftTop";
-const SNAPSHOT_DOCK_ROOT_ID = "SisyphusSnapshotDockPanel";
-const SNAPSHOT_ICON_ID = "iconSisyphusSnapshotDock";
-const VERSION_CONTROL_DOCK_TYPE = "sisyphusTimelineDock";
-const VERSION_CONTROL_DOCK_POSITION = "RightBottom";
-const VERSION_CONTROL_DOCK_ROOT_ID = "SisyphusTimelineDockPanel";
-const VERSION_CONTROL_ICON_ID = "iconSisyphusTimelineDock";
-const VERSION_CONTROL_ICON_SYMBOLS = [
-    `<symbol id="${SNAPSHOT_ICON_ID}" viewBox="0 0 24 24"><path fill="currentColor" d="M7 3a3 3 0 0 1 2 5.24v1.27l6 3V8.24A3 3 0 1 1 17 9v5a1 1 0 0 1-1.45.89L9 11.62v4.14A3 3 0 1 1 7 15.76V8.24A3 3 0 0 1 7 3Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM7 17a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></symbol>`,
-    `<symbol id="${VERSION_CONTROL_ICON_ID}" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 5h6v14H4zM14 5h6v14h-6z"/></symbol>`,
-].join("");
-
-type CurrentDocumentContext = {
-    id: string;
-    title: string;
-};
-
 export default class SiyuanMCP extends Plugin {
-    private puppyComponent: ToolPuppy | null = null;
-    private snapshotPanel: SnapshotPanel | null = null;
-    private diffPanel: VersionDiffPanel | null = null;
-    private snapshotContainer: HTMLElement | null = null;
-    private diffContainer: HTMLElement | null = null;
-    private currentDocument: CurrentDocumentContext = { id: "", title: "" };
-    private timelineSelection: TimelineNodeSelection | null = null;
-    private puppyContainer: HTMLElement | null = null;
-    private puppySettings: PuppySettings = buildDefaultPuppySettings();
-    private puppySettingsLoaded = false;
     private layoutReady = false;
-    private versionControlSettings: VersionControlSettings = buildDefaultVersionControlSettings();
-    private snapshotDockRegistered = false;
-    private diffDockRegistered = false;
-    private versionControlCommandRegistered = false;
-    private versionControlEventsRegistered = false;
-    private versionControlIconRegistered = false;
-    private versionControlSettingsLoaded = false;
-    private snapshotDockElement: HTMLElement | null = null;
-    private diffDockElement: HTMLElement | null = null;
-    private snapshotDockRegistration: { config?: any; model?: any } | null = null;
-    private diffDockRegistration: { config?: any; model?: any } | null = null;
-    private snapshotDockRegisteredType = "";
-    private diffDockRegisteredType = "";
-    private permissionDisplaySettings: PermissionDisplaySettings = buildDefaultPermissionDisplaySettings();
-    private permissionDisplaySettingsLoaded = false;
-    private permissionTreePermissions: Record<string, NotebookPermission> = {};
-    private permissionTreeObserver: MutationObserver | null = null;
-    private permissionTreeEventsRegistered = false;
-    private newNotebookPermissionRegistered = false;
-    private permissionTreeClickRegistered = false;
-    private permissionTreeFrame: number | null = null;
-    private permissionTreeLoadVersion = 0;
+    private readonly versionControl = new VersionControlFeature(this);
+    private readonly permissionTree = new PermissionTreeFeature(this, () => this.layoutReady);
+    private readonly puppy = new PuppyFeature();
     public httpSettings: HttpServerSettings = buildDefaultHttpServerSettings();
     public httpLauncher: HttpServerLauncher | null = null;
 
     async onload() {
         appendHttpLifecycleLog("[plugin] onload begin");
-        this.registerVersionControlIcon();
-        this.registerNewNotebookPermission();
+        this.versionControl.registerVersionControlIcon();
+        this.permissionTree.registerNewNotebookPermission();
 
         const { config: normalized, warning } = await loadPersistedToolConfigState(this);
         if (warning) {
@@ -121,19 +53,19 @@ export default class SiyuanMCP extends Plugin {
             });
         }
         await savePersistedToolConfig(normalized, this);
-        this.puppySettings = await loadPersistedPuppySettings(this);
-        this.puppySettingsLoaded = true;
+        this.puppy.puppySettings = await loadPersistedPuppySettings(this);
+        this.puppy.puppySettingsLoaded = true;
         if (this.layoutReady) {
-            this.mountPuppy();
+            this.puppy.mountPuppy();
         }
         this.httpSettings = await loadPersistedHttpServerSettings(this);
-        this.versionControlSettings = await loadPersistedVersionControlSettings(this);
-        this.versionControlSettingsLoaded = true;
-        this.permissionDisplaySettings = await loadPersistedPermissionDisplaySettings(this);
-        this.permissionDisplaySettingsLoaded = true;
-        appendHttpLifecycleLog(`[plugin] settings loaded: httpEnabled=${this.httpSettings.enabled} timelineEnabled=${this.versionControlSettings.enabled}`);
-        this.syncVersionControlFeature();
-        this.syncPermissionTreeFeature();
+        this.versionControl.versionControlSettings = await loadPersistedVersionControlSettings(this);
+        this.versionControl.versionControlSettingsLoaded = true;
+        this.permissionTree.permissionDisplaySettings = await loadPersistedPermissionDisplaySettings(this);
+        this.permissionTree.permissionDisplaySettingsLoaded = true;
+        appendHttpLifecycleLog(`[plugin] settings loaded: httpEnabled=${this.httpSettings.enabled} timelineEnabled=${this.versionControl.versionControlSettings.enabled}`);
+        this.versionControl.syncVersionControlFeature();
+        this.permissionTree.syncPermissionTreeFeature();
 
         const support = HttpServerLauncher.getSupportInfo();
         if (!support.supported) {
@@ -246,173 +178,40 @@ export default class SiyuanMCP extends Plugin {
         return this.refreshHttpServerAfterInstructionConfigChange();
     }
 
-    private mountPuppy() {
-        const existingRoots = Array.from(document.querySelectorAll<HTMLElement>(`#${PUPPY_ROOT_ID}`));
-        const isMounted =
-            Boolean(this.puppyComponent) &&
-            this.puppyContainer instanceof HTMLElement &&
-            this.puppyContainer.id === PUPPY_ROOT_ID &&
-            this.puppyContainer.isConnected;
-        const hasForeignOrDuplicateRoot = existingRoots.some((root) => root !== this.puppyContainer);
-
-        if (isMounted && !hasForeignOrDuplicateRoot) {
-            return;
-        }
-
-        this.unmountPuppy();
-        for (const root of existingRoots) {
-            root.remove();
-        }
-
-        this.puppyContainer = document.createElement("div");
-        this.puppyContainer.id = PUPPY_ROOT_ID;
-        document.body.appendChild(this.puppyContainer);
-        this.puppyComponent = new ToolPuppy({
-            target: this.puppyContainer,
-            props: {
-                visible: this.puppySettings.visible,
-                testModeEnabled: this.puppySettings.testModeEnabled,
-                testModeIntervalMs: this.puppySettings.testModeIntervalMs,
-                showBubble: this.puppySettings.showBubble,
-                showClickHint: this.puppySettings.showClickHint,
-                appearance: this.puppySettings.appearance,
-            },
-        });
-    }
-
-    private unmountPuppy() {
-        this.puppyComponent?.$destroy();
-        this.puppyComponent = null;
-
-        if (this.puppyContainer) {
-            this.puppyContainer.remove();
-            this.puppyContainer = null;
-        }
-
-        const orphanRoots = document.querySelectorAll<HTMLElement>(`#${PUPPY_ROOT_ID}`);
-        for (const root of orphanRoots) {
-            root.remove();
-        }
-    }
 
     onLayoutReady() {
         this.layoutReady = true;
-        if (this.puppySettingsLoaded) {
-            this.mountPuppy();
+        if (this.puppy.puppySettingsLoaded) {
+            this.puppy.mountPuppy();
         }
-        if (this.versionControlSettingsLoaded) this.syncVersionControlFeature();
-        if (this.permissionDisplaySettingsLoaded) this.syncPermissionTreeFeature();
+        if (this.versionControl.versionControlSettingsLoaded) this.versionControl.syncVersionControlFeature();
+        if (this.permissionTree.permissionDisplaySettingsLoaded) this.permissionTree.syncPermissionTreeFeature();
     }
 
-
     updatePuppyTestSettings(settings: PuppySettings) {
-        this.puppySettings = settings;
-        if (this.puppyComponent) {
-            this.puppyComponent.$set({
-                visible: settings.visible,
-                testModeEnabled: settings.testModeEnabled,
-                testModeIntervalMs: settings.testModeIntervalMs,
-                showBubble: settings.showBubble,
-                showClickHint: settings.showClickHint,
-                appearance: settings.appearance,
-            });
-        }
+        this.puppy.updatePuppyTestSettings(settings);
     }
 
     async updateVersionControlSettings(settings: VersionControlSettings): Promise<void> {
-        this.versionControlSettings = await savePersistedVersionControlSettings(settings, this);
-        appendHttpLifecycleLog(`[timeline] settings updated: enabled=${this.versionControlSettings.enabled} showDebugMeta=${this.versionControlSettings.showDebugMeta}`);
-        this.syncVersionControlFeature();
+        this.versionControl.versionControlSettings = await savePersistedVersionControlSettings(settings, this);
+        appendHttpLifecycleLog(`[timeline] settings updated: enabled=${this.versionControl.versionControlSettings.enabled} showDebugMeta=${this.versionControl.versionControlSettings.showDebugMeta}`);
+        this.versionControl.syncVersionControlFeature();
     }
 
     updatePermissionDisplaySettings(settings: PermissionDisplaySettings): void {
-        this.permissionDisplaySettings = normalizePermissionDisplaySettings(settings);
-        this.syncPermissionTreeFeature();
+        this.permissionTree.updatePermissionDisplaySettings(settings);
     }
 
     refreshPermissionTreeIndicators(permissions?: unknown): void {
-        if (permissions !== undefined) {
-            this.permissionTreePermissions = normalizeNotebookPermissions(permissions);
-            this.emitPermissionTreeChange();
-        }
-        if (!this.permissionDisplaySettings.showInFileTree || !this.layoutReady) return;
-        this.schedulePermissionTreeDecoration();
+        this.permissionTree.refreshPermissionTreeIndicators(permissions);
+    }
+
+    openVersionControl(protyle?: unknown): void {
+        this.versionControl.openVersionControl(protyle);
     }
 
     async submitFeedback(input: FeedbackInput): Promise<FeedbackSubmitResult> {
-        return submitFeedback(input, this.createFeedbackFetch());
-    }
-
-    private createFeedbackFetch(): typeof fetch {
-        const req = this.getNodeRequire();
-        if (req) {
-            try {
-                const https = req("https") as typeof import("https");
-                const http = req("http") as typeof import("http");
-                return ((url: string, init: RequestInit = {}) => new Promise<Response>((resolve, reject) => {
-                    const target = new URL(url);
-                    const transport = target.protocol === "http:" ? http : https;
-                    const headers = init.headers instanceof Headers
-                        ? Object.fromEntries(init.headers.entries())
-                        : (init.headers ?? {}) as Record<string, string>;
-                    const rawBody = init.body
-                        ? (typeof init.body === "string" || Buffer.isBuffer(init.body) ? init.body : String(init.body))
-                        : undefined;
-                    const request = transport.request(target, {
-                        method: init.method ?? "GET",
-                        headers: {
-                            ...headers,
-                            ...(rawBody && !Object.keys(headers).some((key) => key.toLowerCase() === "content-length")
-                                ? { "Content-Length": Buffer.byteLength(rawBody) }
-                                : {}),
-                        },
-                    }, (response) => {
-                        const chunks: Buffer[] = [];
-                        response.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-                        response.on("end", () => {
-                            const responseHeaders = new Headers();
-                            for (const [key, value] of Object.entries(response.headers)) {
-                                if (Array.isArray(value)) {
-                                    for (const item of value) responseHeaders.append(key, item);
-                                } else if (typeof value === "string") {
-                                    responseHeaders.set(key, value);
-                                }
-                            }
-                            resolve(new Response(Buffer.concat(chunks), {
-                                status: response.statusCode ?? 0,
-                                statusText: response.statusMessage ?? "",
-                                headers: responseHeaders,
-                            }));
-                        });
-                    });
-                    request.on("error", reject);
-                    if (rawBody) {
-                        request.write(rawBody);
-                    }
-                    request.end();
-                })) as typeof fetch;
-            } catch {
-                // Fall through to global fetch below.
-            }
-        }
-        if (typeof fetch === "function") {
-            return fetch.bind(globalThis);
-        }
-        throw new Error("Feedback submission is unavailable in this environment.");
-    }
-
-    private getNodeRequire(): NodeRequire | undefined {
-        if (typeof require === "function") {
-            try {
-                require("https");
-                return require;
-            } catch { /* not Node require */ }
-        }
-        if (typeof window !== "undefined") {
-            const w = window as unknown as { require?: NodeRequire };
-            if (typeof w.require === "function") return w.require;
-        }
-        return undefined;
+        return submitFeedback(input, createFeedbackFetch());
     }
 
     onDataChanged(): void {
@@ -426,13 +225,13 @@ export default class SiyuanMCP extends Plugin {
     async onunload() {
         appendHttpLifecycleLog("[plugin] onunload begin");
         this.layoutReady = false;
-        this.puppySettingsLoaded = false;
-        this.permissionDisplaySettingsLoaded = false;
-        this.disablePermissionTreeFeature();
-        this.unregisterNewNotebookPermission();
-        this.unregisterVersionControlEvents();
-        this.unmountVersionControlDocks();
-        this.unmountPuppy();
+        this.puppy.puppySettingsLoaded = false;
+        this.permissionTree.permissionDisplaySettingsLoaded = false;
+        this.permissionTree.disablePermissionTreeFeature();
+        this.permissionTree.unregisterNewNotebookPermission();
+        this.versionControl.unregisterVersionControlEvents();
+        this.versionControl.unmountVersionControlDocks();
+        this.puppy.unmountPuppy();
         if (this.httpLauncher) {
             try {
                 await this.stopHttpServer();
@@ -530,789 +329,7 @@ export default class SiyuanMCP extends Plugin {
         });
     }
 
-    openVersionControl(protyle?: unknown): void {
-        if (!this.versionControlSettings.enabled) {
-            showMessage(this.i18n?.timeline_disabled_msg || "文档时间树已关闭");
-            return;
-        }
-        this.syncVersionControlFeature();
-        const context = this.getDocumentContextFromProtyle(protyle) ?? this.currentDocument;
-        this.updateVersionControlDocument(context, { force: true });
-        this.showSnapshotDock();
-    }
 
-    private syncVersionControlFeature() {
-        appendHttpLifecycleLog(`[timeline] sync feature: enabled=${this.versionControlSettings.enabled}`);
-        if (!this.versionControlSettings.enabled) {
-            this.disableVersionControlFeature();
-            return;
-        }
-        this.enableVersionControlFeature();
-    }
 
-    private syncPermissionTreeFeature() {
-        if (!this.permissionDisplaySettingsLoaded || !this.layoutReady) return;
-        if (!this.permissionDisplaySettings.showInFileTree) {
-            this.disablePermissionTreeFeature();
-            return;
-        }
-        this.enablePermissionTreeFeature();
-    }
 
-    private enablePermissionTreeFeature() {
-        this.registerPermissionTreeEvents();
-        this.registerPermissionTreeClick();
-        this.registerPermissionTreeObserver();
-        void this.loadPermissionTreePermissions();
-    }
-
-    private disablePermissionTreeFeature() {
-        this.permissionTreeLoadVersion += 1;
-        this.unregisterPermissionTreeEvents();
-        this.unregisterPermissionTreeClick();
-        this.permissionTreeObserver?.disconnect();
-        this.permissionTreeObserver = null;
-        if (
-            this.permissionTreeFrame !== null &&
-            typeof window !== "undefined" &&
-            typeof window.cancelAnimationFrame === "function"
-        ) {
-            window.cancelAnimationFrame(this.permissionTreeFrame);
-        }
-        this.permissionTreeFrame = null;
-        if (typeof document !== "undefined") {
-            clearPermissionTreeIndicators(document);
-        }
-    }
-
-    private registerPermissionTreeEvents() {
-        if (this.permissionTreeEventsRegistered) return;
-        const eventBus = (this as any).eventBus;
-        if (typeof eventBus?.on !== "function") return;
-        eventBus.on("ws-main", this.handlePermissionTreeWebSocket as any);
-        this.permissionTreeEventsRegistered = true;
-    }
-
-    private unregisterPermissionTreeEvents() {
-        if (!this.permissionTreeEventsRegistered) return;
-        const eventBus = (this as any).eventBus;
-        eventBus?.off?.("ws-main", this.handlePermissionTreeWebSocket as any);
-        this.permissionTreeEventsRegistered = false;
-    }
-
-    private registerPermissionTreeClick() {
-        if (this.permissionTreeClickRegistered || typeof document.addEventListener !== "function") return;
-        document.addEventListener("click", this.handlePermissionTreeBadgeClick, true);
-        this.permissionTreeClickRegistered = true;
-    }
-
-    private unregisterPermissionTreeClick() {
-        if (!this.permissionTreeClickRegistered || typeof document.removeEventListener !== "function") return;
-        document.removeEventListener("click", this.handlePermissionTreeBadgeClick, true);
-        this.permissionTreeClickRegistered = false;
-    }
-
-    private registerPermissionTreeObserver() {
-        if (this.permissionTreeObserver || typeof MutationObserver === "undefined" || !document.body) return;
-        this.permissionTreeObserver = new MutationObserver((mutations) => {
-            const touchesPermissionTree = mutations.some((mutation) => (
-                Array.from(mutation.addedNodes).some((node) => {
-                    if (!(node instanceof Element)) return false;
-                    return Boolean(
-                        node.matches(".file-tree, .sy__file, ul[data-url], li[data-type=\"navigation-root\"]") ||
-                        node.closest("li[data-type=\"navigation-root\"]") ||
-                        node.querySelector(PERMISSION_TREE_ROOT_SELECTOR)
-                    );
-                })
-            ));
-            if (touchesPermissionTree) {
-                this.schedulePermissionTreeDecoration();
-            }
-        });
-        this.permissionTreeObserver.observe(document.body, { childList: true, subtree: true });
-    }
-
-    private async loadPermissionTreePermissions() {
-        const loadVersion = ++this.permissionTreeLoadVersion;
-        const raw = await this.loadData("notebookPermissions");
-        if (
-            loadVersion !== this.permissionTreeLoadVersion ||
-            !this.layoutReady ||
-            !this.permissionDisplaySettings.showInFileTree
-        ) return;
-        this.permissionTreePermissions = normalizeNotebookPermissions(raw);
-        this.emitPermissionTreeChange();
-        this.schedulePermissionTreeDecoration();
-    }
-
-    private schedulePermissionTreeDecoration() {
-        if (this.permissionTreeFrame !== null || typeof window === "undefined") return;
-        if (typeof window.requestAnimationFrame !== "function") {
-            decoratePermissionTree(document, this.permissionTreePermissions, this.getPermissionTreeLabels());
-            return;
-        }
-        this.permissionTreeFrame = window.requestAnimationFrame(() => {
-            this.permissionTreeFrame = null;
-            if (!this.layoutReady || !this.permissionDisplaySettings.showInFileTree) return;
-            decoratePermissionTree(document, this.permissionTreePermissions, this.getPermissionTreeLabels());
-        });
-    }
-
-    private getPermissionTreeLabels(): PermissionTreeLabels {
-        return {
-            names: {
-                none: this.i18n?.mcpPermNone || "无权限",
-                r: this.i18n?.mcpPermRead || "只读",
-                rw: this.i18n?.mcpPermReadWrite || "读写不可删除",
-                rwd: this.i18n?.mcpPermReadWriteDelete || "读写可删除",
-            },
-            defaultSuffix: this.i18n?.permission_tree_default_suffix || "（默认）",
-            pluginName: this.i18n?.permission_tree_plugin_name || "插件：思源 sisyphus MCP & CLI & GIT",
-            notebookScope: this.i18n?.permission_tree_scope || "应用于整个笔记本及其子文档",
-            clickToChange: this.i18n?.permission_tree_click_hint || "点击切换权限",
-        };
-    }
-
-    private emitPermissionTreeChange() {
-        if (
-            typeof window === "undefined" ||
-            typeof window.dispatchEvent !== "function" ||
-            typeof CustomEvent === "undefined"
-        ) return;
-        window.dispatchEvent(new CustomEvent(PERMISSION_TREE_CHANGED_EVENT, {
-            detail: { permissions: { ...this.permissionTreePermissions } },
-        }));
-    }
-
-    private readonly handlePermissionTreeBadgeClick = async (event: MouseEvent) => {
-        const target = event.target instanceof Element
-            ? event.target.closest<HTMLElement>(`.${PERMISSION_TREE_BADGE_CLASS}`)
-            : null;
-        if (!target) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        if (target.dataset.saving === "true") return;
-
-        const notebookId = target.dataset.notebookId?.trim() ?? "";
-        if (!notebookId) return;
-
-        const previousPermissions = { ...this.permissionTreePermissions };
-        const currentPermission = this.permissionTreePermissions[notebookId] ?? "r";
-        this.permissionTreePermissions = {
-            ...this.permissionTreePermissions,
-            [notebookId]: getNextNotebookPermission(currentPermission),
-        };
-        target.dataset.saving = "true";
-        target.setAttribute("aria-busy", "true");
-        decoratePermissionTree(document, this.permissionTreePermissions, this.getPermissionTreeLabels());
-
-        try {
-            await this.saveData("notebookPermissions", this.permissionTreePermissions);
-            this.emitPermissionTreeChange();
-        } catch (error) {
-            this.permissionTreePermissions = previousPermissions;
-            decoratePermissionTree(document, this.permissionTreePermissions, this.getPermissionTreeLabels());
-            console.error("[MCP] failed to update notebook permission from file tree:", error);
-            showMessage(this.i18n?.permission_tree_save_failed || "权限保存失败，已恢复原状态");
-        } finally {
-            delete target.dataset.saving;
-            target.removeAttribute("aria-busy");
-        }
-    };
-
-    // Notebooks created in the SiYuan UI after install get NEW_NOTEBOOK_PERMISSION,
-    // matching notebook(action="create"). Independent of the file-tree badge setting.
-    private registerNewNotebookPermission() {
-        if (this.newNotebookPermissionRegistered) return;
-        const eventBus = (this as any).eventBus;
-        if (typeof eventBus?.on !== "function") return;
-        eventBus.on("ws-main", this.handleNewNotebookWebSocket as any);
-        this.newNotebookPermissionRegistered = true;
-    }
-
-    private unregisterNewNotebookPermission() {
-        if (!this.newNotebookPermissionRegistered) return;
-        (this as any).eventBus?.off?.("ws-main", this.handleNewNotebookWebSocket as any);
-        this.newNotebookPermissionRegistered = false;
-    }
-
-    private readonly handleNewNotebookWebSocket = async (event: CustomEvent<{ cmd?: string; data?: { box?: { id?: string }; existed?: boolean } }>) => {
-        const detail = event?.detail;
-        const notebookId = detail?.data?.box?.id;
-        // existed=true means an existing notebook directory was reopened; leave its default.
-        if (detail?.cmd !== "createnotebook" || detail.data?.existed !== false || !notebookId) return;
-        try {
-            const permissions = normalizeNotebookPermissions(await this.loadData("notebookPermissions"));
-            if (Object.prototype.hasOwnProperty.call(permissions, notebookId)) return;
-            permissions[notebookId] = NEW_NOTEBOOK_PERMISSION;
-            await this.saveData("notebookPermissions", permissions);
-            this.permissionTreePermissions = permissions;
-            this.emitPermissionTreeChange();
-            this.schedulePermissionTreeDecoration();
-        } catch (error) {
-            console.error("[MCP] failed to grant permission for new notebook:", error);
-        }
-    };
-
-    private readonly handlePermissionTreeWebSocket = (event: CustomEvent<{ cmd?: string }>) => {
-        if (event?.detail?.cmd === "reloadFiletree") {
-            void this.loadPermissionTreePermissions();
-        }
-    };
-
-    private enableVersionControlFeature() {
-        appendHttpLifecycleLog("[timeline] enable feature");
-        const activeDocument = this.getActiveDocumentContext();
-        if (activeDocument) this.currentDocument = activeDocument;
-        this.registerVersionControlIcon();
-        this.registerVersionControlCommand();
-        this.registerVersionControlDocks();
-        this.registerVersionControlEvents();
-        this.ensureVersionControlPanelsMounted();
-        this.snapshotPanel?.$set({
-            showDebugMeta: this.versionControlSettings.showDebugMeta,
-        });
-        this.diffPanel?.$set({
-            showDebugMeta: this.versionControlSettings.showDebugMeta,
-        });
-    }
-
-    private disableVersionControlFeature() {
-        appendHttpLifecycleLog("[timeline] disable feature");
-        this.unregisterVersionControlCommand();
-        this.unregisterVersionControlEvents();
-        this.timelineSelection = null;
-        this.unmountVersionControlPanels();
-        this.removeVersionControlDocks();
-    }
-
-    private registerVersionControlIcon() {
-        if (this.versionControlIconRegistered) return;
-        const addIcons = (this as any).addIcons;
-        if (typeof addIcons !== "function") return;
-        addIcons.call(this, VERSION_CONTROL_ICON_SYMBOLS);
-        this.versionControlIconRegistered = true;
-    }
-
-    private registerVersionControlCommand() {
-        if (!this.versionControlSettingsLoaded) return;
-        if (this.versionControlCommandRegistered) return;
-        const addCommand = (this as any).addCommand;
-        if (typeof addCommand !== "function") return;
-        addCommand.call(this, {
-            langKey: "openSnapshotVersionControl",
-            langText: this.i18n?.timeline_open_command || "打开文档快照",
-            hotkey: "",
-            callback: () => this.openVersionControl(),
-            editorCallback: (protyle: any) => this.openVersionControl(protyle),
-        });
-        this.versionControlCommandRegistered = true;
-    }
-
-    private unregisterVersionControlCommand() {
-        if (!this.versionControlCommandRegistered) return;
-        const commands = (this as any).commands;
-        if (Array.isArray(commands)) {
-            for (let i = commands.length - 1; i >= 0; i--) {
-                if (commands[i]?.langKey === "openSnapshotVersionControl") {
-                    commands.splice(i, 1);
-                }
-            }
-        }
-        this.versionControlCommandRegistered = false;
-    }
-
-    private registerVersionControlDocks() {
-        if (!this.versionControlSettingsLoaded || !this.versionControlSettings.enabled) return;
-        this.registerSnapshotDock();
-        this.registerDiffDock();
-    }
-
-    private registerSnapshotDock() {
-        if (this.snapshotDockRegistered) {
-            if (this.isDockRegistrationAlive(
-                SNAPSHOT_DOCK_POSITION,
-                this.getSnapshotDockTypes(),
-                this.snapshotDockElement,
-            )) return;
-            appendHttpLifecycleLog("[timeline] snapshot dock registration stale; re-register");
-            const dockTypes = this.getSnapshotDockTypes();
-            this.unmountSnapshotDock();
-            this.removeVersionControlDockButtons(dockTypes, SNAPSHOT_DOCK_TYPE, SNAPSHOT_ICON_ID);
-            this.snapshotDockRegistered = false;
-            this.snapshotDockRegistration = null;
-            this.snapshotDockRegisteredType = "";
-        }
-
-        const addDock = (this as any).addDock;
-        if (typeof addDock !== "function") return;
-        const registration = addDock.call(this, {
-            config: {
-                position: SNAPSHOT_DOCK_POSITION,
-                size: { width: 320, height: 0 },
-                icon: SNAPSHOT_ICON_ID,
-                title: this.i18n?.snapshot_dock_title || "文档快照",
-                show: this.getInitialDockVisibility(SNAPSHOT_DOCK_POSITION, this.getSnapshotDockTypes(), true),
-            },
-            data: {},
-            type: SNAPSHOT_DOCK_TYPE,
-            init: (dock: any) => {
-                const element = dock?.element as HTMLElement | undefined;
-                if (!element) return;
-                this.snapshotDockElement = element;
-                this.mountSnapshotPanel(element);
-            },
-            update: () => this.updateVersionControlDocument(this.currentDocument, { force: true }),
-            destroy: () => this.unmountSnapshotDock(),
-        });
-        this.snapshotDockRegistered = true;
-        this.snapshotDockRegistration = registration ?? null;
-        this.snapshotDockRegisteredType = this.getRegisteredDockType(registration, SNAPSHOT_DOCK_TYPE);
-    }
-
-    private registerDiffDock() {
-        if (this.diffDockRegistered) {
-            if (this.isDockRegistrationAlive(
-                VERSION_CONTROL_DOCK_POSITION,
-                this.getDiffDockTypes(),
-                this.diffDockElement,
-            )) return;
-            appendHttpLifecycleLog("[timeline] diff dock registration stale; re-register");
-            const dockTypes = this.getDiffDockTypes();
-            this.unmountDiffDock();
-            this.removeVersionControlDockButtons(dockTypes, VERSION_CONTROL_DOCK_TYPE, VERSION_CONTROL_ICON_ID);
-            this.diffDockRegistered = false;
-            this.diffDockRegistration = null;
-            this.diffDockRegisteredType = "";
-        }
-
-        const addDock = (this as any).addDock;
-        if (typeof addDock !== "function") return;
-        const registration = addDock.call(this, {
-            config: {
-                position: VERSION_CONTROL_DOCK_POSITION,
-                size: { width: 720, height: 0 },
-                icon: VERSION_CONTROL_ICON_ID,
-                title: this.i18n?.diff_dock_title || "文档 Diff",
-                show: this.getInitialDockVisibility(VERSION_CONTROL_DOCK_POSITION, this.getDiffDockTypes(), false),
-            },
-            data: {},
-            type: VERSION_CONTROL_DOCK_TYPE,
-            init: (dock: any) => {
-                const element = dock?.element as HTMLElement | undefined;
-                if (!element) return;
-                this.diffDockElement = element;
-                this.mountDiffPanel(element);
-            },
-            update: () => this.updateVersionControlDocument(this.currentDocument, { force: true }),
-            destroy: () => this.unmountDiffDock(),
-        });
-        this.diffDockRegistered = true;
-        this.diffDockRegistration = registration ?? null;
-        this.diffDockRegisteredType = this.getRegisteredDockType(registration, VERSION_CONTROL_DOCK_TYPE);
-    }
-
-    private getRegisteredDockType(registration: { config?: any; model?: any } | null, type: string): string {
-        return firstNonEmptyString([
-            registration?.config?.type,
-            registration?.model?.type,
-            this.name ? `${this.name}${type}` : "",
-            type,
-        ]);
-    }
-
-    private getInitialDockVisibility(position: string, dockTypes: string[], fallback: boolean): boolean {
-        const dockLayout = (window as any)?.siyuan?.config?.uiLayout?.[getDockLayoutKey(position)];
-        if (!Array.isArray(dockLayout?.data)) return fallback;
-        for (const group of dockLayout.data) {
-            if (!Array.isArray(group)) continue;
-            const item = group.find((entry) => dockTypes.includes(entry?.type));
-            if (typeof item?.show === "boolean") return item.show;
-        }
-        return fallback;
-    }
-
-    private isDockRegistrationAlive(position: string, dockTypes: string[], element: HTMLElement | null): boolean {
-        if (element?.isConnected) return true;
-        if (dockTypes.length === 0) return false;
-
-        const layout = (window as any)?.siyuan?.layout;
-        const targetDock = getDockByPosition(layout, position);
-        const dockData = targetDock?.data;
-        if (dockData && typeof dockData === "object") {
-            for (const dockType of dockTypes) {
-                if (Object.prototype.hasOwnProperty.call(dockData, dockType)) return true;
-            }
-        }
-
-        const uiLayout = (window as any)?.siyuan?.config?.uiLayout;
-        const dockLayout = uiLayout?.[getDockLayoutKey(position)];
-        if (Array.isArray(dockLayout?.data)) {
-            for (const group of dockLayout.data) {
-                if (!Array.isArray(group)) continue;
-                if (group.some((item) => dockTypes.includes(item?.type))) return true;
-            }
-        }
-
-        const pluginDocks = (this as any).docks;
-        if (!layout && pluginDocks && typeof pluginDocks === "object") {
-            for (const dockType of dockTypes) {
-                if (Object.prototype.hasOwnProperty.call(pluginDocks, dockType)) return true;
-            }
-        }
-
-        return false;
-    }
-
-    private ensureVersionControlPanelsMounted() {
-        if (!this.snapshotPanel && this.snapshotDockElement) this.mountSnapshotPanel(this.snapshotDockElement);
-        if (!this.diffPanel && this.diffDockElement) this.mountDiffPanel(this.diffDockElement);
-    }
-
-    private mountSnapshotPanel(element: HTMLElement) {
-        if (!this.versionControlSettings.enabled) return;
-        if (!this.versionControlSettingsLoaded) return;
-        this.unmountSnapshotPanel();
-        element.innerHTML = `<div id="${SNAPSHOT_DOCK_ROOT_ID}" style="height: 100%;"></div>`;
-        this.snapshotContainer = element.querySelector(`#${SNAPSHOT_DOCK_ROOT_ID}`);
-        if (!this.snapshotContainer) return;
-        this.snapshotPanel = new SnapshotPanel({
-            target: this.snapshotContainer,
-            props: {
-                currentDocumentId: this.currentDocument.id,
-                currentDocumentTitle: this.currentDocument.title,
-                selectedNodeKey: getTimelineNodeSelectionKey(this.timelineSelection),
-                showDebugMeta: this.versionControlSettings.showDebugMeta,
-                i18n: this.i18n ?? {},
-                onSelectNode: (selection: TimelineNodeSelection | null) => this.selectTimelineNode(selection),
-            },
-        });
-    }
-
-    private mountDiffPanel(element: HTMLElement) {
-        if (!this.versionControlSettings.enabled || !this.versionControlSettingsLoaded) return;
-        this.unmountDiffPanel();
-        element.innerHTML = `<div id="${VERSION_CONTROL_DOCK_ROOT_ID}" style="height: 100%;"></div>`;
-        this.diffContainer = element.querySelector(`#${VERSION_CONTROL_DOCK_ROOT_ID}`);
-        if (!this.diffContainer) return;
-        this.diffPanel = new VersionDiffPanel({
-            target: this.diffContainer,
-            props: {
-                currentDocumentId: this.currentDocument.id,
-                currentDocumentTitle: this.currentDocument.title,
-                selection: this.timelineSelection,
-                showDebugMeta: this.versionControlSettings.showDebugMeta,
-                i18n: this.i18n ?? {},
-                onOpenSnapshot: () => this.showSnapshotDock(),
-            },
-        });
-    }
-
-    private registerVersionControlEvents() {
-        if (!this.versionControlSettingsLoaded) return;
-        if (!this.versionControlSettings.enabled || this.versionControlEventsRegistered) return;
-        const eventBus = (this as any).eventBus;
-        if (typeof eventBus?.on !== "function") return;
-        eventBus.on("switch-protyle", this.handleVersionControlProtyleChange as any);
-        eventBus.on("loaded-protyle-dynamic", this.handleVersionControlProtyleChange as any);
-        eventBus.on("loaded-protyle-static", this.handleVersionControlProtyleChange as any);
-        this.versionControlEventsRegistered = true;
-    }
-
-    private unregisterVersionControlEvents() {
-        if (!this.versionControlEventsRegistered) return;
-        const eventBus = (this as any).eventBus;
-        eventBus?.off?.("switch-protyle", this.handleVersionControlProtyleChange as any);
-        eventBus?.off?.("loaded-protyle-dynamic", this.handleVersionControlProtyleChange as any);
-        eventBus?.off?.("loaded-protyle-static", this.handleVersionControlProtyleChange as any);
-        this.versionControlEventsRegistered = false;
-    }
-
-    private readonly handleVersionControlProtyleChange = (event: CustomEvent<{ protyle?: unknown }>) => {
-        if (!this.versionControlSettings.enabled) return;
-        const context = this.getDocumentContextFromProtyle(event?.detail?.protyle);
-        if (context) this.updateVersionControlDocument(context);
-    };
-
-    private getDocumentContextFromProtyle(protyle: unknown): CurrentDocumentContext | null {
-        if (!protyle || typeof protyle !== "object") return null;
-        const record = protyle as Record<string, any>;
-        const block = record.block && typeof record.block === "object" ? record.block : {};
-        const id = firstNonEmptyString([
-            block.rootID,
-            block.id,
-            record.rootID,
-            record.id,
-        ]);
-        if (!id) return null;
-        return {
-            id,
-            title: firstNonEmptyString([
-                record.title,
-                block.name,
-                block.content,
-                getDocumentTitleFromPath(record.hpath),
-                getDocumentTitleFromPath(record.path),
-                this.currentDocument.id === id ? this.currentDocument.title : "",
-            ]) || id,
-        };
-    }
-
-    private getActiveDocumentContext(): CurrentDocumentContext | null {
-        if (typeof getAllEditor !== "function") return null;
-        const editors = getAllEditor();
-        if (!Array.isArray(editors) || editors.length === 0) return null;
-        const visibleEditors = editors.filter((editor: any) => {
-            const element = editor?.protyle?.element as HTMLElement | undefined;
-            if (!element?.isConnected) return false;
-            if (typeof getComputedStyle !== "function") return true;
-            const style = getComputedStyle(element);
-            return style.display !== "none" && style.visibility !== "hidden";
-        });
-        const activeEditor = visibleEditors.find((editor: any) => (
-            editor?.protyle?.element?.closest?.(".layout__wnd--active")
-        )) ?? visibleEditors.at(-1) ?? editors.at(-1);
-        return this.getDocumentContextFromProtyle(activeEditor?.protyle ?? activeEditor);
-    }
-
-    private updateVersionControlDocument(context: CurrentDocumentContext, options: { force?: boolean } = {}) {
-        if (!this.versionControlSettings.enabled) return;
-        const documentChanged = this.currentDocument.id !== context.id;
-        this.currentDocument = context;
-        if (documentChanged) this.timelineSelection = null;
-        void options;
-        this.snapshotPanel?.$set({
-            currentDocumentId: context.id,
-            currentDocumentTitle: context.title,
-            selectedNodeKey: getTimelineNodeSelectionKey(this.timelineSelection),
-        });
-        this.diffPanel?.$set({
-            currentDocumentId: context.id,
-            currentDocumentTitle: context.title,
-            selection: this.timelineSelection,
-        });
-    }
-
-    private selectTimelineNode(selection: TimelineNodeSelection | null) {
-        if (selection && selection.documentId !== this.currentDocument.id) return;
-        this.timelineSelection = selection;
-        this.snapshotPanel?.$set({
-            selectedNodeKey: getTimelineNodeSelectionKey(selection),
-        });
-        this.diffPanel?.$set({
-            currentDocumentId: this.currentDocument.id,
-            currentDocumentTitle: this.currentDocument.title,
-            selection,
-        });
-        if (selection) this.showDiffDock();
-    }
-
-    private showSnapshotDock() {
-        if (!this.versionControlSettings.enabled) return;
-        const layout = (window as any)?.siyuan?.layout;
-        const targetDock = getDockByPosition(layout, SNAPSHOT_DOCK_POSITION);
-        if (typeof targetDock?.toggleModel === "function") {
-            targetDock.toggleModel(this.getSnapshotDockTypes()[0] ?? SNAPSHOT_DOCK_TYPE, true, false, false, true);
-            return;
-        }
-        targetDock?.showDock?.();
-    }
-
-    private showDiffDock() {
-        if (!this.versionControlSettings.enabled) return;
-        const layout = (window as any)?.siyuan?.layout;
-        const targetDock = getDockByPosition(layout, VERSION_CONTROL_DOCK_POSITION);
-        if (typeof targetDock?.toggleModel === "function") {
-            targetDock.toggleModel(this.getDiffDockTypes()[0] ?? VERSION_CONTROL_DOCK_TYPE, true, false, false, true);
-            return;
-        }
-        targetDock?.showDock?.();
-    }
-
-    private unmountSnapshotPanel() {
-        this.snapshotPanel?.$destroy();
-        this.snapshotPanel = null;
-        if (this.snapshotContainer) this.snapshotContainer.innerHTML = "";
-        this.snapshotContainer = null;
-    }
-
-    private unmountDiffPanel() {
-        this.diffPanel?.$destroy();
-        this.diffPanel = null;
-        if (this.diffContainer) this.diffContainer.innerHTML = "";
-        this.diffContainer = null;
-    }
-
-    private unmountVersionControlPanels() {
-        this.unmountSnapshotPanel();
-        this.unmountDiffPanel();
-    }
-
-    private unmountSnapshotDock() {
-        this.unmountSnapshotPanel();
-        this.snapshotDockElement = null;
-    }
-
-    private unmountDiffDock() {
-        this.unmountDiffPanel();
-        this.diffDockElement = null;
-    }
-
-    private unmountVersionControlDocks() {
-        this.unmountSnapshotDock();
-        this.unmountDiffDock();
-    }
-
-    private removeVersionControlDocks() {
-        appendHttpLifecycleLog("[timeline] remove docks");
-        const layout = (window as any)?.siyuan?.layout;
-        const snapshotTypes = this.getSnapshotDockTypes();
-        const diffTypes = this.getDiffDockTypes();
-        this.removeDockFromPosition(layout, SNAPSHOT_DOCK_POSITION, snapshotTypes);
-        this.removeDockFromPosition(layout, VERSION_CONTROL_DOCK_POSITION, diffTypes);
-        const allTypes = [...new Set([...snapshotTypes, ...diffTypes])];
-        this.removeVersionControlDockRegistry(allTypes, layout);
-        this.removeVersionControlDockLayout(allTypes);
-        this.removeVersionControlDockButtons(snapshotTypes, SNAPSHOT_DOCK_TYPE, SNAPSHOT_ICON_ID);
-        this.removeVersionControlDockButtons(diffTypes, VERSION_CONTROL_DOCK_TYPE, VERSION_CONTROL_ICON_ID);
-        this.snapshotDockRegistered = false;
-        this.diffDockRegistered = false;
-        this.snapshotDockElement = null;
-        this.diffDockElement = null;
-        this.snapshotDockRegistration = null;
-        this.diffDockRegistration = null;
-        this.snapshotDockRegisteredType = "";
-        this.diffDockRegisteredType = "";
-    }
-
-    private removeDockFromPosition(layout: any, position: string, dockTypes: string[]) {
-        const targetDock = getDockByPosition(layout, position);
-        if (!targetDock || typeof document === "undefined") return;
-        for (const dockType of dockTypes) {
-            // SiYuan's toggleModel (also called by remove) requires an existing button.
-            const button = document.querySelector(`.dock__item[data-type="${escapeCssAttributeValue(dockType)}"]`);
-            if (!button) continue;
-            targetDock.toggleModel?.(dockType, false, true, true, true);
-            // A registered but unopened dock may not have a model yet.
-            if (targetDock.data?.[dockType]) targetDock.remove?.(dockType);
-        }
-    }
-
-    private getSnapshotDockTypes(): string[] {
-        return this.getDockTypes(this.snapshotDockRegistration, this.snapshotDockRegisteredType, SNAPSHOT_DOCK_TYPE);
-    }
-
-    private getDiffDockTypes(): string[] {
-        return this.getDockTypes(this.diffDockRegistration, this.diffDockRegisteredType, VERSION_CONTROL_DOCK_TYPE);
-    }
-
-    private getDockTypes(
-        registration: { config?: any; model?: any } | null,
-        registeredType: string,
-        fallbackType: string,
-    ): string[] {
-        return [
-            registration?.config?.type,
-            registration?.model?.type,
-            registeredType,
-            this.name ? `${this.name}${fallbackType}` : "",
-            fallbackType,
-        ].filter((value, index, values): value is string => (
-            typeof value === "string" && value.length > 0 && values.indexOf(value) === index
-        ));
-    }
-
-    private removeVersionControlDockRegistry(dockTypes: string[], layout: any) {
-        const pluginDocks = (this as any).docks;
-        if (pluginDocks && typeof pluginDocks === "object") {
-            for (const dockType of dockTypes) {
-                delete pluginDocks[dockType];
-            }
-        }
-
-        for (const dock of [layout?.leftDock, layout?.rightDock, layout?.bottomDock]) {
-            const dockData = dock?.data;
-            if (!dockData || typeof dockData !== "object") continue;
-            for (const dockType of dockTypes) {
-                delete dockData[dockType];
-            }
-        }
-    }
-
-    private removeVersionControlDockLayout(dockTypes: string[]) {
-        const uiLayout = (window as any)?.siyuan?.config?.uiLayout;
-        for (const position of ["left", "right", "bottom"]) {
-            const dock = uiLayout?.[position];
-            if (!Array.isArray(dock?.data)) continue;
-            dock.data = dock.data
-                .map((group: any) => Array.isArray(group)
-                    ? group.filter((item) => !dockTypes.includes(item?.type))
-                    : group)
-                .filter((group: any) => !Array.isArray(group) || group.length > 0);
-        }
-    }
-
-    private removeVersionControlDockButtons(dockTypes: string[], fallbackType: string, iconId: string) {
-        if (typeof document === "undefined") return;
-        for (const dockType of dockTypes) {
-            const escapedDockType = escapeCssAttributeValue(dockType);
-            const selectors = [
-                `.dock__item[data-type="${escapedDockType}"]`,
-                `.dock__item[data-id="${escapedDockType}"]`,
-                `[data-type="${escapedDockType}"].dock__item`,
-                `[data-id="${escapedDockType}"].dock__item`,
-                `.dock__item[data-type$="${escapeCssAttributeValue(fallbackType)}"]`,
-                `.dock__item[data-id$="${escapeCssAttributeValue(fallbackType)}"]`,
-            ];
-            for (const element of Array.from(document.querySelectorAll<HTMLElement>(selectors.join(", ")))) {
-                const dockItem = element.closest?.(".dock__item") as HTMLElement | null;
-                (dockItem ?? element).remove();
-            }
-        }
-
-        const escapedIconId = escapeCssAttributeValue(`#${iconId}`);
-        const iconSelectors = [
-            `.dock__item[data-icon="${escapeCssAttributeValue(iconId)}"]`,
-            `.dock__item use[href="${escapedIconId}"]`,
-            `.dock__item use[xlink\\:href="${escapedIconId}"]`,
-            `.dock__item [href="${escapedIconId}"]`,
-            `.dock__item [xlink\\:href="${escapedIconId}"]`,
-        ];
-        for (const element of Array.from(document.querySelectorAll<HTMLElement>(iconSelectors.join(", ")))) {
-            const dockItem = element.closest?.(".dock__item") as HTMLElement | null;
-            (dockItem ?? element).remove();
-        }
-    }
-
-}
-
-function firstNonEmptyString(values: unknown[]): string {
-    for (const value of values) {
-        if (typeof value === "string" && value.trim()) return value.trim();
-    }
-    return "";
-}
-
-function getDocumentTitleFromPath(path: unknown): string {
-    if (typeof path !== "string" || !path.trim()) return "";
-    const segment = path.split("/").filter(Boolean).at(-1) ?? "";
-    return segment.replace(/\.sy$/i, "") || "";
-}
-
-function getDockByPosition(layout: any, position: string): any {
-    if (position.startsWith("Left")) return layout?.leftDock;
-    if (position.startsWith("Bottom")) return layout?.bottomDock;
-    return layout?.rightDock;
-}
-
-function getDockLayoutKey(position: string): "left" | "right" | "bottom" {
-    if (position.startsWith("Left")) return "left";
-    if (position.startsWith("Bottom")) return "bottom";
-    return "right";
-}
-
-function escapeCssAttributeValue(value: string): string {
-    return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
