@@ -10,9 +10,9 @@ import { callMascotTool, MASCOT_VARIANTS } from '../tools/mascot';
 import { callTimelineTool } from '../tools/timeline';
 import { TIMELINE_VARIANTS } from '../tools/timeline';
 import { buildAggregatedTool } from '../tools/internal/shared';
-import type { McpAppConfig, McpAppsConfig, TimelineAppAction, FlashcardReviewAppAction, MascotShopAppAction, ToolCategory } from './config';
-import type { PermissionManager } from './permissions';
-import type { ToolDescriptor } from './tool-registry';
+import type { McpAppConfig, McpAppsConfig, TimelineAppAction, FlashcardReviewAppAction, MascotShopAppAction, ToolCategory } from '../core/config';
+import type { PermissionManager } from '../core/permissions';
+import type { ToolDescriptor } from '../core/tool-result';
 
 import MCP_APP_HTML from 'virtual:siyuan-mcp-app-html';
 import {
@@ -22,7 +22,7 @@ import {
     MASCOT_SHOP_APP_TOOL_NAME,
     TIMELINE_APP_ACTION_TOOL_NAME,
     TIMELINE_APP_TOOL_NAME,
-} from './mcp-app-names';
+} from '../core/mcp-app-names';
 
 export const MCP_APPS_EXTENSION_ID = 'io.modelcontextprotocol/ui';
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';

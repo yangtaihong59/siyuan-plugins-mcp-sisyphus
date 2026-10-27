@@ -1,13 +1,14 @@
 import type { AvCreationProgress } from '../tools/av/creation-context';
 import type { AvAddRowsProgress } from '../tools/av/add-rows-plan';
 import type { BatchRenameProgress } from '../tools/document/batch-rename-plan';
-import type { ToolResult } from '../tools/internal/shared';
-import { nodeCrypto } from './node-loader';
-import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';
+import type { ToolResult } from '../core/tool-result';
+import { nodeCrypto } from '../core/node-loader';
+import { WRITE_PREFLIGHT_LEASE_TTL_MS } from '../core/write-preflight-lease';
 import type { SiYuanClient } from '../api/client';
-import { hashWriteState } from './write-safety-hash';
-import { stripSafetyFields } from './write-safety-fields';
-import type { ToolCategory } from './config';
+import { hashWriteState } from '../core/write-safety-hash';
+import { stripSafetyFields } from '../core/write-safety-fields';
+import { safetyError } from '../core/write-safety-error';
+import type { ToolCategory } from '../core/config';
 
 export const WRITE_SAFETY_LEDGER_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/writeSafetyLedger';
 export const WRITE_SAFETY_LEDGER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -228,11 +229,7 @@ function isMissingFileEnvelope(value: unknown): value is FileApiErrorEnvelope {
         && (value.code === 404 || /not found|does not exist/i.test(value.msg));
 }
 
-export { stripSafetyFields } from './write-safety-fields';
-
-export function safetyError(code: string, message: string): Error & { code: string } {
-    return Object.assign(new Error(message), { name: 'WriteSafetyError', code });
-}
+export { stripSafetyFields } from '../core/write-safety-fields';
 
 function isLedgerEntry(value: unknown): value is WriteLedgerEntry {
     if (!value || typeof value !== 'object') return false;

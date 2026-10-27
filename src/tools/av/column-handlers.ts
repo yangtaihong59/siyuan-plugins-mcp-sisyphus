@@ -6,7 +6,9 @@ import { canonicalizeState } from '../../shared/canonical-state';
 import { AvAddColumnSchema, AvRemoveColumnSchema, AvSetColumnOptionsSchema } from './schemas';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
-import { asRecord, avWriteSuccess, createAvFieldValidationResult, dispatchAvTransaction, ensurePermissionForAvId, getAvKeyById, getStringField } from './common';
+import { asRecord, createAvFieldValidationResult, getAvKeyById, getStringField } from './definition';
+import { avWriteSuccess, dispatchAvTransaction } from './transaction';
+import { ensurePermissionForAvId } from './carrier';
 
 function normalizeSelectOptions(options: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
     return options.map((option) => ({

@@ -22,7 +22,7 @@ import {
     TIMELINE_APP_TOOL_NAME,
     MASCOT_SHOP_APP_TOOL_NAME,
     MASCOT_SHOP_APP_ACTION_TOOL_NAME,
-} from '@/core/mcp-apps';
+} from '@/mcp/mcp-apps';
 import { buildDefaultToolConfig } from '@/core/config';
 import { SHOP_ITEMS } from '@/tools/mascot';
 import { withRequestSemantics } from '../../helpers/mock-client';

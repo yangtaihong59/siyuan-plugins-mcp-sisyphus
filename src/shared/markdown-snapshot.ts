@@ -1,3 +1,5 @@
+import { sha256V1 } from './sha256-v1';
+
 export const MARKDOWN_SNAPSHOT_SCHEMA_VERSION = '1.0.0' as const;
 
 export interface SnapshotDocumentCandidate {
@@ -57,6 +59,11 @@ export function canonicalMetadata(
     };
 }
 
+/**
+ * Snapshot metadata keeps its own string-built canonical form (lexical key order,
+ * no undefined markers); cursors carry these hashes, so it must not drift to
+ * canonicalizeState.
+ */
 function canonicalize(value: unknown): string {
     if (value === null || typeof value !== 'object') return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
@@ -64,21 +71,15 @@ function canonicalize(value: unknown): string {
     return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(record[key])}`).join(',')}}`;
 }
 
-async function hashSnapshotBytes(value: Uint8Array): Promise<string> {
-    const bytes = Uint8Array.from(value);
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes.buffer);
-    return `sha256:v1:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
-}
-
 export function hashSnapshotMetadata(metadata: unknown): Promise<string> {
-    return hashSnapshotBytes(new TextEncoder().encode(canonicalize(metadata)));
+    return sha256V1(new TextEncoder().encode(canonicalize(metadata)));
 }
 
 export function hashSnapshotContent(content: string): Promise<string> {
     // Hash the exact returned Markdown string, preserving every character
     // (including trailing newlines) while remaining usable in renderer and
     // server bundles without importing Node's crypto module into the browser.
-    return hashSnapshotBytes(new TextEncoder().encode(content));
+    return sha256V1(new TextEncoder().encode(content));
 }
 
 export function compareSnapshotText(left: string, right: string): number {

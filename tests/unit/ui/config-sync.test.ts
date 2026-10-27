@@ -175,8 +175,8 @@ describe('setting and mcp config stay behaviorally aligned', () => {
     it('adds hierarchy to dense settings pages without changing their behavior', () => {
         const rulesSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/UserRulesPanel.svelte'), 'utf8');
         const debugSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/DebugPanel.svelte'), 'utf8');
-        const connectionSource = ['src/ui/setting/mcp-config/HttpServerPanel.svelte', 'src/ui/setting/mcp-config/http-server-panel-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
-        const analyticsSource = readFileSync(resolve(process.cwd(), 'src/ui/setting/mcp-config/TelemetryPanel.svelte'), 'utf8');
+        const connectionSource = ['src/ui/setting/mcp-config/HttpServerPanel.svelte', 'src/ui/setting/mcp-config/HttpServerPanel.scss', 'src/ui/setting/mcp-config/http-server-panel-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
+        const analyticsSource = ['src/ui/setting/mcp-config/TelemetryPanel.svelte', 'src/ui/setting/mcp-config/TelemetryPanel.scss'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
         expect(rulesSource).toContain('user-rules-editor__index');
         expect(rulesSource).toContain('user_rules_auto_save');

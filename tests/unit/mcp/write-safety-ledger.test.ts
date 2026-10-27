@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { WriteSafetyLedger, WRITE_SAFETY_LEDGER_TTL_MS } from '@/core/write-safety-ledger';
+import { WriteSafetyLedger, WRITE_SAFETY_LEDGER_TTL_MS } from '@/mcp/write-safety-ledger';
 import { WRITE_PREFLIGHT_LEASE_TTL_MS } from '@/core/write-preflight-lease';
 
 vi.mock('node:crypto', async (original) => {

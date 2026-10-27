@@ -113,7 +113,7 @@ import SiyuanMCP from '@/index';
 import { resetToolConfigWarningStateForTests } from '@/core/config';
 import type { HttpServerSettings } from '@/ui/setting/tool-config-storage';
 
-import { HttpServerLauncher } from '@/server-launcher';
+import { HttpServerLauncher } from '@/ui/plugin/server-launcher';
 import { showMessage } from 'siyuan';
 
 class FakeElement {

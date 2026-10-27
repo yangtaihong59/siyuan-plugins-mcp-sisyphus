@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { listHelpResourceTemplates, listHelpResources, readHelpResource } from '@/core/resources';
+import { listHelpResourceTemplates, listHelpResources, readHelpResource } from '@/mcp/resources';
 
 describe('core/resources', () => {
     it('lists static help resources and the action template', () => {

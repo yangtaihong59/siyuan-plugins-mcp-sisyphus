@@ -1,4 +1,4 @@
-import { isDangerousAction, type ToolCategory, type ToolConfig } from './config';
+import { isDangerousAction, type ToolCategory, type ToolConfig } from '../core/config';
 import {
     FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME,
     FLASHCARD_REVIEW_SESSION_TOOL_NAME,
@@ -6,12 +6,12 @@ import {
     MASCOT_SHOP_APP_TOOL_NAME,
     TIMELINE_APP_ACTION_TOOL_NAME,
     TIMELINE_APP_TOOL_NAME,
-} from './mcp-app-names';
+} from '../core/mcp-app-names';
 import { resolveCategory } from './tool-registry';
 import { RESERVED_EXTENSION_ACTIONS } from '../tools/extension';
-import { getActionSafetyPolicy, type ActionSafetyPolicy } from './write-safety-policy';
-import { normalizeActionAlias } from './action-aliases';
-import { normalizeToolArguments } from './argument-aliases';
+import { getActionSafetyPolicy, type ActionSafetyPolicy } from '../core/write-safety-policy';
+import { normalizeActionAlias } from '../core/action-aliases';
+import { normalizeToolArguments } from '../core/argument-aliases';
 import { createDisabledActionResult, createDisabledToolResult, createUnknownToolResult, type ToolResult } from '../tools/internal/shared';
 
 /*

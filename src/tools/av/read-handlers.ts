@@ -11,7 +11,9 @@ import { createResultResolutionCache, resolveDocumentContextById, resolveResultI
 import { computePageCount } from '../internal/pagination';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createJsonResult, type ToolResult } from '../internal/shared';
-import { ATTRIBUTE_VIEW_DIR, ATTRIBUTE_VIEW_ID_PATTERN, type AvQueryCell, type AvQueryColumn, type AvQueryRow, type AvViewItems, asRecord, ensurePermissionForAvId, extractAttributeViewKeysFromData, extractAvRowLookup, extractSourceBlockIdFromBlockValue, getStringField, pickString, readViewSelection } from './common';
+import { ATTRIBUTE_VIEW_DIR, ATTRIBUTE_VIEW_ID_PATTERN, type AvQueryCell, type AvQueryColumn, type AvQueryRow, type AvViewItems, asRecord, extractAttributeViewKeysFromData, getStringField, pickString } from './definition';
+import { ensurePermissionForAvId, readViewSelection } from './carrier';
+import { extractAvRowLookup, extractSourceBlockIdFromBlockValue } from './rows';
 
 async function filterAvSearchResultsByPermission(
     client: SiYuanClient,

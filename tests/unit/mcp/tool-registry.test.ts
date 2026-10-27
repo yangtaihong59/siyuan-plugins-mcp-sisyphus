@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ACTIONS_BY_CATEGORY, buildDefaultToolConfig, TOOL_CATEGORIES } from '@/core/config';
-import { listAllTools } from '@/core/tool-registry';
+import { listAllTools } from '@/mcp/tool-registry';
 import { buildServerInstructions } from '@/core/server-instructions';
 import { validateRegisteredToolArguments } from '@/tools/internal/define-tool';
 import { ACTION_SCHEMA_BRANCHES_KEY } from '@/tools/internal/shared';

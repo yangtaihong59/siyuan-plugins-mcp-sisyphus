@@ -1,5 +1,6 @@
 /** Bounded, immutable upload staging. Bytes never enter tool arguments or the ledger. */
 import { hashWriteBytes, hashWriteBytesAsync, hashWriteState } from './write-safety-hash';
+import { isSha256V1 } from '../shared/sha256-v1';
 
 export const MAX_TRANSFER_FILE_BYTES = 10 * 1024 * 1024;
 export const UPLOAD_STAGE_TTL_MS = 10 * 60_000;
@@ -56,7 +57,7 @@ export class UploadStagingStore {
     }
     lookup(fileName: string, hash: string, size: number) {
         validateUploadName(fileName);
-        if (!/^sha256:v1:[a-f0-9]{64}$/.test(hash) || !Number.isInteger(size) || size < 0 || size > MAX_TRANSFER_FILE_BYTES) throw new Error('Invalid upload fingerprint');
+        if (!isSha256V1(hash) || !Number.isInteger(size) || size < 0 || size > MAX_TRANSFER_FILE_BYTES) throw new Error('Invalid upload fingerprint');
         this.prune();
         const uploadSource = hashWriteState({ fileName, hash }).split(':').pop()!;
         const source = this.entries.get(uploadSource);

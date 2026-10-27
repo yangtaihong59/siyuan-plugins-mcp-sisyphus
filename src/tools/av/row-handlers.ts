@@ -9,7 +9,10 @@ import type { TransactionOperation } from '../../api/transaction';
 import { AvAddRowsSchema, AvDuplicateRowsSchema, AvRemoveRowsSchema, AvSetCellsSchema } from './schemas';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
-import { AV_TOOL_NAME, type StrongCellValueInput, asRecord, avWriteSuccess, buildStrongCellValue, createAddRowsSyncTimeoutResult, createAvRowIdErrorResult, createAvValidationErrorResult, createDuplicateRowsValidationResult, dispatchAvTransaction, ensurePermissionForAvId, extractAvRowLookup, extractKeyValueEntries, getStringField, resolveAvTransactionBlockId, resolveDuplicateRowsRelationDestinations, validateRowIdForAv, verifyDuplicateRowsRelationDestinations, waitForAddedRows, withUpdatedOperation } from './common';
+import { AV_TOOL_NAME, type StrongCellValueInput, asRecord, buildStrongCellValue, createAvValidationErrorResult, extractKeyValueEntries, getStringField } from './definition';
+import { avWriteSuccess, dispatchAvTransaction, resolveAvTransactionBlockId, withUpdatedOperation } from './transaction';
+import { createAddRowsSyncTimeoutResult, createAvRowIdErrorResult, createDuplicateRowsValidationResult, extractAvRowLookup, validateRowIdForAv, verifyDuplicateRowsRelationDestinations, waitForAddedRows } from './rows';
+import { ensurePermissionForAvId, resolveDuplicateRowsRelationDestinations } from './carrier';
 
 function normalizeCopiedRowValue(value: Record<string, unknown>): unknown {
     const clone = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;

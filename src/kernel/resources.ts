@@ -4,5 +4,5 @@ export {
     listHelpResources as kernelListResources,
     listHelpResourceTemplates as kernelListResourceTemplates,
     readHelpResource as kernelReadResource,
-} from '../core/resources';
+} from '../mcp/resources';
 export { listMcpPrompts as kernelListPrompts, getMcpPrompt as kernelGetPrompt } from '../core/skills';

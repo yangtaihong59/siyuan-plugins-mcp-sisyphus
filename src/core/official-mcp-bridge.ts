@@ -6,7 +6,7 @@ import {
     MIN_OFFICIAL_MCP_VERSION,
     supportsOfficialMcp,
 } from '../shared/official-mcp-support';
-import type { ToolResult } from '../tools/internal/shared';
+import type { ToolResult } from './tool-result';
 import { noopSchemaValidator } from './noops/noop-schema-validator';
 
 import { OfficialListToolsResultSchema, selectOfficialTools, type OfficialMcpTool, type OfficialMcpDiscoverySnapshot } from './official-mcp-tools';

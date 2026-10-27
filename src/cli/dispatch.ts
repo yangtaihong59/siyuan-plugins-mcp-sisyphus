@@ -6,7 +6,7 @@ import {
     type ToolConfig,
 } from '../core/config';
 import { normalizeActionAlias } from '../core/action-aliases';
-import { listConfiguredToolsForCategory, prepareTool, TOOL_REGISTRY, resolveCategory } from '../core/tool-registry';
+import { listConfiguredToolsForCategory, prepareTool, TOOL_REGISTRY, resolveCategory } from '../mcp/tool-registry';
 import { runToolCall } from '../core/tool-lifecycle';
 import { PRIMARY_CLI_COMMAND } from '../shared/constants';
 import { getExposedExtensionTools } from '../tools/extension';
@@ -17,8 +17,8 @@ import { mapFlagsToArgs } from './flag-mapper';
 import { extractPaginationInfo, renderCliError, renderToolResult } from './render';
 import { loadCliRuntimeState } from './runtime';
 import { callCliWriteCoordinator } from '../core/write-coordinator-client';
-import { planToolCall } from '../core/tool-call-gate';
-import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
+import { planToolCall } from '../mcp/tool-call-gate';
+import { WriteSafetyCoordinator } from '../mcp/write-safety-coordinator';
 
 import type { ToolResult } from '../tools/internal/shared';
 

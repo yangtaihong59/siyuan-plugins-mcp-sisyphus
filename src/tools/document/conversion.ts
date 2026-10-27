@@ -1,6 +1,6 @@
 import type { SiYuanClient } from '../../api/client';
 import type { PermissionManager } from '../../core/permissions';
-import { safetyError } from '../../core/write-safety-ledger';
+import { safetyError } from '../../core/write-safety-error';
 
 const storagePath = /^\/(?:\d{14}-[a-z0-9]{7}\/)*\d{14}-[a-z0-9]{7}\.sy$/;
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { readFlashcardReviewState } from '@/tools/flashcard/review-state';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';

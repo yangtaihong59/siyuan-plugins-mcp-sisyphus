@@ -8,7 +8,7 @@ import {
     measureApproxText,
 } from '../../../src/core/token-usage';
 import { MCP_INITIAL_COST_PATH, parseMcpInitialTokenCost } from '../../../src/core/analytics';
-import { calculateMcpInitialTokenCost, recordMcpInitialTokenCost } from '../../../src/core/mcp-initial-cost';
+import { calculateMcpInitialTokenCost, recordMcpInitialTokenCost } from '../../../src/mcp/mcp-initial-cost';
 
 describe('token usage helpers', () => {
     it('converts chars to approximate tokens', () => {

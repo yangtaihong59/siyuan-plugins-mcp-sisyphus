@@ -7,7 +7,7 @@ import {
     getActionSafetyPolicy,
 } from '@/core/write-safety-policy';
 import { buildDefaultToolConfig } from '@/core/config';
-import { listAllTools } from '@/core/tool-registry';
+import { listAllTools } from '@/mcp/tool-registry';
 
 describe('write safety action policy', () => {
     it('classifies every configured action exactly once', () => {

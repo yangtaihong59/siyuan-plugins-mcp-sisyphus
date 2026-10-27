@@ -30,7 +30,7 @@ import { PermissionTreeFeature } from "@/ui/plugin/permission-tree-feature";
 import { PuppyFeature } from "@/ui/plugin/puppy-feature";
 import { VersionControlFeature } from "@/ui/plugin/version-control-feature";
 
-import { HttpServerLauncher, appendHttpLifecycleLog } from "@/server-launcher";
+import { HttpServerLauncher, appendHttpLifecycleLog } from "@/ui/plugin/server-launcher";
 
 export default class SiyuanMCP extends Plugin {
     private layoutReady = false;

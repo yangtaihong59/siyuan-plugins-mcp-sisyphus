@@ -17,7 +17,7 @@ const server = await createServer({
 });
 try {
     const { buildDefaultToolConfig, TOOL_CATEGORIES } = await server.ssrLoadModule('/src/core/config.ts');
-    const { listAllTools } = await server.ssrLoadModule('/src/core/tool-registry.ts');
+    const { listAllTools } = await server.ssrLoadModule('/src/mcp/tool-registry.ts');
     const { buildServerInstructions } = await server.ssrLoadModule('/src/core/server-instructions.ts');
     const { approximateTokensFromChars } = await server.ssrLoadModule('/src/core/token-usage.ts');
     const measure = (config) => {

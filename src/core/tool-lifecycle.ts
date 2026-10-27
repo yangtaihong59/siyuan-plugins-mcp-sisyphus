@@ -6,7 +6,7 @@ import { getInvocationTransport } from './runtime';
 import { slimToolResult } from './slim-response';
 import { maybeSendTelemetry } from './telemetry';
 import { APPROX_TOKEN_MODE, measureApproxContent, measureApproxText } from './token-usage';
-import type { ToolContent, ToolResult } from '@/tools/internal/shared';
+import type { ToolContent, ToolResult } from './tool-result';
 
 /**
  * Context handed to runToolCall. Enough for the lifecycle wrappers

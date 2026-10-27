@@ -5,7 +5,7 @@ import {
     isDangerousAction,
 } from '../core/config';
 import { normalizeActionAlias } from '../core/action-aliases';
-import { TOOL_REGISTRY, prepareTool, resolveCategory } from '../core/tool-registry';
+import { TOOL_REGISTRY, prepareTool, resolveCategory } from '../mcp/tool-registry';
 import { PRIMARY_CLI_COMMAND } from '../shared/constants';
 import { getExposedExtensionTools } from '../tools/extension';
 

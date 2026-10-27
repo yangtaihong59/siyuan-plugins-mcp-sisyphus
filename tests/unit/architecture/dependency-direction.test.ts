@@ -4,15 +4,25 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = path.resolve('src');
 
-/** Top-level src directories each layer may import from (besides itself). */
+/**
+ * Top-level src directories each layer may import from (besides itself).
+ * core is the foundation the tools build on; mcp assembles tools into the
+ * registry, call gate, write coordinator and server.
+ */
 const ALLOWED: Record<string, string[]> = {
     api: ['types'],
     types: [],
     shared: ['api', 'types'],
+    core: ['api', 'types', 'shared'],
     tools: ['api', 'types', 'shared', 'core'],
-    core: ['api', 'types', 'shared', 'tools'],
-    kernel: ['api', 'types', 'shared', 'core', 'tools'],
+    mcp: ['api', 'types', 'shared', 'core', 'tools'],
+    kernel: ['api', 'types', 'shared', 'core', 'tools', 'mcp'],
+    // The renderer stays off the tool implementations and the MCP assembly.
+    ui: ['api', 'types', 'shared', 'core'],
 };
+
+/** core derives its action tables from the per-tool declaration leaves. */
+const ACTION_DECLARATION = /^tools\/[^/]+\/actions$/;
 
 function listSourceFiles(dir: string): string[] {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -22,19 +32,20 @@ function listSourceFiles(dir: string): string[] {
     });
 }
 
-function importedLayers(file: string): string[] {
+/** Import targets as src-relative paths without extension. */
+function importedTargets(file: string): string[] {
     const source = fs.readFileSync(file, 'utf8');
-    const layers: string[] = [];
+    const targets: string[] = [];
     for (const match of source.matchAll(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)) {
         const spec = match[1];
         let target: string | undefined;
         if (spec.startsWith('@/')) target = path.join(SRC, spec.slice(2));
         else if (spec.startsWith('.')) target = path.resolve(path.dirname(file), spec);
         if (!target) continue;
-        const rel = path.relative(SRC, target);
-        if (!rel.startsWith('..')) layers.push(rel.split(path.sep)[0]);
+        const rel = path.relative(SRC, target).split(path.sep).join('/').replace(/\.(ts|svelte)$/, '');
+        if (!rel.startsWith('..')) targets.push(rel);
     }
-    return layers;
+    return targets;
 }
 
 describe('src dependency direction', () => {
@@ -42,10 +53,11 @@ describe('src dependency direction', () => {
         const violations: string[] = [];
         for (const [layer, allowed] of Object.entries(ALLOWED)) {
             for (const file of listSourceFiles(path.join(SRC, layer))) {
-                for (const target of importedLayers(file)) {
-                    if (target !== layer && !allowed.includes(target)) {
-                        violations.push(`${path.relative(SRC, file)} -> ${target}`);
-                    }
+                for (const target of importedTargets(file)) {
+                    const targetLayer = target.split('/')[0];
+                    if (targetLayer === layer || allowed.includes(targetLayer)) continue;
+                    if (layer === 'core' && ACTION_DECLARATION.test(target)) continue;
+                    violations.push(`${path.relative(SRC, file)} -> ${target}`);
                 }
             }
         }
@@ -62,6 +74,20 @@ describe('src dependency direction', () => {
                 if (match[1] !== '../../core/action-spec') offenders.push(`tools/${tool}/actions.ts -> ${match[1]}`);
             }
         }
+        expect(offenders).toEqual([]);
+    });
+
+    it('keeps the av base modules layered definition -> rows -> carrier -> transaction', () => {
+        const order = ['definition', 'rows', 'carrier', 'transaction'];
+        const offenders: string[] = [];
+        order.forEach((name, rank) => {
+            for (const target of importedTargets(path.join(SRC, 'tools/av', `${name}.ts`))) {
+                const sibling = target.startsWith('tools/av/') ? target.slice('tools/av/'.length) : undefined;
+                if (sibling && (sibling.endsWith('-handlers') || sibling === 'handlers' || order.indexOf(sibling) >= rank)) {
+                    offenders.push(`tools/av/${name}.ts -> ${target}`);
+                }
+            }
+        });
         expect(offenders).toEqual([]);
     });
 });

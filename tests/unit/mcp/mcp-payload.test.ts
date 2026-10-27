@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { buildDefaultToolConfig, TOOL_CATEGORIES } from '@/core/config';
-import { calculateMcpInitialTokenCost } from '@/core/mcp-initial-cost';
+import { calculateMcpInitialTokenCost } from '@/mcp/mcp-initial-cost';
 import { buildServerInstructions } from '@/core/server-instructions';
-import { listAllTools, TOOL_REGISTRY } from '@/core/tool-registry';
-import { readHelpResource } from '@/core/resources';
+import { listAllTools, TOOL_REGISTRY } from '@/mcp/tool-registry';
+import { readHelpResource } from '@/mcp/resources';
 import { AV_VARIANTS } from '@/tools/av';
 import { DOCUMENT_VARIANTS } from '@/tools/document';
 import { getRegisteredActionSchemas, validateRegisteredToolArguments } from '@/tools/internal/define-tool';

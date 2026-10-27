@@ -3,8 +3,8 @@ import { createServer } from 'node:net';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createSiYuanServer } from '@/core/server';
-import { startHttpMcpServer, type HttpMcpServerHandle } from '@/core/http-transport';
+import { createSiYuanServer } from '@/mcp/server';
+import { startHttpMcpServer, type HttpMcpServerHandle } from '@/mcp/http-transport';
 
 
 const TOOL_CONFIG_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';

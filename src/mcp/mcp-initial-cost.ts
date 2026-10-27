@@ -1,9 +1,9 @@
 import type { SiYuanClient } from '../api/client';
-import type { ToolConfig } from './config';
+import type { ToolConfig } from '../core/config';
 import { listAllTools } from './tool-registry';
-import { buildServerInstructions } from './server-instructions';
-import { approximateTokensFromChars } from './token-usage';
-import { MCP_INITIAL_COST_PATH, type McpInitialTokenCost } from './analytics';
+import { buildServerInstructions } from '../core/server-instructions';
+import { approximateTokensFromChars } from '../core/token-usage';
+import { MCP_INITIAL_COST_PATH, type McpInitialTokenCost } from '../core/analytics';
 
 /*
  * Server-side measurement of the one-off MCP mount cost (instructions + the

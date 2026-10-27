@@ -7,17 +7,18 @@ import { ensurePermissionForDocumentId } from '../tools/internal/context';
 import { translateError } from '../tools/internal/errorTranslation';
 import type { SiYuanClient } from '../api/client';
 import { WriteOutcomeUnknownError } from '../api/client';
-import type { PermissionManager } from './permissions';
+import type { PermissionManager } from '../core/permissions';
 import { getNotebookNameArgumentHint } from '../tools/internal/helpers/notebook-names';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
-import { type ToolCategory } from './config';
-import { compactWriteHashFields, hashWriteState, parseWriteHashCredential } from './write-safety-hash';
-import { WritePreflightLeasePool, WRITE_PREFLIGHT_LEASE_TTL_MS, type WritePreflightLease, type WritePreflightLeaseScope } from './write-preflight-lease';
-import { assertPreflightCommitArgsSize, buildWritePreflight } from './write-preflight';
-import { PRECONDITION_FIELD, getActionSafetyPolicy, type ActionSafetyPolicy } from './write-safety-policy';
-import { WriteSafetyLedger, safetyError, stripSafetyFields, type WriteLedgerEntry } from './write-safety-ledger';
+import { type ToolCategory } from '../core/config';
+import { compactWriteHashFields, hashWriteState, parseWriteHashCredential } from '../core/write-safety-hash';
+import { WritePreflightLeasePool, WRITE_PREFLIGHT_LEASE_TTL_MS, type WritePreflightLease, type WritePreflightLeaseScope } from '../core/write-preflight-lease';
+import { assertPreflightCommitArgsSize, buildWritePreflight } from '../core/write-preflight';
+import { PRECONDITION_FIELD, getActionSafetyPolicy, type ActionSafetyPolicy } from '../core/write-safety-policy';
+import { safetyError } from '../core/write-safety-error';
+import { WriteSafetyLedger, stripSafetyFields, type WriteLedgerEntry } from './write-safety-ledger';
 import { derivePostWriteProbeArgs, probeCreatedNotebook, probeCurrentState, probePostWriteState, probeUploadedResult, verifyPostWriteSemanticState } from './write-safety-probe';
-import { type StateProbe, collectTargetSelectors, isRecord, parseResultObject } from './write-safety-records';
+import { type StateProbe, collectTargetSelectors, isRecord, parseResultObject } from '../core/write-safety-records';
 
 export interface WriteSafetyExecution {
     client: SiYuanClient;

@@ -10,7 +10,10 @@ import { AvCreateFromTemplateSchema, AvSetNewItemTemplatesSchema } from './schem
 import { ensurePermissionForDocumentId, ensurePermissionForNotebook } from '../internal/context';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
-import { ATTRIBUTE_VIEW_ID_PATTERN, type AttributeViewDefinition, type AvKeyDefinition, type AvKeyValueDefinition, asAttributeViewDefinition, avWriteSuccess, cloneJsonRecord, createAvValidationErrorResult, dispatchAvTransaction, ensurePermissionForAvId, extractAvRowLookup, getAvKey, getAvKeyValue, requireWritableRelationDestinations } from './common';
+import { ATTRIBUTE_VIEW_ID_PATTERN, type AttributeViewDefinition, type AvKeyDefinition, type AvKeyValueDefinition, asAttributeViewDefinition, cloneJsonRecord, createAvValidationErrorResult, getAvKey, getAvKeyValue } from './definition';
+import { avWriteSuccess, dispatchAvTransaction } from './transaction';
+import { ensurePermissionForAvId, requireWritableRelationDestinations } from './carrier';
+import { extractAvRowLookup } from './rows';
 import { readRelationPostimage } from './relation-handlers';
 
 function getTemplate(definition: AttributeViewDefinition, templateID: string, context: string): Record<string, unknown> {

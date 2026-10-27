@@ -12,7 +12,7 @@ import { buildDefaultToolConfig } from '@/core/config';
 import { PermissionManager } from '@/core/permissions';
 import { OfficialMcpBridge, type OfficialMcpTool } from '@/core/official-mcp-bridge';
 import { runToolCall } from '@/core/tool-lifecycle';
-import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { TOOL_REGISTRY } from '@/mcp/tool-registry';
 
 vi.mock('@/core/tool-lifecycle', () => ({
     runToolCall: vi.fn(async (_ctx: unknown, handler: () => Promise<unknown>) => handler()),

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
 import { BATCH_RENAME_CONTEXT } from '@/tools/document/batch-rename-plan';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';

@@ -6,29 +6,7 @@
  * circular-dependency cycles between shared.ts and help-render.ts.
  */
 
-export interface ToolTextContent {
-    type: 'text';
-    text: string;
-    data?: undefined;
-    mimeType?: undefined;
-}
-
-export interface ToolImageContent {
-    type: 'image';
-    data: string;
-    mimeType: string;
-    text?: undefined;
-    _meta?: Record<string, unknown>;
-}
-
-export type ToolContent = ToolTextContent | ToolImageContent;
-
-export interface ToolResult {
-    _meta?: Record<string, unknown>;
-    content: ToolContent[];
-    isError?: boolean;
-    structuredContent?: Record<string, unknown>;
-}
+export type { ToolTextContent, ToolImageContent, ToolContent, ToolResult } from '../../core/tool-result';
 
 export type JsonSchema = Record<string, any>;
 

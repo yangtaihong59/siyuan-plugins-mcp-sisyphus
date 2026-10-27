@@ -3,7 +3,7 @@
  * probe and AV modules. Kept dependency-free to avoid import cycles.
  */
 
-import { type ToolResult } from '../tools/internal/shared';
+import type { ToolResult } from './tool-result';
 import { escapeSqlString } from '../shared/sql';
 
 export interface StateProbe {

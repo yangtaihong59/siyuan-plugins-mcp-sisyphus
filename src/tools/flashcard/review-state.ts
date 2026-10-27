@@ -1,6 +1,6 @@
 import type { SiYuanClient } from '../../api/client';
 import type { PermissionManager } from '../../core/permissions';
-import { safetyError } from '../../core/write-safety-ledger';
+import { safetyError } from '../../core/write-safety-error';
 import { sleep } from '../../shared/async';
 
 /** getRiffCards returns blocks with riffCardID/riffCard, not due-card DTOs. */

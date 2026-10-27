@@ -1,24 +1,24 @@
 import { supportsFormElicitation } from '../shared/mcp-capabilities';
-import { withStructuredContent } from './structured-result';
-import { isKernelExport } from './kernel-file-transfer';
+import { withStructuredContent } from '../core/structured-result';
+import { isKernelExport } from '../core/kernel-file-transfer';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server, type Tool } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
-import { buildServerInstructions } from './server-instructions';
+import { buildServerInstructions } from '../core/server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from './mcp-initial-cost';
 import { planToolCall } from './tool-call-gate';
 
 import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
-import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
+import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from '../core/config';
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
-import { callCliWriteCoordinator } from './write-coordinator-client';
-import { loadWriteCoordinatorSettings } from './write-coordinator-settings';
-import { noopSchemaValidator } from './noops/noop-schema-validator';
-import { OfficialMcpBridge, type OfficialMcpRuntime } from './official-mcp-bridge';
+import { callCliWriteCoordinator } from '../core/write-coordinator-client';
+import { loadWriteCoordinatorSettings } from '../core/write-coordinator-settings';
+import { noopSchemaValidator } from '../core/noops/noop-schema-validator';
+import { OfficialMcpBridge, type OfficialMcpRuntime } from '../core/official-mcp-bridge';
 
-import { PermissionManager } from './permissions';
+import { PermissionManager } from '../core/permissions';
 import {
     callFlashcardReviewSessionTool,
     callMascotShopAppTool,
@@ -33,11 +33,11 @@ import {
 } from './mcp-apps';
 import { listHelpResources, listHelpResourceTemplates, readHelpResource } from './resources';
 import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory, TOOL_REGISTRY } from './tool-registry';
-import { runToolCall } from './tool-lifecycle';
-import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from './skills';
+import { runToolCall } from '../core/tool-lifecycle';
+import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from '../core/skills';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 
-export { buildServerInstructions } from './server-instructions';
+export { buildServerInstructions } from '../core/server-instructions';
 
 export function getMcpServerHelpText(): string {
     return [

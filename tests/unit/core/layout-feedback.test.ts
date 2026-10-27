@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { slimToolResult } from '@/core/slim-response';
 import { verifyAvCellsReadback } from '@/tools/av/cell-readback';
-import { readHelpResource } from '@/core/resources';
-import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { readHelpResource } from '@/mcp/resources';
+import { TOOL_REGISTRY } from '@/mcp/tool-registry';
 import { buildDefaultToolConfig } from '@/core/config';
 import { DocumentCreateSchema } from '@/tools/document/schemas';
 import { validateRegisteredToolArguments } from '@/tools/internal/define-tool';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { parseResult } from '../../helpers/parse-result';
 
 const config = buildDefaultToolConfig();

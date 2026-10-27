@@ -20,22 +20,22 @@ process.env.SIYUAN_MCP_TRANSPORT = 'kernel';
 
 import { KernelSiYuanClient } from './client';
 import { PermissionManager } from '../core/permissions';
-import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '../mcp/write-safety-coordinator';
 import { buildDefaultToolConfig, normalizeToolConfig } from '../core/config';
 import { runToolCall } from '../core/tool-lifecycle';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
-import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../core/tool-registry';
+import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../mcp/tool-registry';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { normalizeActionAlias } from '../core/action-aliases';
 import { buildServerInstructions } from '../core/server-instructions';
-import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../core/mcp-initial-cost';
-import { planToolCall } from '../core/tool-call-gate';
+import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../mcp/mcp-initial-cost';
+import { planToolCall } from '../mcp/tool-call-gate';
 import { kernelOfficialRuntime } from './official-mcp';
 import { getExposedExtensionTools } from '../tools/extension';
 import {
     MCP_APPS_EXTENSION_ID, MCP_APP_MIME_TYPE, supportsMcpApps, decorateToolsWithMcpApps, listMcpAppResources, readMcpAppResource,
     compactMcpAppToolResult, callFlashcardReviewSessionTool, callTimelineAppTool, callMascotShopAppTool,
-} from '../core/mcp-apps';
+} from '../mcp/mcp-apps';
 import {
     kernelGetPrompt,
     kernelListPrompts,

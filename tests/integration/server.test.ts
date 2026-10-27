@@ -18,9 +18,9 @@ import {
     TIMELINE_APP_TOOL_NAME,
     MASCOT_SHOP_APP_TOOL_NAME,
     MASCOT_SHOP_APP_ACTION_TOOL_NAME,
-} from '@/core/mcp-apps';
-import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText } from '@/core/server';
-import { decorateToolsWithMcpApps } from '@/core/mcp-apps';
+} from '@/mcp/mcp-apps';
+import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText } from '@/mcp/server';
+import { decorateToolsWithMcpApps } from '@/mcp/mcp-apps';
 import { buildDefaultToolConfig } from '@/core/config';
 import { BLOCK_GUIDANCE, BLOCK_ACTION_HINTS } from '@/core/help';
 import { scenarios } from '../../skills/source/scenarios.mjs';

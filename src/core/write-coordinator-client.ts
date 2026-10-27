@@ -3,7 +3,7 @@ import { stageKernelUpload, isKernelExport, saveKernelExport } from './kernel-fi
 import type { SiYuanClient } from '../api/client';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
-import type { ToolResult } from '../tools/internal/shared';
+import type { ToolResult } from './tool-result';
 import type { CliWriteCoordinatorSettings } from './write-coordinator-settings';
 
 export async function callCliWriteCoordinator(

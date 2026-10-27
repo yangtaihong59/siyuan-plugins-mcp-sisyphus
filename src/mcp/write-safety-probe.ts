@@ -7,25 +7,26 @@ import { prepareDocumentConversion } from '../tools/document/conversion';
 import { readFlashcardReviewState } from '../tools/flashcard/review-state';
 import { assertAvAddRowsStructure } from '../tools/av/add-rows-plan';
 import { prepareViewUpdate } from '../tools/av/view-config';
-import { getStagedUpload } from './upload-source';
+import { getStagedUpload } from '../core/upload-source';
 import { verifyAvCellsReadback } from '../tools/av/cell-readback';
-import { nodeFs } from './node-loader';
+import { nodeFs } from '../core/node-loader';
 import type { SiYuanClient } from '../api/client';
 import { normalizeTemplatePath, readTemplateSource } from '../api/template';
-import { readPuppyStats } from './puppy-state';
+import { readPuppyStats } from '../core/puppy-state';
 import { readLinkTargetScope } from '../tools/document/link-targets';
-import type { PermissionManager } from './permissions';
-import { type ToolResult } from '../tools/internal/shared';
+import type { PermissionManager } from '../core/permissions';
+import type { ToolResult } from '../core/tool-result';
 import { listDocumentBlocksInTreeOrder, readDocumentEditableMarkdown } from '../tools/internal/document-kramdown';
 import { assertExactOrder, readDocumentReorderState, resolveFsReorderOrder } from '../tools/internal/helpers/document-reorder';
 import { resolveFsScopePath } from '../tools/internal/helpers/fs-path';
-import { AGENT_MEMORY_VIRTUAL_PATH, isDangerousAction, USER_RULES_VIRTUAL_PATH, type ToolCategory } from './config';
-import { hashWriteBytes, hashWriteBytesAsync, hashWriteState } from './write-safety-hash';
+import { AGENT_MEMORY_VIRTUAL_PATH, isDangerousAction, USER_RULES_VIRTUAL_PATH, type ToolCategory } from '../core/config';
+import { hashWriteBytes, hashWriteBytesAsync, hashWriteState } from '../core/write-safety-hash';
 import { canonicalizeAvCarrierDom, findHtmlOpeningTagEnd, parseHtmlOpeningTagAttributes } from '../shared/av-carrier-dom';
-import { type ActionSafetyPolicy } from './write-safety-policy';
-import { safetyError, stripSafetyFields } from './write-safety-ledger';
+import { type ActionSafetyPolicy } from '../core/write-safety-policy';
+import { safetyError } from '../core/write-safety-error';
+import { stripSafetyFields } from './write-safety-ledger';
 import { extractRawAvDefinition, findRawAvView, inspectHighRiskAvMutation, isCrossObjectAvMutation, requireCarrierWritePermission, verifyAvViewConfigurationReadback } from './write-safety-av';
-import { AV_VIEW_CONFIGURATION_ACTIONS, type StateProbe, collectNotebookBoxes, collectPathSelectors, collectStateSelectors, collectTargetSelectors, isRecord, parseResultObject, sqlString } from './write-safety-records';
+import { AV_VIEW_CONFIGURATION_ACTIONS, type StateProbe, collectNotebookBoxes, collectPathSelectors, collectStateSelectors, collectTargetSelectors, isRecord, parseResultObject, sqlString } from '../core/write-safety-records';
 
 export function derivePostWriteProbeArgs(
     category: ToolCategory,

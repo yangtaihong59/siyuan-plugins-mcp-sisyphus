@@ -1,6 +1,6 @@
 import { Plugin, showMessage, getAllEditor } from "siyuan";
 
-import { appendHttpLifecycleLog } from "@/server-launcher";
+import { appendHttpLifecycleLog } from "@/ui/plugin/server-launcher";
 import { getTimelineNodeSelectionKey, type TimelineNodeSelection } from "@/shared/version-control/timeline";
 import { buildDefaultVersionControlSettings, type VersionControlSettings } from "@/ui/setting/tool-config-storage";
 import SnapshotPanel from "@/ui/version-control/SnapshotPanel.svelte";

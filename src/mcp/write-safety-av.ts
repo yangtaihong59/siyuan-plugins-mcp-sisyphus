@@ -6,12 +6,12 @@
 import { firstJsonDifferencePath } from '../shared/canonical-state';
 import { normalizeAvFilters, normalizeAvGroup, expectedAvGroup, viewFields as rawViewFields } from '../tools/av/view-config';
 import type { SiYuanClient } from '../api/client';
-import type { PermissionManager } from './permissions';
-import { canonicalizeWriteState } from './write-safety-hash';
+import type { PermissionManager } from '../core/permissions';
+import { canonicalizeWriteState } from '../core/write-safety-hash';
 import { escapeSqlString } from '../shared/sql';
 import { canonicalizeAvCarrierDom, isExactAvCarrierDom } from '../shared/av-carrier-dom';
-import { safetyError } from './write-safety-ledger';
-import { type StateProbe, isRecord, sortedUniqueIds } from './write-safety-records';
+import { safetyError } from '../core/write-safety-error';
+import { type StateProbe, isRecord, sortedUniqueIds } from '../core/write-safety-records';
 
 export function verifyAvViewConfigurationReadback(
     action: string,

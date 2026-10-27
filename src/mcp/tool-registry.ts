@@ -1,10 +1,11 @@
 import type { SiYuanClient } from '../api/client';
-import { isDangerousAction, TOOL_CATEGORIES, type ToolCategory, type ToolConfig } from './config';
-import type { PermissionManager } from './permissions';
-import type { ToolResult } from '@/tools/internal/shared';
-import type { OfficialMcpRuntime, OfficialMcpDiscoverySnapshot } from './official-mcp-bridge';
+import { isDangerousAction, TOOL_CATEGORIES, type ToolCategory, type ToolConfig } from '../core/config';
+import type { PermissionManager } from '../core/permissions';
+import type { ToolDescriptor, ToolResult } from '../core/tool-result';
+import type { OfficialMcpRuntime, OfficialMcpDiscoverySnapshot } from '../core/official-mcp-bridge';
 import { ACTION_SCHEMA_BRANCHES_KEY } from '@/tools/internal/shared';
-import { PRECONDITION_FIELD, getPossibleActionSafetyPolicies } from './write-safety-policy';
+import { PRECONDITION_FIELD, getPossibleActionSafetyPolicies } from '../core/write-safety-policy';
+import { SHA256_V1_CREDENTIAL_PATTERN } from '../shared/sha256-v1';
 
 import {
     callAvTool,
@@ -38,26 +39,6 @@ import {
     prepareExtensionTools,
 } from '@/tools/index';
 
-
-/**
- * Minimal tool descriptor as consumed by the MCP ListTools response.
- * The per-category list helpers emit these objects directly.
- */
-export interface ToolDescriptor {
-    name: string;
-    title?: string;
-    description?: string;
-    inputSchema: Record<string, unknown>;
-    outputSchema?: Record<string, unknown>;
-    _meta?: Record<string, unknown>;
-    annotations?: {
-        title?: string;
-        readOnlyHint?: boolean;
-        destructiveHint?: boolean;
-        idempotentHint?: boolean;
-        openWorldHint?: boolean;
-    };
-}
 
 export const GENERIC_TOOL_OUTPUT_SCHEMA = {
     type: 'object',
@@ -206,7 +187,7 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
         const field = PRECONDITION_FIELD[precondition];
         properties[field] = {
             type: 'string',
-            pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
+            pattern: SHA256_V1_CREDENTIAL_PATTERN,
             description: 'Preflight-issued hash; copy unchanged.',
         };
     }
@@ -214,7 +195,7 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
     // per-action branches below) but is not advertised in the merged schema.
     const expectedHashAlias = {
         type: 'string',
-        pattern: '^(?:sha256:v1:)?[a-fA-F0-9]{4,64}$',
+        pattern: SHA256_V1_CREDENTIAL_PATTERN,
         description: 'Alias of expectedStateHash.',
     };
     inputSchema.properties = properties;

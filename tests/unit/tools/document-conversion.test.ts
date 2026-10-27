@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareDocumentConversion } from '@/tools/document/conversion';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { createMockClient } from '../../helpers/mock-client';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';

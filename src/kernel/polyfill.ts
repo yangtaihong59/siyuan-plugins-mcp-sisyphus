@@ -114,7 +114,7 @@ if (typeof g.queueMicrotask === 'undefined') {
 }
 
 /* ---------- crypto.subtle ----------
- * markdown-snapshot's hashSnapshotBytes uses crypto.subtle.digest('SHA-256').
+ * shared/sha256-v1's sha256V1 uses crypto.subtle.digest('SHA-256').
  * goja has no WebCrypto; back it with the bundled pure-JS sha256 so document
  * reads/writes that canonicalize state still produce the same digest.
  */

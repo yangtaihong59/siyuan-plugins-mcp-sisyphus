@@ -6,7 +6,7 @@ import type {
     OfficialMcpTool,
 } from '../../core/official-mcp-bridge';
 import type { PermissionManager } from '../../core/permissions';
-import type { ToolDescriptor } from '../../core/tool-registry';
+import type { ToolDescriptor } from '../../core/tool-result';
 import type { ActionVariant, ToolResult } from '../internal/shared';
 import {
     toPluginMcpToolName,

@@ -2,8 +2,9 @@
 import { nodeFs, nodePath, nodeCrypto } from './node-loader';
 import { validateUploadName } from './upload-source';
 import { hashWriteBytes } from './write-safety-hash';
+import { formatSha256V1 } from '../shared/sha256-v1';
 import type { SiYuanClient } from '../api/client';
-import type { ToolResult } from '../tools/internal/shared';
+import type { ToolResult } from './tool-result';
 
 function relativeAsset(value: unknown): string {
     if (typeof value !== 'string') throw new Error('Invalid asset path');
@@ -36,7 +37,7 @@ async function downloadExclusive(client: SiYuanClient, remote: string, target: s
             hash.update(chunk);
         }, { signal, maxBytes });
         await handle.close();
-        return { bytes, sha256: `sha256:v1:${hash.digest('hex')}` };
+        return { bytes, sha256: formatSha256V1(hash.digest('hex')) };
     } catch (error) {
         await handle.close().catch(() => {});
         await fs.promises.unlink(target).catch(() => {});

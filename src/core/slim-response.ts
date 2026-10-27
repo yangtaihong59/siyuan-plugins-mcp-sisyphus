@@ -1,5 +1,5 @@
 import type { ToolCategory } from './config';
-import type { ToolResult } from '@/tools/internal/shared';
+import type { ToolResult } from './tool-result';
 
 interface SlimContext {
     category: ToolCategory;

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
-import { TIMELINE_APP_ACTION_TOOL_NAME } from '@/core/mcp-apps';
+import { TIMELINE_APP_ACTION_TOOL_NAME } from '@/mcp/mcp-apps';
 import {
     isActionEnabled,
     planToolCall,
     requiresCoordinatedWrite,
     requiresDangerConfirmation,
     resolveToolCallTarget,
-} from '@/core/tool-call-gate';
+} from '@/mcp/tool-call-gate';
 
 describe('tool call gate', () => {
     it('resolves aggregated tools, MCP App actions, and unknown names', () => {

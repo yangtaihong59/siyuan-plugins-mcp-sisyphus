@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
-import { WRITE_SAFETY_LEDGER_PATH } from '@/core/write-safety-ledger';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
+import { WRITE_SAFETY_LEDGER_PATH } from '@/mcp/write-safety-ledger';
 import { AvCreateSchema } from '@/tools/av/schemas';
 import { callAvTool } from '@/tools/av';
 import { buildDefaultToolConfig } from '@/core/config';

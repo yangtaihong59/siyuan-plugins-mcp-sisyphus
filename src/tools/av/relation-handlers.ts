@@ -7,7 +7,10 @@ import { AvConfigureRollupSchema, AvConfigureTwoWayRelationSchema, AvSetRelation
 import { ensurePermissionForDocumentId } from '../internal/context';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
-import { ATTRIBUTE_VIEW_ID_PATTERN, type AttributeViewDefinition, type AvKeyDefinition, type RelationMetadata, asAttributeViewDefinition, avWriteSuccess, cloneJsonRecord, createAvValidationErrorResult, dispatchAvTransaction, ensurePermissionForAvId, extractAvRowLookup, extractRelationCellItemIDs, getAvKey, normalizeIdSet, requireWritableRelationDestinations, resolveVerifiedAvCarrier, sameIdSet } from './common';
+import { ATTRIBUTE_VIEW_ID_PATTERN, type AttributeViewDefinition, type AvKeyDefinition, type RelationMetadata, asAttributeViewDefinition, cloneJsonRecord, createAvValidationErrorResult, getAvKey, normalizeIdSet, sameIdSet } from './definition';
+import { avWriteSuccess, dispatchAvTransaction } from './transaction';
+import { ensurePermissionForAvId, requireWritableRelationDestinations, resolveVerifiedAvCarrier } from './carrier';
+import { extractAvRowLookup, extractRelationCellItemIDs } from './rows';
 
 function relationCellValue(itemIDs: string[]): Record<string, unknown> {
     return {

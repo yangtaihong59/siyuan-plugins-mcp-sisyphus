@@ -6,7 +6,7 @@ import { canonicalizeState } from '../../shared/canonical-state';
 import { AvAddViewSchema, AvUpdateViewSchema } from './schemas';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
-import { type AvDefinition, type AvViewDefinition, assertKanbanHasExistingSelectKey, ensurePermissionForAvId, verifyExactAvCarrier } from './common';
+import { type AvDefinition, type AvViewDefinition, assertKanbanHasExistingSelectKey, ensurePermissionForAvId, verifyExactAvCarrier } from './carrier';
 
 export async function handleAddView({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
     const parsed = AvAddViewSchema.parse(rawArgs);

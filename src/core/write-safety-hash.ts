@@ -1,7 +1,8 @@
 import { nodeCrypto } from './node-loader';
 import { canonicalizeState } from '../shared/canonical-state';
+import { SHA256_V1, SHA256_V1_CREDENTIAL_PATTERN, formatSha256V1, isSha256V1 } from '../shared/sha256-v1';
 
-export const WRITE_STATE_HASH_VERSION = 'sha256:v1' as const;
+export const WRITE_STATE_HASH_VERSION = SHA256_V1;
 export const WRITE_HASH_PREFIX_MIN_LENGTH = 4;
 export const WRITE_HASH_DIGEST_LENGTH = 64;
 
@@ -14,12 +15,11 @@ export function hashWriteState(value: unknown): string {
     const digest = nodeCrypto().createHash('sha256')
         .update(canonicalizeWriteState(value), 'utf8')
         .digest('hex');
-    return `${WRITE_STATE_HASH_VERSION}:${digest}`;
+    return formatSha256V1(digest);
 }
 
 export function hashWriteBytes(value: Uint8Array): string {
-    const digest = nodeCrypto().createHash('sha256').update(value).digest('hex');
-    return `${WRITE_STATE_HASH_VERSION}:${digest}`;
+    return formatSha256V1(nodeCrypto().createHash('sha256').update(value).digest('hex'));
 }
 
 /** Yield between bounded chunks so kernel hashing does not monopolize goja. */
@@ -29,18 +29,18 @@ export async function hashWriteBytesAsync(value: Uint8Array): Promise<string> {
         hash.update(value.subarray(offset, offset + 64 * 1024));
         await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
-    return `${WRITE_STATE_HASH_VERSION}:${hash.digest('hex')}`;
+    return formatSha256V1(hash.digest('hex'));
 }
 
 export function isVersionedWriteHash(value: unknown): value is string {
-    return typeof value === 'string' && /^sha256:v1:[a-f0-9]{64}$/.test(value);
+    return isSha256V1(value);
 }
 
 /** Parse a temporary preflight credential without treating it as a state hash. */
 export function parseWriteHashCredential(value: unknown): string | undefined {
     if (typeof value !== 'string') return undefined;
-    const match = /^(?:sha256:v1:)?([a-f0-9]{4,64})$/i.exec(value);
-    return match?.[1].toLowerCase();
+    if (!new RegExp(SHA256_V1_CREDENTIAL_PATTERN).test(value)) return undefined;
+    return value.slice(value.lastIndexOf(':') + 1).toLowerCase();
 }
 
 export function writeHashDigest(value: string): string {
@@ -72,7 +72,7 @@ export class WriteHashPool {
         if (!digest) return undefined;
         // Full digests still require a matching active operation lease.
         return digest.length === WRITE_HASH_DIGEST_LENGTH
-            ? `${WRITE_STATE_HASH_VERSION}:${digest}`
+            ? formatSha256V1(digest)
             : this.byAlias.get(digest);
     }
 }

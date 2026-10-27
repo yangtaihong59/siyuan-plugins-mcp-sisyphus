@@ -210,7 +210,7 @@ function createServerConfig() {
             minify: true,
             sourcemap: isSrcmap ? "inline" : false,
             lib: {
-                entry: resolve(__dirname, "src/core/server.ts"),
+                entry: resolve(__dirname, "src/mcp/server.ts"),
                 fileName: () => "mcp-server",
                 formats: ["cjs"],
             },

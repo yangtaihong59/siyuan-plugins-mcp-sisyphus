@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HttpSiYuanClient } from '@/api/client';
 import { deleteTemplate, saveDocAsTemplate, writeTemplateSource } from '@/api/template';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';
 

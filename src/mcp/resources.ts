@@ -1,7 +1,7 @@
-import { renderAiLayoutGuide } from './ai-layout-guide';
-import { formatDangerousActionsList, isDangerousAction, type ToolCategory } from './config';
-import { getActionSafetyPolicy } from './write-safety-policy';
-import { WRITE_WORKFLOW_STEPS } from './write-preflight';
+import { renderAiLayoutGuide } from '../core/ai-layout-guide';
+import { formatDangerousActionsList, isDangerousAction, type ToolCategory } from '../core/config';
+import { getActionSafetyPolicy } from '../core/write-safety-policy';
+import { WRITE_WORKFLOW_STEPS } from '../core/write-preflight';
 import {
     ACTION_RESOURCE_TEMPLATE_URI,
     ACTIONS_BY_CATEGORY,
@@ -15,8 +15,8 @@ import {
     USER_RULES_RESOURCE_URI,
     isKnownAction,
     isKnownToolCategory,
-} from './help';
-import { renderChangelogResource } from './changelog';
+} from '../core/help';
+import { renderChangelogResource } from '../core/changelog';
 import {
     AV_VARIANTS,
     BLOCK_VARIANTS,
@@ -41,7 +41,7 @@ import {
     SKILL_RESOURCE_TEMPLATE_URI,
     getMcpSkill,
     renderMcpSkillIndex,
-} from './skills';
+} from '../core/skills';
 
 
 interface HelpResourceDefinition {
