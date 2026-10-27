@@ -40,7 +40,7 @@
    - 每个 variant 包含：`action`（动作名）、`description`（描述）、`schema`（Zod schema）、`handler`（业务逻辑）
    - handler 中需要权限检查时，使用 `tools/internal/context.ts` 中的 `ensurePermissionForDocumentId` / `ensurePermissionForNotebook`
 
-4. **注册表注册**（`src/core/tool-registry.ts`）
+4. **注册表注册**（`src/mcp/tool-registry.ts`）
    - 在 `TOOL_REGISTRY` 中新增条目：
      ```typescript
      xxx: { category: 'xxx', listTools: listXxxTools, callTool: callXxxTool }
@@ -50,7 +50,7 @@
    - 添加该 category 的 guidance 文本
    - 为每个 action 添加 hint
 
-6. **Resource 注册**（`src/core/resources.ts`，可选）
+6. **Resource 注册**（`src/mcp/resources.ts`，可选）
    - 若需要动态 help 资源，在 `readHelpResource()` 中添加路由
 
 7. **设置面板**（`src/ui/setting/mcp-config.svelte` 及子面板）
@@ -101,7 +101,7 @@ MCP 资源是静态或动态的帮助文档，AI 客户端可通过 `ReadResourc
 
 #### 新增静态资源
 
-在 `src/core/resources.ts` 中：
+在 `src/mcp/resources.ts` 中：
 1. 在 `listHelpResources()` 中新增资源元数据
 2. 在 `readHelpResource()` 中新增 URI 匹配分支
 3. 在 `src/core/help.ts` 中定义资源内容文本
@@ -152,7 +152,7 @@ CLI 的结果渲染在 `src/cli/render.ts` 中。如需支持新的 payload 类�
 
 1. 在 `src/core/` 下新建传输实现文件（如 `websocket-transport.ts`）
 2. 实现 MCP SDK 的传输接口
-3. 在 `src/core/server.ts` 的 `startMcpServer()` 中新增 transport mode 分支
+3. 在 `src/mcp/server.ts` 的 `startMcpServer()` 中新增 transport mode 分支
 4. 在设置面板 `HttpServerPanel`（或新建面板）中添加配置 UI
 5. 更新文档说明新传输方式的使用方法
 

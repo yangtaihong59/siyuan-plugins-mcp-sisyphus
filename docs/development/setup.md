@@ -21,7 +21,7 @@ pnpm install
 ## Project Layout
 
 - `src/index.ts`: plugin entry
-- `src/core/server.ts`: MCP server entry
+- `src/mcp/server.ts`: MCP server entry
 - `src/tools/`: tool implementations; each tool has its own directory, and shared tool-layer code lives in `src/tools/internal/`
 - `src/cli/`: CLI entry and dispatch
 - `src/api/`: SiYuan API wrappers

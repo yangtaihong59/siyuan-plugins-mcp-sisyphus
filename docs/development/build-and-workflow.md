@@ -7,7 +7,7 @@ When to read this page: you need to build the plugin, build the CLI, or link the
 ## Build Targets
 
 - `renderer` -> `src/index.ts`
-- `server` -> `src/core/server.ts`
+- `server` -> `src/mcp/server.ts`
 - `cli` -> `src/cli/index.ts`
 
 ## Common Commands

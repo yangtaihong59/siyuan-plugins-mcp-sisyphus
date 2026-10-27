@@ -148,11 +148,11 @@ src/
 | `startHttpServer()` | 读取 `window.siyuan.config.api.token`，调用 `httpLauncher.start()` |
 | `updateHttpServerSettings(next)` | 运行时热更新：先 stop → 持久化 → 按需 restart |
 
-**依赖**：`ui/setting/tool-config-storage`、`ui/components/ToolPuppy`、`ui/setting/mcp-config.svelte`、`server-launcher`（HttpServerLauncher）
+**依赖**：`ui/setting/tool-config-storage`、`ui/components/ToolPuppy`、`ui/setting/mcp-config.svelte`、`ui/plugin/server-launcher`（HttpServerLauncher）
 
 ---
 
-## 2. MCP Server：`src/core/server.ts`
+## 2. MCP Server：`src/mcp/server.ts`
 
 **职责**：创建 MCP `Server` 实例，注册 7 个 handler，管理 transport 模式（stdio / HTTP），加载配置与权限。启用 Skills 扩展时，还会额外注册 2 个条件 handler。
 
@@ -182,7 +182,7 @@ src/
 
 ---
 
-## 3. 工具注册表：`src/core/tool-registry.ts`
+## 3. 工具注册表：`src/mcp/tool-registry.ts`
 
 **职责**：维护 `TOOL_REGISTRY` 映射表，将 `TOOL_CATEGORIES` 声明的 category 统一收敛为 `ToolModule` 接口。category 模块在编译期注册，`extension` 在可选的 prepare 阶段动态发现 action 集合。
 
@@ -345,7 +345,7 @@ type ToolConfig = {
 
 ---
 
-## 8. HTTP 传输层：`src/core/http-transport.ts`
+## 8. HTTP 传输层：`src/mcp/http-transport.ts`
 
 **职责**：基于 SDK v2 实现 HTTP MCP 传输，逐请求分类并路由到 MCP 2026-07-28 无状态 handler 或 legacy 有会话 handler。
 

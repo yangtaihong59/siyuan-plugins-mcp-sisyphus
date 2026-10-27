@@ -148,11 +148,11 @@ src/
 | `startHttpServer()` | Read `window.siyuan.config.api.token`, call `httpLauncher.start()` |
 | `updateHttpServerSettings(next)` | Runtime hot-update: stop → persist → restart as needed |
 
-**Dependencies**: `ui/setting/tool-config-storage`, `ui/components/ToolPuppy`, `ui/setting/mcp-config.svelte`, `server-launcher`
+**Dependencies**: `ui/setting/tool-config-storage`, `ui/components/ToolPuppy`, `ui/setting/mcp-config.svelte`, `ui/plugin/server-launcher`
 
 ---
 
-## 2. MCP Server: `src/core/server.ts`
+## 2. MCP Server: `src/mcp/server.ts`
 
 **Responsibility**: Create MCP `Server` instance, register 7 handlers, manage transport modes (stdio / HTTP), load config & permissions. When the Skills extension is enabled, two additional conditional handlers are registered.
 
@@ -182,7 +182,7 @@ With `SIYUAN_MCP_SKILLS_EXTENSION` enabled (the default), `skills/list` and `ski
 
 ---
 
-## 3. Tool Registry: `src/core/tool-registry.ts`
+## 3. Tool Registry: `src/mcp/tool-registry.ts`
 
 **Responsibility**: Maintain the `TOOL_REGISTRY` mapping table, converging the categories declared by `TOOL_CATEGORIES` into the `ToolModule` interface. Category modules are registered at compile time; `extension` discovers its action set during the optional prepare phase.
 
@@ -345,7 +345,7 @@ Converges `variants + handlers + actionSchema` into standard `{ listTools, callT
 
 ---
 
-## 8. HTTP Transport: `src/core/http-transport.ts`
+## 8. HTTP Transport: `src/mcp/http-transport.ts`
 
 **Responsibility**: SDK v2 HTTP MCP transport that classifies each request and routes it to the MCP 2026-07-28 stateless handler or the legacy sessionful handler.
 

@@ -40,7 +40,7 @@ If you want to expose a new set of SiYuan API capabilities to MCP clients, follo
    - Each variant contains: `action` (name), `description`, `schema` (Zod), `handler` (business logic)
    - For permission checks in handlers, use `tools/internal/context.ts`: `ensurePermissionForDocumentId` / `ensurePermissionForNotebook`
 
-4. **Registry Registration** (`src/core/tool-registry.ts`)
+4. **Registry Registration** (`src/mcp/tool-registry.ts`)
    - Add entry to `TOOL_REGISTRY`:
      ```typescript
      xxx: { category: 'xxx', listTools: listXxxTools, callTool: callXxxTool }
@@ -50,7 +50,7 @@ If you want to expose a new set of SiYuan API capabilities to MCP clients, follo
    - Add guidance text for the category
    - Add hints for each action
 
-6. **Resource Registration** (`src/core/resources.ts`, optional)
+6. **Resource Registration** (`src/mcp/resources.ts`, optional)
    - If dynamic help resources are needed, add routing in `readHelpResource()`
 
 7. **Settings Panel** (`src/ui/setting/mcp-config.svelte` and sub-panels)
@@ -101,7 +101,7 @@ MCP Resources are static or dynamic help documents that AI clients can fetch via
 
 #### Adding Static Resources
 
-In `src/core/resources.ts`:
+In `src/mcp/resources.ts`:
 1. Add resource metadata in `listHelpResources()`
 2. Add URI matching branch in `readHelpResource()`
 3. Define resource content text in `src/core/help.ts`
@@ -152,7 +152,7 @@ Currently supports stdio and HTTP/S. To add new transports:
 
 1. Create transport implementation file under `src/core/` (e.g. `websocket-transport.ts`)
 2. Implement the Transport interface from MCP SDK
-3. Add new transport mode branch in `src/core/server.ts` `startMcpServer()`
+3. Add new transport mode branch in `src/mcp/server.ts` `startMcpServer()`
 4. Add configuration UI in settings panel `HttpServerPanel` (or create new panel)
 5. Update documentation for new transport usage
 

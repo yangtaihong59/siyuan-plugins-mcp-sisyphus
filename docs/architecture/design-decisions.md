@@ -172,7 +172,7 @@ Independent implementations would cause code duplication, inconsistent behavior,
 ```
 Shared layers:
 ├── src/api/client.ts           SiYuanClient
-├── src/core/tool-registry.ts    TOOL_REGISTRY
+├── src/mcp/tool-registry.ts    TOOL_REGISTRY
 ├── src/core/tool-lifecycle.ts   runToolCall (puppy/analytics/telemetry)
 ├── src/core/config.ts           buildDefaultToolConfig, ACTIONS_BY_CATEGORY
 ├── src/core/permissions.ts      PermissionManager
@@ -181,9 +181,9 @@ Shared layers:
 
 Layers CLI does NOT use:
 ├── @modelcontextprotocol/server Does not start MCP server
-├── src/core/server.ts           Skips ListTools/CallTool handlers
-├── src/core/http-transport.ts   Does not start HTTP server
-├── src/core/resources.ts        Does not expose MCP Resources
+├── src/mcp/server.ts           Skips ListTools/CallTool handlers
+├── src/mcp/http-transport.ts   Does not start HTTP server
+├── src/mcp/resources.ts        Does not expose MCP Resources
 ├── src/core/server-instructions.ts  No instructions
 └── src/index.ts                Skips plugin lifecycle
 ```

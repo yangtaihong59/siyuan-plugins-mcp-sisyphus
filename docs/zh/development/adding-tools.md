@@ -9,7 +9,7 @@
 1. 如有需要，先在 `src/api/*` 扩展 API 封装
 2. 在 `src/core/config.ts` 和相关 schema 中定义工具 / action 类型
 3. 在 `src/tools/<tool>/` 下实现工具模块，通常为 `index.ts` + `handlers.ts`
-4. 在 `src/core/tool-registry.ts` 中注册
+4. 在 `src/mcp/tool-registry.ts` 中注册
 5. 添加默认配置和帮助文本
 6. 补测试
 

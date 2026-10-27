@@ -46,7 +46,6 @@
 siyuan-plugins-mcp-sisyphus/
 ├── src/
 │   ├── index.ts                 # 插件入口（SiYuan Plugin 基类）
-│   ├── server-launcher.ts       # HttpServerLauncher：在插件进程内 spawn mcp-server.cjs 子进程
 │   ├── index.scss               # 插件全局样式（几乎为空）
 │   │
 │   ├── api/                     # 思源 HTTP API 封装层
@@ -62,19 +61,24 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── flashcard.ts         # /api/riff/*
 │   │   └── transaction.ts       # /api/transaction 批量操作
 │   │
-│   ├── core/                    # MCP 服务器核心与工具元数据
+│   ├── mcp/                     # 装配层：把工具组装成可调用的 MCP 运行时（server / kernel / CLI 共用）
 │   │   ├── server.ts            # MCP Server 入口：createSiYuanServer()、startMcpServer()
 │   │   ├── http-transport.ts    # HTTP MCP 2026 无状态 + legacy 有会话双协议传输
 │   │   ├── tool-registry.ts     # TOOL_REGISTRY：聚合工具注册表
 │   │   ├── tool-call-gate.ts    # planToolCall：三入口共用的 tools/call 决策（别名规范化、开关、确认、写入策略、协调写）
 │   │   ├── write-safety-coordinator.ts # 严格写入协调器主流程（锁、租约、账本、提交）
-│   │   ├── write-safety-probe.ts / write-safety-av.ts / write-safety-records.ts # 状态探针、AV 校验、共享小工具（依赖链 coordinator→probe→av→records）
+│   │   ├── write-safety-probe.ts / write-safety-av.ts / write-safety-ledger.ts # 状态探针、AV 校验、请求账本
+│   │   ├── resources.ts / mcp-apps.ts # MCP Resources（help 文档）与 MCP Apps 注册
+│   │   └── mcp-initial-cost.ts  # tools/list 时写入初始 token 成本
+│   │
+│   ├── core/                    # 基础层：工具与装配层共用的配置、权限、元数据、写入安全原语（不得 import 工具实现）
+│   │   ├── tool-result.ts       # ToolResult / ToolDescriptor 等 MCP 结果形状（纯类型）
+│   │   ├── write-safety-{policy,hash,fields,error,records}.ts # 写入策略表、sha256:v1 哈希、安全字段、错误、记录小工具
 │   │   ├── write-coordinator-client.ts # 严格写入委托 kernel 协调器的客户端（CLI 与 server 共用）
 │   │   ├── kernel-file-transfer.ts # 委托写入时的文件暂存上传与导出落盘
 │   │   ├── tool-lifecycle.ts    # 工具调用生命周期：analytics、telemetry、token 计数、错误包装
 │   │   ├── config.ts            # ToolConfig 类型、默认值、配置迁移（扁平 → 嵌套）、危险动作定义
 │   │   ├── permissions.ts       # PermissionManager：笔记本级权限（rwd/rw/r/none）
-│   │   ├── resources.ts         # MCP Resources：help 文档资源路由
 │   │   ├── help.ts              # 各工具的帮助文案与提示
 │   │   ├── normalize.ts         # 请求参数归一化（类型短码展开、sortBy 别名等）
 │   │   ├── analytics.ts         # 调用统计与洞察数据聚合
@@ -98,7 +102,7 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── notebook/            # notebook 工具（index.ts + handlers.ts + schemas.ts）
 │   │   ├── document/            # document 工具
 │   │   ├── block/               # block 工具
-│   │   ├── av/                  # av（数据库）工具
+│   │   ├── av/                  # av（数据库）工具：definition → rows → carrier → transaction 基础模块 + 按领域的 *-handlers.ts
 │   │   ├── search/              # search 工具（含 sql-builder、permission-filter）
 │   │   ├── file/                # file 工具
 │   │   ├── tag/                 # tag 工具
@@ -132,7 +136,7 @@ siyuan-plugins-mcp-sisyphus/
 │   ├── mcp-apps/                # mcp-app target：MCP Apps 富交互页面（单文件 HTML）
 │   │
 │   ├── ui/                      # Svelte UI 与设置面板
-│   │   ├── plugin/              # 插件入口的功能控制器：版本控制、权限树（含新建笔记本授权）、宠物、反馈传输；src/index.ts 只做组装
+│   │   ├── plugin/              # 插件入口的功能控制器：版本控制、权限树（含新建笔记本授权）、宠物、反馈传输、HttpServerLauncher（spawn mcp-server.cjs）；src/index.ts 只做组装
 │   │   ├── components/          # 桌面悬浮宠物组件与行为逻辑
 │   │   ├── setting/             # 插件设置面板
 │   │   ├── version-control/     # 快照与版本对比面板（Svelte；逻辑在 shared/version-control）
@@ -197,7 +201,7 @@ siyuan-plugins-mcp-sisyphus/
 | Target | 入口 | 产物 | 说明 |
 |--------|------|------|------|
 | `renderer` | `src/index.ts` | `dist/index.js` + `dist/index.css` | 插件 UI（SiYuan 加载） |
-| `server` | `src/core/server.ts` | `dist/mcp-server.cjs` | MCP Server（Node 进程） |
+| `server` | `src/mcp/server.ts` | `dist/mcp-server.cjs` | MCP Server（Node 进程） |
 | `kernel` | `src/kernel/index.ts` | `dist/kernel.js`（IIFE） | 内核托管 MCP 端点（goja 沙箱） |
 | `mcp-app` | `src/mcp-apps/index.html` | `.mcp-app-dist/index.html` | MCP Apps 单文件页面，被 server/kernel 内联 |
 | `cli` | `src/cli/index.ts` | `cli/dist/cli.cjs` | 独立 CLI（npm 发布） |
@@ -432,26 +436,24 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 ## 已知结构债（2026-10-27 更新）
 
-以下问题已确认、尚未重构；改动相关代码时优先顺手收敛，不要再新增同类重复：
+当前无已确认未处理的结构债。已决定、不再视为债务的事项：
 
-- **旧客户端的危险动作确认**：不支持 MRTR 确认的旧客户端，server 只靠指令层提示确认、不拦截执行；kernel 要求 `confirm=true` 否则拒绝。收紧 server 会破坏旧客户端，待决定。
-- **core 与 tools 互相引用**：工具依赖 `core/config`、`core/permissions` 等基础模块，而 `core` 的注册表与写协调器又依赖工具层。彻底解环需把 core 拆成“基础层”与“装配层”，改动面大，暂缓；工具与协调器共用的业务契约（如 `tools/av/add-rows-plan.ts`、`tools/document/batch-rename-plan.ts`）放在对应工具目录。
-- **大型 Svelte 面板的样式**：`VersionDiffPanel` / `HttpServerPanel` / `TelemetryPanel` 的纯逻辑已移到同目录 `*-logic.ts`，剩余体量主要是组件作用域样式（约 700 行/个），拆分收益低，暂不处理。
-- **`av/common.ts`（约 1350 行）**：行定位、载体、权限、事务基础仍在一个文件；若继续增长，可再按“行定位 / 载体与权限 / 事务”拆分。
-- **哈希实现**：`sha256:v1:` 有 3 条实现（`write-safety-hash`、`canonical-state`、`markdown-snapshot`），运行时约束与规范化输入不同，且值会被持久化/比对，暂不合并。
+- **旧客户端的危险动作确认**（已决定：避免调用失败）：不支持 MRTR 确认的旧客户端，server 只靠指令层提示确认、不拦截执行；kernel 的 schema 公开 `confirm` 参数，缺省时返回 `dangerous_action_requires_confirmation` 并提示带 `confirm=true` 重发。不要收紧 server。
+- **两种 sha256:v1 规范化**：`shared/canonical-state.ts`（写入前置条件、AV 后像）与 `shared/markdown-snapshot.ts`（快照元数据，按字典序拼串）规范化规则不同且值会持久化/放进游标，**不得合并**。哈希格式与 Web Crypto 实现统一在 `shared/sha256-v1.ts`；`core/write-safety-hash.ts` 因需同步 API（含 kernel）保留 Node crypto 实现，但格式与校验都走 `sha256-v1`。
 
 ### 已收敛的约定（勿回退）
 
 - tools/call 前置错误统一用 `tools/internal/shared.ts` 的 `createUnknownToolResult` / `createDisabledToolResult` / `createDisabledActionResult`；执行中逃逸的异常用 `createErrorResult` 包成工具错误。server、kernel、CLI 不要再各写一份。
 - 插件入口 `src/index.ts` 只负责生命周期组装与对外方法；新功能放进 `src/ui/plugin/<feature>.ts` 控制器（构造时拿到 plugin 实例），不要再往入口类里堆状态。
-- 依赖方向：`ui` / `cli` 可依赖 `core` / `tools` / `shared`，反之不可；`shared` 只依赖 `api` / `types`。
+- 依赖方向（架构测试守护）：`api`/`types` → `shared` → `core`（基础层）→ `tools` → `mcp`（装配层）→ `kernel` / `cli`。`core` 只能 import `tools/*/actions.ts` 声明叶子；`ui` 只能依赖 `api`/`types`/`shared`/`core`。需要被工具与装配层共用的类型或原语放 `core`（如 `tool-result.ts`、`write-safety-error.ts`），不要让 `core` 反向 import 工具。
 - 路径与 SQL 小工具统一放在 `src/shared/`：`siyuan-path.ts`（`stripSySuffix` / `normalizeFsPath`）、`sql.ts`（`escapeSqlString`）。不要在模块内再写本地副本。
-- av 工具按领域分文件：`common.ts`（行/载体/权限/事务基础）、`read-` / `row-` / `column-` / `template-` / `relation-` / `view-handlers.ts`，`handlers.ts` 只留 create/duplicate 与动作映射；依赖只能从领域文件指向 `common`。
+- av 工具按领域分文件：基础模块 `definition.ts`（定义形状与纯读取）→ `rows.ts`（行定位与轮询）→ `carrier.ts`（载体与权限）→ `transaction.ts`（`updated` 戳、派发、刷新），只能按此方向依赖；`read-` / `row-` / `column-` / `template-` / `relation-` / `view-handlers.ts` 按领域实现，`handlers.ts` 只留 create/duplicate 与动作映射；基础模块不得 import handler 文件。
+- 大型 Svelte 面板的样式放同名 `.scss`（`<style lang="scss">@use "./Name";</style>`，仍为组件作用域），纯逻辑放 `*-logic.ts`；组件只留模板与状态。
 - av 写入用 `dispatchAvTransaction`（载体解析 + `updated` 戳 + 派发）与 `avWriteSuccess`（刷新目标 + 成功结果）；仅当操作体本身要引用载体 ID 时才手写 `withUpdatedOperation`。
 - AV 载体块判定统一用 `shared/av-carrier-dom.ts` 的 `isExactAvCarrierDom`（要求块自身开标签上同时有 `data-node-id`、`data-type="NodeAttributeView"`、`data-av-id`）；不要用 `dom.includes(...)` 粗判。
 - 工具层只依赖 `SiYuanClient` **接口**（`api/client.ts`）；HTTP 实现为 `HttpSiYuanClient`，内核实现为 `KernelSiYuanClient`。不要在生产代码里探测 `request` 等废弃方法，测试替身用 `tests/helpers/mock-client.ts`。
 - renderer（UI）不得 import `tool-registry` 或任何工具实现；MCP 初始成本由 server/kernel 在 tools/list 时写入 `mcp-initial-cost.json`，UI 只读取。
-- tools/call 的决策只在 `core/tool-call-gate.ts` 的 `planToolCall` 里做（别名规范化、开关、App 隐藏、危险确认、写入策略、是否走协调器）。server/kernel/CLI 只负责确认 UI、调度与渲染，不要在入口里再写判定。
+- tools/call 的决策只在 `mcp/tool-call-gate.ts` 的 `planToolCall` 里做（别名规范化、开关、App 隐藏、危险确认、写入策略、是否走协调器）。server/kernel/CLI 只负责确认 UI、调度与渲染，不要在入口里再写判定。
 
 ## 给 AI 编码代理的特别提醒
 
