@@ -13,7 +13,9 @@ import { buildTelemetryItems, formatChars } from '@/ui/setting/mcp-config/teleme
 const label = (_key: string, fallback: string) => fallback;
 
 describe('settings panel logic', () => {
-    afterEach(() => vi.unstubAllGlobals());
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
 
     it('renders the telemetry endpoint as a form-input "textinput" field', () => {
         const endpoint = buildTelemetryItems(buildDefaultTelemetryConfig(), label).find((item) => item.key === 'telemetry__endpoint');

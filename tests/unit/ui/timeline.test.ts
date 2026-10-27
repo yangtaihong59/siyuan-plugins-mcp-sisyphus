@@ -370,7 +370,7 @@ describe('snapshot document timeline', () => {
     });
 
     it('calculates only the selected node in the diff panel and refreshes only that selection after restore', () => {
-        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const source = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
         const loadSelection = source.slice(
             source.indexOf('async function loadSelection('),
             source.indexOf('function snapshotFromSelection'),
@@ -387,7 +387,7 @@ describe('snapshot document timeline', () => {
 
     it('drives the document timeline from per-document attrs and shows no-change nodes as markers', () => {
         const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/SnapshotPanel.svelte'), 'utf8');
-        const diffSource = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const diffSource = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
         expect(source).toContain('const TIMELINE_NODE_ATTR_KEY = "custom-sisyphus-timeline";');
         expect(source).toContain('"/api/attr/getBlockAttrs"');
@@ -456,7 +456,7 @@ describe('snapshot document timeline', () => {
     });
 
     it('anchors diff scrolling to live document blocks by block id', () => {
-        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const source = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
         expect(source).toContain('queueDocumentScrollSync();');
         expect(source).toContain('on:click={handleDiffClick}');
@@ -499,7 +499,7 @@ describe('snapshot document timeline', () => {
     });
 
     it('guards diff viewport raf scheduling and live block lookup caches in the panel source', () => {
-        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const source = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
         expect(source).toContain('let diffViewportFrame = 0;');
         expect(source).toContain('if (diffViewportFrame) return;');
