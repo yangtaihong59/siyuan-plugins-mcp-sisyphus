@@ -1,6 +1,7 @@
 import type { SiYuanClient } from '../api/client';
 import * as blockApi from '../api/block';
 import * as documentApi from '../api/document';
+import { stripSySuffix } from '../shared/siyuan-path';
 
 /**
  * The link-target action deliberately resolves only document IDs. Titles are
@@ -46,10 +47,6 @@ function childIdFromPath(path: string): string | undefined {
     const name = normalizePath(path).split('/').filter(Boolean).at(-1);
     if (!name?.endsWith('.sy')) return undefined;
     return name.slice(0, -3);
-}
-
-function stripSySuffix(value: string | undefined): string | undefined {
-    return typeof value === 'string' ? value.replace(/\.sy$/i, '') : undefined;
 }
 
 /**

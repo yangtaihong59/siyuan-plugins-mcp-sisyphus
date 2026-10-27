@@ -47,12 +47,12 @@ import {
 import {
     ensurePermissionForDocumentId,
     ensurePermissionForNotebook,
-    escapeSqlString,
     extractDocumentId,
     listChildDocumentsByPath,
     resolveMoveTargetNotebook,
     resolveNotebookForPath,
 } from '../internal/context';
+import { escapeSqlString } from '../../shared/sql';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { getNotebookNameArgumentHint, resolveNotebookName } from '../internal/helpers/notebook-names';
 import { filterBacklinkResultByPermission, filterItemsByPermissionAndPath } from '../search';

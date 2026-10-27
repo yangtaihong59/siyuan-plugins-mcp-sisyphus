@@ -2,7 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import type { PermissionManager } from '../../core/permissions';
-import { escapeSqlString } from '../internal/context';
+import { escapeSqlString } from '../../shared/sql';
 import type { ToolResult } from '../internal/shared';
 
 function escapeSqlLike(value: string): string {

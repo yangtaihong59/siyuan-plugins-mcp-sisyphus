@@ -142,9 +142,9 @@ describe('av tool', () => {
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
             dom: typeof id === 'string' && id.startsWith('db-block')
-                ? '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>'
+                ? `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`
                 : typeof id === 'string' && id === 'av-block-new'
-                    ? '<div data-type="NodeAttributeView" data-av-id="av-new" class="av"></div>'
+                    ? `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="av-new" class="av"></div>`
                     : '<div class="p"></div>',
         }));
         vi.mocked(transactionApi.performTransactions).mockResolvedValue([{
@@ -248,7 +248,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: alreadyApplied });
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'fixture-db-block' }] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: 'fixture-db-block', dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: 'fixture-db-block', dom: `<div data-node-id="fixture-db-block" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -312,7 +312,7 @@ describe('av tool', () => {
         ((observedPostimage.keyValues[1] as any).key.options) = [{ name: 'New', color: '2', desc: '' }];
         vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: observedPostimage });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: 'db-block-options', dom: '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>',
+            id: 'db-block-options', dom: `<div data-node-id="db-block-options" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`,
         });
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('transport response lost'));
 
@@ -479,7 +479,7 @@ describe('av tool', () => {
         expect(JSON.stringify(protectedBefore)).not.toBe(JSON.stringify(protectedAfter));
         vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: carrierID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: carrierID, dom: `<div data-node-id="${carrierID}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -818,7 +818,7 @@ describe('av tool', () => {
             },
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: databaseBlockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: databaseBlockID, dom: `<div data-node-id="${databaseBlockID}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -851,7 +851,7 @@ describe('av tool', () => {
         const observedPostimage = { ...preimage, newItemTemplates: [{ id: templateID, name: 'Inbox', targetType: 'detached' }], defaultTemplateID: templateID };
         vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: preimage }).mockResolvedValueOnce({ av: observedPostimage });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: databaseBlockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: databaseBlockID, dom: `<div data-node-id="${databaseBlockID}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('template response lost'));
 
@@ -1277,7 +1277,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: sourceBlockID,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${sourceAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${sourceBlockID}" data-type="NodeAttributeView" data-av-id="${sourceAvID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -1494,7 +1494,7 @@ describe('av tool', () => {
         ));
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
 
         const result = await callAvTool(client, {
@@ -1532,7 +1532,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('two-way response lost'));
 
@@ -1643,7 +1643,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
 
         const result = await callAvTool(client, {
@@ -1741,7 +1741,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('rollup response lost'));
 
@@ -2087,7 +2087,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'set_cells',
@@ -2150,7 +2150,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-empty',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-empty" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2545,7 +2545,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'add_column',
@@ -2734,7 +2734,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'remove_column',
@@ -2770,7 +2770,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2802,7 +2802,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2832,7 +2832,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2862,7 +2862,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -3503,7 +3503,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'remove_rows',
@@ -3610,7 +3610,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'set_cells',
@@ -3834,7 +3834,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-empty',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-empty" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {

@@ -36,6 +36,7 @@ import { createJsonResult, createPaginatedResult, createWriteSuccessResult, pagi
 import { applyUiRefresh } from '../internal/ui-refresh';
 import { createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks, normalizeDomInlineRefsAndTags, replaceEditTouchesIndexedInline, replaceSingleKramdownBlockContentInDom } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
+import { escapeSqlString } from '../../shared/sql';
 
 
 type RecentUpdatedDocumentSummary = {
@@ -57,13 +58,9 @@ type RecentUpdatedDocumentSummary = {
 type BlockActionHandler = ToolActionHandler;
 
 async function getBlockType(client: SiYuanClient, id: string): Promise<string | undefined> {
-    if (typeof (client as { request?: unknown }).request !== 'function') {
-        return undefined;
-    }
-
     try {
         const rows = await client.requestRead<unknown[]>('/api/query/sql', {
-            stmt: `SELECT type FROM blocks WHERE id = '${String(id).replace(/\0/g, '').replace(/'/g, "''")}' LIMIT 1`,
+            stmt: `SELECT type FROM blocks WHERE id = '${escapeSqlString(String(id))}' LIMIT 1`,
         });
         const first = Array.isArray(rows) ? rows[0] : undefined;
         return first && typeof first === 'object' && typeof (first as Record<string, unknown>).type === 'string'

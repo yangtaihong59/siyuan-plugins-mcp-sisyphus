@@ -5,6 +5,7 @@ import * as fileApi from '../../api/file';
 import * as notebookApi from '../../api/notebook';
 import { AGENT_MEMORY_VIRTUAL_PATH, USER_RULES_VIRTUAL_PATH, loadToolConfigFromApiFile, writeAgentSiyuanMemory, type FsAction } from '../../core/config';
 import { normalizeMarkdownContent } from '../../core/normalize';
+import { normalizeFsPath, stripSySuffix } from '../../shared/siyuan-path';
 import {
     FsLsSchema,
     FsMvSchema,
@@ -122,10 +123,6 @@ function createComplexBlocksNotSupportedResult(
     };
 }
 
-function stripSySuffix(name: string | undefined): string | undefined {
-    return typeof name === 'string' ? name.replace(/\.sy$/, '') : undefined;
-}
-
 function lastSegment(path: string | undefined): string | undefined {
     if (!path) return undefined;
     return path.split('/').filter(Boolean).at(-1);
@@ -134,14 +131,6 @@ function lastSegment(path: string | undefined): string | undefined {
 function joinHumanPath(parent: string, name: string): string {
     const base = parent === '/' ? '' : parent.replace(/\/+$/, '');
     return `${base}/${name.replace(/^\/+/, '')}`;
-}
-
-function normalizeFsPath(path: string): string {
-    const trimmed = path.trim();
-    if (!trimmed) throw new Error('fs path must not be empty.');
-    const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-    const collapsed = withLeadingSlash.replace(/\/+/g, '/');
-    return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed;
 }
 
 const VIRTUAL_ROOT_FILES = [AGENT_MEMORY_VIRTUAL_PATH, USER_RULES_VIRTUAL_PATH] as const;

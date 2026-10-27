@@ -39,7 +39,9 @@ import {
     AvSetNewItemTemplatesSchema,
     AvSetRelationSchema,
 } from '../../core/types';
-import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, escapeSqlString, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
+import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
+import { escapeSqlString } from '../../shared/sql';
+import { isExactAvCarrierDom } from '../../shared/av-carrier-dom';
 import { computePageCount } from '../internal/pagination';
 import type { ToolActionHandler, ToolHandlerContext } from '../internal/define-tool';
 import { isMissingBlockError, translateError } from '../internal/errorTranslation';
@@ -926,7 +928,7 @@ async function isExplicitAvDatabaseBlock(
     try {
         const response = await blockApi.getBlockDOM(client, blockID);
         const dom = typeof response?.dom === 'string' ? response.dom : '';
-        return dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`);
+        return isExactAvCarrierDom(dom, blockID, avID);
     } catch (error) {
         if (isMissingBlockError(error)) {
             return false;
@@ -1171,7 +1173,7 @@ async function resolveVerifiedAvCarrierBlockId(
         try {
             const response = await blockApi.getBlockDOM(client, candidate);
             const dom = typeof response?.dom === 'string' ? response.dom : '';
-            if (dom.includes('data-type="NodeAttributeView"') && dom.includes(`data-av-id="${avID}"`)) {
+            if (isExactAvCarrierDom(dom, candidate, avID)) {
                 return candidate;
             }
         } catch (error) {

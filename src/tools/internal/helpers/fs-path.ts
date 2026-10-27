@@ -3,7 +3,8 @@ import * as documentApi from '../../../api/document';
 import * as notebookApi from '../../../api/notebook';
 import * as searchApi from '../../../api/search';
 import type { PermissionManager } from '../../../core/permissions';
-import { escapeSqlString } from '../context';
+import { normalizeFsPath as normalizeHumanPath, stripSySuffix } from '../../../shared/siyuan-path';
+import { escapeSqlString } from '../../../shared/sql';
 
 type PermissionRequirement = 'read' | 'write' | 'delete';
 
@@ -49,18 +50,6 @@ export interface FsCreateTarget {
     parentId?: string;
     hPath: string;
     canonicalPath: string;
-}
-
-function normalizeHumanPath(path: string): string {
-    const trimmed = path.trim();
-    if (!trimmed) throw new Error('fs path must not be empty.');
-    const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-    const collapsed = withLeadingSlash.replace(/\/+/g, '/');
-    return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed;
-}
-
-function stripSySuffix(name: string | undefined): string | undefined {
-    return typeof name === 'string' ? name.replace(/\.sy$/, '') : undefined;
 }
 
 function lastPathSegment(path: string): string {
