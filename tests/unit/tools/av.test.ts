@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isDangerousAction } from '@/core/config';
 import { callAvTool, listAvTools } from '@/tools/av';
-import { projectAvStateWithoutColumnOptions } from '@/tools/av/handlers';
+import { projectAvStateWithoutColumnOptions } from '@/tools/av/column-handlers';
 import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
 import type { ToolResult } from '@/tools/internal/shared';
 import { withRequestSemantics } from '../../helpers/mock-client';
