@@ -117,5 +117,5 @@ CLI 直接 import `TOOL_REGISTRY`、`SiYuanClient`、`PermissionManager`，**不
 - 新增 Vite target 必须在 `vite.config.ts` 的 `validTargets` 列表里登记。
 - 配置优先级：CLI flag > 环境变量 > `~/.siyuan-sisyphus/config.json` > 默认值。
 - Flag 命名：kebab/camel 都接受（`--parent-id` 与 `--parentID` 等价）；布尔 `--flag`/`--no-flag`；复杂对象用 `--<key>-json '<json>'`。
-- PermissionManager 在 CLI 启动时试读权限文件，读失败就当空 map —— 未显式配置的 notebook 默认 `rwd`。
+- PermissionManager 在 CLI 启动时读取权限文件；未显式配置的 notebook 默认 `r`，安装后新建的 notebook 会写入显式 `rwd`（`NEW_NOTEBOOK_PERMISSION`）。
 - 危险动作（delete、remove、find_replace 等）在 CLI 下**不**做二次确认 —— 用户主动输入命令即是确认。

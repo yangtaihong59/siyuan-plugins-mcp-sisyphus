@@ -1,4 +1,5 @@
 import { getWorkspaceApiUrl } from './shared/workspace-api-url';
+import { NEW_NOTEBOOK_PERMISSION } from "@/shared/constants";
 import {
     Plugin,
     showMessage,
@@ -100,6 +101,7 @@ export default class SiyuanMCP extends Plugin {
     private permissionTreePermissions: Record<string, NotebookPermission> = {};
     private permissionTreeObserver: MutationObserver | null = null;
     private permissionTreeEventsRegistered = false;
+    private newNotebookPermissionRegistered = false;
     private permissionTreeClickRegistered = false;
     private permissionTreeFrame: number | null = null;
     private permissionTreeLoadVersion = 0;
@@ -109,6 +111,7 @@ export default class SiyuanMCP extends Plugin {
     async onload() {
         appendHttpLifecycleLog("[plugin] onload begin");
         this.registerVersionControlIcon();
+        this.registerNewNotebookPermission();
 
         const { config: normalized, warning } = await loadPersistedToolConfigState(this);
         if (warning) {
@@ -426,6 +429,7 @@ export default class SiyuanMCP extends Plugin {
         this.puppySettingsLoaded = false;
         this.permissionDisplaySettingsLoaded = false;
         this.disablePermissionTreeFeature();
+        this.unregisterNewNotebookPermission();
         this.unregisterVersionControlEvents();
         this.unmountVersionControlDocks();
         this.unmountPuppy();
@@ -715,6 +719,40 @@ export default class SiyuanMCP extends Plugin {
         } finally {
             delete target.dataset.saving;
             target.removeAttribute("aria-busy");
+        }
+    };
+
+    // Notebooks created in the SiYuan UI after install get NEW_NOTEBOOK_PERMISSION,
+    // matching notebook(action="create"). Independent of the file-tree badge setting.
+    private registerNewNotebookPermission() {
+        if (this.newNotebookPermissionRegistered) return;
+        const eventBus = (this as any).eventBus;
+        if (typeof eventBus?.on !== "function") return;
+        eventBus.on("ws-main", this.handleNewNotebookWebSocket as any);
+        this.newNotebookPermissionRegistered = true;
+    }
+
+    private unregisterNewNotebookPermission() {
+        if (!this.newNotebookPermissionRegistered) return;
+        (this as any).eventBus?.off?.("ws-main", this.handleNewNotebookWebSocket as any);
+        this.newNotebookPermissionRegistered = false;
+    }
+
+    private readonly handleNewNotebookWebSocket = async (event: CustomEvent<{ cmd?: string; data?: { box?: { id?: string }; existed?: boolean } }>) => {
+        const detail = event?.detail;
+        const notebookId = detail?.data?.box?.id;
+        // existed=true means an existing notebook directory was reopened; leave its default.
+        if (detail?.cmd !== "createnotebook" || detail.data?.existed !== false || !notebookId) return;
+        try {
+            const permissions = normalizeNotebookPermissions(await this.loadData("notebookPermissions"));
+            if (Object.prototype.hasOwnProperty.call(permissions, notebookId)) return;
+            permissions[notebookId] = NEW_NOTEBOOK_PERMISSION;
+            await this.saveData("notebookPermissions", permissions);
+            this.permissionTreePermissions = permissions;
+            this.emitPermissionTreeChange();
+            this.schedulePermissionTreeDecoration();
+        } catch (error) {
+            console.error("[MCP] failed to grant permission for new notebook:", error);
         }
     };
 

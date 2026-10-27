@@ -20,7 +20,8 @@ Related pages:
 
 Notes:
 
-- New notebooks default to `r` (read-only) unless configured otherwise
+- Notebooks without an explicit entry default to `r` (read-only)
+- Notebooks created after the plugin is installed get an explicit `rwd` entry, whether created with `notebook(action="create")`, the CLI, or the SiYuan UI. Existing explicit entries are never overridden, and reopening an existing notebook folder keeps the default
 - Permissions are managed through `notebook(action="set_permission")`
 - Changes apply to subsequent calls immediately
 

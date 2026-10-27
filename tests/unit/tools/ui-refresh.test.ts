@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PermissionManager, PERMISSIONS_API_PATH } from '@/core/permissions';
 import { callAvTool } from '@/tools/av';
 import { callBlockTool } from '@/tools/block';
 import { callDocumentTool } from '@/tools/document';
@@ -311,6 +312,20 @@ describe('UI refresh integration', () => {
         const parsed = parseResult(result);
         expect(parsed.uiRefresh.operations).toEqual([{ type: 'reloadFiletree' }]);
         expect(client.request).toHaveBeenCalledWith('/api/ui/reloadFiletree', {});
+    });
+
+    it('grants rwd to a notebook created through the tool', async () => {
+        const files = new Map<string, string>([[PERMISSIONS_API_PATH, JSON.stringify({ other: 'r' })]]);
+        const realPermMgr = new PermissionManager({
+            readFile: vi.fn(async (path: string) => files.get(path) ?? ''),
+            writeFile: vi.fn(async (path: string, content: string) => { files.set(path, content); }),
+        } as never);
+
+        const parsed = parseResult(await callNotebookTool(client, { action: 'create', name: 'New Notebook' }, notebookConfig as never, realPermMgr));
+
+        expect(parsed.permission).toBe('rwd');
+        expect(parsed.permissionWarning).toBeUndefined();
+        expect(JSON.parse(files.get(PERMISSIONS_API_PATH)!)).toEqual({ other: 'r', 'nb-new': 'rwd' });
     });
 
     it('reloads icon UI after notebook create with icon', async () => {

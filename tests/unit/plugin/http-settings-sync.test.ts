@@ -249,6 +249,23 @@ describe('HTTP settings sync', () => {
     let addIcons: ReturnType<typeof vi.fn>;
     let eventBusOn: ReturnType<typeof vi.fn>;
     let eventBusOff: ReturnType<typeof vi.fn>;
+    // ws-main also carries the always-on new-notebook permission hook; count timeline hooks only.
+    const timelineEventCalls = () => eventBusOn.mock.calls.filter(([name]) => name !== 'ws-main');
+
+    it('grants rwd to notebooks newly created in the SiYuan UI, independent of the file-tree badges', async () => {
+        const stored: Record<string, unknown> = { notebookPermissions: { other: 'r', kept: 'none' } };
+        loadData.mockImplementation(async (name: string) => stored[name]);
+        saveData.mockImplementation(async (name: string, value: unknown) => { stored[name] = value; });
+        await plugin.onload();
+        const handler = eventBusOn.mock.calls.find(([name, fn]) => name === 'ws-main' && fn === (plugin as any).handleNewNotebookWebSocket)?.[1];
+        expect(handler).toBeTypeOf('function');
+
+        await handler({ detail: { cmd: 'createnotebook', data: { box: { id: 'nb-new' }, existed: false } } });
+        await handler({ detail: { cmd: 'createnotebook', data: { box: { id: 'nb-reopened' }, existed: true } } });
+        await handler({ detail: { cmd: 'createnotebook', data: { box: { id: 'kept' }, existed: false } } });
+
+        expect(stored.notebookPermissions).toEqual({ other: 'r', kept: 'none', 'nb-new': 'rwd' });
+    });
 
     it('handles runtime data changes without reloading the plugin or stopping HTTP', async () => {
         const onload = vi.spyOn(plugin, 'onload');
@@ -756,7 +773,7 @@ describe('HTTP settings sync', () => {
         expect(addIcons).toHaveBeenCalledWith(expect.stringContaining('<symbol id="iconSisyphusTimelineDock"'));
         expect(addDock).not.toHaveBeenCalled();
         expect(addCommand).not.toHaveBeenCalled();
-        expect(eventBusOn).not.toHaveBeenCalled();
+        expect(timelineEventCalls()).toHaveLength(0);
 
         resolveFirstLoad(undefined);
         await loading;
@@ -777,8 +794,8 @@ describe('HTTP settings sync', () => {
             show: false,
         }));
         expect(addCommand).toHaveBeenCalledTimes(1);
-        expect(eventBusOn).toHaveBeenCalledTimes(4);
-        expect(eventBusOn).toHaveBeenCalledWith("ws-main", expect.any(Function));
+        expect(timelineEventCalls()).toHaveLength(3);
+        expect(eventBusOn.mock.calls.filter(([name]) => name === 'ws-main')).toHaveLength(2);
     });
 
     it('passes loaded timeline settings into the dock panel when it initializes', async () => {
@@ -876,7 +893,7 @@ describe('HTTP settings sync', () => {
         const leftDock = (globalThis as any).window.siyuan.layout.leftDock;
         expect(addDock).not.toHaveBeenCalled();
         expect(addCommand).not.toHaveBeenCalled();
-        expect(eventBusOn).not.toHaveBeenCalled();
+        expect(timelineEventCalls()).toHaveLength(0);
         expect(snapshotPanelInstances).toHaveLength(0);
         expect(diffPanelInstances).toHaveLength(0);
         expect(leftDock.remove).not.toHaveBeenCalled();
@@ -898,7 +915,7 @@ describe('HTTP settings sync', () => {
 
         expect(addCommand).toHaveBeenCalledTimes(1);
         expect((plugin as any).commands).toHaveLength(1);
-        expect(eventBusOn).toHaveBeenCalledTimes(3);
+        expect(timelineEventCalls()).toHaveLength(3);
         expect(snapshotPanelInstances).toHaveLength(1);
         expect(diffPanelInstances).toHaveLength(1);
 

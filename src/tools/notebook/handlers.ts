@@ -89,15 +89,26 @@ const handleList: NotebookActionHandler = async ({ client, rawArgs }) => {
     return createJsonResult(result.notebooks);
 };
 
-const handleCreate: NotebookActionHandler = async ({ client, rawArgs }) => {
+const handleCreate: NotebookActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = NotebookCreateSchema.parse(rawArgs);
     const result = await notebookApi.createNotebook(client, parsed.name);
+    // The notebook exists now; a failed permission write must not hide that.
+    let permission: string;
+    let permissionWarning: string | undefined;
+    try {
+        permission = await permMgr.grantNewNotebook(result.notebook.id);
+    } catch (error) {
+        permission = permMgr.get(result.notebook.id);
+        permissionWarning = `Notebook was created, but its permission could not be saved: ${error instanceof Error ? error.message : String(error)}`;
+    }
     if (parsed.icon) {
         await notebookApi.setNotebookIcon(client, result.notebook.id, parsed.icon);
         result.notebook.icon = parsed.icon;
     }
     return applyUiRefresh(client, createJsonResult({
         ...result.notebook,
+        permission,
+        ...(permissionWarning ? { permissionWarning } : {}),
         iconHint: createSetIconReminder('notebook', Boolean(parsed.icon)),
     }), parsed.icon ? [{ type: 'reloadIcon' }] : [{ type: 'reloadFiletree' }]);
 };
