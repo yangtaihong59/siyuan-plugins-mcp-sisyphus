@@ -245,7 +245,7 @@ pnpm typecheck          # tsc --noEmit，须保持 0 错误
 pnpm test               # 运行全部单元/集成测试（vitest run）
 pnpm test:watch         # 测试 watch 模式
 pnpm test:coverage      # 覆盖率报告（v8 provider）
-pnpm test:smoke         # 冒烟测试（需真实思源实例）
+pnpm test:live          # 安全实测（需真实思源；只写临时笔记本并清理）
 
 # 开发辅助
 pnpm make-link          # 创建 dev/ 到思源插件目录的符号链接
@@ -372,7 +372,8 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 |------|------|------|
 | 单元测试 | `tests/unit/` | 按 `src/` 结构镜像。覆盖 api、cli、mcp、components、setting 等模块。使用 mock 隔离外部依赖。 |
 | 集成测试 | `tests/integration/` | 测试模块间交互：`http-concurrency.test.ts`（HTTP 并发）、`mcp-e2e.test.ts`（端到端 MCP 调用）、`server.test.ts`（server 启动）。 |
-| 冒烟测试 | `tests/smoke/` | `live_mcp_smoke.cjs`：需要真实运行的思源实例，验证完整调用链路。 |
+| 实测 | `tests/live/` | `verify.cjs`（`pnpm test:live`）：在真实思源中只于临时笔记本内写入并全部清理，可安全用于个人工作区。 |
+| 专项冒烟 | `tests/smoke/` | 针对特定回归的脚本，各自作用范围见该目录 README，运行前先看头部说明。 |
 
 ### 测试编写规范
 

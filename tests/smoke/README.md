@@ -11,15 +11,28 @@ They are **not** part of the Vitest unit/integration suite (`pnpm test`).
 
 ## Running
 
+The default live check is `tests/live/verify.cjs` (`pnpm test:live`, also `pnpm test:smoke`).
+It writes only inside one temporary notebook it creates and removes that notebook,
+its permission entry and the attribute-view file it created, so it is safe against
+a personal workspace:
+
 ```bash
-pnpm test:smoke
+pnpm build
+SIYUAN_API_URL=http://127.0.0.1:6806 SIYUAN_TOKEN=<token> pnpm test:live
 ```
 
-## Files
+## Specialised scripts in this directory
 
-- `live-av-v2.cjs` — Fresh built-CJS regression in an explicitly selected test notebook (`SIYUAN_TEST_NOTEBOOK`). Covers SQL, templates, AV views, permissions and strict writes. F08 runs five native-order and five reordered-candidate leases; the proxy only reorders real mirror candidates. It rejects parent-document carriers and checks HTTP-preflight / CLI-commit / replay. Uses isolated permission and ledger files; retains a report document.
-- `live_mcp_smoke.cjs` — End-to-end smoke tests against a live SiYuan instance (27+ test cases covering permissions, navigation, search, block operations, etc.)
-- `AI_INTERFACE_TEST.md` — Manual test guide for AI-driven regression testing of MCP interfaces
+Run these only when their scope fits; read each header first.
+
+| Script | Scope |
+|---|---|
+| `built-issue-regressions.cjs`, `kernel-telemetry-failure-live.cjs` | Built bundle against a mock kernel / local receiver; no real workspace |
+| `kernel-app-browser-live.cjs`, `kernel-remaining-faults.cjs`, `kernel-remaining-live.cjs` | Isolated Docker container only; never a personal workspace |
+| `live-av-v2.cjs`, `live-av-id-contract.cjs`, `live-layout-feedback.cjs`, `live-feedback-regressions.cjs` | Writes fixtures inside the notebook named by `SIYUAN_TEST_NOTEBOOK` |
+| `live-timeline-mascot.cjs` | Real workspace; read its header before running |
+| `live-write-safety-matrix.cjs` | **Destructive**: exercises every mutation through the CLI and rewrites tool config; test workspace only |
+| `AI_INTERFACE_TEST.md` | Manual guide for AI-driven regression testing |
 
 ## Persona scenarios and pi
 
