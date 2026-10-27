@@ -12,7 +12,7 @@ import {
     getSnapshotFileId,
     getUpdateBlockPayload,
     parseSnapshotBlocks,
-} from '@/ui/version-control/block-diff';
+} from '@/shared/version-control/block-diff';
 
 describe('snapshot block diff', () => {
     it('parses JSON snapshot blocks recursively', () => {

@@ -1,6 +1,6 @@
 import { supportsFormElicitation } from '../shared/mcp-capabilities';
 import { withStructuredContent } from './structured-result';
-import { isKernelExport } from '../cli/kernel-file-transfer';
+import { isKernelExport } from './kernel-file-transfer';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server, type CallToolResult, type Tool } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
@@ -14,7 +14,7 @@ import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
 import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
 import { getActionSafetyPolicy } from './write-safety-policy';
-import { callCliWriteCoordinator } from '../cli/write-coordinator';
+import { callCliWriteCoordinator } from './write-coordinator-client';
 import { loadWriteCoordinatorSettings } from './write-coordinator-settings';
 import { noopSchemaValidator } from './noops/noop-schema-validator';
 import { OfficialMcpBridge, type OfficialMcpRuntime } from './official-mcp-bridge';

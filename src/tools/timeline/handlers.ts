@@ -15,7 +15,7 @@ import {
     rollbackTimelineBlock,
     rollbackTimelineDocument,
 } from '../../shared/timeline-service';
-import { isGlobalTimelineTag } from '../../ui/version-control/timeline';
+import { isGlobalTimelineTag } from '../../shared/version-control/timeline';
 import { ensurePermissionForDocumentId } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult } from '../internal/shared';

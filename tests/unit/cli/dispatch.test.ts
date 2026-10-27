@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 
 import type { ParsedArgs } from '@/cli/args';
 import { HttpSiYuanClient } from '@/api/client';
-import * as writeCoordinator from '@/cli/write-coordinator';
+import * as writeCoordinator from '@/core/write-coordinator-client';
 import { runDispatch } from '@/cli/dispatch';
 import * as pluginCheck from '@/cli/plugin-check';
 import { buildDefaultToolConfig } from '@/core/config';

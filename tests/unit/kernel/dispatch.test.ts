@@ -171,7 +171,7 @@ describe('kernel shared dispatch', () => {
         await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
         const port = (http.address() as any).port;
         try {
-            const { callCliWriteCoordinator } = await import('@/cli/write-coordinator');
+            const { callCliWriteCoordinator } = await import('@/core/write-coordinator-client');
             const settings = { owner: 'kernel' as const, endpoints: [{ url: `http://127.0.0.1:${port}/plugin/private/test/mcp` }] };
             const args = { action: 'create', name: 'fixture', requestId: credential.requestId };
             const result = await callCliWriteCoordinator(settings, 'notebook', args);

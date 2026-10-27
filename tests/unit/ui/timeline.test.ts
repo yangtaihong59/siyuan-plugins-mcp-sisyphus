@@ -31,7 +31,7 @@ import {
     GLOBAL_TIMELINE_TAG_VERIFICATION_ERROR,
     TIMELINE_TAG_PREFIX,
     type TimelineEntry,
-} from '@/ui/version-control/timeline';
+} from '@/shared/version-control/timeline';
 
 describe('snapshot document timeline', () => {
     it('builds stable document-scoped selection keys and sorts mixed-scope nodes', () => {

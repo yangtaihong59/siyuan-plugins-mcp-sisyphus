@@ -1,10 +1,10 @@
-import { nodeCrypto } from '../core/node-loader';
+import { nodeCrypto } from './node-loader';
 import { stageKernelUpload, isKernelExport, saveKernelExport } from './kernel-file-transfer';
 import type { SiYuanClient } from '../api/client';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
 import type { ToolResult } from '../tools/internal/shared';
-import type { CliWriteCoordinatorSettings } from '../core/write-coordinator-settings';
+import type { CliWriteCoordinatorSettings } from './write-coordinator-settings';
 
 export async function callCliWriteCoordinator(
     settings: CliWriteCoordinatorSettings | undefined,

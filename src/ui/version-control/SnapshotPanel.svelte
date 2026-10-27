@@ -21,7 +21,7 @@
         type TimelineNodeScope,
         type TimelineNodeSelection,
         type TimelineSnapshot,
-    } from "./timeline";
+    } from "@/shared/version-control/timeline";
 
     type Snapshot = TimelineSnapshot;
     const TIMELINE_NODE_ATTR_KEY = "custom-sisyphus-timeline";

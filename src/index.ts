@@ -47,7 +47,7 @@ import VersionDiffPanel from "@/ui/version-control/VersionDiffPanel.svelte";
 import {
     getTimelineNodeSelectionKey,
     type TimelineNodeSelection,
-} from "@/ui/version-control/timeline";
+} from "@/shared/version-control/timeline";
 
 import { HttpServerLauncher, appendHttpLifecycleLog } from "@/server-launcher";
 

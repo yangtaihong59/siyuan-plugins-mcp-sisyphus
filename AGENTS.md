@@ -66,6 +66,9 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── server.ts            # MCP Server 入口：createSiYuanServer()、startMcpServer()
 │   │   ├── http-transport.ts    # HTTP MCP 2026 无状态 + legacy 有会话双协议传输
 │   │   ├── tool-registry.ts     # TOOL_REGISTRY：聚合工具注册表
+│   │   ├── tool-call-gate.ts    # 三入口共用的 tools/call 判定（action 开关、危险确认、协调写）
+│   │   ├── write-coordinator-client.ts # 严格写入委托 kernel 协调器的客户端（CLI 与 server 共用）
+│   │   ├── kernel-file-transfer.ts # 委托写入时的文件暂存上传与导出落盘
 │   │   ├── tool-lifecycle.ts    # 工具调用生命周期：analytics、telemetry、token 计数、错误包装
 │   │   ├── config.ts            # ToolConfig 类型、默认值、配置迁移（扁平 → 嵌套）、危险动作定义
 │   │   ├── permissions.ts       # PermissionManager：笔记本级权限（rwd/rw/r/none）
@@ -117,9 +120,7 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── config-command.ts    # config 子命令：多 profile 管理（list/get/set/use）
 │   │   ├── init.ts              # 交互式初始化
 │   │   ├── plugin-check.ts      # 插件在线检测
-│   │   ├── runtime.ts           # CLI 运行时环境检测
-│   │   ├── write-coordinator.ts # 写协调客户端（server 也在用，见“已知结构债”）
-│   │   └── kernel-file-transfer.ts # kernel 文件导入导出（server 也在用）
+│   │   └── runtime.ts           # CLI 运行时环境检测
 │   │
 │   ├── kernel/                  # kernel target：运行在思源内核 goja 沙箱中的 MCP 端点
 │   │   ├── index.ts             # 入口：请求分发、会话、调度
@@ -132,10 +133,11 @@ siyuan-plugins-mcp-sisyphus/
 │   ├── ui/                      # Svelte UI 与设置面板
 │   │   ├── components/          # 桌面悬浮宠物组件与行为逻辑
 │   │   ├── setting/             # 插件设置面板
-│   │   ├── version-control/     # 快照与版本对比面板（block-diff / timeline 逻辑）
+│   │   ├── version-control/     # 快照与版本对比面板（Svelte；逻辑在 shared/version-control）
 │   │   └── shared/              # UI 共享组件
 │   │
-│   ├── shared/                  # 跨入口纯函数（版本比较、哈希规范化、token 估算、调用格式化等）
+│   ├── shared/                  # 跨入口纯函数（版本比较、哈希规范化、token 估算、路径/SQL、AV 载体判定等）
+│   │   └── version-control/     # block-diff / timeline 纯逻辑（UI 面板与 timeline 工具共用）
 │   │
 │   └── types/
 │       ├── index.d.ts           # 思源常用数据结构（Block、Notebook 等）
@@ -431,11 +433,11 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 - **调用前置的响应格式不一致**：判定逻辑已统一到 `core/tool-call-gate.ts`，但 server 对未知/禁用工具返回纯文本，kernel 返回 `{error:{code}}` JSON；统一前需评估客户端兼容性。
 - **core 承载工具业务**：`write-safety-coordinator.ts`（AV 校验约千行）、`core/types.ts`（全部工具 schema）、`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`。
-- **依赖方向**：`core/server.ts` 依赖 `cli/write-coordinator`、`cli/kernel-file-transfer`；`shared/timeline-service.ts` 依赖 `ui/version-control`。
 - **哈希实现**：`sha256:v1:` 有 3 条实现（`write-safety-hash`、`canonical-state`、`markdown-snapshot`），运行时约束与规范化输入不同，且值会被持久化/比对，暂不合并。
 
 ### 已收敛的约定（勿回退）
 
+- 依赖方向：`ui` / `cli` 可依赖 `core` / `tools` / `shared`，反之不可；`shared` 只依赖 `api` / `types`。
 - 路径与 SQL 小工具统一放在 `src/shared/`：`siyuan-path.ts`（`stripSySuffix` / `normalizeFsPath`）、`sql.ts`（`escapeSqlString`）。不要在模块内再写本地副本。
 - `av/handlers.ts` 的写入用 `dispatchAvTransaction`（载体解析 + `updated` 戳 + 派发）与 `avWriteSuccess`（刷新目标 + 成功结果）；仅当操作体本身要引用载体 ID 时才手写 `withUpdatedOperation`。
 - AV 载体块判定统一用 `shared/av-carrier-dom.ts` 的 `isExactAvCarrierDom`（要求块自身开标签上同时有 `data-node-id`、`data-type="NodeAttributeView"`、`data-av-id`）；不要用 `dom.includes(...)` 粗判。

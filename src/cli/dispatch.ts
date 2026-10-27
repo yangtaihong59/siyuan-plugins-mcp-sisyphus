@@ -1,4 +1,4 @@
-import { isKernelExport } from './kernel-file-transfer';
+import { isKernelExport } from '../core/kernel-file-transfer';
 import {
     ACTIONS_BY_CATEGORY,
     TOOL_CATEGORIES,
@@ -16,7 +16,7 @@ import type { ParsedArgs } from './args';
 import { mapFlagsToArgs } from './flag-mapper';
 import { extractPaginationInfo, renderCliError, renderToolResult } from './render';
 import { loadCliRuntimeState } from './runtime';
-import { callCliWriteCoordinator } from './write-coordinator';
+import { callCliWriteCoordinator } from '../core/write-coordinator-client';
 import { getActionSafetyPolicy } from '../core/write-safety-policy';
 import { requiresCoordinatedWrite } from '../core/tool-call-gate';
 import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';

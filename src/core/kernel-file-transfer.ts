@@ -1,8 +1,8 @@
 /** Local filesystem access is intentional: caller-side upload/export transport only. */
-import { nodeFs, nodePath } from '../core/node-loader';
-import { MAX_TRANSFER_FILE_BYTES, validateUploadName } from '../core/upload-source';
-import { hashWriteBytes } from '../core/write-safety-hash';
-import type { CliWriteCoordinatorEndpoint } from '../core/write-coordinator-settings';
+import { nodeFs, nodePath } from './node-loader';
+import { MAX_TRANSFER_FILE_BYTES, validateUploadName } from './upload-source';
+import { hashWriteBytes } from './write-safety-hash';
+import type { CliWriteCoordinatorEndpoint } from './write-coordinator-settings';
 
 export async function stageKernelUpload(endpoint: CliWriteCoordinatorEndpoint, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
     if (args.uploadSource || typeof args.localFilePath !== 'string') return args;

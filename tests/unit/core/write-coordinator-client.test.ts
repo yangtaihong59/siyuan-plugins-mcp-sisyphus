@@ -4,7 +4,7 @@ vi.mock('@modelcontextprotocol/client', () => ({
     Client: class { setRequestHandler = vi.fn(); connect = mocks.connect; callTool = mocks.callTool; close = mocks.close; },
     StreamableHTTPClientTransport: class {},
 }));
-import { callCliWriteCoordinator } from '@/cli/write-coordinator';
+import { callCliWriteCoordinator } from '@/core/write-coordinator-client';
 const settings = { owner: 'kernel' as const, endpoints: [{ url: 'http://localhost:6806/plugin/private/test/mcp' }] };
 beforeEach(() => {
     vi.resetAllMocks();

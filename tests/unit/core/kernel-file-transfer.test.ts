@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { UploadStagingStore, UPLOAD_STAGE_TTL_MS, MAX_TRANSFER_FILE_BYTES } from '@/core/upload-source';
-import { stageKernelUpload, saveKernelExport } from '@/cli/kernel-file-transfer';
+import { stageKernelUpload, saveKernelExport } from '@/core/kernel-file-transfer';
 import { HttpSiYuanClient } from '@/api/client';
 import { hashWriteBytes } from '@/core/write-safety-hash';
 

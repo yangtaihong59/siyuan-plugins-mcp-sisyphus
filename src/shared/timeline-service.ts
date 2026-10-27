@@ -13,7 +13,7 @@ import {
     type BlockDiffEntry,
     type ChangedSnapshotFile,
     type SnapshotBlock,
-} from '../ui/version-control/block-diff';
+} from './version-control/block-diff';
 import {
     createGlobalTimelineTagName,
     createTimelineTagName,
@@ -30,7 +30,7 @@ import {
     type TimelineNodeRecord,
     type TimelineNodeScope,
     type TimelineSnapshot,
-} from '../ui/version-control/timeline';
+} from './version-control/timeline';
 
 export type TimelineListScope = TimelineNodeScope | 'all';
 

@@ -12,7 +12,7 @@
         type BlockDiffEntry,
         type ChangedSnapshotFile,
         type RepoSnapshotFileChange,
-    } from "./block-diff";
+    } from "@/shared/version-control/block-diff";
     import {
         formatSnapshotTime,
         getDocumentKey,
@@ -25,7 +25,7 @@
         type TimelineNodeScope,
         type TimelineNodeSelection,
         type TimelineSnapshot,
-    } from "./timeline";
+    } from "@/shared/version-control/timeline";
 
     type Snapshot = TimelineSnapshot;
     type CompareMode = "unified" | "split";
