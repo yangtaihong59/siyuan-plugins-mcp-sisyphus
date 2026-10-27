@@ -13,17 +13,7 @@ import {
     resolveSortAlias,
     resolveTypeRecord,
 } from '../../core/normalize';
-import {
-    SearchAssetsSchema,
-    SearchFindReplaceSchema,
-    SearchFulltextAssetContentSchema,
-    SearchFulltextSchema,
-    SearchGetBacklinksSchema,
-    SearchListInvalidRefsSchema,
-    SearchQuerySqlSchema,
-    SearchRefsSchema,
-    SearchSemanticSchema,
-} from '../../core/types';
+import { SearchAssetsSchema, SearchFindReplaceSchema, SearchFulltextAssetContentSchema, SearchFulltextSchema, SearchGetBacklinksSchema, SearchListInvalidRefsSchema, SearchQuerySqlSchema, SearchRefsSchema, SearchSemanticSchema } from './schemas';
 import { isSiYuanVersionAtLeast } from '../../shared/siyuan-version';
 import { ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveNotebookForPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';

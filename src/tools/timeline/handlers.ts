@@ -1,12 +1,5 @@
 import type { TimelineAction } from '../../core/config';
-import {
-    TimelineCompareNodeSchema,
-    TimelineCreateNodeSchema,
-    TimelineDeleteNodeSchema,
-    TimelineListNodesSchema,
-    TimelineRollbackBlockSchema,
-    TimelineRollbackDocumentSchema,
-} from '../../core/types';
+import { TimelineCompareNodeSchema, TimelineCreateNodeSchema, TimelineDeleteNodeSchema, TimelineListNodesSchema, TimelineRollbackBlockSchema, TimelineRollbackDocumentSchema } from './schemas';
 import {
     compareTimelineNode,
     createTimelineNode,

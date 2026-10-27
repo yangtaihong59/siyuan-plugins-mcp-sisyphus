@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
-import { DocumentQuerySchema } from '@/core/types';
+import { DocumentQuerySchema } from '@/tools/document/schemas';
 import { callDocumentTool, listDocumentTools } from '@/tools/document';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';

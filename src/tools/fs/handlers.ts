@@ -6,17 +6,7 @@ import * as notebookApi from '../../api/notebook';
 import { AGENT_MEMORY_VIRTUAL_PATH, USER_RULES_VIRTUAL_PATH, loadToolConfigFromApiFile, writeAgentSiyuanMemory, type FsAction } from '../../core/config';
 import { normalizeMarkdownContent } from '../../core/normalize';
 import { normalizeFsPath, stripSySuffix } from '../../shared/siyuan-path';
-import {
-    FsLsSchema,
-    FsMvSchema,
-    FsReorderSchema,
-    FsReplaceSchema,
-    FsReadSchema,
-    FsRmSchema,
-    FsSearchSchema,
-    FsTreeSchema,
-    FsWriteSchema,
-} from '../../core/types';
+import { FsLsSchema, FsMvSchema, FsReorderSchema, FsReplaceSchema, FsReadSchema, FsRmSchema, FsSearchSchema, FsTreeSchema, FsWriteSchema } from './schemas';
 import { ensurePermissionForNotebook, listChildDocumentsByPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import {

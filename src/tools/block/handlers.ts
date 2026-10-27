@@ -5,29 +5,7 @@ import * as blockApi from '../../api/block';
 import * as transactionApi from '../../api/transaction';
 import type { BlockAction } from '../../core/config';
 import { normalizeKramdownResult, stripZeroWidthChars } from '../../core/normalize';
-import {
-    BlockAddToDailyNoteSchema,
-    BlockAppendSchema,
-    BlockBatchKramdownSchema,
-    BlockBreadcrumbSchema,
-    BlockDeleteSchema,
-    BlockDomSchema,
-    BlockDocsInfoSchema,
-    BlockSetFoldStateSchema,
-    BlockGetAttrsSchema,
-    BlockGetChildrenSchema,
-    BlockGetKramdownSchema,
-    BlockInfoSchema,
-    BlockInsertSchema,
-    BlockMoveSchema,
-    BlockPrependSchema,
-    BlockRecentUpdatedSchema,
-    BlockReplaceSchema,
-    BlockSetAttrsSchema,
-    BlockTransferReferencesSchema,
-    BlockUpdateSchema,
-    BlockWordCountSchema,
-} from '../../core/types';
+import { BlockAddToDailyNoteSchema, BlockAppendSchema, BlockBatchKramdownSchema, BlockBreadcrumbSchema, BlockDeleteSchema, BlockDomSchema, BlockDocsInfoSchema, BlockSetFoldStateSchema, BlockGetAttrsSchema, BlockGetChildrenSchema, BlockGetKramdownSchema, BlockInfoSchema, BlockInsertSchema, BlockMoveSchema, BlockPrependSchema, BlockRecentUpdatedSchema, BlockReplaceSchema, BlockSetAttrsSchema, BlockTransferReferencesSchema, BlockUpdateSchema, BlockWordCountSchema } from './schemas';
 import { isMissingBlockError } from '../internal/errorTranslation';
 import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';

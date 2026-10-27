@@ -1,14 +1,6 @@
 import type { TimelineAction } from '../../core/config';
 import { TIMELINE_ACTION_HINTS, TIMELINE_GUIDANCE } from '../../core/help';
-import {
-    TimelineActionSchema,
-    TimelineCompareNodeSchema,
-    TimelineCreateNodeSchema,
-    TimelineDeleteNodeSchema,
-    TimelineListNodesSchema,
-    TimelineRollbackBlockSchema,
-    TimelineRollbackDocumentSchema,
-} from '../../core/types';
+import { TimelineActionSchema, TimelineCompareNodeSchema, TimelineCreateNodeSchema, TimelineDeleteNodeSchema, TimelineListNodesSchema, TimelineRollbackBlockSchema, TimelineRollbackDocumentSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant } from '../internal/shared';
 import { TIMELINE_ACTION_HANDLERS } from './handlers';

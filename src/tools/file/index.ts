@@ -2,29 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { CategoryToolConfig, FileAction, FileCategoryToolConfig } from '../../core/config';
 import { FILE_ACTION_HINTS, FILE_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    FileActionSchema,
-    FileCreateTemplateSchema,
-    FileDeleteTemplateSchema,
-    FileDeleteAssetSchema,
-    FileExportMdSchema,
-    FileExportMarkdownSnapshotSchema,
-    FileExportResourcesSchema,
-    FileExtractDocSchema,
-    FileGetDocAssetsSchema,
-    FileAuditImageRefsSchema,
-    FileReadImageSchema,
-    FileGetImageOCRTextSchema,
-    FileListTemplatesSchema,
-    FileListUnusedAssetsSchema,
-    FileReadTemplateSchema,
-    FileRemoveUnusedAssetsSchema,
-    FileRenameAssetSchema,
-    FileRenderSchema,
-    FileSaveDocAsTemplateSchema,
-    FileUpdateTemplateSchema,
-    FileUploadAssetSchema,
-} from '../../core/types';
+import { FileActionSchema, FileCreateTemplateSchema, FileDeleteTemplateSchema, FileDeleteAssetSchema, FileExportMdSchema, FileExportMarkdownSnapshotSchema, FileExportResourcesSchema, FileExtractDocSchema, FileGetDocAssetsSchema, FileAuditImageRefsSchema, FileReadImageSchema, FileGetImageOCRTextSchema, FileListTemplatesSchema, FileListUnusedAssetsSchema, FileReadTemplateSchema, FileRemoveUnusedAssetsSchema, FileRenameAssetSchema, FileRenderSchema, FileSaveDocAsTemplateSchema, FileUpdateTemplateSchema, FileUploadAssetSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { createFileActionHandlers, FILE_TOOL_NAME, DEFAULT_LARGE_UPLOAD_THRESHOLD_MB } from './handlers';

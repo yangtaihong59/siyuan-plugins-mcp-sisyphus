@@ -4,7 +4,7 @@ import { verifyAvCellsReadback } from '@/core/av-cell-readback';
 import { readHelpResource } from '@/core/resources';
 import { TOOL_REGISTRY } from '@/core/tool-registry';
 import { buildDefaultToolConfig } from '@/core/config';
-import { DocumentCreateSchema } from '@/core/types';
+import { DocumentCreateSchema } from '@/tools/document/schemas';
 import { validateRegisteredToolArguments } from '@/tools/internal/define-tool';
 import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
 import { parseResult } from '../../helpers/parse-result';

@@ -1,6 +1,6 @@
 import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
-import { DOCUMENT_QUERY_FIELDS, DocumentQuerySchema } from '../../core/types';
+import { DOCUMENT_QUERY_FIELDS, DocumentQuerySchema } from './schemas';
 import { escapeSqlString } from '../../shared/sql';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { availableReadSteps } from '../internal/read-guidance';

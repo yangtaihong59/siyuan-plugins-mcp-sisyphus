@@ -2,18 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { CategoryToolConfig, FsAction } from '../../core/config';
 import { FS_ACTION_HINTS, FS_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    FsActionSchema,
-    FsLsSchema,
-    FsMvSchema,
-    FsReorderSchema,
-    FsReplaceSchema,
-    FsReadSchema,
-    FsRmSchema,
-    FsSearchSchema,
-    FsTreeSchema,
-    FsWriteSchema,
-} from '../../core/types';
+import { FsActionSchema, FsLsSchema, FsMvSchema, FsReorderSchema, FsReplaceSchema, FsReadSchema, FsRmSchema, FsSearchSchema, FsTreeSchema, FsWriteSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { FS_ACTION_HANDLERS } from './handlers';

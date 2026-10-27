@@ -2,17 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { CategoryToolConfig, SystemAction } from '../../core/config';
 import { SYSTEM_ACTION_HINTS, SYSTEM_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    SystemActionSchema,
-    SystemChangelogSchema,
-    SystemConfSchema,
-    SystemGetCurrentTimeSchema,
-    SystemGetVersionSchema,
-    SystemNetworkSchema,
-    SystemNotifySchema,
-    SystemPerformSyncSchema,
-    SystemWorkspaceInfoSchema,
-} from '../../core/types';
+import { SystemActionSchema, SystemChangelogSchema, SystemConfSchema, SystemGetCurrentTimeSchema, SystemGetVersionSchema, SystemNetworkSchema, SystemNotifySchema, SystemPerformSyncSchema, SystemWorkspaceInfoSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { SYSTEM_ACTION_HANDLERS } from './handlers';

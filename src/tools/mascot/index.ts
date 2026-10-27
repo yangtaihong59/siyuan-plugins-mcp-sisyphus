@@ -2,12 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { CategoryToolConfig, MascotAction } from '../../core/config';
 import { MASCOT_ACTION_HINTS, MASCOT_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    MascotActionSchema,
-    MascotBuySchema,
-    MascotGetBalanceSchema,
-    MascotShopSchema,
-} from '../../core/types';
+import { MascotActionSchema, MascotBuySchema, MascotGetBalanceSchema, MascotShopSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { MASCOT_ACTION_HANDLERS } from './handlers';

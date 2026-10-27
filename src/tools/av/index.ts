@@ -2,28 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { AvAction, CategoryToolConfig } from '../../core/config';
 import { AV_ACTION_HINTS, AV_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    AvActionSchema,
-    AvAddColumnSchema,
-    AvAddViewSchema,
-    AvAddRowsSchema,
-    AvConfigureRollupSchema,
-    AvConfigureTwoWayRelationSchema,
-    AvCreateFromTemplateSchema,
-    AvDuplicateSchema,
-    AvGetSchema,
-    AvCreateSchema,
-    AvQuerySchema,
-    AvUpdateViewSchema,
-    AvRemoveColumnSchema,
-    AvRemoveRowsSchema,
-    AvSearchSchema,
-    AvSetColumnOptionsSchema,
-    AvSetCellsSchema,
-    AvDuplicateRowsSchema,
-    AvSetNewItemTemplatesSchema,
-    AvSetRelationSchema,
-} from '../../core/types';
+import { AvActionSchema, AvAddColumnSchema, AvAddViewSchema, AvAddRowsSchema, AvConfigureRollupSchema, AvConfigureTwoWayRelationSchema, AvCreateFromTemplateSchema, AvDuplicateSchema, AvGetSchema, AvCreateSchema, AvQuerySchema, AvUpdateViewSchema, AvRemoveColumnSchema, AvRemoveRowsSchema, AvSearchSchema, AvSetColumnOptionsSchema, AvSetCellsSchema, AvDuplicateRowsSchema, AvSetNewItemTemplatesSchema, AvSetRelationSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { AV_ACTION_HANDLERS } from './handlers';

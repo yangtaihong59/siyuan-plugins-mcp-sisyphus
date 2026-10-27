@@ -3,14 +3,7 @@ import * as attributeApi from '../../api/block';
 import * as flashcardApi from '../../api/flashcard';
 import type { FlashcardAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    FlashcardCreateCardSchema,
-    FlashcardGetCardsSchema,
-    FlashcardGetDecksSchema,
-    FlashcardListCardsSchema,
-    FlashcardRemoveCardSchema,
-    FlashcardReviewCardSchema,
-} from '../../core/types';
+import { FlashcardCreateCardSchema, FlashcardGetCardsSchema, FlashcardGetDecksSchema, FlashcardListCardsSchema, FlashcardRemoveCardSchema, FlashcardReviewCardSchema } from './schemas';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { extractKramdownContentForEditing } from '../internal/kramdown-safe';
 import { createJsonResult } from '../internal/shared';

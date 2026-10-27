@@ -1,7 +1,7 @@
 import { externalFetch } from '../../core/external-fetch';
 import type { FeedbackAction } from '../../core/config';
 import { submitFeedback } from '../../core/feedback';
-import { FeedbackSubmitSchema } from '../../core/types';
+import { FeedbackSubmitSchema } from './schemas';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult } from '../internal/shared';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
-import { AvUpdateViewSchema } from '@/core/types';
+import { AvUpdateViewSchema } from '@/tools/av/schemas';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { createJsonResult } from '@/tools/internal/shared';
 

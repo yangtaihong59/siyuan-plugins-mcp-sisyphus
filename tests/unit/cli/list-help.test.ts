@@ -9,7 +9,7 @@ import { runHelp, runList } from '@/cli/list-help';
 import * as pluginCheck from '@/cli/plugin-check';
 import { buildDefaultToolConfig } from '@/core/config';
 import { TOOL_REGISTRY } from '@/core/tool-registry';
-import { DocumentEnsureLinkTargetsSchema } from '@/core/types';
+import { DocumentEnsureLinkTargetsSchema } from '@/tools/document/schemas';
 
 function captureStdIO() {
     let stdout = '';

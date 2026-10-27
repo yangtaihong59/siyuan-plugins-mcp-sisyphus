@@ -1,11 +1,7 @@
 import * as tagApi from '../../api/tag';
 import * as searchApi from '../../api/search';
 import type { TagAction } from '../../core/config';
-import {
-    TagListSchema,
-    TagRemoveSchema,
-    TagRenameSchema,
-} from '../../core/types';
+import { TagListSchema, TagRemoveSchema, TagRenameSchema } from './schemas';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';

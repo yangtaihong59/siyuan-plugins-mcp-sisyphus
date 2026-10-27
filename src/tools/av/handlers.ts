@@ -18,27 +18,7 @@ import type { TransactionOperation } from '../../api/transaction';
 import type { AvAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
 import { canonicalizeState, hashCanonicalState } from '../../shared/canonical-state';
-import {
-    AvAddColumnSchema,
-    AvAddViewSchema,
-    AvAddRowsSchema,
-    AvConfigureRollupSchema,
-    AvConfigureTwoWayRelationSchema,
-    AvCreateFromTemplateSchema,
-    AvDuplicateSchema,
-    AvDuplicateRowsSchema,
-    AvGetSchema,
-    AvCreateSchema,
-    AvQuerySchema,
-    AvUpdateViewSchema,
-    AvRemoveColumnSchema,
-    AvRemoveRowsSchema,
-    AvSearchSchema,
-    AvSetColumnOptionsSchema,
-    AvSetCellsSchema,
-    AvSetNewItemTemplatesSchema,
-    AvSetRelationSchema,
-} from '../../core/types';
+import { AvAddColumnSchema, AvAddViewSchema, AvAddRowsSchema, AvConfigureRollupSchema, AvConfigureTwoWayRelationSchema, AvCreateFromTemplateSchema, AvDuplicateSchema, AvDuplicateRowsSchema, AvGetSchema, AvCreateSchema, AvQuerySchema, AvUpdateViewSchema, AvRemoveColumnSchema, AvRemoveRowsSchema, AvSearchSchema, AvSetColumnOptionsSchema, AvSetCellsSchema, AvSetNewItemTemplatesSchema, AvSetRelationSchema } from './schemas';
 import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
 import { escapeSqlString } from '../../shared/sql';
 import { isExactAvCarrierDom } from '../../shared/av-carrier-dom';

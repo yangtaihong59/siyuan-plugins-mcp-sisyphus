@@ -2,19 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import * as notebookApi from '../../api/notebook';
 import type { NotebookAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    NotebookCreateSchema,
-    NotebookGetConfSchema,
-    NotebookGetChildDocsSchema,
-    NotebookGetPermissionsSchema,
-    NotebookListSchema,
-    NotebookSetOpenStateSchema,
-    NotebookRemoveSchema,
-    NotebookRenameSchema,
-    NotebookSetConfSchema,
-    NotebookSetIconSchema,
-    NotebookSetPermissionSchema,
-} from '../../core/types';
+import { NotebookCreateSchema, NotebookGetConfSchema, NotebookGetChildDocsSchema, NotebookGetPermissionsSchema, NotebookListSchema, NotebookSetOpenStateSchema, NotebookRemoveSchema, NotebookRenameSchema, NotebookSetConfSchema, NotebookSetIconSchema, NotebookSetPermissionSchema } from './schemas';
 import { ensurePermissionForNotebook, listChildDocumentsByPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createErrorResult, createJsonResult, createPaginatedResult, createSetIconReminder, paginate, type ToolResult } from '../internal/shared';

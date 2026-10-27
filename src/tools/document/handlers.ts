@@ -15,26 +15,7 @@ import {
     type BatchRenameItemReceipt,
 } from '../../core/batch-rename-plan';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    DocumentCreateSchema,
-    DocumentEnsureLinkTargetsSchema,
-    DocumentCreateDailyNoteSchema,
-    DocumentDocToHeadingSchema,
-    DocumentDuplicateSchema,
-    DocumentGetChildBlocksSchema,
-    DocumentGetChildDocsSchema,
-    DocumentGetDocSchema,
-    DocumentGetOutlineSchema,
-    DocumentHeadingToDocSchema,
-    DocumentListTreeSchema,
-    DocumentMoveSchema,
-    DocumentReorderSchema,
-    DocumentLookupSchema,
-    DocumentRemoveSchema,
-    DocumentRenameSchema,
-    DocumentSearchDocsSchema,
-    DocumentSetAttrSchema,
-} from '../../core/types';
+import { DocumentCreateSchema, DocumentEnsureLinkTargetsSchema, DocumentCreateDailyNoteSchema, DocumentDocToHeadingSchema, DocumentDuplicateSchema, DocumentGetChildBlocksSchema, DocumentGetChildDocsSchema, DocumentGetDocSchema, DocumentGetOutlineSchema, DocumentHeadingToDocSchema, DocumentListTreeSchema, DocumentMoveSchema, DocumentReorderSchema, DocumentLookupSchema, DocumentRemoveSchema, DocumentRenameSchema, DocumentSearchDocsSchema, DocumentSetAttrSchema } from './schemas';
 import {
     findScopedLinkTarget,
     linkTargetError,

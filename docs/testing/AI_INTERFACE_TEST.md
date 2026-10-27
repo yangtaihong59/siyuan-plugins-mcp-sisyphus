@@ -892,7 +892,7 @@ AI 不得：
 - 判断为 MCP 提示不足的原因
 - 建议改动位置，例如：
   - `src/core/help.ts` 的 action hint
-  - `src/core/types.ts` 的 schema description
+  - `src/tools/<tool>/schemas.ts` 的 schema description
   - `src/tools/<tool>/index.ts` 的 variant description
   - `docs/reference/tools/*.md`
   - `server-instructions` 或 tool description 的全局约束

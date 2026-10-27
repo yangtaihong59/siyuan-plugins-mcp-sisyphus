@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FlashcardListCardsSchema } from '@/core/types';
+import { FlashcardListCardsSchema } from '@/tools/flashcard/schemas';
 import { callFlashcardTool } from '@/tools/flashcard';
 import { createFlashcardReviewSessionData } from '@/tools/flashcard/handlers';
 

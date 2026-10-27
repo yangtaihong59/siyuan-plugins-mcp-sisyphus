@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
-import { DocumentEnsureLinkTargetsSchema, DocumentMoveSchema, DocumentReorderSchema } from '@/core/types';
+import { DocumentEnsureLinkTargetsSchema, DocumentMoveSchema, DocumentReorderSchema } from '@/tools/document/schemas';
 import { BATCH_RENAME_CONTEXT } from '@/core/batch-rename-plan';
 import { callDocumentTool, DOCUMENT_VARIANTS, listDocumentTools } from '@/tools/document';
 import { createMockClient } from '../../helpers/mock-client';

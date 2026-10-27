@@ -175,7 +175,7 @@ CLI 的结果渲染在 `src/cli/render.ts` 中。如需支持新的 payload 类�
 | 约束 | 说明 |
 |------|------|
 | **不要修改 TOOL_REGISTRY 的静态结构** | 保持 `Record<ToolCategory, ToolModule>` 的编译期确定性，不要引入动态扫描或反射 |
-| **不要破坏 Zod Schema 的一致性** | `src/core/types.ts` 中的 schema 必须与 `config.ts` 中的 action 列表和 `tools/{category}/index.ts` 中的 variant schema 保持一致 |
+| **不要破坏 Zod Schema 的一致性** | `src/tools/{category}/schemas.ts` 中的 schema 必须与 `config.ts` 中的 action 列表和 `tools/{category}/index.ts` 中的 variant schema 保持一致 |
 | **不要引入全局状态** | `SiYuanClient`、`PermissionManager` 等应作为参数传递，不要保存在模块级变量中（CLI 和插件可能同时存在多个实例） |
 | **保持 CJS 输出格式** | Vite 配置中所有产物都是 CommonJS，不要引入 ESM-only 依赖 |
 | **Node 内置模块保持 external** | server/cli 的 Rollup external 中保留 Node 内置模块，不要打包进 bundle |

@@ -74,7 +74,6 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── tool-lifecycle.ts    # 工具调用生命周期：analytics、telemetry、token 计数、错误包装
 │   │   ├── config.ts            # ToolConfig 类型、默认值、配置迁移（扁平 → 嵌套）、危险动作定义
 │   │   ├── permissions.ts       # PermissionManager：笔记本级权限（rwd/rw/r/none）
-│   │   ├── types.ts             # 所有 action 的 Zod schema 定义
 │   │   ├── resources.ts         # MCP Resources：help 文档资源路由
 │   │   ├── help.ts              # 各工具的帮助文案与提示
 │   │   ├── normalize.ts         # 请求参数归一化（类型短码展开、sortBy 别名等）
@@ -96,7 +95,7 @@ siyuan-plugins-mcp-sisyphus/
 │   │   │   ├── help-render.ts   # help action 输出渲染
 │   │   │   ├── schema-analyzer.ts # schema 分析与描述裁剪
 │   │   │   └── helpers/         # 跨工具小型 helper，如 notebookName 补全
-│   │   ├── notebook/            # notebook 工具（index.ts + handlers.ts）
+│   │   ├── notebook/            # notebook 工具（index.ts + handlers.ts + schemas.ts）
 │   │   ├── document/            # document 工具
 │   │   ├── block/               # block 工具
 │   │   ├── av/                  # av（数据库）工具
@@ -270,7 +269,7 @@ pnpm update-version     # 同步版本号到 plugin.json 与 cli/package.json
 
 1. 在 `src/tools/<tool>/index.ts` 使用 `defineTool({ name, description, variants, handlers, actionSchema })` 定义。
 2. `variants`：每个 action 的 schema 变体（参数、必填字段、描述）。
-3. `handlers`：通常放在 `src/tools/<tool>/handlers.ts`，按 action 分发；`handler` 内部自行用 Zod schema 解析 `rawArgs`，保持类型狭窄。
+3. `handlers`：通常放在 `src/tools/<tool>/handlers.ts`，按 action 分发；`handler` 内部自行用同目录 `schemas.ts` 的 Zod schema 解析 `rawArgs`，保持类型狭窄。
 4. 工厂自动处理：`action="help"` 路由、action 禁用检查、错误包装。
 
 工具层共享基础设施放在 `src/tools/internal/`。新增跨工具 helper 时优先放入 `src/tools/internal/helpers/`，不要再把 helper 文件散放到 `src/tools/` 根目录；根目录只保留 `index.ts` 和各工具目录。
@@ -434,7 +433,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 以下问题已确认、尚未重构；改动相关代码时优先顺手收敛，不要再新增同类重复：
 
 - **调用前置的响应格式不一致**：判定逻辑已统一到 `core/tool-call-gate.ts`，但 server 对未知/禁用工具返回纯文本，kernel 返回 `{error:{code}}` JSON；统一前需评估客户端兼容性。
-- **core 承载工具业务**：`core/types.ts`（全部工具 schema）、`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`；`core` 与 `tools` 目前仍互相引用。
+- **core 承载工具业务**：`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`；`core` 与 `tools` 目前仍互相引用。
 - **哈希实现**：`sha256:v1:` 有 3 条实现（`write-safety-hash`、`canonical-state`、`markdown-snapshot`），运行时约束与规范化输入不同，且值会被持久化/比对，暂不合并。
 
 ### 已收敛的约定（勿回退）
@@ -452,7 +451,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 1. **修改工具配置或 action 列表时**，必须同步更新：
    - `src/core/config.ts`（`TOOL_CATEGORIES`、action 常量、`buildDefaultToolConfig()`）
    - `src/core/tool-registry.ts`（注册表导入）
-   - `src/core/types.ts`（Zod schema）
+   - `src/tools/<tool>/schemas.ts`（该工具的 Zod schema）
    - `src/core/help.ts`（帮助文案）
    - `src/tools/` 下的对应工具目录或文件（`index.ts` 中的 variants + `handlers.ts`）
    - `src/tools/index.ts`（如有新增工具，需 barrel export）

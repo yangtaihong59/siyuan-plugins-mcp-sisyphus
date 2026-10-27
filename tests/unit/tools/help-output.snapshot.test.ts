@@ -6,7 +6,7 @@ import { TOOL_ACTION_EXAMPLES, type HelpExample } from '@/core/help';
 import { normalizeToolArguments } from '@/core/argument-aliases';
 import { stripSafetyFields } from '@/core/write-safety-ledger';
 import { TOOL_REGISTRY } from '@/core/tool-registry';
-import { DocumentEnsureLinkTargetsSchema } from '@/core/types';
+import { DocumentEnsureLinkTargetsSchema } from '@/tools/document/schemas';
 import { readHelpResource } from '@/core/resources';
 import * as toolModules from '@/tools';
 import { buildActionHelp } from '@/tools/internal/help-render';

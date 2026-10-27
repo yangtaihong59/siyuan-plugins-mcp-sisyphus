@@ -8,28 +8,7 @@ import * as documentApi from '../../api/document';
 import { normalizeMarkdownContent } from '../../core/normalize';
 import type { FileAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    FileCreateTemplateSchema,
-    FileDeleteTemplateSchema,
-    FileDeleteAssetSchema,
-    FileExportMdSchema,
-    FileExportMarkdownSnapshotSchema,
-    FileExportResourcesSchema,
-    FileExtractDocSchema,
-    FileGetDocAssetsSchema,
-    FileAuditImageRefsSchema,
-    FileReadImageSchema,
-    FileGetImageOCRTextSchema,
-    FileListTemplatesSchema,
-    FileListUnusedAssetsSchema,
-    FileReadTemplateSchema,
-    FileRemoveUnusedAssetsSchema,
-    FileRenameAssetSchema,
-    FileRenderSchema,
-    FileSaveDocAsTemplateSchema,
-    FileUpdateTemplateSchema,
-    FileUploadAssetSchema,
-} from '../../core/types';
+import { FileCreateTemplateSchema, FileDeleteTemplateSchema, FileDeleteAssetSchema, FileExportMdSchema, FileExportMarkdownSnapshotSchema, FileExportResourcesSchema, FileExtractDocSchema, FileGetDocAssetsSchema, FileAuditImageRefsSchema, FileReadImageSchema, FileGetImageOCRTextSchema, FileListTemplatesSchema, FileListUnusedAssetsSchema, FileReadTemplateSchema, FileRemoveUnusedAssetsSchema, FileRenameAssetSchema, FileRenderSchema, FileSaveDocAsTemplateSchema, FileUpdateTemplateSchema, FileUploadAssetSchema } from './schemas';
 import { ensurePermissionForDocumentId, ensurePermissionForNotebook } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult, createPaginatedResult, paginate, type ToolResult } from '../internal/shared';

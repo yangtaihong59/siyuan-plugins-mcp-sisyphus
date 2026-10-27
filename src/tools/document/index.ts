@@ -2,28 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { DocumentAction, CategoryToolConfig } from '../../core/config';
 import { DOCUMENT_ACTION_HINTS, DOCUMENT_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    DocumentActionSchema,
-    DocumentCreateDailyNoteSchema,
-    DocumentCreateSchema,
-    DocumentEnsureLinkTargetsSchema,
-    DocumentDocToHeadingSchema,
-    DocumentDuplicateSchema,
-    DocumentGetChildBlocksSchema,
-    DocumentGetChildDocsSchema,
-    DocumentGetDocSchema,
-    DocumentGetOutlineSchema,
-    DocumentHeadingToDocSchema,
-    DocumentListTreeSchema,
-    DocumentLookupSchema,
-    DocumentQuerySchema,
-    DocumentMoveSchema,
-    DocumentReorderSchema,
-    DocumentRemoveSchema,
-    DocumentRenameSchema,
-    DocumentSearchDocsSchema,
-    DocumentSetAttrSchema,
-} from '../../core/types';
+import { DocumentActionSchema, DocumentCreateDailyNoteSchema, DocumentCreateSchema, DocumentEnsureLinkTargetsSchema, DocumentDocToHeadingSchema, DocumentDuplicateSchema, DocumentGetChildBlocksSchema, DocumentGetChildDocsSchema, DocumentGetDocSchema, DocumentGetOutlineSchema, DocumentHeadingToDocSchema, DocumentListTreeSchema, DocumentLookupSchema, DocumentQuerySchema, DocumentMoveSchema, DocumentReorderSchema, DocumentRemoveSchema, DocumentRenameSchema, DocumentSearchDocsSchema, DocumentSetAttrSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { DOCUMENT_ACTION_HANDLERS } from './handlers';

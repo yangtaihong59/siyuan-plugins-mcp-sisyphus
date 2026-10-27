@@ -2,20 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { CategoryToolConfig, NotebookAction } from '../../core/config';
 import { NOTEBOOK_ACTION_HINTS, NOTEBOOK_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    NotebookActionSchema,
-    NotebookCreateSchema,
-    NotebookGetChildDocsSchema,
-    NotebookGetConfSchema,
-    NotebookGetPermissionsSchema,
-    NotebookListSchema,
-    NotebookRemoveSchema,
-    NotebookRenameSchema,
-    NotebookSetConfSchema,
-    NotebookSetIconSchema,
-    NotebookSetOpenStateSchema,
-    NotebookSetPermissionSchema,
-} from '../../core/types';
+import { NotebookActionSchema, NotebookCreateSchema, NotebookGetChildDocsSchema, NotebookGetConfSchema, NotebookGetPermissionsSchema, NotebookListSchema, NotebookRemoveSchema, NotebookRenameSchema, NotebookSetConfSchema, NotebookSetIconSchema, NotebookSetOpenStateSchema, NotebookSetPermissionSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { NOTEBOOK_ACTION_HANDLERS } from './handlers';

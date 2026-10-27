@@ -175,7 +175,7 @@ Currently supports stdio and HTTP/S. To add new transports:
 | Constraint | Description |
 |-----------|-------------|
 | **Do not modify TOOL_REGISTRY static structure** | Keep `Record<ToolCategory, ToolModule>` compile-time deterministic; do not introduce dynamic scanning or reflection |
-| **Do not break Zod Schema consistency** | Schemas in `src/core/types.ts` must align with action lists in `config.ts` and variant schemas in `tools/{category}/index.ts` |
+| **Do not break Zod Schema consistency** | Schemas in `src/tools/{category}/schemas.ts` must align with action lists in `config.ts` and variant schemas in `tools/{category}/index.ts` |
 | **Do not introduce global state** | `SiYuanClient`, `PermissionManager` etc. should be passed as parameters; do not store in module-level variables (CLI and plugin may have multiple instances) |
 | **Maintain CJS output format** | All artifacts in Vite config are CommonJS; do not introduce ESM-only dependencies |
 | **Keep Node built-ins external** | Preserve Node built-in modules in server/cli Rollup external; do not bundle them |

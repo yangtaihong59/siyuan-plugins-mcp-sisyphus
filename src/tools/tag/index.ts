@@ -1,11 +1,6 @@
 import type { TagAction } from '../../core/config';
 import { TAG_ACTION_HINTS, TAG_GUIDANCE } from '../../core/help';
-import {
-    TagActionSchema,
-    TagListSchema,
-    TagRemoveSchema,
-    TagRenameSchema,
-} from '../../core/types';
+import { TagActionSchema, TagListSchema, TagRemoveSchema, TagRenameSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant } from '../internal/shared';
 import { TAG_ACTION_HANDLERS } from './handlers';
