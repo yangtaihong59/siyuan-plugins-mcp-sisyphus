@@ -896,15 +896,10 @@ async function isExplicitAvDatabaseBlock(
     blockID: string,
 ): Promise<boolean> {
     // A bound row's content block is useful for ordinary AV permission
-    // discovery, but it is not a carrier. Relation/template cross-AV writes
-    // require the NodeAttributeView evidence below or a registered mirror/SQL
-    // carrier; otherwise a source document could authorize another AV.
-    const registeredDatabaseBlockIDs = [
-        ...await getAvMirrorDatabaseBlockIds(client, avID),
-        ...await findAvDatabaseBlockIdsBySql(client, avID),
-    ];
-    if (registeredDatabaseBlockIDs.includes(blockID)) return true;
-
+    // discovery, but it is not a carrier. Mirror registrations are not proof
+    // either: SiYuan can register a parent document there. Like the strict
+    // coordinator, accept only the block's own NodeAttributeView opening tag;
+    // otherwise a source document could authorize another AV.
     try {
         const response = await blockApi.getBlockDOM(client, blockID);
         const dom = typeof response?.dom === 'string' ? response.dom : '';
@@ -2255,6 +2250,9 @@ async function handleCreate({ client, permMgr, rawArgs }: ToolHandlerContext): P
     const { avID, blockID } = context.progress;
     const { denied, context: parent } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
+    // SiYuan needs an existing block here, so the parent document is passed and
+    // also lands in the AV's mirror registry. That entry is never carrier proof:
+    // isExplicitAvDatabaseBlock checks the block's own opening tag.
     await avApi.renderAttributeView(client, { id: avID, blockID: parsed.parentID, createIfNotExist: true });
     const created: any = await avApi.getAttributeView(client, avID);
     if (created.av?.id !== avID) throw new Error('Created AV identity could not be verified');

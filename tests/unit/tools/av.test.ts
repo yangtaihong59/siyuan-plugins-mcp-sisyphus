@@ -75,6 +75,27 @@ vi.mock('@/api/transaction', () => ({
     performTransactions: vi.fn(),
 }));
 
+/**
+ * Real SiYuan returns a NodeAttributeView opening tag for every registered
+ * mirror carrier. Mirror registration alone is not carrier proof, so fixtures
+ * that register carriers must also expose their DOM.
+ */
+async function syncCarrierDomWithMirrors(avIDs: string[]): Promise<void> {
+    const avApi = await import('@/api/av');
+    const blockApi = await import('@/api/block');
+    const carriers = new Map<string, string>();
+    for (const avID of avIDs) {
+        const mirrors = await avApi.getMirrorDatabaseBlocks({} as never, avID);
+        for (const ref of mirrors?.refDefs ?? []) if (ref.refID) carriers.set(ref.refID, avID);
+    }
+    const fallback = vi.mocked(blockApi.getBlockDOM).getMockImplementation();
+    vi.mocked(blockApi.getBlockDOM).mockImplementation(async (clientArg, id) => {
+        const avID = carriers.get(id as string);
+        if (avID) return { id, dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>` } as never;
+        return fallback ? fallback(clientArg, id) : { id, dom: '' } as never;
+    });
+}
+
 describe('av tool', () => {
     const enabledActions = <T extends string>(...actions: T[]) => ({
         enabled: true,
@@ -719,6 +740,7 @@ describe('av tool', () => {
         };
         const after = { ...source, newItemTemplates: [persistedTemplate], defaultTemplateID: templateID };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -780,6 +802,7 @@ describe('av tool', () => {
         };
         const after = { ...source, newItemTemplates: [requestedTemplate], defaultTemplateID: templateID };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -875,6 +898,7 @@ describe('av tool', () => {
         const databaseBlockID = '20260813000010-jjjjjjj';
         const templateID = '20260813000000-aaaaaaa';
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView).mockResolvedValue({
             av: {
                 id: avID,
@@ -958,6 +982,7 @@ describe('av tool', () => {
             ],
         };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -1012,6 +1037,7 @@ describe('av tool', () => {
             }],
         };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -1082,6 +1108,7 @@ describe('av tool', () => {
                 : id === sourceAvID ? { refDefs: [{ refID: sourceBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, '20260813000005-fffffff']);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockResolvedValue({ value: {} });
 
         const result = await callAvTool(client, {
@@ -1158,6 +1185,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: '20260813001013-kkkkkkk' }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockResolvedValue({ value: {} });
 
         const result = await callAvTool(client, {
@@ -1213,6 +1241,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: '20260813001213-kkkkkkk' }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockImplementation(async (_clientArg, payload) => {
             const blockIDs = ((payload.value.relation as Record<string, unknown>).blockIDs as string[]);
             source = {
@@ -1326,6 +1355,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
             id === destinationAvID ? { refDefs: [{ refID: '20260813000111-kkkkkkk' }] } : { refDefs: [{ refID: sourceBlockID }] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'set_relation', avID: sourceAvID, blockID: sourceBlockID,
@@ -1379,6 +1409,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
             id === destinationAvID ? { refDefs: [{ refID: '20260813000211-kkkkkkk' }] } : { refDefs: [{ refID: sourceBlockID }] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockRejectedValue(new Error('relation response lost'));
 
         const result = await callAvTool(client, {
@@ -1438,6 +1469,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'configure_two_way_relation',
@@ -1594,6 +1626,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'configure_rollup',
@@ -1700,6 +1733,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'configure_rollup', avID: sourceAvID, blockID: sourceBlockID, keyID: rollupKeyID,
@@ -2135,6 +2169,25 @@ describe('av tool', () => {
                 { rowID: 'row-1', sourceBlockID: 'block-1', valueIDs: ['val-1'] },
             ],
         });
+    });
+
+    it('rejects a parent document even when SiYuan registered it as a mirror block', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: { id: 'av-empty', keyValues: [] } });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'doc-parent' }, { refID: 'db-block-empty' }] });
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id,
+            dom: id === 'doc-parent'
+                ? '<div data-node-id="db-block-empty" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>'
+                : `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
+        }) as never);
+
+        const result = await callAvTool(client, { action: 'get', avID: 'av-empty', blockID: 'doc-parent' }, enabledActions('get'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text).error).toMatchObject({ type: 'validation_error' });
     });
 
     it('uses explicit blockID to resolve get permissions for an empty AV', async () => {
