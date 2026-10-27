@@ -67,6 +67,8 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── http-transport.ts    # HTTP MCP 2026 无状态 + legacy 有会话双协议传输
 │   │   ├── tool-registry.ts     # TOOL_REGISTRY：聚合工具注册表
 │   │   ├── tool-call-gate.ts    # 三入口共用的 tools/call 判定（action 开关、危险确认、协调写）
+│   │   ├── write-safety-coordinator.ts # 严格写入协调器主流程（锁、租约、账本、提交）
+│   │   ├── write-safety-probe.ts / write-safety-av.ts / write-safety-records.ts # 状态探针、AV 校验、共享小工具（依赖链 coordinator→probe→av→records）
 │   │   ├── write-coordinator-client.ts # 严格写入委托 kernel 协调器的客户端（CLI 与 server 共用）
 │   │   ├── kernel-file-transfer.ts # 委托写入时的文件暂存上传与导出落盘
 │   │   ├── tool-lifecycle.ts    # 工具调用生命周期：analytics、telemetry、token 计数、错误包装
@@ -432,7 +434,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 以下问题已确认、尚未重构；改动相关代码时优先顺手收敛，不要再新增同类重复：
 
 - **调用前置的响应格式不一致**：判定逻辑已统一到 `core/tool-call-gate.ts`，但 server 对未知/禁用工具返回纯文本，kernel 返回 `{error:{code}}` JSON；统一前需评估客户端兼容性。
-- **core 承载工具业务**：`write-safety-coordinator.ts`（AV 校验约千行）、`core/types.ts`（全部工具 schema）、`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`。
+- **core 承载工具业务**：`core/types.ts`（全部工具 schema）、`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`；`core` 与 `tools` 目前仍互相引用。
 - **哈希实现**：`sha256:v1:` 有 3 条实现（`write-safety-hash`、`canonical-state`、`markdown-snapshot`），运行时约束与规范化输入不同，且值会被持久化/比对，暂不合并。
 
 ### 已收敛的约定（勿回退）
