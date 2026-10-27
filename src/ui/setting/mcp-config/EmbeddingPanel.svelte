@@ -41,16 +41,20 @@
     function apiPost<T>(endpoint: string, body: Record<string, unknown> = {}): Promise<T> {
         return new Promise<T>((resolve, reject) => {
             let completed = false;
-            void fetchPost(endpoint, body, (response: any) => {
+            // Newer SiYuan returns the fetch promise; 3.7.x and older return nothing.
+            const pending: unknown = fetchPost(endpoint, body, (response: any) => {
                 completed = true;
                 if (response?.code === 0) {
                     resolve(response.data as T);
                     return;
                 }
                 reject(new Error(response?.msg || `Request failed: ${endpoint}`));
-            }).catch((error: unknown) => {
-                if (!completed) reject(error);
             });
+            if (pending instanceof Promise) {
+                pending.catch((error: unknown) => {
+                    if (!completed) reject(error);
+                });
+            }
         });
     }
 

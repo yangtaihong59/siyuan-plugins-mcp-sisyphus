@@ -7,6 +7,7 @@
     import { HTTP_BIND_HOST_OPTIONS, hasValidHttpTlsFiles, regenerateHttpServerToken, savePersistedHttpServerSettings, type HttpServerHost, type HttpServerSettings } from "../tool-config-storage";
     import { getSiYuanVersion } from "../official-plugin-tools";
     import { MIN_KERNEL_ENDPOINT_VERSION, supportsKernelEndpoint } from "@/shared/siyuan-version";
+    import { getWorkspaceApiUrl } from "@/shared/workspace-api-url";
 
     export let plugin: any;
     export let group: string;
@@ -491,10 +492,19 @@ If the API URL is not reachable from the current host, container, WSL, or remote
         return replacePromptTokens(
             getLabel("cliAiSetupPrompt", fallback),
             {
-                apiUrl: getSiYuanApiUrl(),
+                apiUrl: getCurrentWorkspaceApiUrl(),
                 apiToken: getSiYuanApiToken(),
             },
         );
+    }
+
+    // getWorkspaceApiUrl throws outside an http(s) origin; the prompt still needs a usable default.
+    function getCurrentWorkspaceApiUrl(): string {
+        try {
+            return getWorkspaceApiUrl(window?.location?.origin);
+        } catch {
+            return "http://127.0.0.1:6806";
+        }
     }
 
     async function copyText(text: string) {
@@ -899,7 +909,7 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                             </section>
                         </div>
 
-                        {#if httpSettings.host !== "127.0.0.1" && httpSettings.host !== "localhost" && !httpSettings.authEnabled}
+                        {#if httpSettings.host !== "127.0.0.1" && !httpSettings.authEnabled}
                             <div class="http-warning">{getLabel("httpWarnExposedNoAuth", "⚠️ Bound to a non-loopback address with auth disabled. Other devices on the network can access your SiYuan workspace.")}</div>
                         {/if}
 

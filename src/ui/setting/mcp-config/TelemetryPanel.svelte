@@ -88,7 +88,7 @@
                 },
             },
             {
-                type: "text",
+                type: "textinput",
                 key: "telemetry__endpoint",
                 value: currentTelemetryConfig.endpoint ?? "",
                 title: label("telemetry_endpoint_title", "Telemetry Endpoint"),

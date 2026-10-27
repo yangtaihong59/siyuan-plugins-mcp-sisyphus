@@ -458,6 +458,7 @@
         }
         prevVisible = visible;
     }
+    let eyeState: 'blink' | 'happy' | 'sad' | 'danger' | 'flat' | 'normal';
     $: eyeState = pointerState === 'pointer-pet' ? 'happy' :
         isSleeping || isYawning ? 'blink' :
         blinking ? 'blink' :

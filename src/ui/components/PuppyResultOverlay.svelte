@@ -1,7 +1,9 @@
+<script context="module" lang="ts">
+    export type ResultState = 'none' | 'success' | 'error';
+</script>
+
 <script lang="ts">
     import type { PuppyState } from './puppy-tool-visuals';
-
-    export type ResultState = 'none' | 'success' | 'error';
 
     export let state: PuppyState = 'idle';
     export let resultState: ResultState = 'none';
