@@ -28,15 +28,17 @@ export function collectPlan(root = ROOT) {
     const matrix = JSON.parse(readFileSync(resolve(root, 'tests/acceptance/scenarios.json'), 'utf8'));
     const categories = unwrap(initializer(config, 'TOOL_CATEGORIES')).elements.map(node => node.text);
     // Each tool declares its actions once, in order, in src/tools/<tool>/actions.ts.
+    /** @type {Array<Record<string, any>>} */
     const actions = [];
     for (const tool of categories) {
         const source = ts.createSourceFile('actions.ts', readFileSync(resolve(root, `src/tools/${tool}/actions.ts`), 'utf8'), ts.ScriptTarget.Latest, true);
         const call = unwrap(initializer(source, `${tool.toUpperCase()}_ACTION_SPECS`));
         if (!ts.isCallExpression(call) || !ts.isObjectLiteralExpression(call.arguments[0])) throw new Error(`Unsupported action declaration syntax: ${tool}`);
         for (const property of call.arguments[0].properties) {
+            if (!ts.isPropertyAssignment(property) || !ts.isObjectLiteralExpression(property.initializer)) throw new Error(`Unsupported action declaration syntax: ${tool}`);
             const action = property.name.getText(source);
             const policyProperty = property.initializer.properties.find(p => p.name?.getText(source) === 'policy');
-            const policy = policyProperty?.initializer;
+            const policy = policyProperty && ts.isPropertyAssignment(policyProperty) ? policyProperty.initializer : undefined;
             if (!policy || !ts.isCallExpression(policy) || !['read', 'mutation', 'external'].includes(policy.expression.getText(source))) throw new Error(`Missing safety policy: ${tool}.${action}`);
             const mode = policy.expression.getText(source);
             actions.push({
