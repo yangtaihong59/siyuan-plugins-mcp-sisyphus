@@ -51,4 +51,17 @@ describe('src dependency direction', () => {
         }
         expect(violations).toEqual([]);
     });
+
+    it('keeps per-tool action declarations dependency-free so the renderer can load them', () => {
+        const toolsDir = path.join(SRC, 'tools');
+        const offenders: string[] = [];
+        for (const tool of fs.readdirSync(toolsDir)) {
+            const file = path.join(toolsDir, tool, 'actions.ts');
+            if (!fs.existsSync(file)) continue;
+            for (const match of fs.readFileSync(file, 'utf8').matchAll(/from\s+['"]([^'"]+)['"]/g)) {
+                if (match[1] !== '../../core/action-spec') offenders.push(`tools/${tool}/actions.ts -> ${match[1]}`);
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
 });

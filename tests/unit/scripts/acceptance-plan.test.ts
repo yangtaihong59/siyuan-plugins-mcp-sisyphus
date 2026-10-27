@@ -36,9 +36,10 @@ describe('acceptance planning and evidence accounting', () => {
         const root = mkdtempSync(join(tmpdir(), 'sisyphus-plan-test-'));
         try {
             mkdirSync(join(root, 'src/core'), { recursive: true });
+            mkdirSync(join(root, 'src/tools/fs'), { recursive: true });
             mkdirSync(join(root, 'tests/acceptance'), { recursive: true });
-            writeFileSync(join(root, 'src/core/config.ts'), "export const TOOL_CATEGORIES=['fs'] as const; const FS_ACTIONS=['read','new_action'] as const; export const ACTIONS_BY_CATEGORY={fs:FS_ACTIONS};");
-            writeFileSync(join(root, 'src/core/write-safety-policy.ts'), "export const ACTION_SAFETY_POLICIES={fs:{read:read(),new_action:read()}};");
+            writeFileSync(join(root, 'src/core/config.ts'), "export const TOOL_CATEGORIES=['fs'] as const;");
+            writeFileSync(join(root, 'src/tools/fs/actions.ts'), "export const FS_ACTION_SPECS = defineActionSpecs({ read: { tier: 'basic', policy: read(), defaultEnabled: true }, new_action: { tier: 'basic', policy: read(), defaultEnabled: true } });");
             writeFileSync(join(root, 'tests/acceptance/scenarios.json'), JSON.stringify({ cases: [{ id: 'one', persona: 'newcomer', minimumTier: 'quick', gate: 'read_only', oracle: 'readback', actions: ['fs.read'], implementation: 'planned' }] }));
             expect(() => collectPlan(root)).toThrow('Unplanned source action: fs.new_action');
         } finally { rmSync(root, { recursive: true, force: true }); }

@@ -1,100 +1,27 @@
 import {
+    ACTION_SPECS_BY_CATEGORY,
     ACTIONS_BY_CATEGORY,
     type ToolActionMap,
     type ToolCategory,
 } from './config';
 
-export type WritePrecondition = 'none' | 'state' | 'structure' | 'value' | 'manifest' | 'source';
+import { external, mutation, read, type ActionSafetyPolicy, type ActionSpec, type WritePrecondition } from './action-spec';
 
-export type ActionSafetyPolicy =
-    | { mode: 'read' }
-    | { mode: 'external' }
-    | {
-        mode: 'mutation';
-        precondition: WritePrecondition;
-        validateOnly: boolean;
-    };
-
-const read = (): ActionSafetyPolicy => ({ mode: 'read' });
-const external = (): ActionSafetyPolicy => ({ mode: 'external' });
-const mutation = (
-    precondition: WritePrecondition = 'none',
-    validateOnly = true,
-): ActionSafetyPolicy => ({ mode: 'mutation', precondition, validateOnly });
+export type { ActionSafetyPolicy, WritePrecondition };
 
 /**
- * Authoritative classification for every Sisyphus-owned action. Adding an
- * action to config.ts without adding it here is a type/test failure instead
- * of silently exposing an unprotected mutation.
+ * Authoritative classification for every Sisyphus-owned action, derived from
+ * the per-tool declarations (src/tools/<tool>/actions.ts). ActionSpec makes
+ * the policy a required field, so an unclassified action cannot be declared.
  */
 export const ACTION_SAFETY_POLICIES: {
     [Category in ToolCategory]: Record<ToolActionMap[Category], ActionSafetyPolicy>;
-} = {
-    fs: {
-        ls: read(), tree: read(), read: read(), search: read(),
-        write: mutation('state'), replace: mutation('manifest'), rm: mutation('state'),
-        mv: mutation('structure'), reorder: mutation('structure'),
-    },
-    notebook: {
-        list: read(), get_conf: read(), get_permissions: read(), get_child_docs: read(),
-        create: mutation(), set_open_state: mutation('state'), remove: mutation('state'), rename: mutation('state'),
-        set_conf: mutation('state'), set_icon: mutation('state'), set_permission: mutation('state'),
-    },
-    document: {
-        lookup: read(), query: read(), get_child_blocks: read(), get_child_docs: read(), list_tree: read(), search_docs: read(),
-        get_doc: read(), get_outline: read(),
-        create: mutation(), ensure_link_targets: mutation('structure'), create_daily_note: mutation(), duplicate: mutation('state'), rename: mutation('state'),
-        remove: mutation('state'), move: mutation('structure'), reorder: mutation('structure'), set_attr: mutation('state'),
-        heading_to_doc: mutation('structure'), doc_to_heading: mutation('structure'),
-    },
-    block: {
-        get_kramdown: read(), batch_kramdown: read(), get_children: read(), get_attrs: read(), info: read(),
-        breadcrumb: read(), dom: read(), recent_updated: read(), word_count: read(), docs_info: read(),
-        insert: mutation(), prepend: mutation(), append: mutation(), add_to_daily_note: mutation(),
-        update: mutation('state'), replace: mutation('state'), delete: mutation('state'), move: mutation('structure'),
-        set_fold_state: mutation('state'), transfer_references: mutation('manifest'), set_attrs: mutation('state'),
-    },
-    av: {
-        get: read(), query: read(), create: mutation(), search: read(),
-        add_rows: mutation(), remove_rows: mutation('manifest'), add_column: mutation('state'),
-        remove_column: mutation('state'), set_cells: mutation('manifest'),
-        set_column_options: mutation('state'), duplicate_rows: mutation('manifest'), duplicate: mutation('state'),
-        // View configuration is a W2 mutation even though it does not edit
-        // rows. A stale carrier can otherwise make the kernel fall back to a
-        // different view, so every action requires the strict state lease.
-        add_view: mutation('state'), update_view: mutation('state'),
-        set_new_item_templates: mutation('state'), create_from_template: mutation('state'),
-        configure_two_way_relation: mutation('state'), configure_rollup: mutation('state'), set_relation: mutation('state'),
-    },
-    file: {
-        list_templates: read(), read_template: read(), render: read(), export_md: read(), export_markdown_snapshot: read(), list_unused_assets: read(),
-        get_doc_assets: read(), audit_image_refs: read(), read_image: read(), get_image_ocr_text: read(),
-        upload_asset: mutation('source'), create_template: mutation('state'), update_template: mutation('state'),
-        delete_template: mutation('state'), save_doc_as_template: mutation('state'), export_resources: external(),
-        remove_unused_assets: mutation('manifest'), rename_asset: mutation('state'), delete_asset: mutation('state'),
-        extract_doc: external(),
-    },
-    search: {
-        fulltext: read(), semantic: read(), query_sql: read(), get_backlinks: read(), search_refs: read(), search_assets: read(),
-        fulltext_asset_content: read(), list_invalid_refs: read(), find_replace: mutation('manifest'),
-    },
-    tag: { list: read(), rename: mutation('manifest'), remove: mutation('manifest') },
-    timeline: {
-        list_nodes: read(), compare_node: read(), create_node: mutation(), delete_node: mutation('state'),
-        rollback_document: mutation('state'), rollback_block: mutation('state'),
-    },
-    system: {
-        workspace_info: read(), network: read(), conf: read(), changelog: read(), get_version: read(),
-        get_current_time: read(), notify: external(), perform_sync: external(),
-    },
-    flashcard: {
-        list_cards: read(), get_decks: read(), get_cards: read(), review_card: mutation('state'),
-        create_card: mutation(), remove_card: mutation('state'),
-    },
-    extension: { list: read(), validate_package: read(), diagnose_plugin_mcp: read() },
-    mascot: { get_balance: read(), shop: read(), buy: mutation('state') },
-    feedback: { submit: external() },
-};
+} = Object.fromEntries(
+    Object.entries(ACTION_SPECS_BY_CATEGORY).map(([category, specs]) => [
+        category,
+        Object.fromEntries(Object.entries(specs as Record<string, ActionSpec>).map(([action, spec]) => [action, spec.policy])),
+    ]),
+) as { [Category in ToolCategory]: Record<ToolActionMap[Category], ActionSafetyPolicy> };
 
 export const PRECONDITION_FIELD: Record<Exclude<WritePrecondition, 'none'>, string> = {
     state: 'expectedStateHash',

@@ -449,14 +449,13 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 ## 给 AI 编码代理的特别提醒
 
-1. **修改工具配置或 action 列表时**，必须同步更新：
-   - `src/core/config.ts`（`TOOL_CATEGORIES`、action 常量、`buildDefaultToolConfig()`）
-   - `src/core/tool-registry.ts`（注册表导入）
-   - `src/tools/<tool>/schemas.ts`（该工具的 Zod schema）
-   - `src/core/help.ts`（帮助文案）
-   - `src/tools/` 下的对应工具目录或文件（`index.ts` 中的 variants + `handlers.ts`）
-   - `src/tools/index.ts`（如有新增工具，需 barrel export）
-   - 文档（README、docs/、API_MCP_MAPPING.md 等）
+1. **新增或修改 action 时**：
+   - `src/tools/<tool>/actions.ts`：**唯一声明处**——动作名（顺序即全局顺序）、`tier`、写入策略 `policy`、`defaultEnabled`、`dangerous`。`config.ts` 的动作列表/层级/危险集合/默认配置与 `write-safety-policy` 的策略表都由此推导，不要在别处再写。该文件只允许 import `core/action-spec`（架构测试守护）。
+   - `src/tools/<tool>/schemas.ts`（Zod schema）、`index.ts`（variants）、`handlers.ts`：类型按动作名约束，漏写会编译失败。
+   - `src/core/help.ts`：帮助文案；`public/i18n/*.json`：设置面板文案（i18n 测试守护）。
+   - 依赖参数的写入策略分支（如 `fs.write` 的 `overwrite`）仍写在 `getActionSafetyPolicy`。
+   - 新增**工具**时另需：`TOOL_CATEGORIES`、`ACTION_SPECS_BY_CATEGORY`、`tool-registry.ts`、`src/tools/index.ts`。
+   - 文档（README、docs/、API_MCP_MAPPING.md 等）。
 
 2. **新增 Vite build target** 时，必须在 `vite.config.ts` 的 `validTargets` 数组中登记。
 

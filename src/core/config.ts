@@ -1,26 +1,42 @@
 import type { SiYuanClient } from '../api/client';
+import { actionNames, type ActionSpec, type ActionTier } from './action-spec';
+import { FS_ACTION_SPECS } from '../tools/fs/actions';
+import { NOTEBOOK_ACTION_SPECS } from '../tools/notebook/actions';
+import { DOCUMENT_ACTION_SPECS } from '../tools/document/actions';
+import { BLOCK_ACTION_SPECS } from '../tools/block/actions';
+import { AV_ACTION_SPECS } from '../tools/av/actions';
+import { FILE_ACTION_SPECS } from '../tools/file/actions';
+import { SEARCH_ACTION_SPECS } from '../tools/search/actions';
+import { TAG_ACTION_SPECS } from '../tools/tag/actions';
+import { TIMELINE_ACTION_SPECS } from '../tools/timeline/actions';
+import { SYSTEM_ACTION_SPECS } from '../tools/system/actions';
+import { FLASHCARD_ACTION_SPECS } from '../tools/flashcard/actions';
+import { EXTENSION_ACTION_SPECS } from '../tools/extension/actions';
+import { MASCOT_ACTION_SPECS } from '../tools/mascot/actions';
+import { FEEDBACK_ACTION_SPECS } from '../tools/feedback/actions';
+
 
 export const TOOL_CATEGORIES = ['fs', 'notebook', 'document', 'block', 'av', 'file', 'search', 'tag', 'timeline', 'system', 'flashcard', 'extension', 'mascot', 'feedback'] as const;
 
 export type ToolCategory = typeof TOOL_CATEGORIES[number];
 
-export const FS_ACTIONS = ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv', 'reorder', 'search'] as const;
-export const NOTEBOOK_ACTIONS = ['list', 'create', 'set_open_state', 'remove', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'set_permission', 'get_child_docs'] as const;
-export const DOCUMENT_ACTIONS = ['create', 'lookup', 'query', 'ensure_link_targets', 'rename', 'remove', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading'] as const;
-export const BLOCK_ACTIONS = ['insert', 'prepend', 'append', 'update', 'replace', 'delete', 'move', 'set_fold_state', 'get_kramdown', 'batch_kramdown', 'get_children', 'transfer_references', 'set_attrs', 'get_attrs', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count', 'add_to_daily_note', 'docs_info'] as const;
-export const AV_ACTIONS = ['search', 'get', 'query', 'create', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'update_view', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation'] as const;
-export const FILE_ACTIONS = ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'delete_template', 'save_doc_as_template', 'render', 'export_md', 'export_markdown_snapshot', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'audit_image_refs', 'read_image', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc'] as const;
-export const SEARCH_ACTIONS = ['fulltext', 'semantic', 'query_sql', 'get_backlinks', 'search_refs', 'find_replace', 'search_assets', 'fulltext_asset_content', 'list_invalid_refs'] as const;
-export const TAG_ACTIONS = ['list', 'rename', 'remove'] as const;
-export const TIMELINE_ACTIONS = ['list_nodes', 'create_node', 'compare_node', 'delete_node', 'rollback_document', 'rollback_block'] as const;
+export const FS_ACTIONS = actionNames(FS_ACTION_SPECS);
+export const NOTEBOOK_ACTIONS = actionNames(NOTEBOOK_ACTION_SPECS);
+export const DOCUMENT_ACTIONS = actionNames(DOCUMENT_ACTION_SPECS);
+export const BLOCK_ACTIONS = actionNames(BLOCK_ACTION_SPECS);
+export const AV_ACTIONS = actionNames(AV_ACTION_SPECS);
+export const FILE_ACTIONS = actionNames(FILE_ACTION_SPECS);
+export const SEARCH_ACTIONS = actionNames(SEARCH_ACTION_SPECS);
+export const TAG_ACTIONS = actionNames(TAG_ACTION_SPECS);
+export const TIMELINE_ACTIONS = actionNames(TIMELINE_ACTION_SPECS);
 export const TIMELINE_APP_ACTIONS = TIMELINE_ACTIONS;
 export const FLASHCARD_REVIEW_APP_ACTIONS = ['review_card'] as const;
 export const MASCOT_SHOP_APP_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
-export const SYSTEM_ACTIONS = ['workspace_info', 'network', 'conf', 'notify', 'changelog', 'perform_sync', 'get_version', 'get_current_time'] as const;
-export const FLASHCARD_ACTIONS = ['list_cards', 'get_decks', 'get_cards', 'review_card', 'create_card', 'remove_card'] as const;
-export const EXTENSION_ACTIONS = ['list', 'validate_package', 'diagnose_plugin_mcp'] as const;
-export const MASCOT_ACTIONS = ['get_balance', 'shop', 'buy'] as const;
-export const FEEDBACK_ACTIONS = ['submit'] as const;
+export const SYSTEM_ACTIONS = actionNames(SYSTEM_ACTION_SPECS);
+export const FLASHCARD_ACTIONS = actionNames(FLASHCARD_ACTION_SPECS);
+export const EXTENSION_ACTIONS = actionNames(EXTENSION_ACTION_SPECS);
+export const MASCOT_ACTIONS = actionNames(MASCOT_ACTION_SPECS);
+export const FEEDBACK_ACTIONS = actionNames(FEEDBACK_ACTION_SPECS);
 
 export type FsAction = typeof FS_ACTIONS[number];
 export type NotebookAction = typeof NOTEBOOK_ACTIONS[number];
@@ -153,201 +169,121 @@ export const ACTIONS_BY_CATEGORY: { [Category in ToolCategory]: readonly ToolAct
     feedback: FEEDBACK_ACTIONS,
 };
 
-export type ActionTier = 'basic' | 'advanced';
+export type { ActionTier };
 
-const ACTION_TIERS: Record<ToolCategory, Record<string, ActionTier>> = {
-    fs: {
-        ls: 'basic', tree: 'basic', read: 'basic', write: 'basic', replace: 'basic',
-        search: 'basic',
-        reorder: 'basic', rm: 'advanced', mv: 'advanced',
-    },
-    notebook: {
-        list: 'basic', create: 'basic', set_open_state: 'basic',
-        rename: 'basic', get_conf: 'basic', get_child_docs: 'basic',
-        remove: 'advanced', set_conf: 'advanced', set_icon: 'advanced',
-        get_permissions: 'advanced', set_permission: 'advanced',
-    },
-    document: {
-        create: 'basic', lookup: 'basic', query: 'basic', get_doc: 'basic', get_outline: 'basic',
-        ensure_link_targets: 'advanced',
-        get_child_blocks: 'basic', get_child_docs: 'basic',
-        search_docs: 'basic', rename: 'basic',
-        remove: 'advanced', move: 'advanced', reorder: 'advanced', set_attr: 'advanced',
-        list_tree: 'advanced', create_daily_note: 'advanced', duplicate: 'advanced',
-        heading_to_doc: 'advanced', doc_to_heading: 'advanced',
-    },
-    block: {
-        get_kramdown: 'basic', batch_kramdown: 'basic', get_children: 'basic', get_attrs: 'basic',
-        info: 'basic', append: 'basic', prepend: 'basic',
-        insert: 'basic', update: 'basic', replace: 'basic',
-        delete: 'advanced', move: 'advanced', set_fold_state: 'advanced',
-        transfer_references: 'advanced', set_attrs: 'advanced', breadcrumb: 'advanced',
-        dom: 'advanced', recent_updated: 'advanced', word_count: 'advanced',
-        add_to_daily_note: 'advanced', docs_info: 'advanced',
-    },
-    av: {
-        get: 'basic', query: 'basic', create: 'basic', search: 'basic',
-        add_rows: 'advanced', remove_rows: 'advanced', add_column: 'advanced',
-        remove_column: 'advanced', set_cells: 'advanced', set_column_options: 'advanced',
-        duplicate_rows: 'advanced', duplicate: 'advanced', add_view: 'advanced',
-        update_view: 'advanced',
-        set_new_item_templates: 'advanced', create_from_template: 'advanced',
-        configure_two_way_relation: 'advanced', configure_rollup: 'advanced', set_relation: 'advanced',
-    },
-    file: {
-        export_md: 'basic', export_markdown_snapshot: 'basic', upload_asset: 'basic',
-        list_templates: 'basic', read_template: 'basic',
-        create_template: 'basic', update_template: 'basic', save_doc_as_template: 'basic',
-        get_doc_assets: 'basic', audit_image_refs: 'basic', read_image: 'basic', extract_doc: 'basic',
-        render: 'advanced',
-        delete_template: 'advanced',
-        export_resources: 'advanced', list_unused_assets: 'advanced',
-        get_image_ocr_text: 'advanced',
-        remove_unused_assets: 'advanced', rename_asset: 'advanced',
-        delete_asset: 'advanced',
-    },
-    search: {
-        fulltext: 'basic', semantic: 'basic', query_sql: 'basic',
-        get_backlinks: 'basic',
-        search_refs: 'advanced', find_replace: 'advanced', search_assets: 'advanced',
-        fulltext_asset_content: 'advanced', list_invalid_refs: 'advanced',
-    },
-    tag: {
-        list: 'basic', rename: 'basic',
-        remove: 'advanced',
-    },
-    timeline: {
-        list_nodes: 'basic', create_node: 'basic', compare_node: 'basic',
-        delete_node: 'advanced', rollback_document: 'advanced', rollback_block: 'advanced',
-    },
-    system: {
-        get_version: 'basic', get_current_time: 'basic', conf: 'basic', changelog: 'basic',
-        workspace_info: 'advanced', network: 'advanced', notify: 'advanced', perform_sync: 'advanced',
-    },
-    flashcard: {
-        list_cards: 'basic', get_decks: 'basic', get_cards: 'basic',
-        review_card: 'advanced', create_card: 'advanced', remove_card: 'advanced',
-    },
-    extension: {
-        list: 'basic', validate_package: 'basic', diagnose_plugin_mcp: 'basic',
-    },
-    mascot: {
-        get_balance: 'basic', shop: 'basic', buy: 'basic',
-    },
-    feedback: {
-        submit: 'basic',
-    },
+/** Per-tool action declarations (src/tools/<tool>/actions.ts), the single source for action metadata. */
+export const ACTION_SPECS_BY_CATEGORY: { [Category in ToolCategory]: Record<ToolActionMap[Category], ActionSpec> } = {
+    fs: FS_ACTION_SPECS,
+    notebook: NOTEBOOK_ACTION_SPECS,
+    document: DOCUMENT_ACTION_SPECS,
+    block: BLOCK_ACTION_SPECS,
+    av: AV_ACTION_SPECS,
+    file: FILE_ACTION_SPECS,
+    search: SEARCH_ACTION_SPECS,
+    tag: TAG_ACTION_SPECS,
+    timeline: TIMELINE_ACTION_SPECS,
+    system: SYSTEM_ACTION_SPECS,
+    flashcard: FLASHCARD_ACTION_SPECS,
+    extension: EXTENSION_ACTION_SPECS,
+    mascot: MASCOT_ACTION_SPECS,
+    feedback: FEEDBACK_ACTION_SPECS,
 };
+
+const specOf = (category: ToolCategory, action: string): ActionSpec | undefined =>
+    (ACTION_SPECS_BY_CATEGORY[category] as Record<string, ActionSpec>)?.[action];
 
 export function getActionTier(category: ToolCategory, action: string): ActionTier {
-    return ACTION_TIERS[category]?.[action] ?? 'advanced';
+    return specOf(category, action)?.tier ?? 'advanced';
 }
 
-export const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = {
-    fs: new Set(['rm', 'mv']),
-    notebook: new Set(['remove', 'set_permission']),
-    document: new Set(['remove', 'move']),
-    block: new Set(['delete', 'move']),
-    // These operations replace persistent AV configuration or can write a
-    // relation graph across databases. A normal AV write confirmation is not
-    // enough to make their scope apparent to the caller.
-    av: new Set(['update_view', 'set_column_options', 'duplicate_rows', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
-    file: new Set(['upload_asset', 'delete_template', 'remove_unused_assets', 'delete_asset']),
-    search: new Set(['find_replace']),
-    tag: new Set(['remove']),
-    timeline: new Set(['delete_node', 'rollback_document', 'rollback_block']),
-    system: new Set(['workspace_info', 'perform_sync']),
-    flashcard: new Set(['remove_card']),
-    extension: new Set(),
-    mascot: new Set(),
-    feedback: new Set(),
-};
+export const DANGEROUS_ACTIONS: Record<ToolCategory, Set<string>> = Object.fromEntries(
+    TOOL_CATEGORIES.map((category) => [category, new Set(
+        Object.entries(ACTION_SPECS_BY_CATEGORY[category] as Record<string, ActionSpec>)
+            .filter(([, spec]) => spec.dangerous === true)
+            .map(([action]) => action),
+    )]),
+) as Record<ToolCategory, Set<string>>;
 
-const createActionsRecord = <Action extends string>(
-    actions: readonly Action[],
-    enabledByDefault: readonly Action[],
-): Record<Action, boolean> => {
-    const enabledSet = new Set(enabledByDefault);
-    return actions.reduce((acc, action) => {
-        acc[action] = enabledSet.has(action);
-        return acc;
-    }, {} as Record<Action, boolean>);
-};
+const allEnabled = <Action extends string>(actions: readonly Action[]): Record<Action, boolean> =>
+    Object.fromEntries(actions.map((action) => [action, true])) as Record<Action, boolean>;
+
+const defaultActionsRecord = <Action extends string>(specs: Record<Action, ActionSpec>): Record<Action, boolean> =>
+    Object.fromEntries(Object.entries(specs).map(([action, spec]) => [action, (spec as ActionSpec).defaultEnabled])) as Record<Action, boolean>;
 
 export function buildDefaultToolConfig(): ToolConfig {
     return {
         avActionsVersion: 2,
         fs: {
             enabled: true,
-            actions: createActionsRecord(FS_ACTIONS, ['ls', 'tree', 'read', 'write', 'replace', 'rm', 'mv', 'reorder', 'search']),
+            actions: defaultActionsRecord(FS_ACTION_SPECS),
         },
         notebook: {
             enabled: true,
-            actions: createActionsRecord(NOTEBOOK_ACTIONS, ['list', 'create', 'set_open_state', 'rename', 'get_conf', 'set_conf', 'set_icon', 'get_permissions', 'get_child_docs']),
+            actions: defaultActionsRecord(NOTEBOOK_ACTION_SPECS),
         },
         document: {
             enabled: true,
-            actions: createActionsRecord(DOCUMENT_ACTIONS, ['create', 'lookup', 'query', 'ensure_link_targets', 'rename', 'move', 'reorder', 'get_child_blocks', 'get_child_docs', 'set_attr', 'list_tree', 'search_docs', 'get_doc', 'get_outline', 'create_daily_note', 'duplicate', 'heading_to_doc', 'doc_to_heading']),
+            actions: defaultActionsRecord(DOCUMENT_ACTION_SPECS),
         },
         block: {
             enabled: true,
-            actions: createActionsRecord(BLOCK_ACTIONS, ['insert', 'prepend', 'append', 'update', 'replace', 'move', 'set_fold_state', 'get_kramdown', 'batch_kramdown', 'get_children', 'transfer_references', 'set_attrs', 'get_attrs', 'info', 'breadcrumb', 'dom', 'recent_updated', 'word_count', 'add_to_daily_note', 'docs_info']),
+            actions: defaultActionsRecord(BLOCK_ACTION_SPECS),
         },
         av: {
             enabled: true,
-            actions: createActionsRecord(AV_ACTIONS, ['search', 'get', 'query', 'create', 'add_rows', 'remove_rows', 'add_column', 'remove_column', 'set_cells', 'set_column_options', 'duplicate_rows', 'duplicate', 'add_view', 'update_view', 'set_new_item_templates', 'create_from_template', 'configure_two_way_relation', 'configure_rollup', 'set_relation']),
+            actions: defaultActionsRecord(AV_ACTION_SPECS),
         },
         file: {
             enabled: true,
-            actions: createActionsRecord(FILE_ACTIONS, ['upload_asset', 'list_templates', 'read_template', 'create_template', 'update_template', 'save_doc_as_template', 'render', 'export_md', 'export_markdown_snapshot', 'export_resources', 'list_unused_assets', 'get_doc_assets', 'audit_image_refs', 'read_image', 'get_image_ocr_text', 'remove_unused_assets', 'rename_asset', 'delete_asset', 'extract_doc']),
+            actions: defaultActionsRecord(FILE_ACTION_SPECS),
             uploadLargeFileThresholdMB: 10,
         },
         search: {
             enabled: true,
-            actions: createActionsRecord(SEARCH_ACTIONS, ['fulltext', 'semantic', 'query_sql', 'get_backlinks', 'search_refs', 'find_replace', 'search_assets', 'fulltext_asset_content', 'list_invalid_refs']),
+            actions: defaultActionsRecord(SEARCH_ACTION_SPECS),
         },
         tag: {
             enabled: true,
-            actions: createActionsRecord(TAG_ACTIONS, ['list', 'rename', 'remove']),
+            actions: defaultActionsRecord(TAG_ACTION_SPECS),
         },
         timeline: {
             enabled: true,
-            actions: createActionsRecord(TIMELINE_ACTIONS, ['list_nodes', 'create_node', 'compare_node']),
+            actions: defaultActionsRecord(TIMELINE_ACTION_SPECS),
         },
         system: {
             enabled: true,
-            actions: createActionsRecord(SYSTEM_ACTIONS, ['network', 'conf', 'notify', 'changelog', 'perform_sync', 'get_version', 'get_current_time']),
+            actions: defaultActionsRecord(SYSTEM_ACTION_SPECS),
         },
         flashcard: {
             enabled: true,
-            actions: createActionsRecord(FLASHCARD_ACTIONS, ['list_cards', 'get_decks', 'get_cards', 'review_card', 'create_card', 'remove_card']),
+            actions: defaultActionsRecord(FLASHCARD_ACTION_SPECS),
         },
         extension: {
             enabled: true,
-            actions: createActionsRecord(EXTENSION_ACTIONS, EXTENSION_ACTIONS),
+            actions: defaultActionsRecord(EXTENSION_ACTION_SPECS),
             includeNativeTools: false,
             blockedTools: [],
         },
         mascot: {
             enabled: true,
-            actions: createActionsRecord(MASCOT_ACTIONS, ['get_balance', 'shop', 'buy']),
+            actions: defaultActionsRecord(MASCOT_ACTION_SPECS),
         },
         feedback: {
             enabled: true,
-            actions: createActionsRecord(FEEDBACK_ACTIONS, ['submit']),
+            actions: defaultActionsRecord(FEEDBACK_ACTION_SPECS),
         },
         mcpApps: {
             timeline: {
                 enabled: true,
-                actions: createActionsRecord(TIMELINE_APP_ACTIONS, TIMELINE_APP_ACTIONS),
+                actions: allEnabled(TIMELINE_APP_ACTIONS),
             },
             flashcardReview: {
                 enabled: true,
-                actions: createActionsRecord(FLASHCARD_REVIEW_APP_ACTIONS, FLASHCARD_REVIEW_APP_ACTIONS),
+                actions: allEnabled(FLASHCARD_REVIEW_APP_ACTIONS),
             },
             mascotShop: {
                 enabled: true,
-                actions: createActionsRecord(MASCOT_SHOP_APP_ACTIONS, MASCOT_SHOP_APP_ACTIONS),
+                actions: allEnabled(MASCOT_SHOP_APP_ACTIONS),
             },
         },
         userRulesText: '创建文档/日记后主动设图标',

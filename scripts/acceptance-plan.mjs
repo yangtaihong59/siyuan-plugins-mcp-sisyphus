@@ -25,28 +25,24 @@ function unwrap(node) {
 
 export function collectPlan(root = ROOT) {
     const config = ts.createSourceFile('config.ts', readFileSync(resolve(root, 'src/core/config.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
-    const policy = ts.createSourceFile('policy.ts', readFileSync(resolve(root, 'src/core/write-safety-policy.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
     const matrix = JSON.parse(readFileSync(resolve(root, 'tests/acceptance/scenarios.json'), 'utf8'));
     const categories = unwrap(initializer(config, 'TOOL_CATEGORIES')).elements.map(node => node.text);
-    const policies = new Map();
-    for (const category of unwrap(initializer(policy, 'ACTION_SAFETY_POLICIES')).properties) {
-        for (const property of category.initializer.properties) {
-            const call = property.initializer;
-            if (!ts.isCallExpression(call) || !['read', 'mutation', 'external'].includes(call.expression.getText(policy))) throw new Error('Unsupported safety policy syntax');
-            policies.set(`${category.name.getText(policy)}.${property.name.getText(policy)}`, {
-                mode: call.expression.getText(policy),
-                precondition: (call.arguments[0] && ts.isStringLiteralLike(call.arguments[0]) ? call.arguments[0].text : undefined) ?? (call.expression.getText(policy) === 'mutation' ? 'none' : null),
-            });
-        }
-    }
+    // Each tool declares its actions once, in order, in src/tools/<tool>/actions.ts.
     const actions = [];
-    for (const category of unwrap(initializer(config, 'ACTIONS_BY_CATEGORY')).properties) {
-        const tool = category.name.getText(config);
-        const array = unwrap(initializer(config, category.initializer.getText(config)));
-        for (const node of array.elements) {
-            const key = `${tool}.${node.text}`;
-            if (!policies.has(key)) throw new Error(`Missing safety policy: ${key}`);
-            actions.push({ key, tool, action: node.text, ...policies.get(key) });
+    for (const tool of categories) {
+        const source = ts.createSourceFile('actions.ts', readFileSync(resolve(root, `src/tools/${tool}/actions.ts`), 'utf8'), ts.ScriptTarget.Latest, true);
+        const call = unwrap(initializer(source, `${tool.toUpperCase()}_ACTION_SPECS`));
+        if (!ts.isCallExpression(call) || !ts.isObjectLiteralExpression(call.arguments[0])) throw new Error(`Unsupported action declaration syntax: ${tool}`);
+        for (const property of call.arguments[0].properties) {
+            const action = property.name.getText(source);
+            const policyProperty = property.initializer.properties.find(p => p.name?.getText(source) === 'policy');
+            const policy = policyProperty?.initializer;
+            if (!policy || !ts.isCallExpression(policy) || !['read', 'mutation', 'external'].includes(policy.expression.getText(source))) throw new Error(`Missing safety policy: ${tool}.${action}`);
+            const mode = policy.expression.getText(source);
+            actions.push({
+                key: `${tool}.${action}`, tool, action, mode,
+                precondition: (policy.arguments[0] && ts.isStringLiteralLike(policy.arguments[0]) ? policy.arguments[0].text : undefined) ?? (mode === 'mutation' ? 'none' : null),
+            });
         }
     }
     if (JSON.stringify([...new Set(actions.map(a => a.tool))]) !== JSON.stringify(categories)) throw new Error('Category order differs from source');
