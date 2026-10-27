@@ -1,5 +1,5 @@
-import type { SiYuanClient } from '../api/client';
-import type { PermissionManager } from './permissions';
+import type { SiYuanClient } from '../../api/client';
+import type { PermissionManager } from '../../core/permissions';
 
 export const BATCH_RENAME_MAX_ITEMS = 50;
 export const BATCH_RENAME_MAX_INPUT_BYTES = 256 * 1024;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { slimToolResult } from '@/core/slim-response';
-import { verifyAvCellsReadback } from '@/core/av-cell-readback';
+import { verifyAvCellsReadback } from '@/tools/av/cell-readback';
 import { readHelpResource } from '@/core/resources';
 import { TOOL_REGISTRY } from '@/core/tool-registry';
 import { buildDefaultToolConfig } from '@/core/config';

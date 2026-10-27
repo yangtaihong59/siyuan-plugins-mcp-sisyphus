@@ -1,7 +1,7 @@
 import { prepareDocumentConversion } from '../tools/document/conversion';
-import { AV_CREATION_CONTEXT, type AvCreationProgress, type AvCreationContext } from './av-creation-context';
+import { AV_CREATION_CONTEXT, type AvCreationProgress, type AvCreationContext } from '../tools/av/creation-context';
 import { generateSiYuanNodeId } from '../shared/siyuan-id';
-import { BATCH_RENAME_CONTEXT, buildBatchRenamePlan, initialBatchRenameProgress, type BatchRenamePlan, type BatchRenameProgress } from './batch-rename-plan';
+import { BATCH_RENAME_CONTEXT, buildBatchRenamePlan, initialBatchRenameProgress, type BatchRenamePlan, type BatchRenameProgress } from '../tools/document/batch-rename-plan';
 import { AV_ADD_ROWS_CONTEXT, createAvAddRowsPlan, summarizeAvAddRowsPlan, type AvAddRowsPlan, type AvAddRowsProgress } from '../tools/av/add-rows-plan';
 import { ensurePermissionForDocumentId } from '../tools/internal/context';
 import { translateError } from '../tools/internal/errorTranslation';

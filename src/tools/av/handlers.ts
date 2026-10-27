@@ -1,8 +1,8 @@
 import { ZodError } from 'zod';
 import { generateSiYuanNodeId } from '../../shared/siyuan-id';
-import { AV_CREATION_CONTEXT, type AvCreationContext } from '../../core/av-creation-context';
+import { AV_CREATION_CONTEXT, type AvCreationContext } from './creation-context';
 import { AV_ADD_ROWS_CONTEXT, assertAvAddRowsStructure, type AvAddRowsContext } from './add-rows-plan';
-import { verifyAvCellsReadback } from '../../core/av-cell-readback';
+import { verifyAvCellsReadback } from './cell-readback';
 import { prepareViewUpdate, viewFields, normalizeAvFilters, normalizeAvGroup } from './view-config';
 import { writeHashPool } from '../../core/write-safety-hash';
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';

@@ -4,7 +4,7 @@ import {
     BATCH_RENAME_MAX_ITEMS,
     assertBatchRenameInput,
     buildBatchRenamePlan,
-} from '@/core/batch-rename-plan';
+} from '@/tools/document/batch-rename-plan';
 
 function createClient(options: {
     hpaths?: Record<string, string>;

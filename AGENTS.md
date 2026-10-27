@@ -433,7 +433,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 以下问题已确认、尚未重构；改动相关代码时优先顺手收敛，不要再新增同类重复：
 
 - **调用前置的响应格式不一致**：判定逻辑已统一到 `core/tool-call-gate.ts`，但 server 对未知/禁用工具返回纯文本，kernel 返回 `{error:{code}}` JSON；统一前需评估客户端兼容性。
-- **core 承载工具业务**：`core/av-*`、`batch-rename-plan.ts`、`document-link-targets.ts` 应下沉到 `tools/<x>/`；`core` 与 `tools` 目前仍互相引用。
+- **core 与 tools 互相引用**：工具依赖 `core/config`、`core/permissions` 等基础模块，而 `core` 的注册表与写协调器又依赖工具层。彻底解环需把 core 拆成“基础层”与“装配层”，改动面大，暂缓；工具与协调器共用的业务契约（如 `tools/av/add-rows-plan.ts`、`tools/document/batch-rename-plan.ts`）放在对应工具目录。
 - **哈希实现**：`sha256:v1:` 有 3 条实现（`write-safety-hash`、`canonical-state`、`markdown-snapshot`），运行时约束与规范化输入不同，且值会被持久化/比对，暂不合并。
 
 ### 已收敛的约定（勿回退）

@@ -1,6 +1,6 @@
-import type { AvCreationProgress } from './av-creation-context';
+import type { AvCreationProgress } from '../tools/av/creation-context';
 import type { AvAddRowsProgress } from '../tools/av/add-rows-plan';
-import type { BatchRenameProgress } from './batch-rename-plan';
+import type { BatchRenameProgress } from '../tools/document/batch-rename-plan';
 import type { ToolResult } from '../tools/internal/shared';
 import { nodeCrypto } from './node-loader';
 import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';

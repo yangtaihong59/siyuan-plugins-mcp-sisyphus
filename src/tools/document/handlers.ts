@@ -13,7 +13,7 @@ import {
     overallBatchRenameState,
     type BatchRenameContext,
     type BatchRenameItemReceipt,
-} from '../../core/batch-rename-plan';
+} from './batch-rename-plan';
 import type { PermissionManager } from '../../core/permissions';
 import { DocumentCreateSchema, DocumentEnsureLinkTargetsSchema, DocumentCreateDailyNoteSchema, DocumentDocToHeadingSchema, DocumentDuplicateSchema, DocumentGetChildBlocksSchema, DocumentGetChildDocsSchema, DocumentGetDocSchema, DocumentGetOutlineSchema, DocumentHeadingToDocSchema, DocumentListTreeSchema, DocumentMoveSchema, DocumentReorderSchema, DocumentLookupSchema, DocumentRemoveSchema, DocumentRenameSchema, DocumentSearchDocsSchema, DocumentSetAttrSchema } from './schemas';
 import {
@@ -24,7 +24,7 @@ import {
     scopedLinkTargetTitleExists,
     type LinkTargetDocumentIdentity,
     type LinkTargetScope,
-} from '../../core/document-link-targets';
+} from './link-targets';
 import {
     ensurePermissionForDocumentId,
     ensurePermissionForNotebook,

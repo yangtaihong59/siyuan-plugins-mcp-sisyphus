@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
 import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
-import { BATCH_RENAME_CONTEXT } from '@/core/batch-rename-plan';
+import { BATCH_RENAME_CONTEXT } from '@/tools/document/batch-rename-plan';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';
 

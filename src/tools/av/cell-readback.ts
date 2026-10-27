@@ -1,4 +1,4 @@
-import { safetyError } from './write-safety-ledger';
+import { safetyError } from '../../core/write-safety-ledger';
 
 /** Verify requested cell semantics; kernel-assigned colors and display text are not input values. */
 export function verifyAvCellsReadback(args: Record<string, any>, definition: Record<string, any>): void {
