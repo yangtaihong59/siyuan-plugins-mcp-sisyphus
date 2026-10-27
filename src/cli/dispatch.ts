@@ -17,11 +17,10 @@ import { mapFlagsToArgs } from './flag-mapper';
 import { extractPaginationInfo, renderCliError, renderToolResult } from './render';
 import { loadCliRuntimeState } from './runtime';
 import { callCliWriteCoordinator } from '../core/write-coordinator-client';
-import { getActionSafetyPolicy } from '../core/write-safety-policy';
-import { requiresCoordinatedWrite } from '../core/tool-call-gate';
+import { planToolCall } from '../core/tool-call-gate';
 import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
 
-import { createDisabledToolResult, type ToolResult } from '../tools/internal/shared';
+import type { ToolResult } from '../tools/internal/shared';
 
 export async function runDispatch(cli: ParsedArgs): Promise<number> {
     const { tool, action, rest } = cli;
@@ -50,9 +49,9 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
 
     try {
         const { client, toolConfig, permMgr, officialMcpRuntime, writeCoordinator } = await loadCliRuntimeState(cli);
-        if (!toolConfig[category].enabled) {
-            return renderToolResult(createDisabledToolResult(tool), { json: cli.json, debug: cli.debug });
-        }
+        // Reject disabled tools/actions before any extension discovery or flag mapping.
+        const gate = planToolCall(tool, { action: normalizedAction }, toolConfig, { appsEnabled: false });
+        if (gate.kind === 'rejected') return renderToolResult(gate.result, { json: cli.json, debug: cli.debug });
 
         const module = TOOL_REGISTRY[category];
         if (category === 'extension') {
@@ -84,8 +83,13 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
         const basePayload = { action: normalizedAction, ...mappedArgs } as Record<string, unknown>;
         const requestText = [PRIMARY_CLI_COMMAND, tool, action, ...rest].join(' ').trim();
         const runPage = async (page?: number): Promise<ToolResult> => {
-            const payload = page === undefined ? basePayload : { ...basePayload, page };
-            const policy = getActionSafetyPolicy(category, normalizedAction, payload);
+            const plan = planToolCall(tool, page === undefined ? basePayload : { ...basePayload, page }, toolConfig, {
+                appsEnabled: false,
+                extensionTools: category === 'extension' ? getExposedExtensionTools(toolConfig.extension, officialMcpRuntime) : undefined,
+            });
+            if (plan.kind === 'rejected') return plan.result;
+            if (plan.kind !== 'tool') throw formatUnknownToolError(tool);
+            const { args: payload, policy, coordinated } = plan;
             const executeDirect = (safeArgs = payload) => module.callTool(
                 client,
                 safeArgs,
@@ -94,13 +98,13 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
                 officialMcpRuntime,
             );
             if (!handlesInterrupt && writeCoordinator?.owner === 'kernel'
-                && (isKernelExport(tool, payload) || requiresCoordinatedWrite(policy, toolConfig, category, normalizedAction))) {
+                && (isKernelExport(tool, payload) || coordinated)) {
                 process.on('SIGINT', interrupt);
                 handlesInterrupt = true;
             }
             const invoke = writeCoordinator?.owner === 'kernel' && isKernelExport(tool, payload)
                 ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
-                : requiresCoordinatedWrite(policy, toolConfig, category, normalizedAction)
+                : coordinated
                 ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
                 : toolConfig.writeSafety.strictMode && policy.mode === 'external'
                     ? () => new WriteSafetyCoordinator(client).run({

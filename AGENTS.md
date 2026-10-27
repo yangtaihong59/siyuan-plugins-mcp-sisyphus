@@ -66,7 +66,7 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── server.ts            # MCP Server 入口：createSiYuanServer()、startMcpServer()
 │   │   ├── http-transport.ts    # HTTP MCP 2026 无状态 + legacy 有会话双协议传输
 │   │   ├── tool-registry.ts     # TOOL_REGISTRY：聚合工具注册表
-│   │   ├── tool-call-gate.ts    # 三入口共用的 tools/call 判定（action 开关、危险确认、协调写）
+│   │   ├── tool-call-gate.ts    # planToolCall：三入口共用的 tools/call 决策（别名规范化、开关、确认、写入策略、协调写）
 │   │   ├── write-safety-coordinator.ts # 严格写入协调器主流程（锁、租约、账本、提交）
 │   │   ├── write-safety-probe.ts / write-safety-av.ts / write-safety-records.ts # 状态探针、AV 校验、共享小工具（依赖链 coordinator→probe→av→records）
 │   │   ├── write-coordinator-client.ts # 严格写入委托 kernel 协调器的客户端（CLI 与 server 共用）
@@ -445,7 +445,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 - AV 载体块判定统一用 `shared/av-carrier-dom.ts` 的 `isExactAvCarrierDom`（要求块自身开标签上同时有 `data-node-id`、`data-type="NodeAttributeView"`、`data-av-id`）；不要用 `dom.includes(...)` 粗判。
 - 工具层只依赖 `SiYuanClient` **接口**（`api/client.ts`）；HTTP 实现为 `HttpSiYuanClient`，内核实现为 `KernelSiYuanClient`。不要在生产代码里探测 `request` 等废弃方法，测试替身用 `tests/helpers/mock-client.ts`。
 - renderer（UI）不得 import `tool-registry` 或任何工具实现；MCP 初始成本由 server/kernel 在 tools/list 时写入 `mcp-initial-cost.json`，UI 只读取。
-- 禁用判断、危险确认、是否走写协调器统一调用 `core/tool-call-gate.ts`。
+- tools/call 的决策只在 `core/tool-call-gate.ts` 的 `planToolCall` 里做（别名规范化、开关、App 隐藏、危险确认、写入策略、是否走协调器）。server/kernel/CLI 只负责确认 UI、调度与渲染，不要在入口里再写判定。
 
 ## 给 AI 编码代理的特别提醒
 

@@ -8,12 +8,11 @@ import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
 import { buildServerInstructions } from './server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from './mcp-initial-cost';
-import { isActionEnabled, isHiddenMcpAppTool, requiresCoordinatedWrite, requiresDangerConfirmation, resolveToolCallTarget } from './tool-call-gate';
+import { planToolCall } from './tool-call-gate';
 
 import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
 import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from './config';
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
-import { getActionSafetyPolicy } from './write-safety-policy';
 import { callCliWriteCoordinator } from './write-coordinator-client';
 import { loadWriteCoordinatorSettings } from './write-coordinator-settings';
 import { noopSchemaValidator } from './noops/noop-schema-validator';
@@ -26,20 +25,17 @@ import {
     callTimelineAppTool,
     compactMcpAppToolResult,
     decorateToolsWithMcpApps,
-    FLASHCARD_REVIEW_SESSION_TOOL_NAME,
     listMcpAppResources,
     MCP_APPS_EXTENSION_ID,
     MCP_APP_MIME_TYPE,
-    MASCOT_SHOP_APP_TOOL_NAME,
     readMcpAppResource,
     supportsMcpApps,
-    TIMELINE_APP_TOOL_NAME,
 } from './mcp-apps';
 import { listHelpResources, listHelpResourceTemplates, readHelpResource } from './resources';
-import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, TOOL_REGISTRY } from './tool-registry';
+import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory, TOOL_REGISTRY } from './tool-registry';
 import { runToolCall } from './tool-lifecycle';
 import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from './skills';
-import { createDisabledActionResult, createDisabledToolResult, createErrorResult, createUnknownToolResult, type ToolResult } from '../tools/internal/shared';
+import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 
 export { buildServerInstructions } from './server-instructions';
 
@@ -306,31 +302,21 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
     server.setRequestHandler('tools/call', async (request, ctx) => {
         const { name, arguments: args } = request.params;
         const gateError = (result: ToolResult) => server.projectCallToolResult(withStructuredContent(result), GENERIC_TOOL_OUTPUT_SCHEMA);
-        const action = typeof args?.action === 'string' ? args.action : 'unknown';
         const clientCapabilities = (
             ctx.mcpReq.envelope as { clientCapabilities?: Parameters<typeof supportsMcpApps>[0] } | undefined
         )?.clientCapabilities ?? server.getClientCapabilities();
         const appsEnabled = supportsMcpApps(clientCapabilities);
-        if (isHiddenMcpAppTool(name, appsEnabled)) {
-            return gateError(createUnknownToolResult(name));
-        }
-        if ([FLASHCARD_REVIEW_SESSION_TOOL_NAME, TIMELINE_APP_TOOL_NAME, MASCOT_SHOP_APP_TOOL_NAME].includes(name)) {
-            const config = await getToolConfig();
-            const appEnabled = name === FLASHCARD_REVIEW_SESSION_TOOL_NAME
-                ? config.mcpApps.flashcardReview.enabled
-                : name === TIMELINE_APP_TOOL_NAME
-                    ? config.mcpApps.timeline.enabled
-                    : config.mcpApps.mascotShop.enabled;
-            if (!appEnabled) {
-                return gateError(createDisabledToolResult(name));
-            }
-            if (name === FLASHCARD_REVIEW_SESSION_TOOL_NAME && (!config.flashcard.enabled || config.flashcard.actions.list_cards !== true)) {
-                return gateError(createDisabledActionResult('flashcard', 'list_cards', 'flashcard_review_session requires flashcard(action="list_cards") to be enabled for candidate selection.'));
-            }
+        const config = await getToolConfig();
+        const plan = planToolCall(name, args, config, {
+            appsEnabled,
+            extensionTools: resolveCategory(name) === 'extension' ? officialMcpBridge.getTools() : undefined,
+        });
+        if (plan.kind === 'rejected') return gateError(plan.result);
+        if (plan.kind === 'app') {
             try {
-                const result = name === FLASHCARD_REVIEW_SESSION_TOOL_NAME
+                const result = plan.app === 'flashcard'
                     ? await callFlashcardReviewSessionTool(client, permMgr, args, config.mcpApps.flashcardReview)
-                    : name === TIMELINE_APP_TOOL_NAME
+                    : plan.app === 'timeline'
                         ? await callTimelineAppTool(client, permMgr, args, config.mcpApps.timeline)
                         : await callMascotShopAppTool(client, permMgr, args, config.mcpApps.mascotShop);
                 return server.projectCallToolResult(result, GENERIC_TOOL_OUTPUT_SCHEMA);
@@ -338,33 +324,16 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 const message = error instanceof Error ? error.message : String(error);
                 return server.projectCallToolResult(withStructuredContent({
                     content: [{ type: 'text' as const, text: JSON.stringify({
-                        action: FLASHCARD_REVIEW_SESSION_TOOL_NAME,
+                        action: name,
                         error: { message },
                     }, null, 2) }],
                     isError: true,
                 }), GENERIC_TOOL_OUTPUT_SCHEMA);
             }
         }
-        const config = await getToolConfig();
-        const target = resolveToolCallTarget(name, config);
-        if (!target) {
-            return gateError(createUnknownToolResult(name));
-        }
-        const { category } = target;
-        if (!target.actionConfig.enabled) {
-            return gateError(createDisabledToolResult(name));
-        }
-
+        const { category, target, action, args: callArgs } = plan;
         const module = TOOL_REGISTRY[category];
-        const actionEnabled = isActionEnabled(target, action);
-        if (action !== 'help' && !actionEnabled) {
-            return gateError(createDisabledActionResult(name, action));
-        }
-        const extensionTool = category === 'extension'
-            ? officialMcpBridge.getTools().find((tool) => tool.name === action)
-            : undefined;
-        const requiresConfirmation = actionEnabled && args?.validateOnly !== true
-            && requiresDangerConfirmation(category, action, extensionTool);
+        const requiresConfirmation = plan.needsConfirmation;
 
         // 2026-07-28 carries confirmation in-band through MRTR. Legacy
         // clients and clients without form support keep instruction-level confirmation.
@@ -448,10 +417,9 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             }
         }
 
-        const policy = getActionSafetyPolicy(category, action, args ?? {});
         const transportMode = options.transportMode ?? parseTransportMode();
-        const coordinatedMutation = requiresCoordinatedWrite(policy, config, category, action);
-        const coordinatorSettings = (coordinatedMutation || isKernelExport(name, args ?? {}))
+        const coordinatedMutation = plan.coordinated;
+        const coordinatorSettings = (coordinatedMutation || isKernelExport(name, callArgs))
             ? await loadWriteCoordinatorSettings(client, process.env.SIYUAN_TOKEN)
             : undefined;
         const owner = coordinatorSettings?.owner ?? 'node';
@@ -462,7 +430,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         if (coordinatedMutation && coordinatorSettings && !ownerChanged) runtime.writeCoordinatorOwner = owner;
         const routeToRemoteCoordinator = (coordinatedMutation
             && (transportMode !== 'http' || owner === 'kernel'))
-            || (owner === 'kernel' && isKernelExport(name, args ?? {}));
+            || (owner === 'kernel' && isKernelExport(name, callArgs));
         let result: ToolResult;
         try {
             result = await runToolCall(
@@ -471,7 +439,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                     category,
                     name,
                     action,
-                    args,
+                    args: callArgs,
                     requestText: category === 'extension'
                         ? JSON.stringify({ name, action })
                         : JSON.stringify({ name, arguments: args ?? {} }),
@@ -479,7 +447,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                 },
                 async () => {
                     if (coordinatedMutation && !coordinatorSettings) {
-                        return callCliWriteCoordinator(undefined, name, args ?? {});
+                        return callCliWriteCoordinator(undefined, name, callArgs);
                     }
                     if (ownerChanged) {
                         return { isError: true, content: [{ type: 'text', text: JSON.stringify({
@@ -491,7 +459,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                         return callCliWriteCoordinator(
                             coordinatorSettings,
                             name,
-                            args ?? {},
+                            callArgs,
                             client,
                             ctx.mcpReq.signal,
                         );
@@ -501,7 +469,7 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                         permMgr,
                         category,
                         action,
-                        args: args ?? {},
+                        args: callArgs,
                         strictMode: config.writeSafety.strictMode,
                         validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
                         execute: (safeArgs) => module.callTool(client, safeArgs, target.actionConfig as ToolConfig[ToolCategory], permMgr, officialMcpRuntime),

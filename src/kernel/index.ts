@@ -9,7 +9,6 @@ import { withStructuredContent } from '../core/structured-result';
 import { MODERN_VERSION, modernContext, modernResult, KernelConfirmations, type ModernContext, header, isObject } from './modern-protocol';
 import { MAX_TRANSFER_FILE_BYTES } from '../core/upload-source';
 import { KernelScheduler, KernelQueueError, type KernelTask } from './scheduler';
-import { getActionSafetyPolicy } from '../core/write-safety-policy';
 import { randomUUID } from './node-shims';
 /* Kernel transport: shared dispatcher and validators, build-time action schemas. */
 import './polyfill';
@@ -24,20 +23,18 @@ import { PermissionManager } from '../core/permissions';
 import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
 import { buildDefaultToolConfig, normalizeToolConfig } from '../core/config';
 import { runToolCall } from '../core/tool-lifecycle';
-import { createDisabledActionResult, createDisabledToolResult, createErrorResult, createUnknownToolResult, type ToolResult } from '../tools/internal/shared';
+import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../core/tool-registry';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { normalizeActionAlias } from '../core/action-aliases';
-import { normalizeToolArguments } from '../core/argument-aliases';
 import { buildServerInstructions } from '../core/server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../core/mcp-initial-cost';
-import { isActionEnabled, isHiddenMcpAppTool, requiresDangerConfirmation, resolveToolCallTarget } from '../core/tool-call-gate';
+import { planToolCall } from '../core/tool-call-gate';
 import { kernelOfficialRuntime } from './official-mcp';
 import { getExposedExtensionTools } from '../tools/extension';
 import {
     MCP_APPS_EXTENSION_ID, MCP_APP_MIME_TYPE, supportsMcpApps, decorateToolsWithMcpApps, listMcpAppResources, readMcpAppResource,
     compactMcpAppToolResult, callFlashcardReviewSessionTool, callTimelineAppTool, callMascotShopAppTool,
-    FLASHCARD_REVIEW_SESSION_TOOL_NAME, TIMELINE_APP_TOOL_NAME, MASCOT_SHOP_APP_TOOL_NAME,
 } from '../core/mcp-apps';
 import {
     kernelGetPrompt,
@@ -167,51 +164,34 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     c.configure(options);
     const scoped = taskClient(c, scheduler, task, budget);
     const pm = new PermissionManager(scoped);
-    if (isHiddenMcpAppTool(name, appsEnabled)) return toolResultToMcp(createUnknownToolResult(name));
-    const appEntries = {
-        [FLASHCARD_REVIEW_SESSION_TOOL_NAME]: { config: cfg.mcpApps.flashcardReview, call: callFlashcardReviewSessionTool },
-        [TIMELINE_APP_TOOL_NAME]: { config: cfg.mcpApps.timeline, call: callTimelineAppTool },
-        [MASCOT_SHOP_APP_TOOL_NAME]: { config: cfg.mcpApps.mascotShop, call: callMascotShopAppTool },
-    };
-    const appEntry = appEntries[name];
-    if (appEntry) {
-        if (!appEntry.config.enabled) return toolResultToMcp(createDisabledToolResult(name));
-        if (name === FLASHCARD_REVIEW_SESSION_TOOL_NAME && (!cfg.flashcard.enabled || !cfg.flashcard.actions.list_cards)) {
-            return toolResultToMcp(createDisabledActionResult('flashcard', 'list_cards', 'flashcard_review_session requires flashcard(action="list_cards") to be enabled for candidate selection.'));
-        }
+    // Extension discovery must precede planning so confirmation sees each tool's readOnlyHint.
+    if (resolveCategory(name) === 'extension' && cfg.extension.enabled) await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
+    const plan = planToolCall(name, input, cfg, {
+        appsEnabled,
+        extensionTools: resolveCategory(name) === 'extension' ? getExposedExtensionTools(cfg.extension, kernelOfficialRuntime) : undefined,
+    });
+    if (plan.kind === 'rejected') return toolResultToMcp(plan.result);
+    if (plan.kind === 'app') {
+        const call = plan.app === 'flashcard' ? callFlashcardReviewSessionTool : plan.app === 'timeline' ? callTimelineAppTool : callMascotShopAppTool;
         return scheduler.run(task, 'exclusive', async () => {
             await pm.load();
-            const result = await appEntry.call(scoped, pm, input, appEntry.config);
+            const result = await call(scoped, pm, input, plan.config as never);
             scheduler.checkpoint(task);
             return toolResultToMcp(result);
         });
     }
-    const target = resolveToolCallTarget(name, cfg);
-    if (!target) return toolResultToMcp(createUnknownToolResult(name));
-    const { category, actionConfig } = target;
-    const args = normalizeToolArguments(category, {
-        ...input,
-        action: category === 'extension' ? input.action : normalizeActionAlias(category, typeof input.action === 'string' ? input.action : ''),
-    });
-    const action = String(args.action ?? '');
-    if (!actionConfig.enabled) return toolResultToMcp(createDisabledToolResult(name));
-    if (!isActionEnabled(target, action)) {
-        return toolResultToMcp(createDisabledActionResult(name, action));
-    }
+    const { category, target, action, args, policy } = plan;
+    const actionConfig = target.actionConfig;
     if (category === 'file' && action === 'upload_asset' && !args.uploadSource) {
         return toolResultToMcp(errorResult('kernel_local_file_unavailable',
             'Stage bytes at the authenticated /transfer/upload endpoint and pass uploadSource instead of localFilePath. CLI/Node do this automatically (maximum 10 MiB). No write was attempted.'));
     }
-    if (category === 'extension') await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
-    const extensionTool = category === 'extension'
-        ? getExposedExtensionTools(cfg.extension, kernelOfficialRuntime).find(t => t.name === action)
-        : undefined;
-    const needsConfirmation = requiresDangerConfirmation(category, action, extensionTool);
-    if (needsConfirmation && args.validateOnly !== true && modern) {
+    const needsConfirmation = plan.needsConfirmation;
+    if (needsConfirmation && modern) {
         const challenge = confirmations.check(modern, name, args);
         if (challenge) return challenge;
     }
-    if (needsConfirmation && args.validateOnly !== true && !modern && args.confirm !== true) {
+    if (needsConfirmation && !modern && args.confirm !== true) {
         return toolResultToMcp(errorResult('dangerous_action_requires_confirmation',
             `Action ${name}.${action} was not executed. Confirm with the user, then resend the same arguments with confirm=true.`));
     }
@@ -229,7 +209,6 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
                 execute: safeArgs => TOOL_REGISTRY[category].callTool(scoped, safeArgs, actionConfig, pm, kernelOfficialRuntime),
             }));
     };
-    const policy = getActionSafetyPolicy(category, action, cleanArgs);
     // Third-party calls remain serial even with readOnlyHint: their shared bridge
     // and side effects are outside our owned read-action policy.
     const lane = category !== 'extension' && policy.mode === 'read' ? 'read' : 'exclusive';
