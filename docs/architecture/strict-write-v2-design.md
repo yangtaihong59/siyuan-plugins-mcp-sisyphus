@@ -1,6 +1,6 @@
 # Strict Write v2：按任务批量提交
 
-状态：已实施，本轮限定场景验收完成，未发布。2026-10-20。验收范围见 [实施与验收记录](../testing/STRICT_WRITE_V2_ACCEPTANCE_20261020.md)。
+状态：已实施，本轮限定场景验收完成，未发布。2026-10-20。验收范围见 [实施与验收记录](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/docs/testing/archive/STRICT_WRITE_V2_ACCEPTANCE_20261020.md)。
 
 ## 目标与边界
 

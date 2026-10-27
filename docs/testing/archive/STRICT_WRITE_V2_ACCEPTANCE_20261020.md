@@ -4,7 +4,7 @@
 
 ## 实施范围
 
-设计见 [strict-write-v2-design.md](../architecture/strict-write-v2-design.md)。按用户要求委托 pi 的 `deepseek/deepseek-flash` 实施；模型目录没有独立的“4.1”标识，因此不据此声称具体后端版本。主代理负责源码复核、真实内核验收和清理核对。
+设计见 [strict-write-v2-design.md](../../architecture/strict-write-v2-design.md)。按用户要求委托 pi 的 `deepseek/deepseek-flash` 实施；模型目录没有独立的“4.1”标识，因此不据此声称具体后端版本。主代理负责源码复核、真实内核验收和清理核对。
 
 - mutation 统一返回 `preflight.commitArgs`，保留现有 10 分钟租约，提交重新核对权限与状态。
 - `av.query` 返回单份 `rows`，支持按 columnID 的 `fields` 投影和内核 `formattedContent`。

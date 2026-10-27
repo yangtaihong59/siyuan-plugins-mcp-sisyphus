@@ -22,7 +22,7 @@
 - 关闭笔记本默认排除并列入 `scope.excludedClosedNotebooks`；显式指定不可读、未知或关闭笔记本会拒绝。
 - 查询后重新校验权限；若作用域中发生撤权，整批拒绝。SQL 索引可能延迟；总数与数据页、跨页读取不构成冻结快照。
 
-完整参数见 [document 工具](../zh/reference/tools/document.md)。
+完整参数见 [document 工具](../../zh/reference/tools/document.md)。
 
 ## 已完成验证
 
