@@ -13,6 +13,9 @@ export async function callCliWriteCoordinator(
     fileClient?: SiYuanClient,
     signal?: AbortSignal,
 ): Promise<ToolResult> {
+    if (settings?.unsupportedReason) {
+        return failure('kernel_endpoint_unsupported', settings.unsupportedReason);
+    }
     if (!settings || settings.endpoints.length !== 1) {
         return failure(
             'write_coordinator_unavailable',

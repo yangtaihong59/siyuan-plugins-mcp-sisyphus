@@ -1,4 +1,5 @@
 import type { SiYuanClient } from '../api/client';
+import { MIN_KERNEL_ENDPOINT_VERSION, supportsKernelEndpoint } from '../shared/siyuan-version';
 
 export interface CliWriteCoordinatorEndpoint {
     url: string;
@@ -9,6 +10,8 @@ export interface CliWriteCoordinatorSettings {
     /** Exactly one authority; transport failure never selects another owner. */
     owner?: 'kernel' | 'node';
     endpoints: CliWriteCoordinatorEndpoint[];
+    /** Set when the kernel owner is configured on a SiYuan that cannot host it; no other owner is chosen. */
+    unsupportedReason?: string;
 }
 
 const HTTP_SETTINGS_API_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpHttpSettings';
@@ -19,10 +22,27 @@ export async function loadWriteCoordinatorSettings(
 ): Promise<CliWriteCoordinatorSettings | undefined> {
     try {
         const raw = JSON.parse((await client.readFile(HTTP_SETTINGS_API_PATH)) || '{}') as Record<string, unknown>;
-        return selectWriteCoordinatorSettings(raw, client.getBaseUrl(), apiToken);
+        const settings = selectWriteCoordinatorSettings(raw, client.getBaseUrl(), apiToken);
+        if (settings?.owner === 'kernel') {
+            const reason = await describeUnsupportedKernelEndpoint(client);
+            if (reason) return { ...settings, unsupportedReason: reason };
+        }
+        return settings;
     } catch {
         return undefined;
     }
+}
+
+/** Undefined when supported or when the version cannot be read (the endpoint call then reports its own error). */
+async function describeUnsupportedKernelEndpoint(client: SiYuanClient): Promise<string | undefined> {
+    let version: unknown;
+    try {
+        version = await client.requestRead<string>('/api/system/version');
+    } catch {
+        return undefined;
+    }
+    if (typeof version !== 'string' || supportsKernelEndpoint(version)) return undefined;
+    return `The plugin's Kernel endpoint is enabled, but SiYuan ${version} cannot host it (requires SiYuan ${MIN_KERNEL_ENDPOINT_VERSION} or later). Disable "Kernel endpoint" in the plugin's HTTP settings and enable the HTTP server instead, or upgrade SiYuan. No write was attempted.`;
 }
 
 /** One workspace owner. Enabling the kernel endpoint never creates a fallback pair. */

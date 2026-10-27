@@ -103,6 +103,7 @@ The pool stores no note content. Aliases remain reserved for the process lifetim
 | `readback_mismatch` | The returned mutation could not be verified | Treat the outcome as unknown |
 | `idempotency_conflict` | The request ID was reused with different arguments | Generate a new ID |
 | `write_coordinator_unavailable` | The selected coordinator cannot be discovered or reached | Check kernel/Node HTTP settings and preflight again |
+| `kernel_endpoint_unsupported` | The Kernel endpoint is enabled but this SiYuan is older than 3.7.0 | Disable the Kernel endpoint and use the HTTP server, or upgrade SiYuan |
 | `preflight_unavailable` | The action is an external side effect that cannot be read back | Preflight does not execute; a real call carries no strict guarantee |
 
 ## Boundaries

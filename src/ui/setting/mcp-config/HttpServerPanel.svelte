@@ -5,6 +5,8 @@
     import SettingPanel from "../../shared/setting-panel.svelte";
     import { getHttpLifecycleLogs, onHttpLifecycleLogsChange, type HttpServerStatus } from "@/server-launcher";
     import { HTTP_BIND_HOST_OPTIONS, hasValidHttpTlsFiles, regenerateHttpServerToken, savePersistedHttpServerSettings, type HttpServerHost, type HttpServerSettings } from "../tool-config-storage";
+    import { getSiYuanVersion } from "../official-plugin-tools";
+    import { MIN_KERNEL_ENDPOINT_VERSION, supportsKernelEndpoint } from "@/shared/siyuan-version";
 
     export let plugin: any;
     export let group: string;
@@ -166,7 +168,18 @@
             });
     }
 
+    // undefined until known; a read failure leaves the switch usable (the endpoint reports its own error).
+    let siyuanVersion: string | undefined;
+    $: kernelEndpointUnsupported = siyuanVersion !== undefined && !supportsKernelEndpoint(siyuanVersion);
+
+    function formatKernelEndpointUnsupported(key: string, fallback: string): string {
+        return getLabel(key, fallback)
+            .replace("{version}", siyuanVersion ?? "")
+            .replace("{minimum}", MIN_KERNEL_ENDPOINT_VERSION);
+    }
+
     onMount(() => {
+        getSiYuanVersion().then((version) => { siyuanVersion = version; }).catch(() => {});
         httpRecentLogs = getHttpLifecycleLogs();
         httpUnsubLifecycleLogs = onHttpLifecycleLogsChange((lines: string[]) => {
             httpRecentLogs = lines;
@@ -794,11 +807,21 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                                         <p>{getLabel("kernelEndpointDesc", "Serve the write coordinator from inside the kernel via /plugin/private/<plugin>/mcp. Useful on Docker and remote deployments where a separate MCP port cannot be opened.")}</p>
                                     </div>
                                     <label class="experimental-features__master">
-                                        <input type="checkbox" checked={httpSettings.kernelEndpointEnabled} on:change={onKernelEndpointChange} />
+                                        <!-- Turning it off always stays possible; turning it on needs a capable SiYuan. -->
+                                        <input type="checkbox" checked={httpSettings.kernelEndpointEnabled} disabled={kernelEndpointUnsupported && !httpSettings.kernelEndpointEnabled} on:change={onKernelEndpointChange} />
                                         {getLabel("kernelEndpointEnabled", "Enable")}
                                     </label>
                                 </div>
 
+                                {#if kernelEndpointUnsupported}
+                                    <p class="experimental-features__note kernel-endpoint-unsupported" role="alert">
+                                        {#if httpSettings.kernelEndpointEnabled}
+                                            {formatKernelEndpointUnsupported("kernelEndpointUnsupportedEnabled", "SiYuan {version} cannot host the Kernel endpoint (requires {minimum} or later). While it is enabled, every strict write from the CLI and MCP clients fails. Turn it off and use the HTTP server, or upgrade SiYuan.")}
+                                        {:else}
+                                            {formatKernelEndpointUnsupported("kernelEndpointUnsupported", "Requires SiYuan {minimum} or later (current: {version}).")}
+                                        {/if}
+                                    </p>
+                                {/if}
                                 <p class="experimental-features__note">
                                     {getLabel("kernelEndpointHint", "Shares the kernel's own port — no extra listener or firewall rule needed. Remote CLIs auto-detect it when enabled. Takes effect immediately (no restart).")}
                                 </p>
@@ -1625,5 +1648,8 @@ If the API URL is not reachable from the current host, container, WSL, or remote
         .mcp-client-preset-select select {
             width: 100%;
         }
+    }
+    .kernel-endpoint-unsupported {
+        color: var(--b3-theme-error);
     }
 </style>

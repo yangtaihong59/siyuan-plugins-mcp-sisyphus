@@ -2,6 +2,8 @@
 
 All changes live in the plugin. The attachment upload ceiling is **10 MiB**.
 
+The Kernel endpoint requires **SiYuan 3.7.0 or later**, the first release with the kernel plugin system. On older versions the settings panel disables the switch and explains why; if it is already on, strict writes return `kernel_endpoint_unsupported` without attempting a write.
+
 Merge these fields into `/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpHttpSettings` through SiYuan's file API, preserving existing authentication and server settings. Advanced options are currently file-configured and preserved by the settings panel.
 
 ```json

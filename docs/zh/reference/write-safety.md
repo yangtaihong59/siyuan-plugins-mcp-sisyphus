@@ -103,6 +103,7 @@
 | `readback_mismatch` | 接口返回后无法确认最终状态 | 视为未知结果，人工或只读检查 |
 | `idempotency_conflict` | request ID 被用于另一组参数 | 这是调用方错误，必须生成新 ID |
 | `write_coordinator_unavailable` | 无法发现或连接选定协调器 | 检查内核入口或 Node HTTP 设置并重试预检 |
+| `kernel_endpoint_unsupported` | 已开启内核端点，但思源版本低于 3.7.0 | 关闭内核端点改用 HTTP 服务，或升级思源 |
 | `preflight_unavailable` | action 是无法读回的外部副作用 | 预检不会执行；如确认调用，只能接受非严格保证 |
 
 ## 边界
