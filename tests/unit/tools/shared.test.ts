@@ -208,8 +208,9 @@ describe('createPermissionDeniedResult', () => {
     it('should include helpful message', () => {
         const result = createPermissionDeniedResult('nb', 'none', 'read');
         const parsed = JSON.parse(result.content[0].text);
-        expect(parsed.error.message).toContain('notebook');
-        expect(parsed.error.message).toContain('set_permission');
+        expect(parsed.error.message).toContain('Notebook');
+        // set_permission is often disabled, so it is mentioned only as a user-side option.
+        expect(parsed.error.hint).toContain('Only the user can change notebook permissions');
     });
 });
 

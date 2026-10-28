@@ -339,3 +339,25 @@ describe('cli/render', () => {
         io.restore();
     });
 });
+
+describe('flattenAvRowCells', () => {
+    it('labels AV query cells with column names for human output', async () => {
+        const { flattenAvRowCells } = await import('@/cli/render');
+        const payload = {
+            rows: [{ rowID: 'r1', cells: {
+                c1: { value: '原则', formatted: '原则' },
+                c2: { value: [{ content: '读完', color: '' }] },
+                c3: { value: 9, formatted: '9' },
+                c4: { value: { id: 'x', type: 'select' } },
+            } }],
+            columns: [{ name: '书名', columnID: 'c1' }, { name: '状态', columnID: 'c2' }, { name: '评分', columnID: 'c3' }, { name: '单选', columnID: 'c4' }],
+        };
+        expect((flattenAvRowCells(payload) as any).rows).toEqual(['Row ID: r1 · 书名: 原则 · 状态: 读完 · 评分: 9']);
+    });
+
+    it('leaves payloads without AV rows untouched', async () => {
+        const { flattenAvRowCells } = await import('@/cli/render');
+        const payload = { rows: [{ id: 1 }] };
+        expect(flattenAvRowCells(payload)).toBe(payload);
+    });
+});

@@ -112,6 +112,7 @@ Flag naming:
 `;
 
 const GLOBAL_BOOLEAN = ['json', 'debug', 'help', 'version'];
+const TOP_LEVEL_COMMANDS = new Set(['init', 'help', 'list', 'config', 'skill', 'instances']);
 const GLOBAL_STRING = ['config', 'profile', 'url', 'token', 'bundle'];
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -122,11 +123,26 @@ export function parseArgs(argv: string[]): ParsedArgs {
         stopEarly: false,
     });
 
-    if (parsed.help) return blank('show-help');
-    if (parsed.version) return blank('version');
-
     const positional = parsed._;
     const first = positional[0];
+
+    // `<tool> [action] --help` means help for that tool/action, not the global page.
+    if (parsed.help && typeof first === 'string' && !TOP_LEVEL_COMMANDS.has(first)) {
+        return {
+            command: 'help',
+            tool: first,
+            action: typeof positional[1] === 'string' ? positional[1] : undefined,
+            rest: [],
+            configPath: parsed.config || undefined,
+            profile: parsed.profile || undefined,
+            url: parsed.url || undefined,
+            token: parsed.token || undefined,
+            json: Boolean(parsed.json),
+            debug: Boolean(parsed.debug),
+        };
+    }
+    if (parsed.help) return blank('show-help');
+    if (parsed.version) return blank('version');
 
     if (first === 'init') {
         return {

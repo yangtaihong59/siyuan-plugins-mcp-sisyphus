@@ -627,7 +627,11 @@ const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         });
     }
     const scope = await resolveFsScopePath(client, permMgr, parsed.path, 'read');
-    if (scope.type !== 'document') throw new Error(`fs.read requires a document path, got "${parsed.path}".`);
+    if (scope.type === 'notebook') {
+        const notebookDenied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
+        if (notebookDenied) return notebookDenied;
+    }
+    if (scope.type !== 'document') throw notDocumentPathError('read', parsed.path);
     const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
     if (denied) return denied;
     const readWindow = await readDocumentBlockWindow(client, scope.id, { ...windowOptions, includeBlockIds: true });
@@ -746,7 +750,11 @@ const handleReplace: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         });
     }
     const scope = await resolveFsScopePath(client, permMgr, parsed.path, 'write');
-    if (scope.type !== 'document') throw new Error(`fs.replace requires a document path, got "${parsed.path}".`);
+    if (scope.type === 'notebook') {
+        const notebookDenied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'write');
+        if (notebookDenied) return notebookDenied;
+    }
+    if (scope.type !== 'document') throw notDocumentPathError('replace', parsed.path);
     const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'write');
     if (denied) return denied;
 
@@ -944,3 +952,10 @@ export const FS_ACTION_HANDLERS: Record<FsAction, FsActionHandler> = {
     reorder: handleReorder,
     search: handleSearch,
 };
+
+function notDocumentPathError(action: 'read' | 'replace', path: string): Error {
+    return Object.assign(
+        new Error(`fs.${action} needs a document path, but "${path}" is ${path.replace(/\/+$/, '') === '' ? 'the workspace root' : 'a notebook'}. Use fs(action="ls", path="${path}") to list its documents, then pass /<notebook>/<document>.`),
+        { code: 'invalid_path' },
+    );
+}

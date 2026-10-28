@@ -194,7 +194,7 @@
 | `/api/av/batchSetAttributeViewBlockAttrs` | api-wrapper | `src/api/av.ts:179` | 有效内核路由 |
 | `/api/av/createAttributeViewItem` | api-wrapper | `src/api/av.ts:124` | 有效内核路由 |
 | `/api/av/duplicateAttributeViewBlock` | api-wrapper | `src/api/av.ts:186` | 有效内核路由 |
-| `/api/av/getAttributeView` | api-wrapper+core | `src/api/av.ts:32`<br>`src/mcp/write-safety-coordinator.ts:541` | 有效内核路由 |
+| `/api/av/getAttributeView` | api-wrapper+core | `src/api/av.ts:32`<br>`src/mcp/write-safety-coordinator.ts:547` | 有效内核路由 |
 | `/api/av/getAttributeViewFilterSort` | api-wrapper | `src/api/av.ts:59` | 有效内核路由 |
 | `/api/av/getAttributeViewKeys` | api-wrapper | `src/api/av.ts:52` | 有效内核路由 |
 | `/api/av/getAttributeViewPrimaryKeyValues` | api-wrapper | `src/api/av.ts:212` | 有效内核路由 |

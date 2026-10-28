@@ -27,7 +27,7 @@ import type { PermissionManager } from '../core/permissions';
 import type { ToolResult } from '../core/tool-result';
 import { listDocumentBlocksInTreeOrder, readDocumentEditableMarkdown } from '../tools/internal/document-kramdown';
 import { assertExactOrder, readDocumentReorderState, resolveFsReorderOrder } from '../tools/internal/helpers/document-reorder';
-import { resolveFsScopePath } from '../tools/internal/helpers/fs-path';
+import { resolveFsCreateTarget, resolveFsScopePath } from '../tools/internal/helpers/fs-path';
 import { AGENT_MEMORY_VIRTUAL_PATH, isDangerousAction, MCP_TOOLS_CONFIG_API_PATH, USER_RULES_VIRTUAL_PATH, type ToolCategory } from '../core/config';
 import { hashWriteBytes, hashWriteBytesAsync, hashWriteState } from '../core/write-safety-hash';
 import { canonicalizeAvCarrierDom, findHtmlOpeningTagEnd, parseHtmlOpeningTagAttributes } from '../shared/av-carrier-dom';
@@ -405,7 +405,7 @@ export async function probeCurrentState(
             const allowed = isDangerousAction(category, action)
                 ? permMgr.canDelete(notebook)
                 : permMgr.canWrite(notebook);
-            if (!allowed) throw safetyError('permission_denied', `Notebook ${notebook} does not allow this write.`);
+            if (!allowed) throw safetyError('permission_denied', notebookDeniedMessage(permMgr, notebook, isDangerousAction(category, action)));
         }
     }
     if (!managesNotebookPermission) {
@@ -795,6 +795,54 @@ export async function verifyPostWriteSemanticState(
     }
 }
 
+const DESTINATION_NOTEBOOK_FIELDS = ['notebook', 'toNotebook', 'targetNotebook'] as const;
+
+/**
+ * Creations name a destination notebook that has no existing target yet, and
+ * additive writes skip the state probe entirely. Check the destination for
+ * every strict write so a read-only notebook never yields a preflight lease.
+ */
+export async function assertDestinationNotebooksWritable(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    category: ToolCategory,
+    action: string,
+    args: Record<string, unknown>,
+): Promise<void> {
+    const notebooks = await collectDestinationNotebooks(client, permMgr, category, action, args);
+    if (notebooks.length === 0) return;
+    await permMgr.reload();
+    for (const notebook of notebooks) {
+        if (!permMgr.canWrite(notebook)) throw safetyError('permission_denied', notebookDeniedMessage(permMgr, notebook, false));
+    }
+}
+
+async function collectDestinationNotebooks(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    category: ToolCategory,
+    action: string,
+    args: Record<string, unknown>,
+): Promise<string[]> {
+    if (category === 'notebook') return [];
+    const notebooks = new Set<string>();
+    for (const field of DESTINATION_NOTEBOOK_FIELDS) {
+        const value = args[field];
+        if (typeof value === 'string' && /^\d{14}-[a-z0-9]{7}$/.test(value)) notebooks.add(value);
+    }
+    if (category === 'fs' && action === 'write' && args.overwrite !== true && typeof args.path === 'string') {
+        // Unresolvable paths are reported by the handler with path-specific guidance.
+        const target = await resolveFsCreateTarget(client, permMgr, args.path).catch(() => undefined);
+        if (target) notebooks.add(target.notebook);
+    }
+    return [...notebooks];
+}
+
+function notebookDeniedMessage(permMgr: PermissionManager, notebook: string, destructive: boolean): string {
+    const required = destructive ? 'delete (rwd)' : 'write (rw or rwd)';
+    return `Notebook ${notebook} has permission "${permMgr.get(notebook)}"; this write needs ${required} access. Nothing was written. Check with notebook(action="get_permissions"); permissions are changed by the user in the plugin settings.`;
+}
+
 function enforceNotebookPermission(
     permMgr: PermissionManager,
     state: Record<string, unknown>,
@@ -808,7 +856,7 @@ function enforceNotebookPermission(
     }
     for (const box of boxes) {
         const allowed = destructive ? permMgr.canDelete(box) : permMgr.canWrite(box);
-        if (!allowed) throw safetyError('permission_denied', `Notebook ${box} does not allow this write.`);
+        if (!allowed) throw safetyError('permission_denied', notebookDeniedMessage(permMgr, box, destructive));
     }
 }
 

@@ -407,9 +407,10 @@ export function createErrorResult(error: unknown, context?: ToolErrorContext): T
 
     const payload: Record<string, unknown> = {
         error: {
-            type: isApiError(normalizedError) ? 'api_error' : 'internal_error',
+            type: isApiError(normalizedError) ? 'api_error' : (clientErrorCode(normalizedError) ?? 'internal_error'),
             ...(translation ? { code: translation.code } : {}),
             message: normalizedError.message,
+            ...clientErrorDetails(normalizedError),
             ...(context?.tool ? { tool: context.tool } : {}),
             ...(context?.action ? { action: context.action } : {}),
             ...(combinedHint ? { hint: combinedHint } : {}),
@@ -420,11 +421,30 @@ export function createErrorResult(error: unknown, context?: ToolErrorContext): T
     return toErrorText(payload);
 }
 
+/** Caller-correctable errors raised with an explicit code (see fs-path createFsError). */
+const CLIENT_ERROR_CODES = new Set(['not_found', 'ambiguous_path', 'invalid_path', 'permission_denied']);
+
+function clientErrorCode(error: Error): string | undefined {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' && CLIENT_ERROR_CODES.has(code) ? code : undefined;
+}
+
+function clientErrorDetails(error: Error): Record<string, unknown> {
+    if (!clientErrorCode(error)) return {};
+    const details: Record<string, unknown> = {};
+    for (const key of ['notebook', 'current_permission', 'required_permission'] as const) {
+        const value = (error as unknown as Record<string, unknown>)[key];
+        if (typeof value === 'string') details[key] = value;
+    }
+    return details;
+}
+
 export function createPermissionDeniedResult(notebookId: string, currentPerm: string, required: 'read' | 'write' | 'delete'): ToolResult {
     return toErrorText({
         error: {
             type: 'permission_denied',
-            message: `Notebook "${notebookId}" has permission "${currentPerm}", ${required} access is required. Use notebook(action="set_permission") to change.`,
+            message: `Notebook "${notebookId}" has permission "${currentPerm}", ${required} access is required. Nothing was changed.`,
+            hint: 'Only the user can change notebook permissions (plugin settings, or notebook(action="set_permission") if they have enabled it). Ask them, or pick a notebook listed as writable by notebook(action="get_permissions").',
             notebook: notebookId,
             current_permission: currentPerm,
             required_permission: required,

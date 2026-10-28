@@ -90,4 +90,10 @@ describe('cli/args', () => {
         expect(help).toContain('fs ls /');
         expect(help).toContain('fs search / keyword');
     });
+    it('routes `<tool> [action] --help` to that tool or action help', () => {
+        expect(parseArgs(['notebook', 'get_permissions', '--help'])).toMatchObject({ command: 'help', tool: 'notebook', action: 'get_permissions' });
+        expect(parseArgs(['block', '-h'])).toMatchObject({ command: 'help', tool: 'block', action: undefined });
+        expect(parseArgs(['--help'])).toMatchObject({ command: 'show-help' });
+        expect(parseArgs(['list', '--help'])).toMatchObject({ command: 'show-help' });
+    });
 });

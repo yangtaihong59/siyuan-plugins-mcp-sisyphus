@@ -168,6 +168,14 @@ export async function resolveFsScopePath(
                 canonicalPath: canonicalPath(canonicalNotebook.name, '/'),
             };
         }
+        // Report the permission rather than "not found": the notebook name is
+        // already visible, its contents are not.
+        if (!permMgr.canRead(canonicalNotebook.id)) {
+            throw Object.assign(
+                createFsError('permission_denied', `Notebook "${canonicalNotebook.name}" (${canonicalNotebook.id}) has permission "${permMgr.get(canonicalNotebook.id)}"; read access is required to resolve "${path}".`),
+                { notebook: canonicalNotebook.id, current_permission: permMgr.get(canonicalNotebook.id), required_permission: 'read' },
+            );
+        }
         const docs = await getDocByHPath(client, canonicalNotebook, hPath);
         if (docs.length === 0) {
             throw createFsError('not_found', `No document found at "${path}".`);

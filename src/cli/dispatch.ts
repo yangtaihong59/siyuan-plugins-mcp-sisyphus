@@ -15,6 +15,7 @@ import { getExposedExtensionTools } from '../tools/extension';
 
 import type { ParsedArgs } from './args';
 import { mapFlagsToArgs } from './flag-mapper';
+import { applyCliWriteGuidance } from './write-guidance';
 import { extractPaginationInfo, renderCliError, renderToolResult } from './render';
 import { loadCliRuntimeState } from './runtime';
 import { callCliWriteCoordinator } from '../core/write-coordinator-client';
@@ -73,10 +74,11 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
         const inputSchema = resolveInputSchema(category, toolConfig, officialMcpRuntime);
 
         const restWithPositional = applyPositionalActionArgs(category, normalizedAction, rest);
-        const { args: mappedArgs, warnings } = mapFlagsToArgs(restWithPositional, inputSchema, {
+        const { args: mappedArgs, warnings, unknownFlags, acceptedArgs } = mapFlagsToArgs(restWithPositional, inputSchema, {
             category,
             action: normalizedAction,
         });
+        if (unknownFlags.length > 0) throw formatUnknownFlagError(tool, normalizedAction, unknownFlags, acceptedArgs);
         if (warnings.length > 0 && cli.debug) {
             for (const w of warnings) process.stderr.write(`[warn] ${w}\n`);
         }
@@ -126,8 +128,9 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
             );
         };
 
-        const result = await runPage();
+        const { result, commitCommand } = applyCliWriteGuidance(await runPage(), tool);
         const code = renderToolResult(result, { json: cli.json, debug: cli.debug });
+        if (commitCommand && !cli.json) process.stdout.write(`\nPreflight OK. To commit, run:\n  ${commitCommand}\n`);
         if (code !== 0 || cli.json) return code;
 
         await runInteractivePaging(result, runPage, { json: cli.json, debug: cli.debug });
@@ -143,6 +146,19 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
             process.env.SIYUAN_MCP_TRANSPORT = previousTransport;
         }
     }
+}
+
+function formatUnknownFlagError(tool: string, action: string, unknownFlags: string[], acceptedArgs: string[]): Error {
+    const accepted = acceptedArgs.map((name) => `--${toKebabFlag(name)}`).join(' ');
+    return new Error([
+        `Unknown flag${unknownFlags.length > 1 ? 's' : ''} for ${tool} ${action}: ${unknownFlags.join(' ')}. Nothing was executed.`,
+        accepted ? `Accepted flags: ${accepted}` : 'This action takes no flags.',
+        `Run \`${PRIMARY_CLI_COMMAND} help ${tool} ${action}\` for details.`,
+    ].join('\n'));
+}
+
+function toKebabFlag(name: string): string {
+    return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
 // The user typed the path relative to their shell; the coordinator that reads it may run elsewhere.

@@ -42,7 +42,7 @@ describe('cli/flag-mapper', () => {
         const result = mapFlagsToArgs(['--topic', 'ai-layout-guide'], {
             properties: { action: { type: 'string' }, topic: { type: 'string' } },
         }, { category: 'fs', action: 'help' });
-        expect(result).toEqual({ args: { topic: 'ai-layout-guide' }, warnings: [] });
+        expect(result).toMatchObject({ args: { topic: 'ai-layout-guide' }, warnings: [], unknownFlags: [] });
     });
 
     it.each(['--block-start', '--block_start', '--blockStart'])(
@@ -285,5 +285,25 @@ describe('cli/flag-mapper', () => {
             schema,
             { category: 'document', action: 'ensure_link_targets' },
         ).args).toEqual({ parentId: 'doc-1' });
+    });
+    it('accepts a JSON array on a plain array flag and still splits comma lists', () => {
+        const schema = { type: 'object', properties: { action: { type: 'string' }, include: { type: 'array', items: { type: 'string' } } } };
+        expect(mapFlagsToArgs(['--include', '["id","path","hpath"]'], schema).args).toEqual({ include: ['id', 'path', 'hpath'] });
+        expect(mapFlagsToArgs(['--include', 'id,path'], schema).args).toEqual({ include: ['id', 'path'] });
+    });
+
+    it('reports flags the selected action does not accept instead of dropping them', () => {
+        const schema = {
+            type: 'object',
+            properties: { action: { type: 'string' }, notebooks: { type: 'array' }, title: { type: 'string' } },
+            'x-sisyphus-actionSchemas': [
+                { properties: { action: { const: 'query' }, notebooks: { type: 'array' } } },
+                { properties: { action: { const: 'search_docs' }, title: { type: 'string' } } },
+            ],
+        };
+        const result = mapFlagsToArgs(['--title-contains', 'x', '--title', 'y'], schema, { category: 'document', action: 'query' });
+        expect(result.unknownFlags).toEqual(['--title-contains', '--title']);
+        expect(result.acceptedArgs).toContain('notebooks');
+        expect(result.acceptedArgs).toContain('requestId');
     });
 });

@@ -7,6 +7,10 @@ type JsonSchema = Record<string, any>;
 export interface FlagMapResult {
     args: Record<string, unknown>;
     warnings: string[];
+    /** Flags the selected action does not accept; dispatch rejects these instead of dropping them. */
+    unknownFlags: string[];
+    /** Canonical argument names the selected action accepts (for error messages). */
+    acceptedArgs: string[];
 }
 
 /**
@@ -19,7 +23,7 @@ export interface FlagMapResult {
  * - Object / nested flags: use --<key>-json '<json-fragment>'.
  */
 export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?: Partial<ArgumentAliasContext>): FlagMapResult {
-    const props = collectInputProperties(inputSchema);
+    const props = collectInputProperties(inputSchema, context?.action);
 
     const canonicalByLower = new Map<string, string>();
     const booleanKeys = new Set<string>();
@@ -71,6 +75,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
 
     const result: Record<string, unknown> = {};
     const warnings: string[] = [];
+    const unknownFlags: string[] = [];
     const jsonOverrides: Record<string, unknown> = {};
 
     for (const [rawKey, rawVal] of Object.entries(parsed)) {
@@ -81,7 +86,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
             const baseKey = rawKey.slice(0, -'-json'.length);
             const canonical = canonicalByLower.get(baseKey.toLowerCase());
             if (!canonical) {
-                warnings.push(`Unknown flag --${rawKey}.`);
+                unknownFlags.push(`--${rawKey}`);
                 continue;
             }
             if (typeof rawVal !== 'string' || rawVal.length === 0) continue;
@@ -98,7 +103,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
 
         const canonical = canonicalByLower.get(rawKey.toLowerCase());
         if (!canonical) {
-            warnings.push(`Unknown flag --${rawKey}; ignored.`);
+            unknownFlags.push(`--${rawKey}`);
             continue;
         }
 
@@ -115,11 +120,21 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
         warnings.push(`Extra positional arguments ignored: ${parsed._.join(' ')}`);
     }
 
-    return { args: { ...result, ...jsonOverrides }, warnings };
+    const acceptedArgs = Object.keys(props).filter((name) => name !== 'action');
+    return { args: { ...result, ...jsonOverrides }, warnings, unknownFlags, acceptedArgs };
 }
 
-function collectInputProperties(inputSchema: JsonSchema): Record<string, JsonSchema> {
-    const props: Record<string, JsonSchema> = { ...((inputSchema.properties ?? {}) as Record<string, JsonSchema>) };
+const WRITE_SAFETY_FLAG_SCHEMAS: Record<string, JsonSchema> = {
+    requestId: { type: 'string' },
+    validateOnly: { type: 'boolean' },
+    expectedStateHash: { type: 'string' },
+    expectedStructureHash: { type: 'string' },
+    expectedValueHash: { type: 'string' },
+    expectedManifestHash: { type: 'string' },
+    expectedSourceHash: { type: 'string' },
+};
+
+function collectInputProperties(inputSchema: JsonSchema, action?: string): Record<string, JsonSchema> {
     const internalBranches = inputSchema['x-sisyphus-actionSchemas'];
     const branches = Array.isArray(internalBranches)
         ? internalBranches
@@ -128,6 +143,19 @@ function collectInputProperties(inputSchema: JsonSchema): Record<string, JsonSch
         : Array.isArray(inputSchema.anyOf)
             ? inputSchema.anyOf
             : [];
+
+    // Prefer the selected action's own branch so flags of sibling actions are
+    // reported as unknown instead of being silently stripped by validation.
+    const own = action
+        ? branches.find((branch: JsonSchema) => branch?.properties?.action?.const === action)
+        : undefined;
+    if (own && own.properties && typeof own.properties === 'object' && !Array.isArray(own.properties)) {
+        // Write-safety fields are accepted by every action regardless of how the
+        // branch was published (some writes are always coordinated).
+        return { ...WRITE_SAFETY_FLAG_SCHEMAS, ...(own.properties as Record<string, JsonSchema>) };
+    }
+
+    const props: Record<string, JsonSchema> = { ...((inputSchema.properties ?? {}) as Record<string, JsonSchema>) };
 
     for (const branch of branches) {
         if (!branch || typeof branch !== 'object') continue;
@@ -147,6 +175,14 @@ function coerce(key: string, value: unknown, schema: JsonSchema): unknown {
     if (type === 'array') {
         if (Array.isArray(value)) return value.map((v) => coerceItem(v, schema.items));
         if (typeof value === 'string') {
+            // Users naturally pass JSON arrays to plain flags (--include '["id","path"]').
+            const trimmed = value.trim();
+            if (trimmed.startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (Array.isArray(parsed)) return parsed.map((v) => coerceItem(v, schema.items));
+                } catch { /* not JSON: fall through to comma splitting */ }
+            }
             return value.split(',').map((s) => coerceItem(s.trim(), schema.items));
         }
         return [value];

@@ -175,8 +175,49 @@ export function renderToolResult(result: ToolResult, options: RenderOptions): nu
         return 1;
     }
 
-    renderSuccessPayload(payload);
+    renderSuccessPayload(flattenAvRowCells(payload));
     return 0;
+}
+
+/**
+ * AV query rows carry cells keyed by column ID, which the generic renderer
+ * cannot show. For human output, label each cell with its column name.
+ */
+export function flattenAvRowCells(payload: unknown): unknown {
+    if (!isObject(payload) || !Array.isArray(payload.rows) || !Array.isArray(payload.columns)) return payload;
+    const names = new Map<string, string>();
+    for (const column of payload.columns) {
+        if (!isObject(column)) continue;
+        const id = typeof column.columnID === 'string' ? column.columnID : typeof column.id === 'string' ? column.id : '';
+        if (id) names.set(id, typeof column.name === 'string' && column.name ? column.name : id);
+    }
+    if (names.size === 0) return payload;
+    // One line per row, every non-empty cell in column order (the generic
+    // list renderer would keep only four alphabetically sorted fields).
+    const rows = payload.rows.map((row) => {
+        if (!isObject(row) || !isObject(row.cells)) return row;
+        const cells = row.cells as Record<string, unknown>;
+        const parts = typeof row.rowID === 'string' ? [`Row ID: ${row.rowID}`] : [];
+        for (const [columnID, name] of names) {
+            const text = displayCellValue(cells[columnID]);
+            if (text) parts.push(`${name}: ${text}`);
+        }
+        return parts.join(' · ');
+    });
+    return { ...payload, rows };
+}
+
+function displayCellValue(cell: unknown): string {
+    if (!isObject(cell)) return '';
+    if (typeof cell.formatted === 'string' && cell.formatted) return cell.formatted;
+    const value = cell.value;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) {
+        return value.map((item) => isObject(item) && typeof item.content === 'string' ? item.content : typeof item === 'string' ? item : '')
+            .filter(Boolean).join(', ');
+    }
+    if (isObject(value) && typeof value.content === 'string') return value.content;
+    return '';
 }
 
 export function extractPaginationInfo(result: ToolResult): PaginationInfo | null {
@@ -221,7 +262,7 @@ function renderErrorPayload(payload: unknown): void {
 
     if (isObject(payload) && isObject(payload.error)) {
         const err = payload.error as Record<string, unknown>;
-        const type = typeof err.type === 'string' ? err.type : 'error';
+        const type = typeof err.type === 'string' ? err.type : typeof err.code === 'string' ? err.code : 'error';
         const message = typeof err.message === 'string' ? err.message : 'Unknown error';
 
         writeStatus('error', `[${type}] ${message}`, out);

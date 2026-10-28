@@ -721,7 +721,7 @@
 | 495 | POST | `/api/av/setAttributeViewBlockAttr` | av | `setAttributeViewBlockAttr` | ✓ | ✓ | ✓ | 不可用 | 官方公开 |  | api-wrapper:src/api/av.ts:171 | 见官方 API 文档 | `kernel/api/router.go:566` |
 | 496 | POST | `/api/av/batchSetAttributeViewBlockAttrs` | av | `batchSetAttributeViewBlockAttrs` | ✓ | ✓ | ✓ | 不可用 | 内部 |  | api-wrapper:src/api/av.ts:179 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:567` |
 | 497 | POST | `/api/av/searchAttributeView` | av | `searchAttributeView` | ✓ |  | ✓ | 不可用 | 官方公开 | ✓ | api-wrapper:src/api/av.ts:94 | 见官方 API 文档 | `kernel/api/router.go:568` |
-| 498 | POST | `/api/av/getAttributeView` | av | `getAttributeView` | ✓ |  | ✓ | 不可用 | 官方公开 | ✓ | api-wrapper:src/api/av.ts:32<br>core:src/mcp/write-safety-coordinator.ts:541 | 见官方 API 文档 | `kernel/api/router.go:569` |
+| 498 | POST | `/api/av/getAttributeView` | av | `getAttributeView` | ✓ |  | ✓ | 不可用 | 官方公开 | ✓ | api-wrapper:src/api/av.ts:32<br>core:src/mcp/write-safety-coordinator.ts:547 | 见官方 API 文档 | `kernel/api/router.go:569` |
 | 499 | POST | `/api/av/getAttributeViewPasteRows` | av | `getAttributeViewPasteRows` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:570` |
 | 500 | POST | `/api/av/searchAttributeViewRelationKey` | av | `searchAttributeViewRelationKey` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:571` |
 | 501 | POST | `/api/av/searchAttributeViewNonRelationKey` | av | `deprecated` | ✓ | ✓ | ✓ | 不可用 | 内部/弃用 |  | — | 未知（内部） | `kernel/api/router.go:572` |

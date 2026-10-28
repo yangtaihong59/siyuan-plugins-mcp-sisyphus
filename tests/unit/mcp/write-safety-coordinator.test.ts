@@ -256,6 +256,23 @@ describe('write safety coordinator', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
+    it.each([
+        ['block', 'add_to_daily_note', { notebook: '20260101000000-readonl', dataType: 'markdown', data: 'x', position: 'append' }],
+        ['document', 'move', { fromIDs: ['20260101000001-docaaaa'], toNotebook: '20260101000000-readonl', toPath: '/' }],
+    ] as const)('refuses a %s.%s preflight lease when the destination notebook is read-only', async (category, action, extra) => {
+        const client = { requestRead: vi.fn(), requestWrite: vi.fn(), request: vi.fn() } as any;
+        const permMgr = createMockPermissionManager({ canWrite: (id) => id !== '20260101000000-readonl', canDelete: (id) => id !== '20260101000000-readonl' });
+        const execute = vi.fn();
+        const out = parseResult(await new WriteSafetyCoordinator(client).run({
+            client, permMgr, category, action, strictMode: true, execute,
+            args: { action, ...extra, validateOnly: true },
+        }));
+        expect(out.error.code).toBe('permission_denied');
+        expect(out.error.message).toContain('has permission "r"');
+        expect(out.preflight).toBeUndefined();
+        expect(execute).not.toHaveBeenCalled();
+    });
+
     it('refreshes permissions for generic preflight and refuses a lease after permission is revoked', async () => {
         const fixture = createCrossObjectAvFixture();
         const read = vi.mocked((fixture.client as any).requestRead).getMockImplementation()!;

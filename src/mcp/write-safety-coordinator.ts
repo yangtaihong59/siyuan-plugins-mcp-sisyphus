@@ -17,7 +17,7 @@ import { assertPreflightCommitArgsSize, buildWritePreflight } from '../core/writ
 import { PRECONDITION_FIELD, getActionSafetyPolicy, type ActionSafetyPolicy } from '../core/write-safety-policy';
 import { safetyError } from '../core/write-safety-error';
 import { WriteSafetyLedger, stripSafetyFields, type WriteLedgerEntry } from './write-safety-ledger';
-import { derivePostWriteProbeArgs, probeCreatedNotebook, probeCurrentState, probePostWriteState, probeUploadedResult, verifyPostWriteSemanticState } from './write-safety-probe';
+import { assertDestinationNotebooksWritable, derivePostWriteProbeArgs, probeCreatedNotebook, probeCurrentState, probePostWriteState, probeUploadedResult, verifyPostWriteSemanticState } from './write-safety-probe';
 import { type StateProbe, collectTargetSelectors, isRecord, parseResultObject } from '../core/write-safety-records';
 
 export interface WriteSafetyExecution {
@@ -150,11 +150,17 @@ export class WriteSafetyCoordinator {
                 if (!permMgr.canWrite(args.notebook)) {
                     const hint = await getNotebookNameArgumentHint(client, permMgr, args.notebook);
                     throw safetyError(hint ? 'invalid_arguments' : 'permission_denied',
-                        hint ?? `Notebook ${args.notebook} does not allow this write.`);
+                        hint ?? `Notebook ${args.notebook} has permission "${permMgr.get(args.notebook)}"; this write needs write (rw or rwd) access. Nothing was written. Check with notebook(action="get_permissions"); permissions are changed by the user in the plugin settings.`);
                 }
             } catch (error) {
                 return fromSafetyError(error);
             }
+        }
+
+        try {
+            await assertDestinationNotebooksWritable(client, permMgr, category, action, args);
+        } catch (error) {
+            return fromSafetyError(error);
         }
 
         if (category === 'av' && action === 'create') return this.runAvCreate(execution, inspected?.argsHash);

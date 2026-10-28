@@ -1,6 +1,14 @@
 import { afterEach, vi } from 'vitest';
 
-const originalFetch = global.fetch;
+// Unmocked requests to the default SiYuan port must fail fast: on a developer
+// machine 127.0.0.1:6806 is usually a real workspace (or a tunnel to one).
+const realFetch = global.fetch;
+const originalFetch: typeof fetch = async (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+    if (url.port === '6806') throw new TypeError(`fetch failed: unit tests may not reach a live SiYuan (${url.origin}); mock fetch instead.`);
+    return realFetch(input, init);
+};
+global.fetch = originalFetch;
 
 // Automated tests must never inherit a real SiYuan/MCP connection from the shell
 // (e.g. SIYUAN_API_URL exported for live acceptance runs): fetch mocks only match

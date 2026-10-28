@@ -168,5 +168,11 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
         ];
     }
 
+    if (context.category === 'search' && action === 'search_refs') {
+        return [
+            { canonical: 'k', aliases: ['keyword', 'query'], schema: STRING_SCHEMA },
+        ];
+    }
+
     return [];
 }
