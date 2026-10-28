@@ -17,7 +17,8 @@ export interface CliWriteGuidance {
     commitCommand?: string;
 }
 
-export function applyCliWriteGuidance(result: ToolResult, tool: string): CliWriteGuidance {
+/** `json` adds commitCommand to the payload; human output prints it once, untruncated, after the result. */
+export function applyCliWriteGuidance(result: ToolResult, tool: string, json = true): CliWriteGuidance {
     const index = result.content.findIndex((item) => item.type === 'text');
     if (index < 0) return { result };
     let payload: Record<string, any>;
@@ -31,6 +32,7 @@ export function applyCliWriteGuidance(result: ToolResult, tool: string): CliWrit
     let commitCommand: string | undefined;
     if (!result.isError && payload.validateOnly === true && isRecord(payload.preflight?.commitArgs)) {
         commitCommand = buildCliCommand(tool, payload.preflight.commitArgs);
+        if (!json) return { result, commitCommand };
         payload = { ...payload, commitCommand };
     } else if (result.isError && isRecord(payload.error) && PREFLIGHT_REQUIRED_CODES.has(payload.error.code)) {
         payload = { ...payload, error: { ...payload.error, hint: CLI_PREFLIGHT_HINT } };

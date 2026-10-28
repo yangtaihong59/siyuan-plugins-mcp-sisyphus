@@ -127,7 +127,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
         ],
-        "hint": "Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows.",
+        "hint": "Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows. Cells use the same typed fields as set_cells (e.g. {columnID,valueType:"number",number:9}); see av(action="help", topic="set_cells") for the full valueType table.",
         "parameters": {
           "additionalProperties": false,
           "description": "Add bound rows, detached plain-text rows, or composite detached rows with initial cells. Composite rows use one preflight, stable rowIDs, and a persisted stage ledger.",
@@ -1289,6 +1289,79 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
       },
+      "rename": {
+        "action": "rename",
+        "example": {
+          "action": "rename",
+          "avID": "<avID>",
+        },
+        "fullDocResource": "siyuan://help/action/av/rename",
+        "guidance": [
+          "Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.",
+          "get defaults to structure: identity, columns and view summaries, never all row IDs. scope=columns reads keys; scope=view reads exact view configuration; scope=raw preserves the complete native AV.",
+          "query returns canonical rowID and columnID. Never substitute sourceBlockID or cell value IDs. fields projects requested stable columnIDs while always keeping rowID. mode=primary_keys returns lightweight paginated primary keys; keyword applies to either mode.",
+          "Explicit viewID selects only the read target; it never switches the database carrier. Returned viewID and selectionSource identify the actual selection; selectionFallback reports kernel-default fallback.",
+          "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
+          "update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
+          "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
+          "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
+          "update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.",
+          "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
+          "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
+        ],
+        "hint": "Use avID + name to rename the database, and/or keyID + keyName to rename one column, including the primary key column that av(action="create") names by default. Types and values are unchanged. Get key IDs from av(action="get"). Strict write: preflight with validateOnly=true, then commit with the returned requestId and expectedStateHash.",
+        "parameters": {
+          "additionalProperties": false,
+          "description": "Rename the database and/or columns (including the primary key column).",
+          "properties": {
+            "action": {
+              "const": "rename",
+              "type": "string",
+            },
+            "avID": {
+              "description": "Attribute view ID",
+              "type": "string",
+            },
+            "blockID": {
+              "description": "Registered database block ID for explicit database-block context",
+              "type": "string",
+            },
+            "keyID": {
+              "description": "Column to rename (any column, including the primary key)",
+              "type": "string",
+            },
+            "keyName": {
+              "description": "New column name",
+              "minLength": 1,
+              "type": "string",
+            },
+            "name": {
+              "description": "New database name",
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "required": [
+            "action",
+            "avID",
+          ],
+          "type": "object",
+        },
+        "requiredFields": [
+          "avID",
+        ],
+        "requiresConfirmation": false,
+        "shapes": [
+          "avID",
+        ],
+        "tool": "av",
+        "writeWorkflow": [
+          "Confirm the user-authorized target and operation scope.",
+          "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
+          "Read the target back or inspect the returned receipt before reporting success.",
+        ],
+      },
       "search": {
         "action": "search",
         "example": {
@@ -1365,7 +1438,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
         ],
-        "hint": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell.",
+        "hint": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell. Cell fields by valueType: text→text:"…"; number→number:9; date→date:"2026-01-31" or epoch ms; checkbox→checked:true; select→option:"在读"; multi_select (column type mSelect)→options:["a","b"]; url/email/phone→url/email/phone:"…"; relation→relationBlockIDs:[…]; mAsset→assets:[{type,content}]. Example: {rowID,columnID,valueType:"select",option:"在读"}.",
         "parameters": {
           "additionalProperties": false,
           "description": "Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write.",
@@ -4065,12 +4138,12 @@ exports[`tool description and help outputs > matches the locked snapshot for all
       },
     },
     "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.
-Actions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)
+Actions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · rename(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {
       "actionSummaries": {
         "add_column": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
-        "add_rows": "Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows.",
+        "add_rows": "Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows. Cells use the same typed fields as set_cells (e.g. {columnID,valueType:"number",number:9}); see av(action="help", topic="set_cells") for the full valueType table.",
         "add_view": "Provide avID + exact NodeAttributeView blockID + a new stable viewID + table/gallery/kanban + name. First run validateOnly=true. It does not use render; kanban requires an existing select key to avoid an implicit schema write.",
         "configure_rollup": "Dangerous schema operation for an existing rollup key. Pass its existing relation key, destination key, and the native RollupCalc object exactly as SiYuan defines it. MCP does not invent calculation aliases. SiYuan may remove filters that reference the reconfigured rollup key.",
         "configure_two_way_relation": "Dangerous schema operation for an existing relation key. Pass source and destination AV identities plus a stable reverse-key ID. MCP verifies both writable database carriers, uses the native updateAttrViewColRelation transaction, and reads both directions back. It refuses to retarget an existing relation that would mutate an unpreflighted third AV.",
@@ -4082,8 +4155,9 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "query": "Use avID, optional keyword/page/pageSize/fields, and mode=rows (default) or primary_keys. fields is a list of stable columnIDs: requested cells and columns are returned and rowID is always kept. Row mode supports viewID/blockID/groupPaging. Primary-key mode rejects viewID/groupPaging/fields and defaults to 16 rows. Follow nextSteps only when present.",
         "remove_column": "Use avID + keyID, and optionally blockID to target a specific registered database block. removeRelationDest only matters for relation columns.",
         "remove_rows": "Use avID + rowIDs (canonical AV row item IDs) to remove rows after the server validates every identity against the current AV. srcIDs remains the explicitly native interface and is not an interchangeable alias; mixing rowIDs and srcIDs is rejected before any write. Optional blockID pins a specific registered database block when you need explicit block-view context.",
+        "rename": "Use avID + name to rename the database, and/or keyID + keyName to rename one column, including the primary key column that av(action="create") names by default. Types and values are unchanged. Get key IDs from av(action="get"). Strict write: preflight with validateOnly=true, then commit with the returned requestId and expectedStateHash.",
         "search": "Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.",
-        "set_cells": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell.",
+        "set_cells": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell. Cell fields by valueType: text→text:"…"; number→number:9; date→date:"2026-01-31" or epoch ms; checkbox→checked:true; select→option:"在读"; multi_select (column type mSelect)→options:["a","b"]; url/email/phone→url/email/phone:"…"; relation→relationBlockIDs:[…]; mAsset→assets:[{type,content}]. Example: {rowID,columnID,valueType:"select",option:"在读"}.",
         "set_column_options": "Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.",
         "set_new_item_templates": "Dangerous complete replacement of ordered native new-item templates. Pass every template and defaultTemplateID, not a patch. MCP captures a canonical complete-template preimage, validates each key and select/mSelect option against the raw AV, performs one native transaction, and verifies order, default, and all remaining template fields through getAttributeView. Missing options are rejected rather than added or silently pruned.",
         "set_relation": "Dangerous complete replacement of one relation cell. blockID is the verified source database carrier; itemID and relatedItemIDs are AV row item IDs, never bound document block IDs. An empty relatedItemIDs array clears the relation. MCP authorizes destination writes and verifies source plus two-way reverse cells without retrying an unknown response.",
@@ -4095,7 +4169,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "requiresConfirmation": false,
         },
         "add_rows": {
-          "hint": "Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows.",
+          "hint": "Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows. Cells use the same typed fields as set_cells (e.g. {columnID,valueType:"number",number:9}); see av(action="help", topic="set_cells") for the full valueType table.",
           "requiresConfirmation": false,
         },
         "add_view": {
@@ -4142,12 +4216,16 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "hint": "Use avID + rowIDs (canonical AV row item IDs) to remove rows after the server validates every identity against the current AV. srcIDs remains the explicitly native interface and is not an interchangeable alias; mixing rowIDs and srcIDs is rejected before any write. Optional blockID pins a specific registered database block when you need explicit block-view context.",
           "requiresConfirmation": false,
         },
+        "rename": {
+          "hint": "Use avID + name to rename the database, and/or keyID + keyName to rename one column, including the primary key column that av(action="create") names by default. Types and values are unchanged. Get key IDs from av(action="get"). Strict write: preflight with validateOnly=true, then commit with the returned requestId and expectedStateHash.",
+          "requiresConfirmation": false,
+        },
         "search": {
           "hint": "Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.",
           "requiresConfirmation": false,
         },
         "set_cells": {
-          "hint": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell.",
+          "hint": "Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell. Cell fields by valueType: text→text:"…"; number→number:9; date→date:"2026-01-31" or epoch ms; checkbox→checked:true; select→option:"在读"; multi_select (column type mSelect)→options:["a","b"]; url/email/phone→url/email/phone:"…"; relation→relationBlockIDs:[…]; mAsset→assets:[{type,content}]. Example: {rowID,columnID,valueType:"select",option:"在读"}.",
           "requiresConfirmation": false,
         },
         "set_column_options": {
@@ -4172,6 +4250,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "remove_rows",
         "add_column",
         "remove_column",
+        "rename",
         "set_cells",
         "set_column_options",
         "duplicate_rows",

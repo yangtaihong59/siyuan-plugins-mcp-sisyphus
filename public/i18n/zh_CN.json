@@ -334,6 +334,8 @@
     "av_action_add_column": "添加列",
     "desc_av_action_add_column": "向数据库添加一列。",
     "av_action_remove_column": "移除列",
+    "av_action_rename": "重命名",
+    "desc_av_action_rename": "重命名数据库和/或列。",
     "desc_av_action_remove_column": "从数据库移除一列。",
     "av_action_set_cells": "设置单元格",
     "desc_av_action_set_cells": "使用强类型值载荷更新一个或多个单元格。",

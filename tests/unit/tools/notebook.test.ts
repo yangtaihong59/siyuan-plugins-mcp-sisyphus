@@ -54,6 +54,6 @@ describe('notebook.set_permission validation', () => {
         expect(payload.error.type).toBe('validation_error');
         expect(payload.error.message).toBe('Invalid arguments for notebook(action="set_permission").');
         expect(payload.error.fields[0].path).toBe('permission');
-        expect(payload.error.fields[0].message).toContain('Invalid option');
+        expect(payload.error.fields[0].message).toBe('permission must be one of: "none", "r", "rw", "rwd".');
     });
 });

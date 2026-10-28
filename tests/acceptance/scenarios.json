@@ -234,13 +234,14 @@
       "actions": [
         "av.add_column",
         "av.remove_column",
+        "av.rename",
         "av.set_column_options",
         "av.add_rows",
         "av.remove_rows",
         "av.duplicate_rows",
         "av.set_cells"
       ],
-      "oracle": "类型值准确；删除/选项替换影响范围明确；读回真实值；旧 manifest 拒绝",
+      "oracle": "类型值准确；删除/选项替换影响范围明确；重命名不改列类型与值；读回真实值；旧 manifest 拒绝",
       "implementation": "partial_existing",
       "existingScript": "tests/smoke/live-av-v2.cjs"
     },

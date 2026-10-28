@@ -835,8 +835,18 @@ async function collectDestinationNotebooks(
         const target = await resolveFsCreateTarget(client, permMgr, args.path).catch(() => undefined);
         if (target) notebooks.add(target.notebook);
     }
+    // Additive block writes anchor on an existing block; its notebook is the destination.
+    const anchors = BLOCK_ANCHOR_FIELDS
+        .map((field) => args[field])
+        .filter((value): value is string => typeof value === 'string' && /^\d{14}-[a-z0-9]{7}$/.test(value));
+    if (category === 'block' && anchors.length > 0) {
+        const rows = await searchApi.querySQL(client, `SELECT DISTINCT box FROM blocks WHERE id IN (${anchors.map(sqlString).join(', ')})`) as Array<Record<string, unknown>>;
+        for (const row of rows) if (typeof row.box === 'string' && row.box) notebooks.add(row.box);
+    }
     return [...notebooks];
 }
+
+const BLOCK_ANCHOR_FIELDS = ['parentID', 'previousID', 'nextID'] as const;
 
 function notebookDeniedMessage(permMgr: PermissionManager, notebook: string, destructive: boolean): string {
     const required = destructive ? 'delete (rwd)' : 'write (rw or rwd)';

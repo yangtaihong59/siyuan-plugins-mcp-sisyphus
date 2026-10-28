@@ -2538,6 +2538,64 @@ describe('av tool', () => {
         });
     });
 
+    it('renames the database and a column, resending the current column type', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-books',
+            name: '',
+            keyValues: [
+                { key: { id: 'pk', name: '主键', type: 'block' }, values: [] },
+                { key: { id: 'st', name: '单选', type: 'select' }, values: [] },
+            ],
+        };
+        const after = {
+            ...before,
+            name: '阅读清单',
+            keyValues: [
+                { key: { id: 'pk', name: '书名', type: 'block' }, values: [] },
+                before.keyValues[1],
+            ],
+        };
+        vi.mocked(avApi.getAttributeView)
+            .mockResolvedValueOnce({ av: before })
+            .mockResolvedValue({ av: after });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'db-block-1' }] });
+
+        const result = await callAvTool(client, {
+            action: 'rename',
+            avID: 'av-books',
+            name: '阅读清单',
+            keyID: 'pk',
+            keyName: '书名',
+        }, enabledActions('rename'), permMgr);
+
+        const ops = vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations;
+        expect(ops.filter((op: { action: string }) => op.action !== 'doUpdateUpdated')).toEqual([
+            { action: 'setAttrViewName', id: 'av-books', avID: 'av-books', data: '阅读清单' },
+            { action: 'updateAttrViewCol', avID: 'av-books', id: 'pk', name: '书名', type: 'block' },
+        ]);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'rename',
+            name: '阅读清单',
+            renamedColumns: [{ keyID: 'pk', from: '主键', to: '书名' }],
+        });
+    });
+
+    it('rejects an unknown column key without writing', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: { id: 'av-books', keyValues: [{ key: { id: 'pk', name: '主键', type: 'block' }, values: [] }] } });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'db-block-1' }] });
+
+        const result = await callAvTool(client, { action: 'rename', avID: 'av-books', keyID: 'missing', keyName: 'x' }, enabledActions('rename'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('does not exist');
+        expect(transactionApi.performTransactions).not.toHaveBeenCalled();
+    });
+
     it('falls back to database block refs when an AV has no rows yet', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');

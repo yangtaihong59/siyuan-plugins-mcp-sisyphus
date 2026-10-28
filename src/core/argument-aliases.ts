@@ -95,6 +95,20 @@ function normalizeFileUploadAssetArgs(args: Record<string, unknown>): void {
     }
 }
 
+// Columns report their type as "mSelect"; cells call the same type "multi_select".
+function normalizeAvCellValueTypes(args: Record<string, unknown>): void {
+    const fix = (cell: unknown): unknown => cell && typeof cell === 'object' && (cell as Record<string, unknown>).valueType === 'mSelect'
+        ? { ...(cell as Record<string, unknown>), valueType: 'multi_select' }
+        : cell;
+    if (args.valueType === 'mSelect') args.valueType = 'multi_select';
+    if (Array.isArray(args.cells)) args.cells = args.cells.map(fix);
+    if (Array.isArray(args.rows)) {
+        args.rows = args.rows.map((row) => row && typeof row === 'object' && Array.isArray((row as Record<string, unknown>).cells)
+            ? { ...(row as Record<string, unknown>), cells: ((row as Record<string, unknown>).cells as unknown[]).map(fix) }
+            : row);
+    }
+}
+
 function normalizeSearchRefsArgs(args: Record<string, unknown>): void {
     if (!hasOwn(args, 'k')) {
         if (typeof args.keyword === 'string') args.k = args.keyword;
@@ -116,6 +130,11 @@ export function normalizeToolArguments(category: ToolCategory, rawArgs: Record<s
     if (category === 'flashcard' && (action === 'create_card' || action === 'remove_card')) normalizeFlashcardBlockIdsArgs(args);
     if (category === 'file' && action === 'upload_asset') normalizeFileUploadAssetArgs(args);
     if (category === 'search' && action === 'search_refs') normalizeSearchRefsArgs(args);
+    if (category === 'av' && (action === 'set_cells' || action === 'add_rows')) normalizeAvCellValueTypes(args);
+    if (category === 'av' && action === 'search' && !hasOwn(args, 'keyword') && typeof args.query === 'string') {
+        args.keyword = args.query;
+        delete args.query;
+    }
 
     return args;
 }
@@ -165,6 +184,12 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
     if (context.category === 'file' && action === 'upload_asset') {
         return [
             { canonical: 'localFilePath', aliases: ['file'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    if (context.category === 'av' && action === 'search') {
+        return [
+            { canonical: 'keyword', aliases: ['query'], schema: STRING_SCHEMA },
         ];
     }
 

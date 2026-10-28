@@ -34,7 +34,15 @@ export function formatIssueMessage(issue: ZodIssue, rawArgs?: Record<string, unk
         if (valueAtPath === undefined && path) {
             return `${path} is required.`;
         }
-        return path ? `${path} has an invalid type.` : 'Invalid input type.';
+        const expected = 'expected' in issue && typeof issue.expected === 'string' ? ` Expected ${issue.expected}.` : '';
+        return path ? `${path} has an invalid type.${expected}` : `Invalid input type.${expected}`;
+    }
+
+    // Enum mismatches: name the allowed values instead of a bare "invalid value".
+    const allowed = (issue as { values?: unknown }).values;
+    if (Array.isArray(allowed) && allowed.length > 0 && allowed.length <= 30) {
+        const list = allowed.map((value) => JSON.stringify(value)).join(', ');
+        return path ? `${path} must be one of: ${list}.` : `Must be one of: ${list}.`;
     }
 
     if (issue.code === 'unrecognized_keys' && 'keys' in issue && Array.isArray(issue.keys)) {

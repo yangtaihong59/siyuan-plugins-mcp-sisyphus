@@ -10,7 +10,7 @@ import type { ToolActionHandler, ToolHandlerContext } from '../internal/define-t
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';
 import { sleep } from '../../shared/async';
-import { handleAddColumn, handleRemoveColumn, handleSetColumnOptions } from './column-handlers';
+import { handleAddColumn, handleRemoveColumn, handleRename, handleSetColumnOptions } from './column-handlers';
 import { AV_MATERIALIZATION_POLL_ATTEMPTS, AV_MATERIALIZATION_POLL_DELAY_MS, AV_TOOL_NAME } from './definition';
 import { buildDuplicateAvBlockDom } from './transaction';
 import { ensurePermissionForAvId, resolveAvOwningBlockId } from './carrier';
@@ -174,6 +174,7 @@ export const AV_ACTION_HANDLERS: Record<AvAction, ToolActionHandler> = {
     remove_rows: handleRemoveRows,
     add_column: handleAddColumn,
     remove_column: handleRemoveColumn,
+    rename: handleRename,
     set_cells: handleSetCells,
     set_column_options: handleSetColumnOptions,
     duplicate_rows: handleDuplicateRows,

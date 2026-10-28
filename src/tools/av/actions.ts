@@ -12,6 +12,7 @@ export const AV_ACTION_SPECS = defineActionSpecs({
     remove_rows: { tier: 'advanced', policy: mutation('manifest'), defaultEnabled: true },
     add_column: { tier: 'advanced', policy: mutation('state'), defaultEnabled: true },
     remove_column: { tier: 'advanced', policy: mutation('state'), defaultEnabled: true },
+    rename: { tier: 'advanced', policy: mutation('state'), defaultEnabled: true },
     set_cells: { tier: 'advanced', policy: mutation('manifest'), defaultEnabled: true },
     set_column_options: { tier: 'advanced', policy: mutation('state'), defaultEnabled: true, dangerous: true },
     duplicate_rows: { tier: 'advanced', policy: mutation('manifest'), defaultEnabled: true, dangerous: true },

@@ -33,7 +33,7 @@ describe('tools/validation', () => {
         if (!result.success) {
             expect(formatZodIssues(result.error, { cells: [{ rowID: 123 }], extra: true })).toEqual([
                 { path: 'title', message: 'title is required.' },
-                { path: 'cells[0].rowID', message: 'cells[0].rowID has an invalid type.' },
+                { path: 'cells[0].rowID', message: 'cells[0].rowID has an invalid type. Expected string.' },
                 { path: '', message: 'Unexpected field(s): extra.' },
             ]);
         }

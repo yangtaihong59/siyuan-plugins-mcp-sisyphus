@@ -681,4 +681,12 @@ describe('tool result normalization', () => {
             hint: 'Use page/pageSize to paginate. For focused reads, use block(action="get_kramdown") or search(action="query_sql") with a parent_id filter.',
         });
     });
+    it('accepts the column-type spelling mSelect as a multi_select cell valueType without mutating input', () => {
+        const cell = { rowID: 'r', columnID: 'c', valueType: 'mSelect', options: ['a'] };
+        const input = { action: 'add_rows', avID: 'av', rows: [{ clientKey: 'k', cells: [cell] }] };
+        const out = normalizeToolArguments('av', input) as any;
+        expect(out.rows[0].cells[0].valueType).toBe('multi_select');
+        expect(cell.valueType).toBe('mSelect');
+        expect((normalizeToolArguments('av', { action: 'set_cells', avID: 'av', ...cell }) as any).valueType).toBe('multi_select');
+    });
 });

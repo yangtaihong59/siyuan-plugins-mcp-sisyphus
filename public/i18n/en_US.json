@@ -334,6 +334,8 @@
     "av_action_add_column": "Add Column",
     "desc_av_action_add_column": "Add a column to a database.",
     "av_action_remove_column": "Remove Column",
+    "av_action_rename": "Rename",
+    "desc_av_action_rename": "Rename the database and/or its columns.",
     "desc_av_action_remove_column": "Remove a column from a database.",
     "av_action_set_cells": "Set Cells",
     "desc_av_action_set_cells": "Update one or more cells with typed value payloads.",

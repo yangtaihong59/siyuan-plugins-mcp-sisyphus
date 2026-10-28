@@ -2,7 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { AvAction, CategoryToolConfig } from '../../core/config';
 import { AV_ACTION_HINTS, AV_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import { AvActionSchema, AvAddColumnSchema, AvAddViewSchema, AvAddRowsSchema, AvConfigureRollupSchema, AvConfigureTwoWayRelationSchema, AvCreateFromTemplateSchema, AvDuplicateSchema, AvGetSchema, AvCreateSchema, AvQuerySchema, AvUpdateViewSchema, AvRemoveColumnSchema, AvRemoveRowsSchema, AvSearchSchema, AvSetColumnOptionsSchema, AvSetCellsSchema, AvDuplicateRowsSchema, AvSetNewItemTemplatesSchema, AvSetRelationSchema } from './schemas';
+import { AvActionSchema, AvAddColumnSchema, AvAddViewSchema, AvAddRowsSchema, AvConfigureRollupSchema, AvConfigureTwoWayRelationSchema, AvCreateFromTemplateSchema, AvDuplicateSchema, AvGetSchema, AvCreateSchema, AvQuerySchema, AvUpdateViewSchema, AvRemoveColumnSchema, AvRemoveRowsSchema, AvRenameSchema, AvSearchSchema, AvSetColumnOptionsSchema, AvSetCellsSchema, AvDuplicateRowsSchema, AvSetNewItemTemplatesSchema, AvSetRelationSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { AV_ACTION_HANDLERS } from './handlers';
@@ -19,6 +19,7 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('remove_rows', AvRemoveRowsSchema, 'Remove rows by validated canonical rowIDs, or by srcIDs through the explicitly native interface. Mixing is rejected before any write.'),
     createZodActionVariant('add_column', AvAddColumnSchema, 'Add a column to a database.'),
     createZodActionVariant('remove_column', AvRemoveColumnSchema, 'Remove a column from a database.'),
+    createZodActionVariant('rename', AvRenameSchema, 'Rename the database and/or columns (including the primary key column).'),
     createZodActionVariant('set_cells', AvSetCellsSchema, 'Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write.'),
     createZodActionVariant('set_column_options', AvSetColumnOptionsSchema, 'Replace one select or multi-select column\'s complete option list. Read the current options first: omitted entries are not preserved.'),
     createZodActionVariant('duplicate_rows', AvDuplicateRowsSchema, 'Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations.'),

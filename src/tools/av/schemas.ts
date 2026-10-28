@@ -190,6 +190,22 @@ export const AvAddColumnSchema = z.object({
     previousKeyID: z.string().optional().describe("Insert after this existing column key ID"),
 });
 
+export const AvRenameSchema = z.object({
+    action: z.literal("rename"),
+    avID: z.string().describe("Attribute view ID"),
+    blockID: z.string().optional().describe("Registered database block ID for explicit database-block context"),
+    name: z.string().trim().min(1).optional().describe("New database name"),
+    keyID: z.string().optional().describe("Column to rename (any column, including the primary key)"),
+    keyName: z.string().trim().min(1).optional().describe("New column name"),
+}).superRefine((value, ctx) => {
+    if (value.name === undefined && value.keyID === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide name, keyID + keyName, or both." });
+    }
+    if ((value.keyID === undefined) !== (value.keyName === undefined)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [value.keyID === undefined ? "keyID" : "keyName"], message: "keyID and keyName go together." });
+    }
+});
+
 export const AvRemoveColumnSchema = z.object({
     action: z.literal("remove_column"),
     avID: z.string().describe("Attribute view ID"),

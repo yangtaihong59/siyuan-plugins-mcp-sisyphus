@@ -297,7 +297,7 @@ export function getAvKeyById(avData: unknown, keyID: string): Record<string, unk
 }
 
 export function createAvFieldValidationResult(
-    action: 'set_column_options',
+    action: 'set_column_options' | 'rename',
     avID: string,
     keyID: string,
     message: string,

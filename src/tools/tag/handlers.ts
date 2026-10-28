@@ -47,9 +47,13 @@ export const TAG_ACTION_HANDLERS: Record<TagAction, ToolActionHandler> = {
             if (keyword && keyword.trim().length > 0) {
                 const result = await searchApi.searchTag(client, keyword);
                 const typedResult = result && typeof result === 'object' ? result as unknown as Record<string, unknown> : {};
-                const tags = Array.isArray(typedResult.tags) ? typedResult.tags : [];
+                // searchTag wraps the match in <mark>…</mark> for the editor; callers need plain labels.
+                const tags = Array.isArray(typedResult.tags)
+                    ? typedResult.tags.map((tag) => typeof tag === 'string' ? tag.replace(/<\/?mark>/g, '') : tag)
+                    : [];
                 return createJsonResult({
                     ...typedResult,
+                    tags,
                     resolvedArgs: { keyword },
                     ...(tags.length === 0 ? {
                         warning: 'No matching tags were found. If the tag was just created, SiYuan tag indexing may still be catching up; verify the markdown uses #tag# syntax and retry shortly.',

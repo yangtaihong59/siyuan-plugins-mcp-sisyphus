@@ -259,8 +259,11 @@ describe('write safety coordinator', () => {
     it.each([
         ['block', 'add_to_daily_note', { notebook: '20260101000000-readonl', dataType: 'markdown', data: 'x', position: 'append' }],
         ['document', 'move', { fromIDs: ['20260101000001-docaaaa'], toNotebook: '20260101000000-readonl', toPath: '/' }],
+        ['block', 'append', { parentID: '20260101000002-anchorb', dataType: 'markdown', data: 'x' }],
     ] as const)('refuses a %s.%s preflight lease when the destination notebook is read-only', async (category, action, extra) => {
-        const client = { requestRead: vi.fn(), requestWrite: vi.fn(), request: vi.fn() } as any;
+        // The anchor block of block.append lives in the read-only notebook.
+        const sql = vi.fn(async () => [{ box: '20260101000000-readonl' }]);
+        const client = { requestRead: vi.fn((endpoint: string) => endpoint === '/api/query/sql' ? sql() : undefined), requestWrite: vi.fn(), request: vi.fn() } as any;
         const permMgr = createMockPermissionManager({ canWrite: (id) => id !== '20260101000000-readonl', canDelete: (id) => id !== '20260101000000-readonl' });
         const execute = vi.fn();
         const out = parseResult(await new WriteSafetyCoordinator(client).run({

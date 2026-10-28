@@ -1,9 +1,9 @@
-/* av column actions: add_column, remove_column, set_column_options. */
+/* av column actions: add_column, remove_column, rename, set_column_options. */
 import { generateSiYuanNodeId } from '../../shared/siyuan-id';
 import * as avApi from '../../api/av';
 import type { TransactionOperation } from '../../api/transaction';
 import { canonicalizeState } from '../../shared/canonical-state';
-import { AvAddColumnSchema, AvRemoveColumnSchema, AvSetColumnOptionsSchema } from './schemas';
+import { AvAddColumnSchema, AvRemoveColumnSchema, AvRenameSchema, AvSetColumnOptionsSchema } from './schemas';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
 import { asRecord, createAvFieldValidationResult, getAvKeyById, getStringField } from './definition';
@@ -392,5 +392,56 @@ export async function handleSetColumnOptions({ client, permMgr, rawArgs }: ToolH
             observedOptions: actualOptions,
             message: 'SiYuan accepted the full option set but retained its append order for new names. No second write was sent; run a new strict preflight before an explicit reorder request.',
         } : { status: 'applied', observedOptions: actualOptions }),
+    });
+}
+
+export async function handleRename({ client, permMgr, rawArgs }: ToolHandlerContext): Promise<ToolResult> {
+    const parsed = AvRenameSchema.parse(rawArgs);
+    const { denied, avData } = await ensurePermissionForAvId(client, permMgr, parsed.avID, 'write', { blockID: parsed.blockID, action: 'rename' });
+    if (denied) return denied;
+
+    const operations: TransactionOperation[] = [];
+    const undoOperations: TransactionOperation[] = [];
+    const currentName = getStringField(asRecord(avData), ['name']) ?? '';
+    if (parsed.name !== undefined && parsed.name !== currentName) {
+        operations.push({ action: 'setAttrViewName', id: parsed.avID, avID: parsed.avID, data: parsed.name });
+        undoOperations.push({ action: 'setAttrViewName', id: parsed.avID, avID: parsed.avID, data: currentName });
+    }
+    const renamedColumns: Array<{ keyID: string; from: string; to: string }> = [];
+    for (const column of parsed.keyID && parsed.keyName ? [{ keyID: parsed.keyID, name: parsed.keyName }] : []) {
+        const key = getAvKeyById(avData, column.keyID);
+        if (!key) {
+            return createAvFieldValidationResult('rename', parsed.avID, column.keyID,
+                `keyID "${column.keyID}" does not exist in attribute view "${parsed.avID}". Use av(action="get") to list column key IDs.`);
+        }
+        const from = getStringField(key, ['name']) ?? '';
+        if (from === column.name) continue;
+        // updateAttrViewCol also sets the type; resend the current one so only the name changes.
+        const type = getStringField(key, ['type']) ?? '';
+        operations.push({ action: 'updateAttrViewCol', avID: parsed.avID, id: column.keyID, name: column.name, type });
+        undoOperations.push({ action: 'updateAttrViewCol', avID: parsed.avID, id: column.keyID, name: from, type });
+        renamedColumns.push({ keyID: column.keyID, from, to: column.name });
+    }
+
+    if (operations.length === 0) {
+        return createWriteSuccessResult({ action: 'rename', avID: parsed.avID, changed: false, status: 'already_applied' });
+    }
+    await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, operations, undoOperations);
+
+    const readback = await avApi.getAttributeView(client, parsed.avID);
+    if (parsed.name !== undefined && (getStringField(asRecord(readback.av), ['name']) ?? '') !== parsed.name) {
+        throw new Error(`Database name readback for "${parsed.avID}" does not match the requested name.`);
+    }
+    for (const column of renamedColumns) {
+        if ((getStringField(getAvKeyById(readback.av, column.keyID) ?? {}, ['name']) ?? '') !== column.to) {
+            throw new Error(`Column name readback for key "${column.keyID}" does not match the requested name.`);
+        }
+    }
+
+    return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
+        action: 'rename',
+        avID: parsed.avID,
+        ...(parsed.name !== undefined ? { name: parsed.name, previousName: currentName } : {}),
+        ...(renamedColumns.length > 0 ? { renamedColumns } : {}),
     });
 }

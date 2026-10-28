@@ -873,7 +873,7 @@
     },
     {
       "name": "av",
-      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · rename(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -888,6 +888,7 @@
               "remove_rows",
               "add_column",
               "remove_column",
+              "rename",
               "set_cells",
               "set_column_options",
               "duplicate_rows",
@@ -1160,7 +1161,8 @@
           },
           "keyName": {
             "type": "string",
-            "description": "New column name"
+            "description": "New column name",
+            "minLength": 1
           },
           "keyType": {
             "type": "string",
@@ -1195,6 +1197,12 @@
           "removeRelationDest": {
             "description": "Also remove reverse relation metadata when deleting a relation column",
             "type": "boolean"
+          },
+          "name": {
+            "description": "New database name",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
           },
           "cells": {
             "description": "Cell updates Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
@@ -1365,12 +1373,6 @@
               "kanban"
             ],
             "description": "View layout type"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Name for the new view. Creation and naming are sent in one native transaction and read back together."
           },
           "templates": {
             "description": "Complete ordered replacement template array Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
@@ -4629,6 +4631,43 @@
         ],
         "additionalProperties": false,
         "description": "Remove a column from a database."
+      },
+      "rename": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "rename"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for explicit database-block context",
+            "type": "string"
+          },
+          "name": {
+            "description": "New database name",
+            "type": "string",
+            "minLength": 1
+          },
+          "keyID": {
+            "description": "Column to rename (any column, including the primary key)",
+            "type": "string"
+          },
+          "keyName": {
+            "description": "New column name",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "action",
+          "avID"
+        ],
+        "additionalProperties": false,
+        "description": "Rename the database and/or columns (including the primary key column)."
       },
       "set_cells": {
         "type": "object",

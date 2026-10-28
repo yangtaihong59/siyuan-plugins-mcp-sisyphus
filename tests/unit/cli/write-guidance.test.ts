@@ -10,6 +10,9 @@ describe('cli write guidance', () => {
         const { result, commitCommand } = applyCliWriteGuidance(text({ validateOnly: true, preflight: { commitArgs } }) as never, 'block');
         expect(commitCommand).toBe("siyuan-sisyphus block update --id 20260101-abc --data-type markdown --data 'it'\\''s done' --request-id eb9a --expected-state-hash 9fbf");
         expect(JSON.parse((result.content[0] as { text: string }).text).commitCommand).toBe(commitCommand);
+        const human = applyCliWriteGuidance(text({ validateOnly: true, preflight: { commitArgs } }) as never, 'block', false);
+        expect(human.commitCommand).toBe(commitCommand);
+        expect(JSON.parse((human.result.content[0] as { text: string }).text).commitCommand).toBeUndefined();
     });
 
     it('round-trips arrays and objects through -json flags the mapper accepts', () => {

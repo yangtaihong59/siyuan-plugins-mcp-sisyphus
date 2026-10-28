@@ -531,7 +531,7 @@ describe('document.move schema', () => {
         expect(payload.error.type).toBe('validation_error');
         expect(payload.error.message).toBe('Invalid arguments for document(action="move").');
         expect(payload.error.fields[0].path).toBe('fromIDs');
-        expect(payload.error.fields[0].message).toBe('fromIDs has an invalid type.');
+        expect(payload.error.fields[0].message).toBe('fromIDs has an invalid type. Expected array.');
     });
 
     it('returns a specific unknown_action error for unsupported actions', async () => {
