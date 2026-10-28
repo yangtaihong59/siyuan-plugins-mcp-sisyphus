@@ -131,6 +131,10 @@ export function normalizeToolArguments(category: ToolCategory, rawArgs: Record<s
     if (category === 'file' && action === 'upload_asset') normalizeFileUploadAssetArgs(args);
     if (category === 'search' && action === 'search_refs') normalizeSearchRefsArgs(args);
     if (category === 'av' && (action === 'set_cells' || action === 'add_rows')) normalizeAvCellValueTypes(args);
+    if (category === 'document' && action === 'query' && !hasOwn(args, 'notebooks') && nonEmptyString(args.notebook)) {
+        args.notebooks = [args.notebook];
+        delete args.notebook;
+    }
     if (category === 'av' && action === 'search' && !hasOwn(args, 'keyword') && typeof args.query === 'string') {
         args.keyword = args.query;
         delete args.query;
@@ -184,6 +188,12 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
     if (context.category === 'file' && action === 'upload_asset') {
         return [
             { canonical: 'localFilePath', aliases: ['file'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    if (context.category === 'document' && action === 'query') {
+        return [
+            { canonical: 'notebooks', aliases: ['notebook'], schema: { type: 'array', items: STRING_SCHEMA } },
         ];
     }
 

@@ -247,7 +247,9 @@ export function buildActionHelp<Action extends string>(
         tool: category,
         action,
         ...(TOOL_ACTION_HINTS[category]?.[action] ? { hint: TOOL_ACTION_HINTS[category][action] } : {}),
-        shapes: requiredFieldSets.map((fields) => fields.length > 0 ? fields.join(' + ') : 'action only'),
+        // Multi-mode actions validate their alternatives in a refinement, so the
+        // schema alone has no required field; say so instead of "action only".
+        shapes: requiredFieldSets.map((fields) => fields.length > 0 ? fields.join(' + ') : curatedExamples.length > 0 ? 'see examples' : hasOptionalFields(matching) ? 'optional fields only' : 'action only'),
         requiredFields: requiredFieldSets.length === 1 ? requiredFieldSets[0] : requiredFieldSets,
         parameters: matching.length === 1 ? matching[0].schema : matching.map((variant) => variant.schema),
         example,
@@ -295,3 +297,7 @@ export function buildShapeSummaryMarkdown<Action extends string>(
 }
 
 export type { ToolCategory };
+
+function hasOptionalFields<Action extends string>(variants: ActionVariant<Action>[]): boolean {
+    return variants.some((variant) => getSchemaFieldNames(variant.schema, false).some((field) => field !== 'action'));
+}

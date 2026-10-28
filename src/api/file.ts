@@ -28,10 +28,12 @@ export async function uploadAsset(
  */
 export async function exportMdContent(
     client: SiYuanClient,
-    id: string
+    id: string,
+    options: { refMode?: number } = {},
 ): Promise<IResExportMdContent> {
     const request: IReqExportMdContent = {
         id,
+        ...(options.refMode !== undefined ? { refMode: options.refMode } : {}),
     };
     return client.requestRead<IResExportMdContent>('/api/export/exportMdContent', request);
 }

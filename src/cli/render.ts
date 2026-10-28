@@ -30,6 +30,8 @@ const ANSI = {
 const SUMMARY_KEY_PRIORITY = [
     'id',
     'name',
+    // Notebook lists: what this client may do there matters more than paths.
+    'permission',
     'title',
     'path',
     'hpath',
@@ -488,6 +490,15 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
         writeStatus('info', obj.hint, out);
     }
 
+    if (Array.isArray(obj.writeWorkflow)) {
+        writeSection('Write Flow (two steps)', out);
+        writeBulletList([
+            '1. Run the command with --validate-only. Nothing is written; it checks permissions and prints the exact commit command.',
+            '2. Run the printed commit command unchanged (it carries --request-id and any --expected-*-hash).',
+            '3. Read the target back to confirm. A preflight expires after 10 minutes or when the target changes; then preflight again.',
+        ], out);
+    }
+
     const shapes = toStringArray(obj.shapes);
     if (shapes.length > 0) {
         writeSection('Accepted Shapes', out);
@@ -621,7 +632,8 @@ function summarizeItem(value: unknown): string | null {
 
 function normalizeRequiredFields(value: unknown): string[] {
     if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
-        return [value.join(', ')];
+        // An empty list means the schema has no unconditional field (multi-mode action).
+        return value.length > 0 ? [value.join(', ')] : ['none fixed by the schema; see Examples for each mode'];
     }
 
     if (Array.isArray(value)) {

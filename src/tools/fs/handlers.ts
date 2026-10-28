@@ -880,6 +880,9 @@ const handleReorder: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     }), [{ type: 'reloadFiletree' }]);
 };
 
+/** SiYuan export BlockRefMode 3: keep only the anchor text of block references. */
+const EXPORT_REF_MODE_ANCHOR_TEXT = 3;
+
 const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FsSearchSchema.parse(rawArgs);
     assertNotVirtualRootFileDescendant(parsed.path);
@@ -910,7 +913,9 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         }
     }
     for (const doc of docs) {
-        const markdown = normalizeMarkdownContent(await fileApi.exportMdContent(client, doc.id));
+        // Anchor-text refs only: the default footnote mode appends the referenced
+        // blocks' text, which would be reported as lines of this document.
+        const markdown = normalizeMarkdownContent(await fileApi.exportMdContent(client, doc.id, { refMode: EXPORT_REF_MODE_ANCHOR_TEXT }));
         const content = typeof markdown.content === 'string' ? markdown.content : '';
         const hPath = typeof markdown.hPath === 'string' ? markdown.hPath : `/${doc.id}`;
         const path = `/${doc.notebookName}${hPath}`;

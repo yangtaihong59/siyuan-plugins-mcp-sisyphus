@@ -1738,6 +1738,8 @@ describe('fs tool', () => {
 
         expect(parsed.data).toEqual([{ path: '/Notebook/Doc 1', line: 2, text: 'budget line' }]);
         expect(parsed.total).toBe(1);
+        // Anchor-text refs only, so referenced blocks are never reported as this document's lines.
+        expect(client.request).toHaveBeenCalledWith('/api/export/exportMdContent', expect.objectContaining({ refMode: 3 }));
     });
 
     it('searches only agent memory when scoped to the virtual root file', async () => {

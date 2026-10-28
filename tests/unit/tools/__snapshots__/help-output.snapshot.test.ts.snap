@@ -111,8 +111,78 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "add_rows",
         "example": {
           "action": "add_rows",
-          "avID": "<avID>",
+          "avID": "20240318112233-avdb001",
+          "rows": [
+            {
+              "cells": [
+                {
+                  "columnID": "20240318112233-status1",
+                  "option": "Doing",
+                  "valueType": "select",
+                },
+                {
+                  "columnID": "20240318112233-hours01",
+                  "number": 3,
+                  "valueType": "number",
+                },
+              ],
+              "clientKey": "a",
+              "primaryKeyText": "Write spec",
+            },
+            {
+              "cells": [
+                {
+                  "columnID": "20240318112233-status1",
+                  "option": "Todo",
+                  "valueType": "select",
+                },
+              ],
+              "clientKey": "b",
+              "primaryKeyText": "Review",
+            },
+          ],
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "description": "Get column IDs from av(action="get"). Each row needs a unique clientKey; primaryKeyText fills the primary key column.",
+            "mcp": {
+              "action": "add_rows",
+              "avID": "20240318112233-avdb001",
+              "rows": [
+                {
+                  "cells": [
+                    {
+                      "columnID": "20240318112233-status1",
+                      "option": "Doing",
+                      "valueType": "select",
+                    },
+                    {
+                      "columnID": "20240318112233-hours01",
+                      "number": 3,
+                      "valueType": "number",
+                    },
+                  ],
+                  "clientKey": "a",
+                  "primaryKeyText": "Write spec",
+                },
+                {
+                  "cells": [
+                    {
+                      "columnID": "20240318112233-status1",
+                      "option": "Todo",
+                      "valueType": "select",
+                    },
+                  ],
+                  "clientKey": "b",
+                  "primaryKeyText": "Review",
+                },
+              ],
+              "validateOnly": true,
+            },
+            "title": "Add rows and fill their cells in one batch (preflight first)",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/av/add_rows",
         "guidance": [
           "Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.",
@@ -679,7 +749,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
         ],
-        "hint": "Use parentID and optionally a new avID; preflight first. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
+        "hint": "Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names and remove_column to drop the select column. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
         "parameters": {
           "additionalProperties": false,
           "description": "Create a new database and carrier under parentID; replay preserves IDs and creation progress.",
@@ -1293,8 +1363,25 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "rename",
         "example": {
           "action": "rename",
-          "avID": "<avID>",
+          "avID": "20240318112233-avdb001",
+          "keyID": "20240318112233-pkey001",
+          "keyName": "Task",
+          "name": "Tasks",
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "rename",
+              "avID": "20240318112233-avdb001",
+              "keyID": "20240318112233-pkey001",
+              "keyName": "Task",
+              "name": "Tasks",
+              "validateOnly": true,
+            },
+            "title": "Name the database and rename its primary key column",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/av/rename",
         "guidance": [
           "Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.",
@@ -1422,8 +1509,47 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "set_cells",
         "example": {
           "action": "set_cells",
-          "avID": "<avID>",
+          "avID": "20240318112233-avdb001",
+          "cells": [
+            {
+              "columnID": "20240318112233-status1",
+              "option": "Done",
+              "rowID": "20240318112233-row0001",
+              "valueType": "select",
+            },
+            {
+              "columnID": "20240318112233-hours01",
+              "number": 5,
+              "rowID": "20240318112233-row0001",
+              "valueType": "number",
+            },
+          ],
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "set_cells",
+              "avID": "20240318112233-avdb001",
+              "cells": [
+                {
+                  "columnID": "20240318112233-status1",
+                  "option": "Done",
+                  "rowID": "20240318112233-row0001",
+                  "valueType": "select",
+                },
+                {
+                  "columnID": "20240318112233-hours01",
+                  "number": 5,
+                  "rowID": "20240318112233-row0001",
+                  "valueType": "number",
+                },
+              ],
+              "validateOnly": true,
+            },
+            "title": "Set a select and a number cell",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/av/set_cells",
         "guidance": [
           "Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.",
@@ -4147,7 +4273,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "add_view": "Provide avID + exact NodeAttributeView blockID + a new stable viewID + table/gallery/kanban + name. First run validateOnly=true. It does not use render; kanban requires an existing select key to avoid an implicit schema write.",
         "configure_rollup": "Dangerous schema operation for an existing rollup key. Pass its existing relation key, destination key, and the native RollupCalc object exactly as SiYuan defines it. MCP does not invent calculation aliases. SiYuan may remove filters that reference the reconfigured rollup key.",
         "configure_two_way_relation": "Dangerous schema operation for an existing relation key. Pass source and destination AV identities plus a stable reverse-key ID. MCP verifies both writable database carriers, uses the native updateAttrViewColRelation transaction, and reads both directions back. It refuses to retarget an existing relation that would mutate an unpreflighted third AV.",
-        "create": "Use parentID and optionally a new avID; preflight first. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
+        "create": "Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names and remove_column to drop the select column. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
         "create_from_template": "Dangerous native creation using an existing template. itemID in the result is the AV row identity; blockID is the separate bound block/document identity. MCP preflights all default fields and relation targets, then reads every requested default back. Document templates require an explicit saveLocation so the target notebook can be authorized; inherited global document location is intentionally not guessed.",
         "duplicate": "Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.",
         "duplicate_rows": "Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.",
@@ -4185,7 +4311,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "requiresConfirmation": true,
         },
         "create": {
-          "hint": "Use parentID and optionally a new avID; preflight first. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
+          "hint": "Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names and remove_column to drop the select column. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
           "requiresConfirmation": false,
         },
         "create_from_template": {
@@ -4696,7 +4822,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "block",
       },
@@ -5049,7 +5175,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "block",
         "writeWorkflow": [
@@ -5115,7 +5241,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "requiredFields": [],
         "requiresConfirmation": true,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "block",
         "writeWorkflow": [
@@ -5237,7 +5363,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "block",
       },
@@ -5551,7 +5677,43 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "action": "update",
         "example": {
           "action": "update",
+          "data": "New paragraph text",
+          "dataType": "markdown",
+          "id": "20240318112233-abc123",
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "description": "Writes are two steps: run with validateOnly=true, then commit with the returned requestId and expectedStateHash.",
+            "mcp": {
+              "action": "update",
+              "data": "New paragraph text",
+              "dataType": "markdown",
+              "id": "20240318112233-abc123",
+              "validateOnly": true,
+            },
+            "title": "Replace one block (preflight first)",
+          },
+          {
+            "mcp": {
+              "action": "update",
+              "items": [
+                {
+                  "data": "First",
+                  "dataType": "markdown",
+                  "id": "20240318112233-abc123",
+                },
+                {
+                  "data": "Second",
+                  "dataType": "markdown",
+                  "id": "20240318112233-def456",
+                },
+              ],
+              "validateOnly": true,
+            },
+            "title": "Replace several blocks in one call",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/block/update",
         "guidance": [
           "block(action="prepend") or block(action="append") with a document ID targets the document start or end.",
@@ -5631,7 +5793,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "see examples",
         ],
         "tool": "block",
         "writeWorkflow": [
@@ -6900,7 +7062,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "document",
       },
@@ -6929,7 +7091,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "For recently created documents, document(action="lookup", hpath=...) may briefly lag behind create because it depends on SiYuan indexing; retry if needed.",
           "document(action="lookup", id=...) may hit the same short indexing delay right after create; MCP retries briefly and then returns a timing-specific hint if indexing still has not settled.",
         ],
-        "hint": "Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.",
+        "hint": "Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.",
         "parameters": {
           "additionalProperties": false,
           "description": "Move a document to another location",
@@ -6968,7 +7130,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "requiredFields": [],
         "requiresConfirmation": true,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "document",
         "writeWorkflow": [
@@ -7178,7 +7340,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "see examples",
         ],
         "tool": "document",
       },
@@ -7250,7 +7412,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "requiredFields": [],
         "requiresConfirmation": true,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "document",
         "writeWorkflow": [
@@ -7635,7 +7797,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
         "heading_to_doc": "requires: headingID, targetNotebook",
         "list_tree": "Use notebook + path, where path is a storage path such as / or /20240318112233-abc123.sy.",
         "lookup": "Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths.",
-        "move": "Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.",
+        "move": "Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.",
         "query": "Omit notebooks for all readable open notebooks, or pass notebook IDs. Explicit unreadable, unknown, or closed notebooks are rejected. fields selects metadata/stat columns; default all. title is a literal substring and hpathPrefix matches an exact notebook-local human path or descendants. Use maxBlocks=0 for no indexed body blocks, duplicatesOnly=true for same-title candidates. minBlocks/maxBlocks/minChars/maxChars are inclusive. page starts at 1; pageSize defaults to 50 (max 100). blockCount counts non-document indexed rows including containers; contentChars sums SQLite length(content), not bytes/native word count. sameTitleCount is scoped before metric filters. Read scope/excludedClosedNotebooks and index limitations; follow nextSteps for further pages. SQL fragments are not accepted.",
         "remove": "Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan's short indexing window, retry by deleting one document at a time with notebook + storage path.",
         "rename": "Single mode uses either id + title or notebook + path + title. Batch mode uses items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.",
@@ -7690,7 +7852,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
           "requiresConfirmation": false,
         },
         "move": {
-          "hint": "Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.",
+          "hint": "Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.",
           "requiresConfirmation": true,
         },
         "query": {
@@ -8445,6 +8607,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
           "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
           "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
+        "hint": "Exports one document (not its child documents) as Markdown. Database blocks are exported as tables of their current view, so view filters and hidden columns apply. For a whole subtree use export_markdown_snapshot with roots.",
         "parameters": {
           "additionalProperties": false,
           "description": "Export document content as Markdown.",
@@ -8734,7 +8897,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "file",
       },
@@ -8796,7 +8959,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "file",
       },
@@ -9434,7 +9597,7 @@ Actions (required fields): upload_asset*(assetsDirPath) · list_templates() · r
         "delete_asset": "requires: path",
         "delete_template": "Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.",
         "export_markdown_snapshot": "Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.",
-        "export_md": "requires: id",
+        "export_md": "Exports one document (not its child documents) as Markdown. Database blocks are exported as tables of their current view, so view filters and hidden columns apply. For a whole subtree use export_markdown_snapshot with roots.",
         "export_resources": "Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. With the kernel coordinator enabled, CLI/Node request delivery=download and save the ZIP locally without overwriting existing files; direct kernel clients can use the returned downloadPath through the authenticated getFile API. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.",
         "extract_doc": "Use a document ID + optional outputDir. Exports the document markdown and all referenced assets into an uncompressed folder, preserving original filenames. If outputDir is omitted, the default output root is ~/siyuan-extracted/; pass outputDir explicitly for a predictable path such as /private/tmp. With the kernel coordinator enabled, CLI/Node download the manifest into a fresh document directory, preserve existing siblings and reject an existing destination. Direct kernel clients can request delivery=download and save the returned Markdown and asset paths themselves. Without kernel delegation, the existing Node extraction behavior clears the entire output root first and skips unreadable assets. The returned extractedDir is an absolute path ready for direct file access.",
         "get_doc_assets": "Use a document ID to list assets directly referenced by the current document tree after read-permission checks. This does not expand query embed blocks; when the user needs to inspect the full document content and assets, guide them to file(action="extract_doc") instead. Use assetType="image" to return only direct image assets.",
@@ -9471,6 +9634,7 @@ Actions (required fields): upload_asset*(assetsDirPath) · list_templates() · r
           "requiresConfirmation": false,
         },
         "export_md": {
+          "hint": "Exports one document (not its child documents) as Markdown. Database blocks are exported as tables of their current view, so view filters and hidden columns apply. For a whole subtree use export_markdown_snapshot with roots.",
           "requiresConfirmation": false,
         },
         "export_resources": {
@@ -10201,7 +10365,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
           "fs(action="reorder") applies a complete manual order to every visible direct child under path and switches the notebook to custom sorting. Read fs.ls first and include each returned child path exactly once.",
           "fs(action="rm") and fs(action="mv") require explicit user confirmation before execution.",
         ],
-        "hint": "Moves or renames a document using human-readable paths. This action requires explicit user confirmation.",
+        "hint": "Moves or renames a document using human-readable paths. It is a delete-level operation: every notebook involved (source and destination, also for a rename within one notebook) needs rwd. This action requires explicit user confirmation.",
         "parameters": {
           "additionalProperties": false,
           "description": "Move or rename a document by human-readable paths.",
@@ -10801,7 +10965,7 @@ Actions (required fields): ls(path) · tree(path) · read(path) · write(path, m
     "overview": {
       "actionSummaries": {
         "ls": "Use a human-readable path. "/" lists readable notebook roots; /Notebook or /Notebook/Folder lists direct child documents.",
-        "mv": "Moves or renames a document using human-readable paths. This action requires explicit user confirmation.",
+        "mv": "Moves or renames a document using human-readable paths. It is a delete-level operation: every notebook involved (source and destination, also for a rename within one notebook) needs rwd. This action requires explicit user confirmation.",
         "read": "Use a human-readable document path. Tries full AI-editable Markdown by default, bounded to 256 KiB UTF-8 and 2000 complete blocks; totalBlocks is null until EOF. Continue with nextWindow or blockStart/blockLimit/tokenBudget; page/pageSize character pagination was removed. The response includes a window-scoped heading outline, and includeBlockIds=true adds a sidecar blockRefs mapping without polluting content. When complex SiYuan blocks are detected, use block.dom, file.export_md, av, or other advanced tools for inspection and editing.",
         "reorder": "Applies a complete manual order to all visible direct child documents under path. orderedPaths must contain every current child path exactly once; the notebook is switched to custom sorting.",
         "replace": "Edits matched non-complex Markdown blocks by exact old/new matching against the same AI-editable view returned by fs.read. Canonical input is edit={old,new}; shorthand old + new is also accepted. If the document contains complex SiYuan-native blocks, fs.replace skips those blocks and returns skippedComplexBlocks; matches only inside skipped blocks or across block boundaries are rejected without writing. For inline formatting, old should be plain text without Markdown style delimiters such as **, *, \`, or ~~; existing DOM inline styles are preserved. Naked ((id)) refs are normalized, and footnotes/siyuan://blocks links are allowed but do not create backlinks. replace_all=true replaces every exact match across editable blocks. Use ((id 'title')) for new double-links and #tag# for tags.",
@@ -10816,7 +10980,7 @@ Actions (required fields): ls(path) · tree(path) · read(path) · write(path, m
           "requiresConfirmation": false,
         },
         "mv": {
-          "hint": "Moves or renames a document using human-readable paths. This action requires explicit user confirmation.",
+          "hint": "Moves or renames a document using human-readable paths. It is a delete-level operation: every notebook involved (source and destination, also for a rename within one notebook) needs rwd. This action requires explicit user confirmation.",
           "requiresConfirmation": true,
         },
         "read": {
@@ -11259,7 +11423,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "notebook",
       },
@@ -12113,7 +12277,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "search",
       },
@@ -12233,7 +12397,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "search",
       },
@@ -12281,7 +12445,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "search",
       },
@@ -12336,7 +12500,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "search",
       },
@@ -12656,7 +12820,7 @@ Actions (required fields): fulltext(query) · semantic(query) · query_sql() · 
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "see examples",
         ],
         "tool": "system",
       },
@@ -12716,7 +12880,7 @@ Actions (required fields): fulltext(query) · semantic(query) · query_sql() · 
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "system",
       },
@@ -13097,7 +13261,7 @@ Actions (required fields): workspace_info*() · network() · conf() · notify(ms
         "requiredFields": [],
         "requiresConfirmation": false,
         "shapes": [
-          "action only",
+          "optional fields only",
         ],
         "tool": "tag",
       },

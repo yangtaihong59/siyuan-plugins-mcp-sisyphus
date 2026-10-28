@@ -689,4 +689,9 @@ describe('tool result normalization', () => {
         expect(cell.valueType).toBe('mSelect');
         expect((normalizeToolArguments('av', { action: 'set_cells', avID: 'av', ...cell }) as any).valueType).toBe('multi_select');
     });
+    it('accepts notebook as a single-notebook alias for document.query notebooks', () => {
+        expect(normalizeToolArguments('document', { action: 'query', notebook: 'nb-1' })).toMatchObject({ notebooks: ['nb-1'] });
+        expect(normalizeToolArguments('document', { action: 'query', notebook: 'nb-1' })).not.toHaveProperty('notebook');
+        expect(normalizeToolArguments('document', { action: 'query', notebooks: ['a'], notebook: 'b' })).toMatchObject({ notebooks: ['a'] });
+    });
 });

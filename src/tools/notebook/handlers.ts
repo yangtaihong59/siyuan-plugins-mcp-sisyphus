@@ -83,10 +83,13 @@ function createNotebookChildDocsStateErrorResult(notebookId: string, message: st
     };
 }
 
-const handleList: NotebookActionHandler = async ({ client, rawArgs }) => {
+const handleList: NotebookActionHandler = async ({ client, permMgr, rawArgs }) => {
     NotebookListSchema.parse(rawArgs);
     const result = await notebookApi.listNotebooks(client);
-    return createJsonResult(result.notebooks);
+    // Show what this client may do with each notebook, so callers need not
+    // follow up with get_permissions before choosing where to write.
+    await permMgr.reload();
+    return createJsonResult(result.notebooks.map((notebook) => ({ ...notebook, permission: permMgr.get(notebook.id) })));
 };
 
 const handleCreate: NotebookActionHandler = async ({ client, permMgr, rawArgs }) => {

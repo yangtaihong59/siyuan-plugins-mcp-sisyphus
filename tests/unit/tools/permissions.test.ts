@@ -584,8 +584,8 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.tree[0].id).toBe('doc-2');
     });
 
-    it('falls back to listDocsByPath when listDocTree cannot open a leaf document path', async () => {
-        vi.spyOn(documentApi, 'listDocTree').mockRejectedValue(new Error('no such file or directory'));
+    it('lists subpaths through listDocsByPath so the manual sort order matches get_child_docs', async () => {
+        const listDocTree = vi.spyOn(documentApi, 'listDocTree');
         const listDocsByPath = vi.spyOn(documentApi, 'listDocsByPath').mockResolvedValue({
             box: 'allowed',
             path: '/doc-1.sy',
@@ -600,6 +600,8 @@ describe('tool permission and filtering behavior', () => {
         const parsed = parseResult(result);
 
         expect(parsed.tree).toEqual([]);
+        // listDocTree ignores the notebook's manual sort and contradicted reorder results.
+        expect(listDocTree).not.toHaveBeenCalled();
         expect(listDocsByPath).toHaveBeenCalledWith(expect.anything(), 'allowed', '/doc-1.sy', {
             maxListCount: 0,
             showHidden: false,

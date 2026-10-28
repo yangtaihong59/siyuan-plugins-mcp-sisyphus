@@ -1021,16 +1021,10 @@ const handleListTree: DocumentActionHandler = async ({ client, permMgr, rawArgs 
     const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
     if (denied) return denied;
     const maxDepth = parsed.maxDepth ?? 3;
-    let result: unknown;
-    if (parsed.path === '/') {
-        result = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
-    } else {
-        try {
-            result = await documentApi.listDocTree(client, parsed.notebook, parsed.path);
-        } catch {
-            result = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
-        }
-    }
+    // listDocsByPath honours the notebook's manual sort (as get_child_docs and
+    // fs tree do); /api/filetree/listDocTree does not, so it would contradict
+    // them right after a reorder.
+    const result: unknown = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
     const depthHint = 'Use maxDepth to control tree depth. Use document(action="list_tree") with a deeper path to expand specific subtrees.';
     if (result && typeof result === 'object' && Array.isArray((result as Record<string, unknown>).tree)) {
         const enriched = await enrichTreeNodesWithDocInfo(client, (result as Record<string, unknown>).tree);

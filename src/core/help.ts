@@ -180,7 +180,7 @@ export const FS_ACTION_HINTS: Partial<Record<FsAction, string>> = {
     write: 'Creates a missing document. Do not include a leading # Title in markdown; the document title is automatic. Existing pure Markdown documents are protected unless overwrite=true; overwrite refuses documents containing complex SiYuan-native blocks. Use ((id \'title\')) for double-links and #tag# for tags; use advanced tools for database rows, cells, super blocks, embeds, widgets, HTML, and media.',
     replace: 'Edits matched non-complex Markdown blocks by exact old/new matching against the same AI-editable view returned by fs.read. Canonical input is edit={old,new}; shorthand old + new is also accepted. If the document contains complex SiYuan-native blocks, fs.replace skips those blocks and returns skippedComplexBlocks; matches only inside skipped blocks or across block boundaries are rejected without writing. For inline formatting, old should be plain text without Markdown style delimiters such as **, *, `, or ~~; existing DOM inline styles are preserved. Naked ((id)) refs are normalized, and footnotes/siyuan://blocks links are allowed but do not create backlinks. replace_all=true replaces every exact match across editable blocks. Use ((id \'title\')) for new double-links and #tag# for tags.',
     rm: 'Deletes a document by human-readable path. This action requires explicit user confirmation.',
-    mv: 'Moves or renames a document using human-readable paths. This action requires explicit user confirmation.',
+    mv: 'Moves or renames a document using human-readable paths. It is a delete-level operation: every notebook involved (source and destination, also for a rename within one notebook) needs rwd. This action requires explicit user confirmation.',
     reorder: 'Applies a complete manual order to all visible direct child documents under path. orderedPaths must contain every current child path exactly once; the notebook is switched to custom sorting.',
     search: 'Searches Markdown lines under a human-readable document or folder path. Use regex=true for regular expressions.',
 };
@@ -199,7 +199,7 @@ export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     ensure_link_targets: 'Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.',
     rename: 'Single mode uses either id + title or notebook + path + title. Batch mode uses items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.',
     remove: 'Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + storage path.',
-    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.',
+    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.',
     reorder: 'Use parentID + orderedIDs. parentID may be a notebook ID or parent document ID, and orderedIDs must contain every visible direct child document ID exactly once. The notebook is switched to custom sorting.',
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
     get_child_docs: 'Use a document ID. Returns direct child documents only.',
@@ -250,13 +250,14 @@ export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     set_relation: 'Dangerous complete replacement of one relation cell. blockID is the verified source database carrier; itemID and relatedItemIDs are AV row item IDs, never bound document block IDs. An empty relatedItemIDs array clears the relation. MCP authorizes destination writes and verifies source plus two-way reverse cells without retrying an unknown response.',
     get: 'Use avID with scope=structure (default), columns, view, or raw. structure never contains row IDs or values. Optional blockID proves database context; viewID selects reading only. Use query for records.',
     query: 'Use avID, optional keyword/page/pageSize/fields, and mode=rows (default) or primary_keys. fields is a list of stable columnIDs: requested cells and columns are returned and rowID is always kept. Row mode supports viewID/blockID/groupPaging. Primary-key mode rejects viewID/groupPaging/fields and defaults to 16 rows. Follow nextSteps only when present.',
-    create: 'Use parentID and optionally a new avID; preflight first. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.',
+    create: 'Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names and remove_column to drop the select column. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.',
     update_view: 'Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Filter nodes must not mix group fields (combination/filters) with leaf fields (column/operator/value); groups contain only combination and filters. Preflight validates all configurations before one transaction; readback protects every unrequested property.',
 
 };
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
     upload_asset: 'Use assetsDirPath + exactly one of localFilePath or uploadSource. MCP servers require an absolute localFilePath (relative paths are rejected because the server cannot know your working directory); the CLI resolves relative paths against your shell. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.',
+    export_md: 'Exports one document (not its child documents) as Markdown. Database blocks are exported as tables of their current view, so view filters and hidden columns apply. For a whole subtree use export_markdown_snapshot with roots.',
     list_templates: 'Searches SiYuan data/templates via the kernel template picker endpoint. Empty query lists all visible Markdown templates. Results include readArgs and renderArgsTemplate for reuse.',
     read_template: 'Use a path from list_templates, /data/templates/..., /templates/..., or a path relative to data/templates. Reads only Markdown template source and supports offset/limit pagination.',
     create_template: 'Use path + markdown to create a Markdown template under data/templates. overwrite=false by default returns template_exists when the path already exists; pass overwrite=true to replace it.',
@@ -491,6 +492,17 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
     },
     notebook: {},
     block: {
+        update: [
+            {
+                title: 'Replace one block (preflight first)',
+                description: 'Writes are two steps: run with validateOnly=true, then commit with the returned requestId and expectedStateHash.',
+                mcp: { action: 'update', id: '20240318112233-abc123', dataType: 'markdown', data: 'New paragraph text', validateOnly: true },
+            },
+            {
+                title: 'Replace several blocks in one call',
+                mcp: { action: 'update', items: [{ id: '20240318112233-abc123', dataType: 'markdown', data: 'First' }, { id: '20240318112233-def456', dataType: 'markdown', data: 'Second' }], validateOnly: true },
+            },
+        ],
         word_count: [
             {
                 title: 'Get word count for one block',
@@ -510,6 +522,41 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     av: {
+        add_rows: [
+            {
+                title: 'Add rows and fill their cells in one batch (preflight first)',
+                description: 'Get column IDs from av(action="get"). Each row needs a unique clientKey; primaryKeyText fills the primary key column.',
+                mcp: {
+                    action: 'add_rows',
+                    avID: '20240318112233-avdb001',
+                    rows: [
+                        { clientKey: 'a', primaryKeyText: 'Write spec', cells: [{ columnID: '20240318112233-status1', valueType: 'select', option: 'Doing' }, { columnID: '20240318112233-hours01', valueType: 'number', number: 3 }] },
+                        { clientKey: 'b', primaryKeyText: 'Review', cells: [{ columnID: '20240318112233-status1', valueType: 'select', option: 'Todo' }] },
+                    ],
+                    validateOnly: true,
+                },
+            },
+        ],
+        set_cells: [
+            {
+                title: 'Set a select and a number cell',
+                mcp: {
+                    action: 'set_cells',
+                    avID: '20240318112233-avdb001',
+                    cells: [
+                        { rowID: '20240318112233-row0001', columnID: '20240318112233-status1', valueType: 'select', option: 'Done' },
+                        { rowID: '20240318112233-row0001', columnID: '20240318112233-hours01', valueType: 'number', number: 5 },
+                    ],
+                    validateOnly: true,
+                },
+            },
+        ],
+        rename: [
+            {
+                title: 'Name the database and rename its primary key column',
+                mcp: { action: 'rename', avID: '20240318112233-avdb001', name: 'Tasks', keyID: '20240318112233-pkey001', keyName: 'Task', validateOnly: true },
+            },
+        ],
         update_view: [
             {
                 title: 'Preflight a select leaf filter',

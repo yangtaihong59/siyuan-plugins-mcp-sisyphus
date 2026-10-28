@@ -417,7 +417,7 @@
 | 191 | POST | `/api/search/getAssetContentByPath` | search | `getAssetContentByPath` | ✓ |  |  | 条件可用 | 内部 |  | — | 未知（内部） | `kernel/api/router.go:239` |
 | 192 | POST | `/api/search/listInvalidBlockRefs` | search | `listInvalidBlockRefs` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/search.ts:146 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:240` |
 | 193 | POST | `/api/search/semanticSearchBlock` | search | `semanticSearchBlock` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/search.ts:26 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:241` |
-| 194 | POST | `/api/block/getBlockInfo` | block | `getBlockInfo` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:198<br>tool-direct:src/tools/document/batch-rename-plan.ts:166<br>tool-direct:src/tools/document/conversion.ts:13<br>tool-direct:src/tools/flashcard/review-state.ts:21<br>tool-direct:src/tools/search/handlers.ts:240 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:243` |
+| 194 | POST | `/api/block/getBlockInfo` | block | `getBlockInfo` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:198<br>tool-direct:src/tools/document/batch-rename-plan.ts:166<br>tool-direct:src/tools/document/conversion.ts:13<br>tool-direct:src/tools/document/handlers.ts:1197<br>tool-direct:src/tools/document/handlers.ts:1220<br>tool-direct:src/tools/flashcard/review-state.ts:21<br>tool-direct:src/tools/search/handlers.ts:240 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:243` |
 | 195 | POST | `/api/block/getBlockDOM` | block | `getBlockDOM` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:210<br>tool-direct:src/tools/document/conversion.ts:24 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:244` |
 | 196 | POST | `/api/block/getBlockDOMs` | block | `getBlockDOMs` | ✓ |  |  | 条件可用 | 内部 |  | — | 未知（内部） | `kernel/api/router.go:245` |
 | 197 | POST | `/api/block/getBlockDOMWithEmbed` | block | `getBlockDOMWithEmbed` | ✓ |  |  | 条件可用 | 内部 |  | — | 未知（内部） | `kernel/api/router.go:246` |
@@ -514,7 +514,7 @@
 | 288 | POST | `/api/sync/createCloudSyncDir` | sync | `createCloudSyncDir` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:342` |
 | 289 | POST | `/api/sync/removeCloudSyncDir` | sync | `removeCloudSyncDir` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:343` |
 | 290 | POST | `/api/sync/listCloudSyncDir` | sync | `listCloudSyncDir` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:344` |
-| 291 | POST | `/api/sync/performSync` | sync | `performSync` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/system.ts:28<br>core:src/core/help.ts:321 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:345` |
+| 291 | POST | `/api/sync/performSync` | sync | `performSync` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/system.ts:28<br>core:src/core/help.ts:322 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:345` |
 | 292 | POST | `/api/sync/performBootSync` | sync | `performBootSync` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:346` |
 | 293 | POST | `/api/sync/getBootSync` | sync | `getBootSync` | ✓ |  |  | 条件可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:347` |
 | 294 | POST | `/api/sync/getSyncInfo` | sync | `getSyncInfo` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:348` |
@@ -538,14 +538,14 @@
 | 312 | POST | `/api/asset/upload` | asset | `Upload` | ✓ | ✓ | ✓ | 不可用 | 官方公开 |  | api-wrapper:src/api/file.ts:23<br>core:src/kernel/client.ts:86 | 见官方 API 文档 | `kernel/api/router.go:370` |
 | 313 | POST | `/api/asset/setFileAnnotation` | asset | `setFileAnnotation` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:371` |
 | 314 | POST | `/api/asset/getFileAnnotation` | asset | `getFileAnnotation` | ✓ |  |  | 条件可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:372` |
-| 315 | POST | `/api/asset/getUnusedAssets` | asset | `getUnusedAssets` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:55 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:373` |
+| 315 | POST | `/api/asset/getUnusedAssets` | asset | `getUnusedAssets` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:57 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:373` |
 | 316 | POST | `/api/asset/getMissingAssets` | asset | `getMissingAssets` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:374` |
-| 317 | POST | `/api/asset/removeUnusedAsset` | asset | `removeUnusedAsset` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:86 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:375` |
-| 318 | POST | `/api/asset/removeUnusedAssets` | asset | `removeUnusedAssets` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:71 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:376` |
-| 319 | POST | `/api/asset/getDocImageAssets` | asset | `getDocImageAssets` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:63 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:377` |
-| 320 | POST | `/api/asset/getDocAssets` | asset | `getDocAssets` | ✓ |  |  | 条件可用 | 内部 |  | api-wrapper:src/api/file.ts:59 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:378` |
-| 321 | POST | `/api/asset/renameAsset` | asset | `renameAsset` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:79 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:379` |
-| 322 | POST | `/api/asset/getImageOCRText` | asset | `getImageOCRText` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:67 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:380` |
+| 317 | POST | `/api/asset/removeUnusedAsset` | asset | `removeUnusedAsset` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:88 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:375` |
+| 318 | POST | `/api/asset/removeUnusedAssets` | asset | `removeUnusedAssets` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:73 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:376` |
+| 319 | POST | `/api/asset/getDocImageAssets` | asset | `getDocImageAssets` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:65 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:377` |
+| 320 | POST | `/api/asset/getDocAssets` | asset | `getDocAssets` | ✓ |  |  | 条件可用 | 内部 |  | api-wrapper:src/api/file.ts:61 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:378` |
+| 321 | POST | `/api/asset/renameAsset` | asset | `renameAsset` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:81 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:379` |
+| 322 | POST | `/api/asset/getImageOCRText` | asset | `getImageOCRText` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/file.ts:69 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:380` |
 | 323 | POST | `/api/asset/setImageOCRText` | asset | `setImageOCRText` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:381` |
 | 324 | POST | `/api/asset/ocr` | asset | `ocr` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:382` |
 | 325 | POST | `/api/asset/fullReindexAssetContent` | asset | `fullReindexAssetContent` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:383` |
@@ -556,14 +556,14 @@
 | 330 | POST | `/api/export/exportSYs` | export | `exportSYs` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:389` |
 | 331 | POST | `/api/export/exportSY` | export | `exportSY` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:390` |
 | 332 | POST | `/api/export/exportNotebookSY` | export | `exportNotebookSY` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:391` |
-| 333 | POST | `/api/export/exportMdContent` | export | `exportMdContent` | ✓ | ✓ |  | 不可用 | 官方公开 | ✓ | api-wrapper:src/api/file.ts:36<br>core:src/core/help.ts:24 | 见官方 API 文档 | `kernel/api/router.go:392` |
+| 333 | POST | `/api/export/exportMdContent` | export | `exportMdContent` | ✓ | ✓ |  | 不可用 | 官方公开 | ✓ | api-wrapper:src/api/file.ts:38<br>core:src/core/help.ts:24 | 见官方 API 文档 | `kernel/api/router.go:392` |
 | 334 | POST | `/api/export/exportHTML` | export | `exportHTML` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:393` |
 | 335 | POST | `/api/export/exportPreviewHTML` | export | `exportPreviewHTML` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:394` |
 | 336 | POST | `/api/export/exportMdHTML` | export | `exportMdHTML` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:395` |
 | 337 | POST | `/api/export/exportDocx` | export | `exportDocx` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:396` |
 | 338 | POST | `/api/export/processPDF` | export | `processPDF` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:397` |
 | 339 | POST | `/api/export/preview` | export | `exportPreview` | ✓ |  |  | 条件可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:398` |
-| 340 | POST | `/api/export/exportResources` | export | `exportResources` | ✓ | ✓ |  | 不可用 | 官方公开 |  | api-wrapper:src/api/file.ts:51 | 见官方 API 文档 | `kernel/api/router.go:399` |
+| 340 | POST | `/api/export/exportResources` | export | `exportResources` | ✓ | ✓ |  | 不可用 | 官方公开 |  | api-wrapper:src/api/file.ts:53 | 见官方 API 文档 | `kernel/api/router.go:399` |
 | 341 | POST | `/api/export/exportAsFile` | export | `exportAsFile` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:400` |
 | 342 | POST | `/api/export/exportData` | export | `exportData` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:401` |
 | 343 | POST | `/api/export/exportDataInFolder` | export | `exportDataInFolder` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:402` |

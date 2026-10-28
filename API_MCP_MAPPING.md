@@ -179,14 +179,14 @@
 
 | API 路径 | 分类 | 位置 | 映射状态 |
 |---|---|---|---|
-| `/api/asset/getDocAssets` | api-wrapper | `src/api/file.ts:59` | 有效内核路由 |
-| `/api/asset/getDocImageAssets` | api-wrapper | `src/api/file.ts:63` | 有效内核路由 |
-| `/api/asset/getImageOCRText` | api-wrapper | `src/api/file.ts:67` | 有效内核路由 |
-| `/api/asset/getUnusedAssets` | api-wrapper | `src/api/file.ts:55` | 有效内核路由 |
-| `/api/asset/removeUnusedAsset` | api-wrapper | `src/api/file.ts:86` | 有效内核路由 |
-| `/api/asset/removeUnusedAssets` | api-wrapper | `src/api/file.ts:71` | 有效内核路由 |
-| `/api/asset/renameAsset` | api-wrapper | `src/api/file.ts:79` | 有效内核路由 |
-| `/api/asset/setImageAlpha` | api-wrapper | `src/api/file.ts:94` | 失效 wrapper（保留审计） |
+| `/api/asset/getDocAssets` | api-wrapper | `src/api/file.ts:61` | 有效内核路由 |
+| `/api/asset/getDocImageAssets` | api-wrapper | `src/api/file.ts:65` | 有效内核路由 |
+| `/api/asset/getImageOCRText` | api-wrapper | `src/api/file.ts:69` | 有效内核路由 |
+| `/api/asset/getUnusedAssets` | api-wrapper | `src/api/file.ts:57` | 有效内核路由 |
+| `/api/asset/removeUnusedAsset` | api-wrapper | `src/api/file.ts:88` | 有效内核路由 |
+| `/api/asset/removeUnusedAssets` | api-wrapper | `src/api/file.ts:73` | 有效内核路由 |
+| `/api/asset/renameAsset` | api-wrapper | `src/api/file.ts:81` | 有效内核路由 |
+| `/api/asset/setImageAlpha` | api-wrapper | `src/api/file.ts:96` | 失效 wrapper（保留审计） |
 | `/api/asset/upload` | api-wrapper+core | `src/api/file.ts:23`<br>`src/kernel/client.ts:86` | 有效内核路由 |
 | `/api/attr/getBlockAttrs` | api-wrapper | `src/api/block.ts:303` | 有效内核路由 |
 | `/api/attr/setBlockAttrs` | api-wrapper | `src/api/block.ts:295` | 有效内核路由 |
@@ -217,7 +217,7 @@
 | `/api/block/foldBlock` | api-wrapper | `src/api/block.ts:126` | 有效内核路由 |
 | `/api/block/getBlockBreadcrumb` | api-wrapper | `src/api/block.ts:206` | 有效内核路由 |
 | `/api/block/getBlockDOM` | api-wrapper+tool-direct | `src/api/block.ts:210`<br>`src/tools/document/conversion.ts:24` | 有效内核路由 |
-| `/api/block/getBlockInfo` | api-wrapper+tool-direct | `src/api/block.ts:198`<br>`src/tools/document/batch-rename-plan.ts:166`<br>`src/tools/document/conversion.ts:13`<br>`src/tools/flashcard/review-state.ts:21`<br>`src/tools/search/handlers.ts:240` | 有效内核路由 |
+| `/api/block/getBlockInfo` | api-wrapper+tool-direct | `src/api/block.ts:198`<br>`src/tools/document/batch-rename-plan.ts:166`<br>`src/tools/document/conversion.ts:13`<br>`src/tools/document/handlers.ts:1197`<br>`src/tools/document/handlers.ts:1220`<br>`src/tools/flashcard/review-state.ts:21`<br>`src/tools/search/handlers.ts:240` | 有效内核路由 |
 | `/api/block/getBlockKramdown` | api-wrapper | `src/api/block.ts:143`<br>`src/api/block.ts:144` | 有效内核路由 |
 | `/api/block/getBlockKramdowns` | api-wrapper | `src/api/block.ts:155` | 有效内核路由 |
 | `/api/block/getBlocksWordCount` | api-wrapper | `src/api/block.ts:218` | 有效内核路由 |
@@ -232,8 +232,8 @@
 | `/api/block/transferBlockRef` | api-wrapper | `src/api/block.ts:190` | 有效内核路由 |
 | `/api/block/unfoldBlock` | api-wrapper | `src/api/block.ts:134` | 有效内核路由 |
 | `/api/block/updateBlock` | api-wrapper | `src/api/block.ts:93` | 有效内核路由 |
-| `/api/export/exportMdContent` | api-wrapper+core | `src/api/file.ts:36`<br>`src/core/help.ts:24` | 有效内核路由 |
-| `/api/export/exportResources` | api-wrapper | `src/api/file.ts:51` | 有效内核路由 |
+| `/api/export/exportMdContent` | api-wrapper+core | `src/api/file.ts:38`<br>`src/core/help.ts:24` | 有效内核路由 |
+| `/api/export/exportResources` | api-wrapper | `src/api/file.ts:53` | 有效内核路由 |
 | `/api/file/getFile` | api-wrapper+core+tool-direct | `src/api/client.ts:179`<br>`src/api/client.ts:272`<br>`src/kernel/client.ts:208`<br>`src/kernel/client.ts:230`<br>`src/tools/file/handlers.ts:743`<br>`src/tools/file/handlers.ts:955` | 有效内核路由 |
 | `/api/file/putFile` | api-wrapper+core | `src/api/client.ts:314`<br>`src/core/help.ts:99`<br>`src/kernel/client.ts:249` | 有效内核路由 |
 | `/api/filetree/changeSort` | api-wrapper | `src/api/document.ts:197` | 有效内核路由 |
@@ -308,7 +308,7 @@
 | `/api/search/searchTag` | api-wrapper | `src/api/search.ts:37` | 有效内核路由 |
 | `/api/search/searchTemplate` | api-wrapper | `src/api/template.ts:155` | 有效内核路由 |
 | `/api/search/semanticSearchBlock` | api-wrapper | `src/api/search.ts:26` | 有效内核路由 |
-| `/api/sync/performSync` | api-wrapper+core | `src/api/system.ts:28`<br>`src/core/help.ts:321` | 有效内核路由 |
+| `/api/sync/performSync` | api-wrapper+core | `src/api/system.ts:28`<br>`src/core/help.ts:322` | 有效内核路由 |
 | `/api/system/bootProgress` | api-wrapper | `src/api/system.ts:24` | 有效内核路由 |
 | `/api/system/currentTime` | api-wrapper | `src/api/system.ts:36` | 有效内核路由 |
 | `/api/system/getChangelog` | api-wrapper | `src/api/system.ts:12` | 有效内核路由 |

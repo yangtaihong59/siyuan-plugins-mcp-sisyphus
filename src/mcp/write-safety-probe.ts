@@ -409,7 +409,7 @@ export async function probeCurrentState(
         }
     }
     if (!managesNotebookPermission) {
-        enforceNotebookPermission(permMgr, state, targetIds, requiresDeletePermission(category, action));
+        enforceNotebookPermission(permMgr, state, targetIds, requiresDeletePermission(category, action), action);
     }
     return {
         hash: hashWriteState(state),
@@ -848,9 +848,11 @@ async function collectDestinationNotebooks(
 
 const BLOCK_ANCHOR_FIELDS = ['parentID', 'previousID', 'nextID'] as const;
 
-function notebookDeniedMessage(permMgr: PermissionManager, notebook: string, destructive: boolean): string {
+function notebookDeniedMessage(permMgr: PermissionManager, notebook: string, destructive: boolean, action?: string): string {
     const required = destructive ? 'delete (rwd)' : 'write (rw or rwd)';
-    return `Notebook ${notebook} has permission "${permMgr.get(notebook)}"; this write needs ${required} access. Nothing was written. Check with notebook(action="get_permissions"); permissions are changed by the user in the plugin settings.`;
+    // Moves remove the document from where it was, so they are gated like deletions.
+    const why = destructive && (action === 'move' || action === 'mv') ? ' Moves are delete-level operations: every notebook involved (source and destination) needs rwd.' : '';
+    return `Notebook ${notebook} has permission "${permMgr.get(notebook)}"; this write needs ${required} access.${why} Nothing was written. Check with notebook(action="get_permissions"); permissions are changed by the user in the plugin settings.`;
 }
 
 function enforceNotebookPermission(
@@ -858,6 +860,7 @@ function enforceNotebookPermission(
     state: Record<string, unknown>,
     targetIds: string[],
     destructive: boolean,
+    action?: string,
 ): void {
     const boxes = new Set<string>();
     collectNotebookBoxes(state, boxes);
@@ -866,7 +869,7 @@ function enforceNotebookPermission(
     }
     for (const box of boxes) {
         const allowed = destructive ? permMgr.canDelete(box) : permMgr.canWrite(box);
-        if (!allowed) throw safetyError('permission_denied', notebookDeniedMessage(permMgr, box, destructive));
+        if (!allowed) throw safetyError('permission_denied', notebookDeniedMessage(permMgr, box, destructive, action));
     }
 }
 
