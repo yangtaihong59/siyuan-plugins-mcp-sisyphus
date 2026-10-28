@@ -138,7 +138,7 @@
 | `search.semantic` | `/api/search/semanticSearchBlock` | — | — | `read` | `search`、`sql`、`ref` | 数据外传/外部费用风险；最低 SiYuan v3.8.0 |
 | `search.query_sql` | `/api/query/sql` | — | — | `read` | `search`、`sql`、`ref` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `search.get_backlinks` | `/api/ref/getBacklink2`<br>`/api/ref/getBacklinkDoc`<br>`/api/ref/getBackmentionDoc` | — | `/api/query/sql` | `read` | `search`、`sql`、`ref` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
-| `search.search_refs` | `/api/search/searchRefBlock` | — | — | `read` | `search`、`sql`、`ref` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
+| `search.search_refs` | `/api/query/sql` | — | — | `read` | `search`、`sql`、`ref` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `search.find_replace` | `/api/search/findReplace` | — | — | `mutation(manifest)`；危险：协议确认 | `search`、`sql`、`ref` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `search.search_assets` | `/api/search/searchAsset` | — | — | `read` | `search`、`sql`、`ref` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |
 | `search.fulltext_asset_content` | `/api/search/getAssetContent`<br>`/api/search/fullTextSearchAssetContent` | — | — | `read` | `search`、`sql`、`ref` | 业务端点；另经过权限/刷新/写安全/lifecycle 横切链 |

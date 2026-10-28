@@ -438,6 +438,28 @@ const ENABLE_IN_SETTINGS_HINT = 'Enable it in Settings -> Plugins -> SiYuan MCP 
  * tools/call gate errors. The Node server, kernel endpoint and CLI all return
  * these exact shapes, so clients can branch on error.type regardless of transport.
  */
+/** POSIX, Windows drive (C:\\ or C:/) and UNC paths. */
+export function isAbsoluteLocalPath(value: string): boolean {
+    return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value);
+}
+
+/**
+ * A server-side process cannot know the caller's working directory, so a
+ * relative localFilePath would silently resolve against the server's cwd.
+ */
+export function createRelativeLocalPathResult(name: string, action: string, localFilePath: string): ToolResult {
+    return toErrorText({
+        error: {
+            type: 'validation_error',
+            message: `localFilePath must be an absolute path on the MCP server host; got relative path "${localFilePath}".`,
+            tool: name,
+            action,
+            field: 'localFilePath',
+            hint: 'Pass an absolute path (e.g. /Users/me/Pictures/cover.png). The CLI resolves relative paths against your current directory automatically. No write was attempted.',
+        },
+    });
+}
+
 export function createUnknownToolResult(name: string): ToolResult {
     return toErrorText({
         error: {

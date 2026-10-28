@@ -230,7 +230,7 @@ Read the changed blocks again. Recent writes can take time to enter the search i
             documents: call('document', 'query', { fields: ['id', 'notebook', 'title', 'hpath', 'blockCount', 'contentChars', 'sameTitleCount'], sortBy: 'blockCount', page: 1, pageSize: 50 }),
             sql: call('search', 'query_sql', { stmt: "SELECT id, hpath, content FROM blocks WHERE type = 'p' ORDER BY updated DESC LIMIT 10" }),
             backlinks: call('search', 'get_backlinks', { id: '<block-or-doc-id>', mode: 'both' }),
-            refs: call('search', 'search_refs', { id: '<block-id>', beforeLen: 512 }),
+            refs: call('search', 'search_refs', { id: '<block-id>' }),
             assets: call('search', 'search_assets', { query: 'diagram', exts: ['png', 'jpg', 'webp'] }),
             findReplace: call('search', 'find_replace', { k: 'old text', r: 'new text', ids: ['<doc-id>'] }),
         },

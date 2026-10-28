@@ -316,6 +316,51 @@ async function queryFallbackBackmentionRows(
     );
 }
 
+export const REFERENCING_BLOCKS_LIMIT = 200;
+
+/**
+ * Blocks whose content references `id` (refs.def_block_id). SiYuan's
+ * /api/search/searchRefBlock is the "((" autocomplete picker and returns
+ * candidate targets, not referrers, so it cannot back search_refs.
+ * Fetches one row past the limit so callers can report truncation.
+ */
+export async function queryReferencingBlocks(
+    client: SiYuanClient,
+    id: string,
+    rootID?: string,
+    keyword?: string,
+): Promise<unknown[]> {
+    const filters = [`r.def_block_id = '${escapeSqlString(id)}'`];
+    if (rootID) {
+        filters.push(`r.root_id = '${escapeSqlString(rootID)}'`);
+    }
+    if (keyword && keyword.trim()) {
+        filters.push(`b.content LIKE '%${escapeSqlLike(keyword.trim())}%' ESCAPE '\\'`);
+    }
+
+    return searchApi.querySQL(
+        client,
+        `
+        SELECT
+            b.id,
+            b.root_id,
+            b.box,
+            b.path,
+            b.hpath,
+            b.type,
+            b.content,
+            b.markdown,
+            MAX(r.content) AS ref_text
+        FROM refs r
+        JOIN blocks b ON b.id = r.block_id
+        WHERE ${filters.join(' AND ')}
+        GROUP BY b.id
+        ORDER BY MAX(b.updated) DESC
+        LIMIT ${REFERENCING_BLOCKS_LIMIT + 1}
+        `.trim(),
+    );
+}
+
 export async function getBacklinksWithFallback(
     client: SiYuanClient,
     id: string,

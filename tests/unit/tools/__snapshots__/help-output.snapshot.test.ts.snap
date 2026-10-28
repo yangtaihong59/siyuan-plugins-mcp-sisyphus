@@ -9296,7 +9296,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
           "When Markdown contains an assets/... image and the task depends on its visual content, a vision-capable client should call file(action="read_image") for that one relevant image. Provide its path plus exactly one authorized document id or human-readable documentPath. Do not inline every document image automatically.",
           "file(action="get_image_ocr_text") reads OCR text already stored by SiYuan; it does not run OCR or cause SiYuan to generate OCR. Prefer read_image for direct visual understanding, and use stored OCR as a fallback for clients without vision support.",
         ],
-        "hint": "Use assetsDirPath + exactly one of localFilePath or uploadSource. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
+        "hint": "Use assetsDirPath + exactly one of localFilePath or uploadSource. MCP servers require an absolute localFilePath (relative paths are rejected because the server cannot know your working directory); the CLI resolves relative paths against your shell. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
         "parameters": {
           "additionalProperties": false,
           "description": "Upload a local file or a kernel-staged uploadSource to the specified assets directory.",
@@ -9314,7 +9314,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
               "type": "boolean",
             },
             "localFilePath": {
-              "description": "Local file path. CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
+              "description": "Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
               "type": "string",
             },
             "uploadSource": {
@@ -9369,7 +9369,7 @@ Actions (required fields): upload_asset*(assetsDirPath) · list_templates() · r
         "render": "Use engine="template" with id + path for a workspace template; that engine uses .action{...} delimiters and exposes limited document fields such as id/title/name/alias. Set preview=true for SiYuan preview DOM. Use engine="sprig" with inline template for {{...}} syntax; Sprig has functions but no document context.",
         "save_doc_as_template": "Use id + name to save a document as a root-level template through SiYuan’s docSaveAsTemplate API. Slashes are rejected; pass overwrite=true to replace an existing root template.",
         "update_template": "Use path + markdown to replace an existing Markdown template. The template must resolve through list_templates first; otherwise MCP returns template_not_found.",
-        "upload_asset": "Use assetsDirPath + exactly one of localFilePath or uploadSource. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
+        "upload_asset": "Use assetsDirPath + exactly one of localFilePath or uploadSource. MCP servers require an absolute localFilePath (relative paths are rejected because the server cannot know your working directory); the CLI resolves relative paths against your shell. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
       },
       "actions": {
         "audit_image_refs": {
@@ -9444,7 +9444,7 @@ Actions (required fields): upload_asset*(assetsDirPath) · list_templates() · r
           "requiresConfirmation": false,
         },
         "upload_asset": {
-          "hint": "Use assetsDirPath + exactly one of localFilePath or uploadSource. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
+          "hint": "Use assetsDirPath + exactly one of localFilePath or uploadSource. MCP servers require an absolute localFilePath (relative paths are rejected because the server cannot know your working directory); the CLI resolves relative paths against your shell. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.",
           "requiresConfirmation": true,
         },
       },
@@ -12280,7 +12280,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
           "search(action="fulltext") supports parentId to scope results within a document subtree, and hasTags to filter by tag presence.",
           "Right after creating or editing content, full-text and tag search can lag behind writes because SiYuan indexing is eventually consistent; brief retries are expected in live tests.",
         ],
-        "hint": "Returns block-level reference contexts for the target id. Use this when you need the surrounding block content, not just the document-level backlink list. beforeLen controls how much leading context is included in each hit.",
+        "hint": "Returns the blocks whose content references the target id (block refs to that block or document), each with its own content and ref_text. Empty when nothing references id. Use rootID to limit to one referencing document and k to filter by keyword; get_backlinks groups by document and can include unlinked mentions.",
         "parameters": {
           "additionalProperties": false,
           "description": "Search blocks that reference a given block or document.",
@@ -12289,34 +12289,16 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
               "const": "search_refs",
               "type": "string",
             },
-            "beforeLen": {
-              "description": "Context length before the reference, default 512",
-              "maximum": 9007199254740991,
-              "minimum": 0,
-              "type": "integer",
-            },
             "id": {
-              "description": "Referenced block or document ID",
+              "description": "Referenced (target) block or document ID",
               "type": "string",
-            },
-            "isDatabase": {
-              "description": "Whether the reference target is a database",
-              "type": "boolean",
-            },
-            "isSquareBrackets": {
-              "description": "Search in square-bracket reference mode",
-              "type": "boolean",
             },
             "k": {
-              "description": "Keyword filter",
-              "type": "string",
-            },
-            "reqId": {
-              "description": "Optional passthrough request ID",
+              "description": "Keyword filter on the referencing block content",
               "type": "string",
             },
             "rootID": {
-              "description": "Optional current root document ID",
+              "description": "Only return referencing blocks inside this document ID",
               "type": "string",
             },
           },
@@ -12437,7 +12419,7 @@ Actions (required fields): fulltext(query) · semantic(query) · query_sql() · 
         "list_invalid_refs": "no extra fields",
         "query_sql": "Execute a SELECT statement. Common tables: blocks, spans, assets. Prefer sql over stmt when prompting an AI. Always use LIMIT to control result size. User-selected columns are preserved. Raw SQL and fulltext SQL mode are rejected while any notebook is unreadable because arbitrary SQL cannot be safely post-filtered by notebook. Use document(action="query") for permission-scoped document lists and statistics.",
         "search_assets": "Searches asset filenames. Prefer query over k when prompting an AI. If you need OCR or indexed inner-text matches, use fulltext_asset_content instead.",
-        "search_refs": "Returns block-level reference contexts for the target id. Use this when you need the surrounding block content, not just the document-level backlink list. beforeLen controls how much leading context is included in each hit.",
+        "search_refs": "Returns the blocks whose content references the target id (block refs to that block or document), each with its own content and ref_text. Empty when nothing references id. Use rootID to limit to one referencing document and k to filter by keyword; get_backlinks groups by document and can include unlinked mentions.",
         "semantic": "Searches SiYuan’s native embedding index by meaning. Requires SiYuan 3.7.0+ and an enabled, indexed embedding model. Supports paths, types/typeShortcodes, subTypes, page, and pageSize; encrypted notebooks are not included in the native embedding index.",
       },
       "actions": {
@@ -12469,7 +12451,7 @@ Actions (required fields): fulltext(query) · semantic(query) · query_sql() · 
           "requiresConfirmation": false,
         },
         "search_refs": {
-          "hint": "Returns block-level reference contexts for the target id. Use this when you need the surrounding block content, not just the document-level backlink list. beforeLen controls how much leading context is included in each hit.",
+          "hint": "Returns the blocks whose content references the target id (block refs to that block or document), each with its own content and ref_text. Empty when nothing references id. Use rootID to limit to one referencing document and k to filter by keyword; get_backlinks groups by document and can include unlinked mentions.",
           "requiresConfirmation": false,
         },
         "semantic": {

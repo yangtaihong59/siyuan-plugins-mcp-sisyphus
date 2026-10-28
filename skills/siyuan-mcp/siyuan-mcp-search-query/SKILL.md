@@ -26,7 +26,7 @@ search(action="query_sql", stmt="SELECT id, hpath, content FROM blocks WHERE typ
 search(action="get_backlinks", id="<block-or-doc-id>", mode="both")
 ```
 ```text
-search(action="search_refs", id="<block-id>", beforeLen=512)
+search(action="search_refs", id="<block-id>")
 ```
 ```text
 search(action="search_assets", query="diagram", exts=["png","jpg","webp"])

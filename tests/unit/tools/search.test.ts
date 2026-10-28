@@ -472,21 +472,14 @@ describe('search tool filtering', () => {
     });
 
     it('maps search_refs keyword alias to k while still requiring id', async () => {
+        const statements: string[] = [];
         const client = createMockClient({
             request: async (endpoint: string, body: unknown) => {
-                if (endpoint === '/api/query/sql') {
-                    return [{
-                        id: 'target-block',
-                        root_id: 'doc-1',
-                        box: 'nb-1',
-                        path: '/doc-1.sy',
-                        hpath: '/Doc',
-                        type: 'p',
-                    }];
-                }
-                expect(endpoint).toBe('/api/search/searchRefBlock');
-                expect(body).toMatchObject({ id: 'target-block', k: 'needle' });
-                return { blocks: [] };
+                expect(endpoint).toBe('/api/query/sql');
+                const stmt = (body as { stmt: string }).stmt;
+                statements.push(stmt);
+                if (stmt.includes('FROM refs')) return [];
+                return [{ id: 'target-block', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', hpath: '/Doc', type: 'p' }];
             },
         });
         const permMgr = {
@@ -504,6 +497,41 @@ describe('search tool filtering', () => {
         }, buildDefaultToolConfig().search, permMgr as never);
 
         expect(result.isError).toBeUndefined();
+        const refsStmt = statements.find((stmt) => stmt.includes('FROM refs'));
+        expect(refsStmt).toContain("r.def_block_id = 'target-block'");
+        expect(refsStmt).toContain("LIKE '%needle%'");
+    });
+
+    it('search_refs returns only blocks referencing the target id and is empty when nothing references it', async () => {
+        const referrers: Record<string, unknown[]> = {
+            'cited-block': [{ id: 'citing-1', root_id: 'doc-2', box: 'nb-1', path: '/doc-2.sy', hpath: '/Doc2', type: 'p', content: 'see ((cited-block))', ref_text: 'cited' }],
+        };
+        const client = createMockClient({
+            request: async (endpoint: string, body: unknown) => {
+                expect(endpoint).not.toBe('/api/search/searchRefBlock');
+                const stmt = (body as { stmt: string }).stmt;
+                if (stmt.includes('FROM refs')) {
+                    const match = /r\.def_block_id = '([^']+)'/.exec(stmt);
+                    return referrers[match?.[1] ?? ''] ?? [];
+                }
+                return [{ id: 'x', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', hpath: '/Doc', type: 'p' }];
+            },
+        });
+        const permMgr = {
+            reload: async () => undefined,
+            canWrite: () => true,
+            canRead: () => true,
+            canDelete: () => true,
+            get: () => 'rwd',
+        };
+
+        const empty = JSON.parse((await callSearchTool(client, { action: 'search_refs', id: 'lonely-block' }, buildDefaultToolConfig().search, permMgr as never)).content[0].text);
+        expect(empty.blocks).toEqual([]);
+        expect(empty.total).toBe(0);
+
+        const cited = JSON.parse((await callSearchTool(client, { action: 'search_refs', id: 'cited-block' }, buildDefaultToolConfig().search, permMgr as never)).content[0].text);
+        expect(cited.total).toBe(1);
+        expect(cited.blocks[0].id).toBe('citing-1');
     });
 
     it('adds notebookName to fulltext search blocks when the notebook can be resolved', async () => {

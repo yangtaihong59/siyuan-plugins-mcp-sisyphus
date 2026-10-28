@@ -63,13 +63,9 @@ export const SearchGetBacklinksSchema = z.object({
 
 export const SearchRefsSchema = z.object({
     action: z.literal("search_refs"),
-    id: z.string().describe("Referenced block or document ID"),
-    rootID: z.string().optional().describe("Optional current root document ID"),
-    k: z.string().optional().describe("Keyword filter"),
-    beforeLen: z.number().int().min(0).optional().describe("Context length before the reference, default 512"),
-    isSquareBrackets: z.boolean().optional().describe("Search in square-bracket reference mode"),
-    isDatabase: z.boolean().optional().describe("Whether the reference target is a database"),
-    reqId: z.string().optional().describe("Optional passthrough request ID"),
+    id: z.string().describe("Referenced (target) block or document ID"),
+    rootID: z.string().optional().describe("Only return referencing blocks inside this document ID"),
+    k: z.string().optional().describe("Keyword filter on the referencing block content"),
 });
 
 export const SearchFindReplaceSchema = z.object({

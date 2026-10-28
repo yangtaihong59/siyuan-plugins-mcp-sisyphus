@@ -131,7 +131,6 @@ function createContractClient() {
             if (endpoint === '/api/ref/getBacklinkDoc') return { backlinks: [{ id: 'block-1', box: 'nb-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/ref/getBacklink2') return { backlinks: [{ id: 'doc-2', box: 'nb-1', path: '/doc-2.sy' }], backmentions: [] };
             if (endpoint === '/api/ref/getBackmentionDoc') return { backmentions: [{ id: 'block-2', box: 'nb-1', path: '/doc-1.sy' }] };
-            if (endpoint === '/api/search/searchRefBlock') return { blocks: [{ id: 'block-1', box: 'nb-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/search/searchAsset') return [{ path: 'assets/asset.png' }];
             if (endpoint === '/api/search/fullTextSearchAssetContent') return { assetContents: [{ id: 'asset-1', box: 'nb-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/search/listInvalidBlockRefs') return { blocks: [{ id: 'bad-ref', box: 'nb-1', path: '/doc-1.sy' }] };
@@ -291,7 +290,7 @@ describe('tool action contract coverage', () => {
             { action: 'semantic', args: { action: 'semantic', query: 'meaning' }, expectedEndpoint: '/api/search/semanticSearchBlock' },
             { action: 'query_sql', args: { action: 'query_sql', stmt: 'SELECT * FROM blocks LIMIT 1' }, expectedEndpoint: '/api/query/sql' },
             { action: 'get_backlinks', args: { action: 'get_backlinks', id: 'doc-1' }, expectedEndpoint: '/api/ref/getBacklink2' },
-            { action: 'search_refs', args: { action: 'search_refs', id: 'doc-1' }, expectedEndpoint: '/api/search/searchRefBlock' },
+            { action: 'search_refs', args: { action: 'search_refs', id: 'doc-1' }, expectedEndpoint: '/api/query/sql' },
             { action: 'find_replace', args: { action: 'find_replace', k: 'old', r: 'new', ids: ['doc-1'] }, expectedEndpoint: '/api/search/findReplace' },
             { action: 'search_assets', args: { action: 'search_assets', k: 'asset' }, expectedEndpoint: '/api/search/searchAsset' },
             { action: 'fulltext_asset_content', args: { action: 'fulltext_asset_content', query: 'asset' }, expectedEndpoint: '/api/search/fullTextSearchAssetContent' },

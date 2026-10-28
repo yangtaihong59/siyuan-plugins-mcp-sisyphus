@@ -26,7 +26,7 @@ siyuan-sisyphus search query-sql --stmt 'SELECT id, hpath, content FROM blocks W
 siyuan-sisyphus search get-backlinks --id '<block-or-doc-id>' --mode 'both' --json
 ```
 ```bash
-siyuan-sisyphus search search-refs --id '<block-id>' --before-len '512' --json
+siyuan-sisyphus search search-refs --id '<block-id>' --json
 ```
 ```bash
 siyuan-sisyphus search search-assets --query 'diagram' --exts-json '["png","jpg","webp"]' --json

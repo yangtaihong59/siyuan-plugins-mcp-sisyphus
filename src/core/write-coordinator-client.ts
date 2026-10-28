@@ -64,7 +64,14 @@ export async function callCliWriteCoordinator(
         try {
             if (signal?.aborted) return failure('request_cancelled', 'Cancelled before coordinator dispatch.');
             let forwarded = args;
-            if (settings.owner === 'kernel' && ['file', 'siyuan_file'].includes(name) && args.action === 'upload_asset') forwarded = await stageKernelUpload(endpoint, args, signal);
+            if (settings.owner === 'kernel' && ['file', 'siyuan_file'].includes(name) && args.action === 'upload_asset') {
+                try { forwarded = await stageKernelUpload(endpoint, args, signal); }
+                catch (error) {
+                    // Reading the caller's local file failed; the coordinator itself was never contacted.
+                    if (signal?.aborted) return failure('request_cancelled', 'Cancelled before coordinator dispatch.');
+                    return failure('local_file_unreadable', `Could not stage localFilePath for upload: ${error instanceof Error ? error.message : String(error)}. No write was attempted.`);
+                }
+            }
             const saveExport = settings.owner === 'kernel' && fileClient && isKernelExport(name, args);
             if (saveExport) forwarded = { ...forwarded, delivery: 'download' };
             await client.connect(transport);

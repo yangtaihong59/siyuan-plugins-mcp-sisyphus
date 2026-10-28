@@ -1508,7 +1508,7 @@
             "description": "Asset directory path (e.g., /assets/)"
           },
           "localFilePath": {
-            "description": "Local file path. CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
+            "description": "Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
             "type": "string"
           },
           "uploadSource": {
@@ -1827,29 +1827,11 @@
             ]
           },
           "rootID": {
-            "description": "Optional current root document ID",
+            "description": "Only return referencing blocks inside this document ID",
             "type": "string"
           },
           "k": {
-            "description": "Keyword filter",
-            "type": "string"
-          },
-          "beforeLen": {
-            "description": "Context length before the reference, default 512",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "isSquareBrackets": {
-            "description": "Search in square-bracket reference mode",
-            "type": "boolean"
-          },
-          "isDatabase": {
-            "description": "Whether the reference target is a database",
-            "type": "boolean"
-          },
-          "reqId": {
-            "description": "Optional passthrough request ID",
+            "description": "Keyword filter on the referencing block content",
             "type": "string"
           },
           "r": {
@@ -7106,7 +7088,7 @@
             "description": "Asset directory path (e.g., /assets/)"
           },
           "localFilePath": {
-            "description": "Local file path. CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
+            "description": "Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
             "type": "string"
           },
           "uploadSource": {
@@ -8767,32 +8749,14 @@
           },
           "id": {
             "type": "string",
-            "description": "Referenced block or document ID"
+            "description": "Referenced (target) block or document ID"
           },
           "rootID": {
-            "description": "Optional current root document ID",
+            "description": "Only return referencing blocks inside this document ID",
             "type": "string"
           },
           "k": {
-            "description": "Keyword filter",
-            "type": "string"
-          },
-          "beforeLen": {
-            "description": "Context length before the reference, default 512",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "isSquareBrackets": {
-            "description": "Search in square-bracket reference mode",
-            "type": "boolean"
-          },
-          "isDatabase": {
-            "description": "Whether the reference target is a database",
-            "type": "boolean"
-          },
-          "reqId": {
-            "description": "Optional passthrough request ID",
+            "description": "Keyword filter on the referencing block content",
             "type": "string"
           }
         },

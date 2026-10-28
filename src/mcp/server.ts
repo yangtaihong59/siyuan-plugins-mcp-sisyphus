@@ -33,7 +33,7 @@ import { listHelpResources, listHelpResourceTemplates, readHelpResource } from '
 import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory } from './tool-registry';
 import { runToolCall } from '../core/tool-lifecycle';
 import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from '../core/skills';
-import { createErrorResult, type ToolResult } from '../tools/internal/shared';
+import { createErrorResult, createRelativeLocalPathResult, isAbsoluteLocalPath, type ToolResult } from '../tools/internal/shared';
 
 export { buildServerInstructions } from '../core/server-instructions';
 
@@ -313,6 +313,10 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             );
         }
         const { category, action, args: callArgs } = plan;
+        if (category === 'file' && action === 'upload_asset'
+            && typeof callArgs.localFilePath === 'string' && !isAbsoluteLocalPath(callArgs.localFilePath)) {
+            return gateError(createRelativeLocalPathResult(name, action, callArgs.localFilePath));
+        }
         const requiresConfirmation = plan.needsConfirmation;
 
         // 2026-07-28 carries confirmation in-band through MRTR. Legacy

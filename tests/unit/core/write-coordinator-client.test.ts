@@ -62,3 +62,10 @@ it('recovers a lost response from the original task without resubmitting a write
     expect(mocks.callTool).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it('reports an unreadable local upload file as such, not as an unavailable coordinator', async () => {
+    const result = await callCliWriteCoordinator(settings, 'file', { action: 'upload_asset', assetsDirPath: '/assets/', localFilePath: '/nonexistent/sisyphus-upload.png' });
+    expect(result.structuredContent).toMatchObject({ error: { code: 'local_file_unreadable' } });
+    expect(mocks.connect).not.toHaveBeenCalled();
+    expect(mocks.callTool).not.toHaveBeenCalled();
+});

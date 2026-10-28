@@ -28,7 +28,7 @@ import {
     filterItemsByPermission,
     isPermissionRelatedApiError,
 } from '../internal/permission-filter';
-import { ensureRawSqlReadAccess, getBacklinksWithFallback } from './sql-builder';
+import { ensureRawSqlReadAccess, getBacklinksWithFallback, queryReferencingBlocks, REFERENCING_BLOCKS_LIMIT } from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';
 
@@ -420,18 +420,17 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         const parsed = SearchRefsSchema.parse(rawArgs);
         const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
         if (denied) return denied;
-        const result = await searchApi.searchRefBlock(client, parsed);
-        const typed = result && typeof result === 'object' ? result as Record<string, unknown> : {};
-        const blocks = Array.isArray(typed.blocks) ? typed.blocks : [];
-        const filtered = await filterItemsByPermission(client, blocks, permMgr);
+        const rows = await queryReferencingBlocks(client, parsed.id, parsed.rootID, parsed.k);
+        const truncated = rows.length > REFERENCING_BLOCKS_LIMIT;
+        const filtered = await filterItemsByPermission(client, rows.slice(0, REFERENCING_BLOCKS_LIMIT), permMgr);
         const normalizedBlocks = normalizeReferencedBlocks(filtered.items);
         return createJsonResult({
-            ...typed,
             blocks: normalizedBlocks,
             data: normalizedBlocks,
             total: normalizedBlocks.length,
             showing: normalizedBlocks.length,
-            truncated: false,
+            truncated,
+            ...(truncated ? { hint: `Only the ${REFERENCING_BLOCKS_LIMIT} most recently updated referencing blocks are returned; narrow with rootID or k.` } : {}),
             ...createPartialMetadata(filtered.removedCount),
         });
     },

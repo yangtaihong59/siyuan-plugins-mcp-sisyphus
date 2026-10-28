@@ -322,41 +322,36 @@ function scanApiLiterals() {
     return records;
 }
 
-function parsePluginTools() {
+export function parsePluginTools() {
     const configPath = path.join(ROOT, 'src/core/config.ts');
     const source = fs.readFileSync(configPath, 'utf8');
     const categoriesMatch = source.match(/export const TOOL_CATEGORIES\s*=\s*\[([^\]]+)\]\s*as const/);
     if (!categoriesMatch) fail('无法解析 TOOL_CATEGORIES。');
     const categories = [...categoriesMatch[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
-    const actionArrays = new Map();
-    for (const match of source.matchAll(/export const ([A-Z]+)_ACTIONS\s*=\s*\[([^\]]*)\]\s*as const/g)) {
-        actionArrays.set(match[1].toLowerCase(), [...match[2].matchAll(/'([^']+)'/g)].map((item) => item[1]));
-    }
+    // Actions, base write-safety policy and the dangerous flag are declared once
+    // per tool in src/tools/<tool>/actions.ts (defineActionSpecs).
+    const dangerous = new Set();
+    const safety = new Map();
     const tools = categories.map((name) => {
-        const actions = actionArrays.get(name);
-        if (!actions) fail(`TOOL_CATEGORIES 中的 ${name} 没有对应 *_ACTIONS。`);
+        const specPath = path.join(ROOT, `src/tools/${name}/actions.ts`);
+        if (!fs.existsSync(specPath)) fail(`TOOL_CATEGORIES 中的 ${name} 缺少 src/tools/${name}/actions.ts。`);
+        const specSource = fs.readFileSync(specPath, 'utf8');
+        const marker = /defineActionSpecs\(\s*\{/.exec(specSource);
+        if (!marker) fail(`无法在 ${name}/actions.ts 中找到 defineActionSpecs。`);
+        const block = extractBalancedBlock(specSource, specSource.indexOf('{', marker.index));
+        if (!block) fail(`无法解析 ${name}/actions.ts 的 action 声明。`);
+        const actions = [];
+        for (const match of stripComments(block.body).matchAll(/^\s*([a-z_]+):\s*\{([^\n]*)\},?\s*$/gm)) {
+            const [, action, body] = match;
+            const policy = /policy:\s*(read|external|mutation)\((?:'([^']+)')?/.exec(body);
+            if (!policy) fail(`缺少 ${name}.${action} write-safety policy。`);
+            actions.push(action);
+            safety.set(`${name}.${action}`, policy[1] === 'mutation' ? `mutation(${policy[2] ?? 'none'})` : policy[1]);
+            if (/dangerous:\s*true/.test(body)) dangerous.add(`${name}.${action}`);
+        }
+        if (actions.length === 0) fail(`${name}/actions.ts 没有解析出任何 action。`);
         return { name, actions };
     });
-    const dangerMatch = source.match(/export const DANGEROUS_ACTIONS[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
-    const dangerous = new Set();
-    if (dangerMatch) {
-        for (const match of dangerMatch[1].matchAll(/([a-zA-Z]+):\s*new Set\(\[([^\]]*)\]\)/g)) {
-            for (const action of match[2].matchAll(/'([^']+)'/g)) dangerous.add(`${match[1]}.${action[1]}`);
-        }
-    }
-    const safetySource = fs.readFileSync(path.join(ROOT, 'src/core/write-safety-policy.ts'), 'utf8');
-    const safety = new Map();
-    for (const tool of tools) {
-        const marker = new RegExp(`(?:^|\\n)\\s*${tool.name}:\\s*\\{`, 'm').exec(safetySource);
-        if (!marker) fail(`ACTION_SAFETY_POLICIES 缺少 ${tool.name}。`);
-        const open = safetySource.indexOf('{', marker.index);
-        const block = extractBalancedBlock(safetySource, open);
-        if (!block) fail(`无法解析 ${tool.name} write-safety policy。`);
-        for (const match of block.body.matchAll(/([a-z_]+):\s*(read|external|mutation)\((?:'([^']+)')?/g)) {
-            safety.set(`${tool.name}.${match[1]}`, match[2] === 'mutation' ? `mutation(${match[3] ?? 'none'})` : match[2]);
-        }
-    }
-    for (const tool of tools) for (const action of tool.actions) if (!safety.has(`${tool.name}.${action}`)) fail(`缺少 ${tool.name}.${action} write-safety policy。`);
     return { tools, dangerous, safety };
 }
 
@@ -476,6 +471,7 @@ function actionEndpointMap(plugin) {
         'av.duplicate': ['/api/av/duplicateAttributeViewBlock'],
         'search.semantic': ['/api/search/semanticSearchBlock'],
         'search.query_sql': ['/api/query/sql'],
+        'search.search_refs': ['/api/query/sql'],
         'search.get_backlinks': ['/api/ref/getBacklink2', '/api/ref/getBacklinkDoc', '/api/ref/getBackmentionDoc'],
         'search.fulltext_asset_content': ['/api/search/getAssetContent', '/api/search/fullTextSearchAssetContent'],
         'file.read_template': ['/templates/*filepath'],

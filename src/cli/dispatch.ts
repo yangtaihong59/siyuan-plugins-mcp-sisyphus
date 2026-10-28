@@ -1,4 +1,5 @@
 import { isKernelExport } from '../core/kernel-file-transfer';
+import { nodePath } from '../core/node-loader';
 import {
     ACTIONS_BY_CATEGORY,
     TOOL_CATEGORIES,
@@ -81,6 +82,7 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
         }
 
         const basePayload = { action: normalizedAction, ...mappedArgs } as Record<string, unknown>;
+        if (category === 'file' && normalizedAction === 'upload_asset') resolveLocalFileArgs(basePayload);
         const requestText = [PRIMARY_CLI_COMMAND, tool, action, ...rest].join(' ').trim();
         let localCoordinator: WriteSafetyCoordinator | undefined;
         const runPage = async (page?: number): Promise<ToolResult> => {
@@ -140,6 +142,16 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
         } else {
             process.env.SIYUAN_MCP_TRANSPORT = previousTransport;
         }
+    }
+}
+
+// The user typed the path relative to their shell; the coordinator that reads it may run elsewhere.
+function resolveLocalFileArgs(payload: Record<string, unknown>): void {
+    // file+fileName is the removed base64 shape, rejected later with its own message.
+    const keys = 'fileName' in payload ? ['localFilePath'] : ['localFilePath', 'file'];
+    for (const key of keys) {
+        const value = payload[key];
+        if (typeof value === 'string' && value && !nodePath().isAbsolute(value)) payload[key] = nodePath().resolve(value);
     }
 }
 
