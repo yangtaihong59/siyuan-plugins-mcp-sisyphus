@@ -285,3 +285,23 @@ describe('slim document-window responses', () => {
         expect(slimToolResult(original, { category: 'search', action: 'query_sql' })).toEqual(original);
     });
 });
+
+describe('slim write-success responses', () => {
+    it('keeps the identities and executable follow-ups of flashcard and timeline writes', () => {
+        const payload = {
+            success: true,
+            action: 'review_card',
+            skip: true,
+            deckID: 'deck-1',
+            cardID: 'card-1',
+            reviewSession: { nextListArgs: { action: 'list_cards', deckID: 'deck-1' } },
+            node: { tag: 't', snapshotId: 's' },
+        };
+        const slim = slimToolResult(
+            { content: [{ type: 'text', text: JSON.stringify(payload) }] },
+            { category: 'flashcard', action: 'review_card' },
+        );
+        const parsed = JSON.parse(slim.content[0].text as string);
+        expect(parsed).toMatchObject({ success: true, skip: true, deckID: 'deck-1', cardID: 'card-1', reviewSession: payload.reviewSession, node: payload.node });
+    });
+});

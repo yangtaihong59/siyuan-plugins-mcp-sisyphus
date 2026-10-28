@@ -51,6 +51,20 @@ const SUCCESS_KEEP_KEYS = new Set([
     'warning',
     'skippedComplexBlocks',
     'recommendedTools',
+    // flashcard and timeline write identities.
+    'deckID',
+    'effectiveDeckID',
+    'blockIDs',
+    'cardID',
+    'rating',
+    'skip',
+    'reviewSession',
+    'tag',
+    'snapshotId',
+    'scope',
+    'documentId',
+    'node',
+    'partialFailure',
     // Executable preflight/commit arguments must never be slimmed; the
     // client submits them verbatim on the next call.
     'preflight',

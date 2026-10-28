@@ -9,10 +9,12 @@ import { FLASHCARD_VARIANTS } from '../tools/flashcard';
 import { callMascotTool, MASCOT_VARIANTS } from '../tools/mascot';
 import { callTimelineTool } from '../tools/timeline';
 import { TIMELINE_VARIANTS } from '../tools/timeline';
-import { buildAggregatedTool } from '../tools/internal/shared';
-import type { McpAppConfig, McpAppsConfig, TimelineAppAction, FlashcardReviewAppAction, MascotShopAppAction, ToolCategory } from '../core/config';
+import { buildAggregatedTool, createErrorResult } from '../tools/internal/shared';
+import type { McpAppConfig, McpAppsConfig, TimelineAppAction, FlashcardReviewAppAction, MascotShopAppAction, ToolCategory, ToolConfig } from '../core/config';
+import { withStructuredContent } from '../core/structured-result';
 import type { PermissionManager } from '../core/permissions';
-import type { ToolDescriptor } from '../core/tool-result';
+import type { ToolDescriptor, ToolResult } from '../core/tool-result';
+import type { ToolCallPlan } from './tool-call-gate';
 
 import MCP_APP_HTML from 'virtual:siyuan-mcp-app-html';
 import {
@@ -565,4 +567,35 @@ export function compactMcpAppToolResult<T extends {
         content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }],
         structuredContent: summary,
     };
+}
+
+/** Final projection every transport applies before handing a tool result to the client. */
+export function finalizeToolResult(
+    name: string,
+    action: string,
+    result: ToolResult,
+    appsEnabled: boolean,
+    config: Pick<ToolConfig, 'mcpApps'>,
+): CallToolResult {
+    return compactMcpAppToolResult(name, action, withStructuredContent(result), appsEnabled, config.mcpApps);
+}
+
+/** Run an App session tool; failures become the same tool-error shape as any other tool. */
+export async function executeAppTool(
+    name: string,
+    plan: Extract<ToolCallPlan, { kind: 'app' }>,
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    input: unknown,
+): Promise<CallToolResult> {
+    try {
+        const result = plan.app === 'flashcard'
+            ? await callFlashcardReviewSessionTool(client, permMgr, input, plan.config as never)
+            : plan.app === 'timeline'
+                ? await callTimelineAppTool(client, permMgr, input, plan.config as never)
+                : await callMascotShopAppTool(client, permMgr, input, plan.config as never);
+        return withStructuredContent(result as ToolResult);
+    } catch (error) {
+        return withStructuredContent(createErrorResult(error, { tool: name }));
+    }
 }

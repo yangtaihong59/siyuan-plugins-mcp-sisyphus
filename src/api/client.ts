@@ -170,12 +170,18 @@ export class HttpSiYuanClient implements SiYuanClient {
             const decoder = new TextDecoder();
             let bytes = 0;
             rawText = '';
-            const timer = setTimeout(() => { void reader?.cancel().catch(() => {}); }, this.timeout);
+            // The timer's own flag decides the timeout: a cancelled body reads as
+            // done, which must never pass for an empty successful response.
+            let timedOut = false;
+            const timer = setTimeout(() => {
+                timedOut = true;
+                void reader?.cancel().catch(() => {});
+            }, this.timeout);
             const deadline = Date.now() + this.timeout;
             try {
                 while (reader) {
                     const { done, value } = await reader.read();
-                    if (Date.now() >= deadline) throw new Error(`Request timeout after ${this.timeout}ms`);
+                    if (timedOut || Date.now() >= deadline) throw new Error(`Request timeout after ${this.timeout}ms`);
                     if (done) break;
                     bytes += value.byteLength;
                     if (bytes > maxResponseBytes) throw new ResponseSizeLimitError(maxResponseBytes);

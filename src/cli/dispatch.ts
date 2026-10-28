@@ -19,6 +19,7 @@ import { loadCliRuntimeState } from './runtime';
 import { callCliWriteCoordinator } from '../core/write-coordinator-client';
 import { planToolCall } from '../mcp/tool-call-gate';
 import { WriteSafetyCoordinator } from '../mcp/write-safety-coordinator';
+import { executeLocalTool, shouldSlimResponse } from '../mcp/tool-execution';
 
 import type { ToolResult } from '../tools/internal/shared';
 
@@ -53,7 +54,6 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
         const gate = planToolCall(tool, { action: normalizedAction }, toolConfig, { appsEnabled: false });
         if (gate.kind === 'rejected') return renderToolResult(gate.result, { json: cli.json, debug: cli.debug });
 
-        const module = TOOL_REGISTRY[category];
         if (category === 'extension') {
             // validate_package deliberately accepts only caller-provided in-memory content. It must
             // remain useful when the official bridge is unavailable, otherwise a static package
@@ -82,6 +82,7 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
 
         const basePayload = { action: normalizedAction, ...mappedArgs } as Record<string, unknown>;
         const requestText = [PRIMARY_CLI_COMMAND, tool, action, ...rest].join(' ').trim();
+        let localCoordinator: WriteSafetyCoordinator | undefined;
         const runPage = async (page?: number): Promise<ToolResult> => {
             const plan = planToolCall(tool, page === undefined ? basePayload : { ...basePayload, page }, toolConfig, {
                 appsEnabled: false,
@@ -89,34 +90,24 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
             });
             if (plan.kind === 'rejected') return plan.result;
             if (plan.kind !== 'tool') throw formatUnknownToolError(tool);
-            const { args: payload, policy, coordinated } = plan;
-            const executeDirect = (safeArgs = payload) => module.callTool(
-                client,
-                safeArgs,
-                toolConfig[category],
-                permMgr,
-                officialMcpRuntime,
-            );
+            const { args: payload, coordinated } = plan;
             if (!handlesInterrupt && writeCoordinator?.owner === 'kernel'
                 && (isKernelExport(tool, payload) || coordinated)) {
                 process.on('SIGINT', interrupt);
                 handlesInterrupt = true;
             }
-            const invoke = writeCoordinator?.owner === 'kernel' && isKernelExport(tool, payload)
+            // Same routing as the Node server: remote coordinator when required,
+            // otherwise the local coordinator (it passes reads straight through).
+            const invoke = coordinated || (writeCoordinator?.owner === 'kernel' && isKernelExport(tool, payload))
                 ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
-                : coordinated
-                ? () => callCliWriteCoordinator(writeCoordinator, tool, payload, client, cancellation.signal)
-                : toolConfig.writeSafety.strictMode && policy.mode === 'external'
-                    ? () => new WriteSafetyCoordinator(client).run({
-                        client,
-                        permMgr,
-                        category,
-                        action: normalizedAction,
-                        args: payload,
-                        strictMode: true,
-                        execute: executeDirect,
-                    })
-                    : () => executeDirect();
+                : () => executeLocalTool({
+                    plan,
+                    client,
+                    permMgr,
+                    coordinator: localCoordinator ??= new WriteSafetyCoordinator(client),
+                    config: toolConfig,
+                    runtime: officialMcpRuntime,
+                });
             return runToolCall(
                 {
                     client,
@@ -127,7 +118,7 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
                     requestText: category === 'extension'
                         ? [PRIMARY_CLI_COMMAND, tool, normalizedAction].join(' ')
                         : requestText,
-                    slimResponses: toolConfig.debug.slimResponses && !cli.debug,
+                    slimResponses: shouldSlimResponse(toolConfig, payload) && !cli.debug,
                 },
                 invoke,
             );

@@ -11,13 +11,20 @@ import {
 import { isGlobalTimelineTag } from '../../shared/version-control/timeline';
 import { ensurePermissionForDocumentId } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
-import { createJsonResult } from '../internal/shared';
+import { createJsonResult, createWriteSuccessResult, type ToolResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';
 
 /*
  * Timeline handlers in a separate module keep the kernel goja bundle free of
  * the z.toJSONSchema variant construction in index.ts.
  */
+/** A partially indexed node is not a plain success; report it unchanged. */
+function createdNodeResult(created: Awaited<ReturnType<typeof createTimelineNode>>): ToolResult {
+    return 'partialFailure' in created && created.partialFailure
+        ? createJsonResult(created)
+        : createWriteSuccessResult({ ...created });
+}
+
 export const TIMELINE_ACTION_HANDLERS: Record<TimelineAction, ToolActionHandler> = {
         list_nodes: async ({ client, permMgr, rawArgs }) => {
             const parsed = TimelineListNodesSchema.parse(rawArgs);
@@ -34,11 +41,11 @@ export const TIMELINE_ACTION_HANDLERS: Record<TimelineAction, ToolActionHandler>
                 if (denied) return denied;
                 return applyUiRefresh(
                     client,
-                    createJsonResult(await createTimelineNode(client, parsed)),
+                    createdNodeResult(await createTimelineNode(client, parsed)),
                     [{ type: 'reloadProtyle', id: context.documentId }],
                 );
             }
-            return createJsonResult(await createTimelineNode(client, parsed));
+            return createdNodeResult(await createTimelineNode(client, parsed));
         },
         compare_node: async ({ client, permMgr, rawArgs }) => {
             const parsed = TimelineCompareNodeSchema.parse(rawArgs);

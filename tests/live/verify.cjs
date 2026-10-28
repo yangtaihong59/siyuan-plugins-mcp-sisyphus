@@ -95,7 +95,14 @@ async function main() {
         await step('fs.ls with a messy path', async () => { if (!has(await read('fs', { action: 'ls', path: `//${notebookName}//` }), 'verify')) throw new Error('missing doc'); });
         await step('fs.read', async () => { if (!has(await read('fs', { action: 'read', path: `/${notebookName}/verify/` }), 'Brien')) throw new Error('missing text'); });
         await step('fs.replace', async () => { await strict('fs', { action: 'replace', path: `/${notebookName}/verify`, edit: { old: 'second paragraph', new: 'second paragraph (replaced)' } }); });
-        await step('document.query (multi-JOIN SQL)', async () => { if (!has(await read('document', { action: 'query', notebooks: [notebook], title: 'verify' }), docID)) throw new Error('missing doc'); });
+        await step('document.query (multi-JOIN SQL)', async () => {
+            // The SQL index trails writes by a moment (readInfo reports sql_index_may_lag).
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+                if (has(await read('document', { action: 'query', notebooks: [notebook], title: 'verify' }), docID)) return attempt ? `indexed after ~${attempt * 500}ms` : '';
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            throw new Error('missing doc after 10s');
+        });
         await step('search.fulltext with a quote', async () => { await read('search', { action: 'fulltext', query: "O'Brien", paths: [notebook] }); });
         await step('block.append', async () => {
             const out = await strict('block', { action: 'append', parentID: docID, dataType: 'markdown', data: 'appended' });

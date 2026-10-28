@@ -25,16 +25,16 @@ import { buildDefaultToolConfig, normalizeToolConfig } from '../core/config';
 import { runToolCall } from '../core/tool-lifecycle';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../mcp/tool-registry';
-import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { normalizeActionAlias } from '../core/action-aliases';
 import { buildServerInstructions } from '../core/server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../mcp/mcp-initial-cost';
 import { planToolCall } from '../mcp/tool-call-gate';
+import { executeLocalTool, shouldSlimResponse, toolCallRequestText } from '../mcp/tool-execution';
 import { kernelOfficialRuntime } from './official-mcp';
 import { getExposedExtensionTools } from '../tools/extension';
 import {
     MCP_APPS_EXTENSION_ID, MCP_APP_MIME_TYPE, supportsMcpApps, decorateToolsWithMcpApps, listMcpAppResources, readMcpAppResource,
-    compactMcpAppToolResult, callFlashcardReviewSessionTool, callTimelineAppTool, callMascotShopAppTool,
+    executeAppTool, finalizeToolResult,
 } from '../mcp/mcp-apps';
 import {
     kernelGetPrompt,
@@ -172,16 +172,14 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     });
     if (plan.kind === 'rejected') return toolResultToMcp(plan.result);
     if (plan.kind === 'app') {
-        const call = plan.app === 'flashcard' ? callFlashcardReviewSessionTool : plan.app === 'timeline' ? callTimelineAppTool : callMascotShopAppTool;
         return scheduler.run(task, 'exclusive', async () => {
             await pm.load();
-            const result = await call(scoped, pm, input, plan.config as never);
+            const result = await executeAppTool(name, plan, scoped, pm, input);
             scheduler.checkpoint(task);
-            return toolResultToMcp(result);
+            return toolResultToMcp(result as ToolResult);
         });
     }
-    const { category, target, action, args, policy } = plan;
-    const actionConfig = target.actionConfig;
+    const { category, action, args, policy } = plan;
     if (category === 'file' && action === 'upload_asset' && !args.uploadSource) {
         return toolResultToMcp(errorResult('kernel_local_file_unavailable',
             'Stage bytes at the authenticated /transfer/upload endpoint and pass uploadSource instead of localFilePath. CLI/Node do this automatically (maximum 10 MiB). No write was attempted.'));
@@ -200,14 +198,14 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     const execute = async () => {
         if (task.readOnly) task.deadline = Date.now() + options.readTimeoutMs;
         await pm.reload();
-        return runToolCall({ client: c, category, name, action, args: cleanArgs, slimResponses: cfg.debug.slimResponses && args.delivery !== 'download' },
-            () => coord.run({
-                client: scoped, permMgr: pm, category, action, args: cleanArgs,
-                strictMode: cfg.writeSafety.strictMode,
-                beforeCommit: () => scheduler.beginCommit(task),
-                validateArgs: safeArgs => validateRegisteredToolArguments(category, safeArgs),
-                execute: safeArgs => TOOL_REGISTRY[category].callTool(scoped, safeArgs, actionConfig, pm, kernelOfficialRuntime),
-            }));
+        return runToolCall({
+            client: c, category, name, action, args: cleanArgs,
+            requestText: toolCallRequestText(category, name, action, input),
+            slimResponses: shouldSlimResponse(cfg, args),
+        }, () => executeLocalTool({
+            plan, client: scoped, permMgr: pm, coordinator: coord, config: cfg, args: cleanArgs,
+            runtime: kernelOfficialRuntime, beforeCommit: () => scheduler.beginCommit(task),
+        }));
     };
     // Third-party calls remain serial even with readOnlyHint: their shared bridge
     // and side effects are outside our owned read-action policy.
@@ -220,7 +218,7 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     });
     scheduler.checkpoint(task);
     if (task.readOnly) budget.check();
-    return toolResultToMcp(compactMcpAppToolResult(name, action, withStructuredContent(result), appsEnabled, cfg.mcpApps) as ToolResult);
+    return toolResultToMcp(finalizeToolResult(name, action, result, appsEnabled, cfg) as ToolResult);
 }
 
 /** Advice only: never fabricate a cursor, advance a failed page or re-run a write. */

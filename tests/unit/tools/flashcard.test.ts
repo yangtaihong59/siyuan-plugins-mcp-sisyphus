@@ -25,6 +25,11 @@ vi.mock('@/api/block', () => ({
     setBlockAttrs: vi.fn(),
 }));
 
+vi.mock('@/tools/internal/context', async (importOriginal) => ({
+    ...await importOriginal<typeof import('@/tools/internal/context')>(),
+    ensurePermissionForDocumentId: vi.fn(),
+}));
+
 describe('flashcard tool', () => {
     const enabledActions = {
         enabled: true,
@@ -56,6 +61,42 @@ describe('flashcard tool', () => {
         vi.mocked(attributeApi.getChildBlocks).mockReset();
         vi.mocked(attributeApi.getBlockKramdowns).mockReset();
         vi.mocked(attributeApi.setBlockAttrs).mockReset();
+        const context = await import('@/tools/internal/context');
+        vi.mocked(context.ensurePermissionForDocumentId).mockReset();
+        vi.mocked(context.ensurePermissionForDocumentId).mockResolvedValue({
+            context: { documentId: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy' },
+            denied: null,
+        });
+    });
+
+    it('denies create_card and remove_card when the block notebook is not writable', async () => {
+        const api = await import('@/api/flashcard');
+        const context = await import('@/tools/internal/context');
+        const denied = { isError: true, content: [{ type: 'text' as const, text: '{"error":{"type":"permission_denied"}}' }] };
+        vi.mocked(context.ensurePermissionForDocumentId).mockResolvedValue({
+            context: { documentId: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy' },
+            denied,
+        });
+
+        for (const action of ['create_card', 'remove_card'] as const) {
+            const result = await callFlashcardTool({} as any, { action, deckID: 'deck-b', blockIDs: ['block-1'] }, enabledActions as any, {} as any);
+            expect(result).toBe(denied);
+        }
+        expect(vi.mocked(context.ensurePermissionForDocumentId)).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'block-1', 'write');
+        expect(vi.mocked(api.addRiffCards)).not.toHaveBeenCalled();
+        expect(vi.mocked(api.removeRiffCards)).not.toHaveBeenCalled();
+    });
+
+    it('lets remove_card clear an orphaned card whose block no longer resolves', async () => {
+        const api = await import('@/api/flashcard');
+        const context = await import('@/tools/internal/context');
+        vi.mocked(context.ensurePermissionForDocumentId).mockRejectedValue(new Error('block not found'));
+        vi.mocked(api.removeRiffCards).mockResolvedValue(null as never);
+
+        const result = await callFlashcardTool({} as any, { action: 'remove_card', deckID: '20230218211946-2kw8jgx', blockIDs: ['gone'] }, enabledActions as any, {} as any);
+
+        expect(result.isError).toBeFalsy();
+        expect(vi.mocked(api.removeRiffCards)).toHaveBeenCalled();
     });
 
     it('routes list_cards(scope="all") to getRiffDueCards without deck id', async () => {

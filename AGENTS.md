@@ -434,9 +434,19 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 ---
 
-## 已知结构债（2026-10-27 更新）
+## 已知结构债（2026-10-28 更新）
 
-当前无已确认未处理的结构债。已决定、不再视为债务的事项：
+2026-10-28 独立复审发现、尚未处理的债务（按计划分批清理，处理完从此处删除）：
+
+- **UI 绕过时间线服务**：`ui/version-control/SnapshotPanel.svelte`、`VersionDiffPanel.svelte` 直接 `fetchPost` 快照/打标/回滚，复刻了 `shared/timeline-service.ts`（语义已漂移，如不报告 `partialFailure`）；该服务做 I/O，不应在 `shared/`。
+- **三入口配置加载失败策略不一致**：server 回退默认值，CLI/kernel 抛错；kernel 手写 `mcpToolsConfig`/`notebookPermissions` 路径而非常量。
+- **会话策略两份**：kernel 有会话上限、空闲过期、未知 ID 返回 404；`mcp/http-transport.ts` 均无。
+- **错误契约靠字符串**：`isApiError`/`translateError` 匹配报错文字；`shared/error.ts` 生产未使用。
+- **kernel 专属客户端能力靠鸭子类型**（`uploadAssetBytes`/`forTask`/`fetchExternal` 等），`kernel/task-client.ts` 手写 I/O 方法白名单。
+- **写安全探测绕过 `api/` 层**：`mcp/write-safety-probe.ts`、`write-safety-av.ts` 直接拼约 30 处 `/api/...`。
+- 小项：fs 虚拟文件分散特判、引用提示内联重复、工具间互引（block/document → search 的权限过滤）、`ui/setting/telemetry-config.ts` 与 core 重复、`mcp-apps/index.ts` 与 `shared/version-control/block-diff.ts` 职责混杂、废弃的 `request`/`requestFormData` 与若干无引用导出。
+
+已决定、不再视为债务的事项：
 
 - **旧客户端的危险动作确认**（已决定：避免调用失败）：不支持 MRTR 确认的旧客户端，server 只靠指令层提示确认、不拦截执行；kernel 的 schema 公开 `confirm` 参数，缺省时返回 `dangerous_action_requires_confirmation` 并提示带 `confirm=true` 重发。不要收紧 server。
 - **两种 sha256:v1 规范化**：`shared/canonical-state.ts`（写入前置条件、AV 后像）与 `shared/markdown-snapshot.ts`（快照元数据，按字典序拼串）规范化规则不同且值会持久化/放进游标，**不得合并**。哈希格式与 Web Crypto 实现统一在 `shared/sha256-v1.ts`；`core/write-safety-hash.ts` 因需同步 API（含 kernel）保留 Node crypto 实现，但格式与校验都走 `sha256-v1`。
@@ -454,6 +464,8 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 - 工具层只依赖 `SiYuanClient` **接口**（`api/client.ts`）；HTTP 实现为 `HttpSiYuanClient`，内核实现为 `KernelSiYuanClient`。不要在生产代码里探测 `request` 等废弃方法，测试替身用 `tests/helpers/mock-client.ts`。
 - renderer（UI）不得 import `tool-registry` 或任何工具实现；MCP 初始成本由 server/kernel 在 tools/list 时写入 `mcp-initial-cost.json`，UI 只读取。
 - tools/call 的决策只在 `mcp/tool-call-gate.ts` 的 `planToolCall` 里做（别名规范化、开关、App 隐藏、危险确认、写入策略、是否走协调器）。server/kernel/CLI 只负责确认 UI、调度与渲染，不要在入口里再写判定。
+- tools/call 的执行统一走 `mcp/tool-execution.ts`（`executeLocalTool`：写协调器 + 参数校验 + 处理函数；`toolCallRequestText`、`shouldSlimResponse`）与 `mcp/mcp-apps.ts` 的 `executeAppTool` / `finalizeToolResult`。入口不得直接调 `TOOL_REGISTRY[...].callTool` 或 `coordinator.run`（`tests/unit/mcp/tool-execution.test.ts` 守护）；CLI 非协调写入也走本地协调器。
+- 写处理函数自己负责笔记本权限：块目标用 `ensurePermissionForDocumentId`，跨笔记本操作（如 tag rename/remove）对每个涉及的笔记本检查。写入成功结果用 `createWriteSuccessResult`（带 `success: true`）；新增需要在精简响应里保留的字段加到 `core/slim-response.ts` 的 `SUCCESS_KEEP_KEYS`。
 
 ## 给 AI 编码代理的特别提醒
 

@@ -1,7 +1,6 @@
 import { supportsFormElicitation } from '../shared/mcp-capabilities';
 import { withStructuredContent } from '../core/structured-result';
 import { isKernelExport } from '../core/kernel-file-transfer';
-import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server, type Tool } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
@@ -9,9 +8,10 @@ import { startHttpMcpServer, type TlsOptions } from './http-transport';
 import { buildServerInstructions } from '../core/server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from './mcp-initial-cost';
 import { planToolCall } from './tool-call-gate';
+import { executeLocalTool, shouldSlimResponse, toolCallRequestText } from './tool-execution';
 
 import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
-import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolCategory, type ToolConfig, type ToolConfigLoadResult } from '../core/config';
+import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolConfig, type ToolConfigLoadResult } from '../core/config';
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
 import { callCliWriteCoordinator } from '../core/write-coordinator-client';
 import { loadWriteCoordinatorSettings } from '../core/write-coordinator-settings';
@@ -20,11 +20,9 @@ import { OfficialMcpBridge, type OfficialMcpRuntime } from '../core/official-mcp
 
 import { PermissionManager } from '../core/permissions';
 import {
-    callFlashcardReviewSessionTool,
-    callMascotShopAppTool,
-    callTimelineAppTool,
-    compactMcpAppToolResult,
     decorateToolsWithMcpApps,
+    executeAppTool,
+    finalizeToolResult,
     listMcpAppResources,
     MCP_APPS_EXTENSION_ID,
     MCP_APP_MIME_TYPE,
@@ -32,7 +30,7 @@ import {
     supportsMcpApps,
 } from './mcp-apps';
 import { listHelpResources, listHelpResourceTemplates, readHelpResource } from './resources';
-import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory, TOOL_REGISTRY } from './tool-registry';
+import { GENERIC_TOOL_OUTPUT_SCHEMA, listAllTools, prepareAllTools, resolveCategory } from './tool-registry';
 import { runToolCall } from '../core/tool-lifecycle';
 import { getMcpPrompt, getSepSkill, listMcpPrompts, listSepSkillResources, listSepSkills, readSepSkillResource } from '../core/skills';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
@@ -313,26 +311,12 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         });
         if (plan.kind === 'rejected') return gateError(plan.result);
         if (plan.kind === 'app') {
-            try {
-                const result = plan.app === 'flashcard'
-                    ? await callFlashcardReviewSessionTool(client, permMgr, args, config.mcpApps.flashcardReview)
-                    : plan.app === 'timeline'
-                        ? await callTimelineAppTool(client, permMgr, args, config.mcpApps.timeline)
-                        : await callMascotShopAppTool(client, permMgr, args, config.mcpApps.mascotShop);
-                return server.projectCallToolResult(result, GENERIC_TOOL_OUTPUT_SCHEMA);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                return server.projectCallToolResult(withStructuredContent({
-                    content: [{ type: 'text' as const, text: JSON.stringify({
-                        action: name,
-                        error: { message },
-                    }, null, 2) }],
-                    isError: true,
-                }), GENERIC_TOOL_OUTPUT_SCHEMA);
-            }
+            return server.projectCallToolResult(
+                await executeAppTool(name, plan, client, permMgr, args),
+                GENERIC_TOOL_OUTPUT_SCHEMA,
+            );
         }
-        const { category, target, action, args: callArgs } = plan;
-        const module = TOOL_REGISTRY[category];
+        const { category, action, args: callArgs } = plan;
         const requiresConfirmation = plan.needsConfirmation;
 
         // 2026-07-28 carries confirmation in-band through MRTR. Legacy
@@ -440,10 +424,8 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                     name,
                     action,
                     args: callArgs,
-                    requestText: category === 'extension'
-                        ? JSON.stringify({ name, action })
-                        : JSON.stringify({ name, arguments: args ?? {} }),
-                    slimResponses: config.debug.slimResponses,
+                    requestText: toolCallRequestText(category, name, action, args),
+                    slimResponses: shouldSlimResponse(config, callArgs),
                 },
                 async () => {
                     if (coordinatedMutation && !coordinatorSettings) {
@@ -464,15 +446,13 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
                             ctx.mcpReq.signal,
                         );
                     }
-                    return writeSafetyCoordinator.run({
+                    return executeLocalTool({
+                        plan,
                         client,
                         permMgr,
-                        category,
-                        action,
-                        args: callArgs,
-                        strictMode: config.writeSafety.strictMode,
-                        validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
-                        execute: (safeArgs) => module.callTool(client, safeArgs, target.actionConfig as ToolConfig[ToolCategory], permMgr, officialMcpRuntime),
+                        coordinator: writeSafetyCoordinator,
+                        config,
+                        runtime: officialMcpRuntime,
                     });
                 },
             );
@@ -485,9 +465,8 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
         // The low-level v2 Server leaves cross-era result projection to the
         // handler. Project the complete mixed-content result here so text,
         // image, and structured metadata stay aligned in both protocol eras.
-        const projectedResult = withStructuredContent(result);
         return server.projectCallToolResult(
-            compactMcpAppToolResult(name, action, projectedResult, appsEnabled, config.mcpApps),
+            finalizeToolResult(name, action, result, appsEnabled, config),
             GENERIC_TOOL_OUTPUT_SCHEMA,
         );
     });
