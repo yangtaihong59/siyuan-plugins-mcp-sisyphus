@@ -9,6 +9,7 @@ import { hashWriteState } from '../core/write-safety-hash';
 import { stripSafetyFields } from '../core/write-safety-fields';
 import { safetyError } from '../core/write-safety-error';
 import type { ToolCategory } from '../core/config';
+import { isMissingFileError } from '../api/errors';
 
 export const WRITE_SAFETY_LEDGER_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/writeSafetyLedger';
 export const WRITE_SAFETY_LEDGER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -176,7 +177,7 @@ export class WriteSafetyLedger {
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            if (!/HTTP error: 404|not found|does not exist/i.test(message)) {
+            if (!isMissingFileError(error) && !/not found|does not exist/i.test(message)) {
                 throw safetyError('write_ledger_unavailable', `Cannot load the write-safety ledger: ${message}`);
             }
         }

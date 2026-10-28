@@ -7,6 +7,7 @@ import type {
     IResGetTemplates,
     IResSearchTemplates,
 } from '../types/api';
+import { SiYuanRequestError } from './errors';
 
 export interface TemplateSourceResult {
     path: string;
@@ -272,7 +273,7 @@ export async function saveDocAsTemplate(
         await client.requestWrite<null>('/api/template/docSaveAsTemplate', request);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (/SiYuan API error:\s*1\b/.test(message)) {
+        if (error instanceof SiYuanRequestError && error.kind === 'api' && error.apiCode === 1) {
             throw createTemplateError(`Template already exists: ${normalizedName}.md`, 'template_exists');
         }
         throw createTemplateError(`Failed to save document as template [${normalizedName}]: ${message}`, 'template_write_failed');

@@ -19,7 +19,7 @@ import type { ToolResult } from '../core/tool-result';
 import { listDocumentBlocksInTreeOrder, readDocumentEditableMarkdown } from '../tools/internal/document-kramdown';
 import { assertExactOrder, readDocumentReorderState, resolveFsReorderOrder } from '../tools/internal/helpers/document-reorder';
 import { resolveFsScopePath } from '../tools/internal/helpers/fs-path';
-import { AGENT_MEMORY_VIRTUAL_PATH, isDangerousAction, USER_RULES_VIRTUAL_PATH, type ToolCategory } from '../core/config';
+import { AGENT_MEMORY_VIRTUAL_PATH, isDangerousAction, MCP_TOOLS_CONFIG_API_PATH, USER_RULES_VIRTUAL_PATH, type ToolCategory } from '../core/config';
 import { hashWriteBytes, hashWriteBytesAsync, hashWriteState } from '../core/write-safety-hash';
 import { canonicalizeAvCarrierDom, findHtmlOpeningTagEnd, parseHtmlOpeningTagAttributes } from '../shared/av-carrier-dom';
 import { type ActionSafetyPolicy } from '../core/write-safety-policy';
@@ -530,7 +530,7 @@ async function appendHumanPathState(
     const paths = collectPathSelectors(args);
     if (paths.some((path) => path === AGENT_MEMORY_VIRTUAL_PATH || path === USER_RULES_VIRTUAL_PATH)) {
         try {
-            state.virtualConfig = await client.readFile('/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig');
+            state.virtualConfig = await client.readFile(MCP_TOOLS_CONFIG_API_PATH);
         } catch {
             state.virtualConfig = '';
         }

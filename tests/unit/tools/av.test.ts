@@ -7,6 +7,7 @@ import { projectAvStateWithoutColumnOptions } from '@/tools/av/column-handlers';
 import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
 import type { ToolResult } from '@/tools/internal/shared';
 import { withRequestSemantics } from '../../helpers/mock-client';
+import { requestError } from '../../helpers/request-error';
 
 // UI refresh is covered by ui-refresh.test.ts; AV assertions compare the bare tool payload.
 vi.mock('@/tools/internal/ui-refresh', async (importOriginal) => ({
@@ -4764,7 +4765,7 @@ describe('av tool', () => {
             refDefs: [{ refID: 'missing-block' }, { refID: 'good-block' }],
         });
         vi.mocked(context.ensurePermissionForDocumentId)
-            .mockRejectedValueOnce(new Error('SiYuan API error: -1 - 未找到 ID 为 [missing-block] 的内容块'))
+            .mockRejectedValueOnce(requestError('SiYuan API error: -1 - 未找到 ID 为 [missing-block] 的内容块'))
             .mockResolvedValueOnce({
                 context: { documentId: 'doc-good', notebook: 'nb-1', path: '/doc-good.sy' },
                 denied: null,
@@ -4798,7 +4799,7 @@ describe('av tool', () => {
             refDefs: [{ refID: 'good-block' }],
         });
         vi.mocked(context.ensurePermissionForDocumentId)
-            .mockRejectedValueOnce(new Error('SiYuan API error: -1 - 未找到 ID 为 [missing-row-block] 的内容块'))
+            .mockRejectedValueOnce(requestError('SiYuan API error: -1 - 未找到 ID 为 [missing-row-block] 的内容块'))
             .mockResolvedValueOnce({
                 context: { documentId: 'doc-good', notebook: 'nb-1', path: '/doc-good.sy' },
                 denied: null,

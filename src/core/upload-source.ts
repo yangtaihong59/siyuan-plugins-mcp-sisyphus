@@ -4,7 +4,9 @@ import { isSha256V1 } from '../shared/sha256-v1';
 
 export const MAX_TRANSFER_FILE_BYTES = 10 * 1024 * 1024;
 export const UPLOAD_STAGE_TTL_MS = 10 * 60_000;
-export interface UploadSource { fileName: string; bytes: Uint8Array; hash: string }
+import type { SiYuanClient, StagedUploadSource } from '../api/client';
+
+export type UploadSource = StagedUploadSource;
 export interface UploadSourceReader { getUploadSource(id: string): UploadSource }
 
 export function validateUploadName(name: unknown): asserts name is string {
@@ -74,8 +76,7 @@ export class UploadStagingStore {
     }
 }
 
-export function getStagedUpload(client: unknown, id: string): UploadSource {
-    const reader = client as Partial<UploadSourceReader>;
-    if (typeof reader.getUploadSource !== 'function') throw new Error('uploadSource requires the kernel coordinator that staged the file');
-    return reader.getUploadSource(id);
+export function getStagedUpload(client: Pick<SiYuanClient, 'getUploadSource'>, id: string): UploadSource {
+    if (!client.getUploadSource) throw new Error('uploadSource requires the kernel coordinator that staged the file');
+    return client.getUploadSource(id);
 }

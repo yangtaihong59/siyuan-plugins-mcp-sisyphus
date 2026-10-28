@@ -10,6 +10,7 @@ import { MODERN_VERSION, modernContext, modernResult, KernelConfirmations, type 
 import { MAX_TRANSFER_FILE_BYTES } from '../core/upload-source';
 import { KernelScheduler, KernelQueueError, type KernelTask } from './scheduler';
 import { randomUUID } from './node-shims';
+import { LEGACY_SESSION_EXPIRED_BODY, LegacySessionTable } from '../core/legacy-sessions';
 /* Kernel transport: shared dispatcher and validators, build-time action schemas. */
 import './polyfill';
 declare const siyuan: any;
@@ -19,9 +20,9 @@ declare const siyuan: any;
 process.env.SIYUAN_MCP_TRANSPORT = 'kernel';
 
 import { KernelSiYuanClient } from './client';
-import { PermissionManager } from '../core/permissions';
+import { PERMISSIONS_API_PATH, PermissionManager } from '../core/permissions';
 import { WriteSafetyCoordinator } from '../mcp/write-safety-coordinator';
-import { buildDefaultToolConfig, normalizeToolConfig } from '../core/config';
+import { loadToolConfigForExecution, MCP_TOOLS_CONFIG_API_PATH } from '../core/config';
 import { runToolCall } from '../core/tool-lifecycle';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../mcp/tool-registry';
@@ -51,7 +52,6 @@ import {
 } from '../core/skills';
 
 const CONFIG_PATH = 'mcpHttpSettings';
-const PLUGIN_NAME = 'siyuan-plugins-mcp-sisyphus';
 // Legacy initialization remains available alongside stateless modern discovery.
 const PROTOCOL_VERSION = '2025-11-25';
 const TASK_META = 'io.siyuan.sisyphus/taskId';
@@ -80,14 +80,11 @@ async function ensureRuntime(refreshConfig = false) {
     // a client does not subscribe to the optional legacy SSE invalidations.
     if (refreshConfig || config === null) {
         try {
-            const raw = await client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/mcpToolsConfig');
-            config = normalizeToolConfig(raw ? JSON.parse(raw) : null);
+            config = await loadToolConfigForExecution(client, config ?? undefined);
         } catch (error) {
-            if (String(error).includes("Unsupported avActionsVersion")) {
-                config = null;
-                throw error;
-            }
-            config = config ?? buildDefaultToolConfig();
+            // Fail closed until the config is readable again; see the shared load policy.
+            config = null;
+            throw error;
         }
     }
     return { client, permMgr: permMgr!, coordinator: coordinator!, config };
@@ -140,8 +137,8 @@ async function accessRevision(): Promise<string> {
     // A changed permission/config snapshot invalidates cached disclosure.
     const { client } = await ensureRuntime();
     return hashWriteState(await Promise.all([
-        client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/mcpToolsConfig'),
-        client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/notebookPermissions'),
+        client.readFile(MCP_TOOLS_CONFIG_API_PATH),
+        client.readFile(PERMISSIONS_API_PATH),
     ]));
 }
 function taskKey(owner: string, id: string) { return JSON.stringify([owner, 'string', id]); }
@@ -236,12 +233,9 @@ function readRecovery(name: string, args: Record<string, unknown>) {
 
 // Only negotiated presentation capabilities are stored here, never auth or
 // write leases. Bounded idle expiry avoids retaining abandoned client state.
-const sessions = new Map<string, { apps: boolean; seen: number; owner: string }>();
+const sessions = new LegacySessionTable<{ apps: boolean; owner: string }>((id) => scheduler.cancelSession(id));
 function requestSessionId(request: any): string | undefined {
-    for (const [name, value] of Object.entries(request?.request?.headers ?? {})) {
-        if (name.toLowerCase() === 'mcp-session-id') return Array.isArray(value) ? value[0] : String(value);
-    }
-    return undefined;
+    return header(request, 'mcp-session-id') || undefined;
 }
 
 
@@ -260,11 +254,10 @@ async function handleMcp(request: any): Promise<any> {
     const result = (value: any) => jsonRpcResult(id, modern ? modernResult(method, value, siyuan.plugin?.version ?? '0.0.0') : value);
     if (modern && ['initialize', 'ping', 'notifications/initialized', 'notifications/cancelled'].includes(method)) return jsonRpcError(id, -32601, 'Method unavailable in this protocol revision');
     const now = Date.now();
-    for (const [key, session] of sessions) if (now - session.seen > 30 * 60_000) { scheduler.cancelSession(key); sessions.delete(key); }
+    sessions.sweep(now);
     const sid = modern ? undefined : requestSessionId(request);
-    const session = sid ? sessions.get(sid) : undefined;
-    if (sid && (!session || session.owner !== taskOwner(request))) return plainResponse(404, { error: 'session_expired' });
-    if (session) session.seen = now;
+    const session = sid && sessions.peek(sid, now)?.owner === taskOwner(request) ? sessions.touch(sid, now) : undefined;
+    if (sid && !session) return plainResponse(404, LEGACY_SESSION_EXPIRED_BODY);
     const appsEnabled = modern ? supportsMcpApps(modern.capabilities) : session?.apps === true;
 
     try {
@@ -277,12 +270,7 @@ async function handleMcp(request: any): Promise<any> {
             case 'initialize': {
                 const { config: cfg } = await ensureRuntime(true);
                 const sessionId = randomUUID();
-                if (sessions.size >= 256) {
-                    const oldest = sessions.keys().next().value!;
-                    scheduler.cancelSession(oldest);
-                    sessions.delete(oldest);
-                }
-                sessions.set(sessionId, { owner: taskOwner(request), apps: supportsMcpApps(params?.capabilities), seen: now });
+                sessions.add(sessionId, { owner: taskOwner(request), apps: supportsMcpApps(params?.capabilities) }, now);
                 const response = jsonRpcResult(id, {
                     protocolVersion: ['2024-11-05', '2025-03-26', '2025-06-18', PROTOCOL_VERSION].includes(params?.protocolVersion) ? params.protocolVersion : PROTOCOL_VERSION,
                     instructions: buildServerInstructions(cfg),
@@ -473,7 +461,7 @@ async function handleRequest(request: any): Promise<any> {
 
     if (method === 'DELETE') {
         const sid = requestSessionId(request);
-        if (sid && sessions.get(sid)?.owner === taskOwner(request)) { scheduler.cancelSession(sid); sessions.delete(sid); }
+        if (sid && sessions.peek(sid)?.owner === taskOwner(request)) sessions.delete(sid);
         return { statusCode: 204, headers: {}, body: null };
     }
     if (method && method !== 'POST') return plainResponse(405, { error: 'method_not_allowed' });
@@ -487,20 +475,17 @@ siyuan.server.private.http.handler = function (request: any) {
 // SiYuan dispatches requests with Accept exactly text/event-stream to this hook.
 const events = new KernelEvents(async () => {
     if ((await readKernelConfig()).kernelEndpointEnabled !== true) throw new Error('Endpoint disabled');
-    const { client } = await ensureRuntime();
-    const raw = await client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/mcpToolsConfig');
-    const cfg = normalizeToolConfig(raw ? JSON.parse(raw) : null);
+    const { config: cfg } = await ensureRuntime(true);
     await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
     return hashWriteState({ config: cfg, tools: listAllTools(cfg, kernelOfficialRuntime) });
 }, (owner, sid) => {
-    const session = sessions.get(sid);
-    return !!session && session.owner === owner && Date.now() - session.seen < 30 * 60_000;
+    return sessions.peek(sid)?.owner === owner;
 });
 if (siyuan.server.private.es) siyuan.server.private.es.handler = async (request: any) => {
     const sid = requestSessionId(request);
     const options = normalizeKernelOptions((await readKernelConfig()).kernelOptions);
     if (!isKernelOriginAllowed(header(request, 'origin'), request?.url?.host ?? '', options)) throw new Error('Untrusted origin');
     if (request.request.method !== 'GET' || !request.url.path.endsWith('/mcp') || !sid
-        || sessions.get(sid)?.owner !== taskOwner(request)) throw new Error('SSE requires an authenticated legacy MCP session');
+        || sessions.peek(sid)?.owner !== taskOwner(request)) throw new Error('SSE requires an authenticated legacy MCP session');
     await events.attach(request.port, taskOwner(request), sid);
 };

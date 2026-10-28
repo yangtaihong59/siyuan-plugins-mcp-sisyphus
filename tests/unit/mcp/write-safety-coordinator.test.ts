@@ -6,6 +6,7 @@ import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
 import { BATCH_RENAME_CONTEXT } from '@/tools/document/batch-rename-plan';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';
+import { requestError } from '../../helpers/request-error';
 
 function success(payload: Record<string, unknown>) {
     return {
@@ -104,7 +105,7 @@ function createCrossObjectAvFixture() {
         views: [],
     };
     const clientMock = {
-        readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+        readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
         writeFile: vi.fn(async () => undefined),
         requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
             if (endpoint === '/api/av/getAttributeView') {
@@ -289,7 +290,7 @@ describe('write safety coordinator', () => {
         let strong = '';
         let reads = 0;
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: { id?: string }) => {
                 if (endpoint === '/api/block/checkBlockExist') return true;
@@ -523,7 +524,7 @@ describe('write safety coordinator', () => {
         const destinationKeyID = '20260813000008-destkey';
         const templateID = '20260813000009-templat';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/av/getAttributeView') {
@@ -625,7 +626,7 @@ describe('write safety coordinator', () => {
         const blockID = '20260812000001-timeline';
         let markdown = 'after snapshot';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/repo/getRepoTagSnapshots') return { tags: [{ tag: 'timeline-tag' }] };
@@ -673,7 +674,7 @@ describe('write safety coordinator', () => {
     it('reads back a newly created notebook before it has an explicit permission entry', async () => {
         const notebookID = '20260812000000-newbook';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/notebook/lsNotebooks') {
@@ -732,7 +733,7 @@ describe('write safety coordinator', () => {
         const notebookID = '20260812000000-newperm';
         let permission = 'r';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/notebook/lsNotebooks') {
@@ -786,7 +787,7 @@ describe('write safety coordinator', () => {
         const target = '20261019000001-target1';
         const neighbor = '20261019000002-readonl';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/block/checkBlockExist') return body?.id === docID;
@@ -821,7 +822,7 @@ describe('write safety coordinator', () => {
     it.each(['missing_id', 'missing_document', 'wrong_notebook'])('does not commit document creation with %s readback', async (failure) => {
         const id = '20261019000000-newdoc1';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/block/checkBlockExist') return failure !== 'missing_document';
@@ -847,7 +848,7 @@ describe('write safety coordinator', () => {
         const sourceID = '20260812000000-source1';
         const duplicateID = '20260812000001-copy001';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/block/checkBlockExist') return true;
@@ -884,7 +885,7 @@ describe('write safety coordinator', () => {
 
     it('returns a commitArgs preflight for an additive mutation without inventing a state hash', async () => {
         const coordinator = new WriteSafetyCoordinator({
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async () => null),
         } as never);
@@ -919,7 +920,7 @@ describe('write safety coordinator', () => {
     it('returns an executable v2 preflight for composite add_rows with counts and TTL', async () => {
         const revision = { value: 1 };
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/av/getAttributeView') {
@@ -1014,7 +1015,7 @@ describe('write safety coordinator', () => {
     it('counts explicit cells and distinct rows in a set_cells preflight and executes its commitArgs unchanged', async () => {
         const revision = { value: 1 };
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') {
@@ -1078,7 +1079,7 @@ describe('write safety coordinator', () => {
         const docB = '20260101000000-doc0002';
         const titles: Record<string, string> = { [docA]: 'Alpha', [docB]: 'Beta' };
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 const id = String(body?.id ?? '');
@@ -1185,7 +1186,7 @@ describe('write safety coordinator', () => {
     it('rejects a tampered batch rename commit without dispatching it', async () => {
         const docA = '20260101000000-doc0001';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 if (endpoint === '/api/filetree/getPathByID') return { notebook: 'nb-1', path: '/20260101000000-doc0001.sy' };
@@ -1222,7 +1223,7 @@ describe('write safety coordinator', () => {
     it('persists composite add_rows progress after a transport failure and replays it without a second insert', async () => {
         const revision = { value: 1 };
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') {
@@ -1294,7 +1295,7 @@ describe('write safety coordinator', () => {
 
     it('replays a reserved composite add_rows stage as attempted unknown, never zero-write', async () => {
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') {
@@ -1357,7 +1358,7 @@ describe('write safety coordinator', () => {
 
     it('rejects composite add_rows without a complete preflight before any dispatch', async () => {
         const coordinator = new WriteSafetyCoordinator({
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async () => null),
         } as never);
@@ -1378,7 +1379,7 @@ describe('write safety coordinator', () => {
     it('preflights, rejects stale state, commits once, and replays requestIds', async () => {
         let updated = '20260812010101';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/block/checkBlockExist') return true;
@@ -1454,7 +1455,7 @@ describe('write safety coordinator', () => {
     it('preserves a lease for a definite pre-write rejection and consumes it after an unknown outcome', async () => {
         const id = '20260812000000-abcdefg';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/block/checkBlockExist') return true;
@@ -1513,7 +1514,7 @@ describe('write safety coordinator', () => {
 
     it('rejects malformed credentials before probing or executing', async () => {
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(),
             requestRead: vi.fn(),
         } as any;
@@ -1545,7 +1546,7 @@ describe('write safety coordinator', () => {
         let markdown = 'before';
         let ledgerWrites = 0;
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => {
                 ledgerWrites += 1;
                 if (ledgerWrites === 3) throw new Error('ledger storage unavailable');
@@ -1601,7 +1602,7 @@ describe('write safety coordinator', () => {
         try {
             const id = '20260812000000-abcdefg';
             const client = {
-                readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+                readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
                 writeFile: vi.fn(async () => undefined),
                 requestRead: vi.fn(async (endpoint: string) => {
                     if (endpoint === '/api/block/checkBlockExist') return true;
@@ -1686,17 +1687,17 @@ describe('write safety coordinator', () => {
         let exists = true;
         const id = '20260812000000-abcdefg';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'nb-1', name: 'Notes' }] };
                 if (endpoint === '/api/filetree/getIDsByHPath') return staleIndex !== 'sql' ? [id] : [];
                 if (endpoint === '/api/query/sql') return [{ id, box: 'nb-1', hpath: '/Doc' }];
                 if (endpoint === '/api/block/checkBlockExist') {
-                    if (!exists && staleIndex === 'existence-error') throw new Error('Request timeout');
+                    if (!exists && staleIndex === 'existence-error') throw requestError('Request timeout');
                     return exists;
                 }
-                if (!exists) throw new Error('SiYuan API error: -1 - block not found');
+                if (!exists) throw requestError('SiYuan API error: -1 - block not found');
                 if (endpoint === '/api/block/getChildBlocks') return [{ id: '20260812000001-abcdefg', type: 'p' }];
                 if (endpoint === '/api/block/getBlockKramdown') return { kramdown: 'original' };
                 return [];
@@ -1727,7 +1728,7 @@ describe('write safety coordinator', () => {
     it('fingerprints complete fs documents by human path before compound edits', async () => {
         let markdown = 'old';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, payload?: { stmt?: string }) => {
                 if (endpoint === '/api/notebook/lsNotebooks') {
@@ -1778,7 +1779,7 @@ describe('write safety coordinator', () => {
     it('rejects an fs overwrite when live block kramdown changed before execution', async () => {
         let markdown = 'baseline';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, payload?: { stmt?: string }) => {
                 if (endpoint === '/api/notebook/lsNotebooks') {
@@ -1851,7 +1852,7 @@ describe('write safety coordinator', () => {
         try {
             const id = '20260812000000-abcdefg';
             const client = {
-                readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+                readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
                 writeFile: vi.fn(async () => undefined),
                 requestRead: vi.fn(async (endpoint: string) => {
                     if (endpoint === '/api/block/checkBlockExist') return true;
@@ -1979,7 +1980,7 @@ describe('write safety coordinator', () => {
     it('does not treat an empty flashcard box field as a notebook permission target', async () => {
         const blockID = '20260812000000-abcdefg';
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/riff/getRiffCards') {
@@ -2050,7 +2051,7 @@ describe('write safety coordinator', () => {
         const sourcePath = '/private/tmp/source.txt';
         const bytes = new Uint8Array([1, 2, 3]);
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             readFileBinary: vi.fn(async () => bytes),
         } as never;
@@ -2102,7 +2103,7 @@ describe('write safety coordinator', () => {
         };
         let domReadCount = 0;
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
@@ -2169,7 +2170,7 @@ describe('write safety coordinator', () => {
             return null;
         });
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead,
         } as never;
@@ -2224,7 +2225,7 @@ describe('write safety coordinator', () => {
             'custom-sy-av-visible-views': currentViewID,
         };
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };
@@ -2274,7 +2275,7 @@ describe('write safety coordinator', () => {
         const createdId = '20260813020103-child002';
         let children = [{ id: existingId, name: 'Existing target', path: `/${parentId}/${existingId}.sy`, hPath: '/Imports/Existing target' }];
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
                 const id = body?.id as string | undefined;
@@ -2394,7 +2395,7 @@ describe('write safety coordinator', () => {
         let order = docs.map((item) => item.id);
         let sortMode = 2;
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: notebookID, name: 'Ideas', closed: false }] };

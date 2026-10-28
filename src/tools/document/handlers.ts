@@ -45,6 +45,7 @@ import { readDocumentBlockWindow } from '../internal/document-kramdown';
 import { createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs } from '../internal/markdown-input';
 import { applyDocumentReorder, readDocumentReorderState } from '../internal/helpers/document-reorder';
+import { SiYuanRequestError } from '../../api/errors';
 
 type DocumentActionHandler = ToolActionHandler;
 
@@ -72,8 +73,10 @@ async function setDocumentAttrsViaTransaction(
 }
 
 function isIndexingError(error: unknown): boolean {
-    return error instanceof Error
-        && /SiYuan API error:\s*-1\s*-\s*indexing/i.test(error.message);
+    return error instanceof SiYuanRequestError
+        && error.kind === 'api'
+        && error.apiCode === -1
+        && /indexing/i.test(error.message);
 }
 
 async function getHPathByIdWithRetry(client: SiYuanClient, id: string): Promise<string> {

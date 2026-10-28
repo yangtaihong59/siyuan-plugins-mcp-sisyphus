@@ -1,13 +1,13 @@
 <script lang="ts">
     import { onDestroy, onMount, tick } from "svelte";
     import { showMessage } from "siyuan";
+    import * as repoApi from "@/api/repo";
+    import { applyTimelineBlockRestore } from "@/core/timeline-service";
+    import { rendererClient as client } from "@/ui/plugin/renderer-client";
     import {
         buildChangedFiles,
         diffSnapshotBlocks,
         getBlockDiffLineStats,
-        getUpdateBlockPayload,
-        getRestoreBlockPayload,
-        getRestoreInsertPlan,
         getSnapshotFileId,
         type BlockDiffEntry,
         type ChangedSnapshotFile,
@@ -482,7 +482,7 @@
 
     async function createCurrentSnapshot(): Promise<Snapshot> {
         const text = `${CURRENT_SNAPSHOT_MEMO_PREFIX} ${currentDocumentId} ${new Date().toISOString()}`;
-        await post("/api/repo/createSnapshot", { memo: text });
+        await repoApi.createSnapshot(client, text);
         const snapshot = await findNewestSnapshotForMemo(text);
         if (!snapshot?.id) throw new Error(t("timeline_error_current_snapshot_not_found", "当前状态快照已创建，但未能定位"));
         return snapshot;
@@ -566,43 +566,11 @@
 
         applying = true;
         try {
-            if (entry.status === "modified" && entry.newBlock?.id && entry.oldBlock) {
-                const updatePayload = getUpdateBlockPayload(entry);
-                await post("/api/block/updateBlock", {
-                    id: entry.newBlock.id,
-                    dataType: updatePayload.dataType,
-                    data: updatePayload.data,
-                });
-            } else if (entry.status === "added" && entry.newBlock?.id) {
-                await post("/api/block/deleteBlock", { id: entry.newBlock.id });
-            } else if (entry.status === "removed" && entry.oldBlock) {
-                const insertPlan = getRestoreInsertPlan(entry, blockEntries, {
-                    documentId: currentDocumentId,
-                    oldFile: selectedEntry?.file.oldFile,
-                    newFile: selectedEntry?.file.newFile,
-                });
-                const parentIDs = insertPlan.parentIDs;
-                if (parentIDs.length === 0) throw new Error(t("timeline_error_no_restore_position", "无法识别可恢复位置，不能安全恢复删除块"));
-                let restored = false;
-                let lastError: unknown;
-                const restorePayload = getRestoreBlockPayload(entry);
-                for (const parentID of parentIDs) {
-                    try {
-                        await post("/api/block/insertBlock", {
-                            parentID,
-                            ...(insertPlan.nextID ? { nextID: insertPlan.nextID } : {}),
-                            ...(insertPlan.nextID ? {} : insertPlan.previousID ? { previousID: insertPlan.previousID } : {}),
-                            dataType: restorePayload.dataType,
-                            data: restorePayload.data,
-                        });
-                        restored = true;
-                        break;
-                    } catch (err) {
-                        lastError = err;
-                    }
-                }
-                if (!restored) throw lastError ?? new Error(t("timeline_error_restore_removed_block_failed", "无法恢复删除块"));
-            }
+            await applyTimelineBlockRestore(client, entry, blockEntries, {
+                documentId: currentDocumentId,
+                oldFile: selectedEntry?.file.oldFile,
+                newFile: selectedEntry?.file.newFile,
+            });
             showMessage(t("timeline_msg_block_rolled_back", "块已回退"));
             await refreshSelectedDiff();
         } catch (err) {
@@ -622,7 +590,7 @@
         if (!confirmed) return;
         applying = true;
         try {
-            await post("/api/repo/rollbackRepoSnapshotFile", { id });
+            await repoApi.rollbackRepoSnapshotFile(client, id);
             showMessage(t("timeline_msg_document_rolled_back", "文档已回退到历史版本"));
             await refreshSelectedDiff();
         } catch (err) {

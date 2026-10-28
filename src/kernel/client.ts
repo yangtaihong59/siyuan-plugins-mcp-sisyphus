@@ -3,6 +3,7 @@ import type { ExternalResponse } from '../core/external-fetch';
 import { UploadStagingStore, MAX_TRANSFER_FILE_BYTES } from '../core/upload-source';
 import { randomUUID } from './node-shims';
 import type { SiYuanClient } from '../api/client';
+import { apiCodeError, isAmbiguousWriteFailure, ResponseSizeLimitError, SiYuanRequestError, WriteOutcomeUnknownError, type SiYuanRequestErrorKind } from '../api/errors';
 /*
  * KernelSiYuanClient — a SiYuanClient-compatible adapter backed by the
  * kernel petal's siyuan.client.fetch API.
@@ -22,13 +23,10 @@ import type { SiYuanClient } from '../api/client';
 
 declare const siyuan: any;
 
-export class KernelResponseError extends Error {
-    constructor(
-        message: string,
-        readonly status: number,
-        readonly retryable: boolean,
-    ) {
-        super(message);
+/** Kernel transport failure; the same typed contract as the HTTP client. */
+export class KernelResponseError extends SiYuanRequestError {
+    constructor(kind: SiYuanRequestErrorKind, message: string, status: number, retryable: boolean) {
+        super(kind, message, { status, retryable });
         this.name = 'KernelResponseError';
     }
 }
@@ -60,7 +58,9 @@ export class KernelSiYuanClient implements SiYuanClient {
             catch (error) {
                 this.checkpoint();
                 // Retry transport failures and transient HTTP errors, never API/schema/size errors.
-                if (attempt >= this.options.readRetries || (error instanceof KernelResponseError && !error.retryable)) throw error;
+                if (attempt >= this.options.readRetries
+                    || (error instanceof SiYuanRequestError && !error.retryable)
+                    || error instanceof ResponseSizeLimitError) throw error;
                 await new Promise(resolve => setTimeout(resolve, Math.min(100 * 2 ** attempt, 1000)));
             }
         }
@@ -106,7 +106,7 @@ export class KernelSiYuanClient implements SiYuanClient {
     async requestResource(path: string) {
         return this.retryRead(async () => {
             const response = await this.doFetch(path, { method: 'GET' });
-            if (!response.ok && (response.status === 429 || response.status >= 500)) throw new KernelResponseError(`HTTP error: ${response.status}`, response.status, true);
+            if (!response.ok && (response.status === 429 || response.status >= 500)) throw new KernelResponseError('http', `HTTP error: ${response.status}`, response.status, true);
             return { ...response, statusText: '' };
         });
     }
@@ -139,6 +139,7 @@ export class KernelSiYuanClient implements SiYuanClient {
             const text = await resp.text().catch(() => '');
             const retryable = !(resp.status >= 400 && resp.status < 500 && resp.status !== 429);
             throw new KernelResponseError(
+                'http',
                 `HTTP error: ${resp.status} ${text.slice(0, 200)}`,
                 resp.status,
                 retryable,
@@ -146,7 +147,7 @@ export class KernelSiYuanClient implements SiYuanClient {
         }
         const rawText = await resp.text();
         if (maxResponseBytes !== undefined && new TextEncoder().encode(rawText).byteLength > maxResponseBytes) {
-            throw new KernelResponseError(`Response exceeds ${maxResponseBytes} bytes`, resp.status, false);
+            throw new ResponseSizeLimitError(maxResponseBytes);
         }
         if (rawText.trim() === '') return null as T;
         let result: { code?: number; msg?: string; data?: T };
@@ -154,17 +155,14 @@ export class KernelSiYuanClient implements SiYuanClient {
             result = JSON.parse(rawText) as { code?: number; msg?: string; data?: T };
         } catch {
             throw new KernelResponseError(
+                'invalid_response',
                 `Invalid SiYuan API response from ${path}: ${rawText.slice(0, 200)}`,
                 resp.status,
                 false,
             );
         }
         if (result.code !== 0) {
-            throw new KernelResponseError(
-                `SiYuan API error: ${result.code} - ${result.msg}`,
-                resp.status,
-                false,
-            );
+            throw apiCodeError(result.code, result.msg, resp.status);
         }
         return result.data as T;
     }
@@ -178,11 +176,16 @@ export class KernelSiYuanClient implements SiYuanClient {
     }
 
     async requestWrite<T>(endpoint: string, data?: object): Promise<T> {
-        return this.readData<T>(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data ?? {}),
-        });
+        try {
+            return await this.readData<T>(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data ?? {}),
+            });
+        } catch (error) {
+            if (isAmbiguousWriteFailure(error)) throw new WriteOutcomeUnknownError(endpoint, error);
+            throw error;
+        }
     }
 
     /** @deprecated parity with SiYuanClient; defaults to write semantics. */
@@ -222,7 +225,7 @@ export class KernelSiYuanClient implements SiYuanClient {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         });
-        if (!resp.ok) throw new KernelResponseError(`HTTP error: ${resp.status} reading ${path}`, resp.status, resp.status === 429 || resp.status >= 500);
+        if (!resp.ok) throw new KernelResponseError('http', `HTTP error: ${resp.status} reading ${path}`, resp.status, resp.status === 429 || resp.status >= 500);
         return await resp.text();
     }
 
@@ -244,7 +247,7 @@ export class KernelSiYuanClient implements SiYuanClient {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         });
-        if (!resp.ok) throw new KernelResponseError(`HTTP error: ${resp.status} reading ${path}`, resp.status, resp.status === 429 || resp.status >= 500);
+        if (!resp.ok) throw new KernelResponseError('http', `HTTP error: ${resp.status} reading ${path}`, resp.status, resp.status === 429 || resp.status >= 500);
         const ab = await resp.arrayBuffer();
         return new Uint8Array(ab as ArrayBuffer);
     }

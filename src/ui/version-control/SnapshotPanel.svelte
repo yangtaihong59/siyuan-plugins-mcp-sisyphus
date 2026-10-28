@@ -1,20 +1,23 @@
 <script lang="ts">
     import { onDestroy, onMount, tick } from "svelte";
-    import { fetchPost, showMessage } from "siyuan";
+    import { showMessage } from "siyuan";
+    import * as repoApi from "@/api/repo";
     import {
-        createGlobalTimelineTagName,
+        createTimelineNode as createTimelineNodeRecordInRepo,
+        readDocumentNodes,
+        removeTimelineNode,
+        TIMELINE_INDEX_INVALID_ERROR,
+        writeDocumentNodes,
+    } from "@/core/timeline-service";
+    import { rendererClient as client, rendererPost as post } from "@/ui/plugin/renderer-client";
+    import {
         createTimelineNodeRecord,
-        createTimelineTagName,
         formatSnapshotTime,
         getTimelineNodeIdentity,
         getTimelineNodeSelectionKey,
-        isTimelineNodeRecordPayloadValid,
         migrateLegacyTimelineSnapshotToGlobal,
-        parseTimelineNodeRecords,
         reconcileDocumentTimelineNodes,
-        serializeTimelineNodeRecords,
         snapshotLabel,
-        sortSnapshotsNewestFirst,
         sortTimelineNodesNewestFirst,
         GLOBAL_TIMELINE_TAG_VERIFICATION_ERROR,
         type TimelineNodeRecord,
@@ -24,7 +27,6 @@
     } from "@/shared/version-control/timeline";
 
     type Snapshot = TimelineSnapshot;
-    const TIMELINE_NODE_ATTR_KEY = "custom-sisyphus-timeline";
 
     export let currentDocumentId = "";
     export let currentDocumentTitle = "";
@@ -105,15 +107,6 @@
         return true;
     }
 
-    function post<T>(endpoint: string, data: Record<string, unknown> = {}): Promise<T> {
-        return new Promise((resolve, reject) => {
-            fetchPost(endpoint, data, (response: { code: number; msg?: string; data: T }) => {
-                if (response?.code === 0) resolve(response.data);
-                else reject(new Error(response?.msg || `SiYuan API error from ${endpoint}`));
-            });
-        });
-    }
-
     function t(key: string, fallback: string, vars: Record<string, string | number> = {}): string {
         const template = i18n?.[key] ?? fallback;
         return Object.entries(vars).reduce((text, [name, value]) => text.split(`\${${name}}`).join(String(value)), template);
@@ -147,7 +140,7 @@
                 onSelectNode(null);
             }
         } catch (err) {
-            error = getErrorMessage(err);
+            error = localizeTimelineError(err);
         } finally {
             loading = false;
         }
@@ -162,21 +155,19 @@
         }
     }
 
-    async function readTimelineNodes(documentId: string): Promise<TimelineNodeRecord[]> {
-        const attrs = await post<Record<string, string>>("/api/attr/getBlockAttrs", { id: documentId });
-        const raw = attrs?.[TIMELINE_NODE_ATTR_KEY];
-        if (!isTimelineNodeRecordPayloadValid(raw)) {
-            throw new Error(t("timeline_error_invalid_node_index", "文档时间线索引损坏，已停止写入以保护历史节点"));
-        }
-        return parseTimelineNodeRecords(raw);
+    function localizeTimelineError(err: unknown): string {
+        const message = getErrorMessage(err);
+        return message === TIMELINE_INDEX_INVALID_ERROR
+            ? t("timeline_error_invalid_node_index", "文档时间线索引损坏，已停止写入以保护历史节点")
+            : message;
     }
 
-    async function writeTimelineNodes(nodes: TimelineNodeRecord[], documentId: string) {
-        const documentNodes = nodes.filter((node) => node.scope === "document");
-        await post("/api/attr/setBlockAttrs", {
-            id: documentId,
-            attrs: { [TIMELINE_NODE_ATTR_KEY]: serializeTimelineNodeRecords(documentNodes) },
-        });
+    function readTimelineNodes(documentId: string): Promise<TimelineNodeRecord[]> {
+        return readDocumentNodes(client, documentId);
+    }
+
+    function writeTimelineNodes(nodes: TimelineNodeRecord[], documentId: string): Promise<void> {
+        return writeDocumentNodes(client, documentId, nodes);
     }
 
     function nodeKey(node: TimelineNodeRecord): string {
@@ -208,27 +199,17 @@
         loading = true;
         error = "";
         try {
-            await post("/api/repo/createSnapshot", { memo: text });
-            const snapshot = await findNewestSnapshotForMemo(text);
-            if (!snapshot?.id) throw new Error(t("timeline_error_new_snapshot_not_found", "快照已创建，但未能定位新快照"));
-            const taggedSnapshots = await readTimelineTagSnapshots();
-            const existingTags = taggedSnapshots.map((item) => item.tag).filter((tag): tag is string => Boolean(tag));
-            const tagName = createScope === "global"
-                ? createGlobalTimelineTagName(text, existingTags)
-                : createTimelineTagName(text, currentDocumentId, existingTags);
-            await post("/api/repo/tagSnapshot", { id: snapshot.id, name: tagName });
-            if (createScope === "document") {
-                const nodes = await readTimelineNodes(currentDocumentId);
-                nodes.push({
-                    name: text,
-                    created: Date.now(),
-                    snapshotId: snapshot.id,
-                    tag: tagName,
-                    scope: "document",
-                });
-                await writeTimelineNodes(nodes, currentDocumentId);
+            const created = await createTimelineNodeRecordInRepo(client, {
+                name: text,
+                scope: createScope,
+                ...(createScope === "document" ? { documentId: currentDocumentId } : {}),
+            });
+            if (created.partialFailure) {
+                // The tag exists; only the document index write failed. The
+                // next refresh re-links it from the tag.
+                showMessage(t("timeline_msg_node_index_partial", "节点已创建，但文档索引写入失败；刷新后会根据 tag 自动恢复"));
             }
-            highlightedNodeIdentity = getTimelineNodeIdentity({ snapshotId: snapshot.id, tag: tagName });
+            highlightedNodeIdentity = getTimelineNodeIdentity(created.node);
             memo = "";
             showMessage(createScope === "global"
                 ? t("timeline_msg_global_node_created", "全局时间线节点已创建")
@@ -238,7 +219,7 @@
                 highlightedNodeIdentity = "";
             }, 1800);
         } catch (err) {
-            error = getErrorMessage(err);
+            error = localizeTimelineError(err);
         } finally {
             loading = false;
         }
@@ -267,48 +248,17 @@
         const selectionKey = nodeKey(node);
         deletingNodeIdentity = identity;
         error = "";
-        let previousDocumentNodes: TimelineNodeRecord[] | undefined;
         try {
-            if (node.scope === "document") {
-                previousDocumentNodes = await readTimelineNodes(documentId);
-                await writeTimelineNodes(
-                    previousDocumentNodes.filter((item) => getTimelineNodeIdentity(item) !== identity),
-                    documentId,
-                );
-            }
-            try {
-                await post("/api/repo/removeRepoTagSnapshot", { tag: node.tag });
-            } catch (tagError) {
-                if (previousDocumentNodes) {
-                    try {
-                        await writeTimelineNodes(previousDocumentNodes, documentId);
-                    } catch {
-                        // A document-scoped tag can repair its attrs record on the next refresh.
-                    }
-                }
-                throw tagError;
-            }
+            await removeTimelineNode(client, node, documentId);
             timelineNodes = timelineNodes.filter((item) => getTimelineNodeIdentity(item) !== identity);
             legacySnapshots = legacySnapshots.filter((snapshot) => snapshot.tag !== node.tag);
             if (selectedNodeKey === selectionKey) onSelectNode(null);
             showMessage(t("timeline_msg_node_deleted", "时间线节点已删除，底层快照仍保留"));
         } catch (err) {
-            error = getErrorMessage(err);
+            error = localizeTimelineError(err);
         } finally {
             deletingNodeIdentity = "";
         }
-    }
-
-    async function findNewestSnapshotForMemo(text: string): Promise<Snapshot | undefined> {
-        const [snapshotData, tagData] = await Promise.all([
-            post<{ snapshots?: Snapshot[] }>("/api/repo/getRepoSnapshots", { page: 1 }),
-            post<{ snapshots?: Snapshot[] }>("/api/repo/getRepoTagSnapshots", {}),
-        ]);
-        const taggedIds = new Set((tagData.snapshots ?? []).map((snapshot) => snapshot.id));
-        const ordered = sortSnapshotsNewestFirst(snapshotData.snapshots ?? []);
-        return ordered.find((snapshot) => snapshot.memo === text && !taggedIds.has(snapshot.id))
-            ?? ordered.find((snapshot) => snapshot.memo === text)
-            ?? ordered[0];
     }
 
     async function associateLegacySnapshot(snapshot: Snapshot) {
@@ -332,7 +282,7 @@
             showMessage(t("timeline_msg_legacy_node_linked", "旧版节点已关联到当前文档"));
             await loadSnapshots();
         } catch (err) {
-            error = getErrorMessage(err);
+            error = localizeTimelineError(err);
         } finally {
             linkingLegacySnapshotId = "";
         }
@@ -357,9 +307,9 @@
             const taggedSnapshots = await readTimelineTagSnapshots();
             const existingTags = taggedSnapshots.map((item) => item.tag).filter((tag): tag is string => Boolean(tag));
             const migration = await migrateLegacyTimelineSnapshotToGlobal(snapshot, existingTags, {
-                addTag: (snapshotId, tag) => post("/api/repo/tagSnapshot", { id: snapshotId, name: tag }),
+                addTag: (snapshotId, tag) => repoApi.tagSnapshot(client, snapshotId, tag),
                 readTaggedSnapshots: readTimelineTagSnapshots,
-                removeTag: (tag) => post("/api/repo/removeRepoTagSnapshot", { tag }),
+                removeTag: (tag) => repoApi.removeRepoTagSnapshot(client, tag),
             });
             showMessage(migration.oldTagRemoved
                 ? t("timeline_msg_legacy_global_converted", "旧版节点已转为全局节点")

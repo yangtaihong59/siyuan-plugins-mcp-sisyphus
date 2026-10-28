@@ -1,11 +1,13 @@
+import type { SiYuanClient } from '../api/client';
+
 /** Serialize read/modify/write metadata operations per runtime client and file group.
  * This is not a cross-process lock or a second note-write coordinator.
  */
 const queues = new WeakMap<object, Map<string, Promise<void>>>();
-export function queueStorage<T>(client: object, group: string, run: () => Promise<T>): Promise<T> {
+export function queueStorage<T>(client: Pick<SiYuanClient, 'storageIdentity'>, group: string, run: () => Promise<T>): Promise<T> {
     // Kernel task-scoped clients share one storage instance. Unmarked Node
     // clients keep their original per-client queues.
-    const identity = (client as { readonly storageIdentity?: object }).storageIdentity;
+    const identity = client.storageIdentity;
     const key = identity && typeof identity === 'object' ? identity : client;
     let groups = queues.get(key);
     if (!groups) { groups = new Map(); queues.set(key, groups); }

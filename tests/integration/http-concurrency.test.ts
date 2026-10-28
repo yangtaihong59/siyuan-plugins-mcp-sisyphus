@@ -142,6 +142,25 @@ describe('HTTP MCP concurrency', () => {
         delete process.env.SIYUAN_TOKEN;
     });
 
+    it('expires an unknown legacy session id instead of creating a session for it', async () => {
+        const port = await getAvailablePort();
+        serverHandle = await startHttpMcpServer({ host: '127.0.0.1', port, path: '/mcp', serverFactory: createSiYuanServer });
+
+        const response = await fetch(`http://127.0.0.1:${serverHandle.port}/mcp`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json, text/event-stream',
+                'Mcp-Session-Id': 'no-such-session',
+                'MCP-Protocol-Version': '2025-06-18',
+            },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+        });
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ error: 'session_expired' });
+    });
+
     it('accepts two concurrent HTTP clients with isolated sessions', async () => {
         const port = await getAvailablePort();
         serverHandle = await startHttpMcpServer({

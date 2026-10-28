@@ -10,6 +10,7 @@ import {
     isApiError,
     resolveHint,
 } from '@/tools/internal/validation';
+import { requestError } from '../../helpers/request-error';
 
 describe('tools/validation', () => {
     it('formats nested issue paths and reads matching raw values', () => {
@@ -43,8 +44,7 @@ describe('tools/validation', () => {
         expect(getValidationMessage('document')).toBe('Invalid arguments for tool "document".');
         expect(getValidationMessage()).toBe('Invalid arguments.');
         expect(resolveHint({ hint: 'explicit hint' })).toBe('explicit hint');
-        expect(isApiError(Object.assign(new Error('boom'), { name: 'SiYuanError' }))).toBe(true);
-        expect(isApiError(new Error('HTTP error: 500'))).toBe(true);
+        expect(isApiError(requestError('HTTP error: 500'))).toBe(true);
         expect(isApiError(new Error('plain'))).toBe(false);
 
         const previous = process.env.SIYUAN_MCP_DEBUG_ERRORS;

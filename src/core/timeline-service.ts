@@ -13,11 +13,12 @@ import {
     type BlockDiffEntry,
     type ChangedSnapshotFile,
     type SnapshotBlock,
-} from './version-control/block-diff';
+} from '../shared/version-control/block-diff';
 import {
     createGlobalTimelineTagName,
     createTimelineTagName,
     extractTimelineDocumentId,
+    getTimelineNodeIdentity,
     isGlobalTimelineTag,
     isTimelineNodeRecordPayloadValid,
     parseTimelineNodeRecords,
@@ -30,7 +31,7 @@ import {
     type TimelineNodeRecord,
     type TimelineNodeScope,
     type TimelineSnapshot,
-} from './version-control/timeline';
+} from '../shared/version-control/timeline';
 
 export type TimelineListScope = TimelineNodeScope | 'all';
 
@@ -126,19 +127,23 @@ function paginate<T>(items: T[], page = 1, pageSize = 20) {
     };
 }
 
+/** Message of the error thrown for a corrupt document node index (the UI localizes it). */
+export const TIMELINE_INDEX_INVALID_ERROR = 'Document timeline index is invalid; refusing to modify it.';
+
 function requireValidNodeIndex(raw: unknown): TimelineNodeRecord[] {
     if (!isTimelineNodeRecordPayloadValid(raw)) {
-        throw new Error('Document timeline index is invalid; refusing to modify it.');
+        throw new Error(TIMELINE_INDEX_INVALID_ERROR);
     }
     return parseTimelineNodeRecords(raw);
 }
 
-async function readDocumentNodes(client: SiYuanClient, documentId: string): Promise<TimelineNodeRecord[]> {
+/** The document's node index; throws TIMELINE_INDEX_INVALID_ERROR rather than overwrite a corrupt one. */
+export async function readDocumentNodes(client: SiYuanClient, documentId: string): Promise<TimelineNodeRecord[]> {
     const attrs = await blockApi.getBlockAttrs(client, documentId);
     return requireValidNodeIndex(attrs?.[TIMELINE_NODE_ATTR_KEY]);
 }
 
-async function writeDocumentNodes(client: SiYuanClient, documentId: string, nodes: TimelineNodeRecord[]): Promise<void> {
+export async function writeDocumentNodes(client: SiYuanClient, documentId: string, nodes: TimelineNodeRecord[]): Promise<void> {
     await blockApi.setBlockAttrs(
         client,
         documentId,
@@ -266,32 +271,48 @@ export async function createTimelineNode(
     }
 }
 
-export async function deleteTimelineNode(
+/**
+ * Remove a node: drop it from the document index first, then delete its tag
+ * (the snapshot is kept). A failed tag removal restores the index. Accepts
+ * any node kind, including legacy ones the tool API refuses.
+ */
+export async function removeTimelineNode(
     client: SiYuanClient,
-    options: { tag: string; documentId?: string },
-): Promise<{ success: true; tag: string; snapshotId: string; scope: TimelineNodeScope; snapshotRetained: true }> {
-    const { node } = await resolveTaggedNode(client, options.tag, options.documentId);
+    node: Pick<TimelineNodeRecord, 'tag' | 'scope' | 'snapshotId'>,
+    documentId?: string,
+): Promise<void> {
+    if (!node.tag) throw new Error('The timeline node has no tag to remove.');
     let previousNodes: TimelineNodeRecord[] | undefined;
     if (node.scope === 'document') {
-        previousNodes = await readDocumentNodes(client, options.documentId!);
+        if (!documentId) throw new Error('documentId is required for document scope.');
+        const identity = getTimelineNodeIdentity(node);
+        previousNodes = await readDocumentNodes(client, documentId);
         await writeDocumentNodes(
             client,
-            options.documentId!,
-            previousNodes.filter((item) => item.tag !== options.tag),
+            documentId,
+            previousNodes.filter((item) => getTimelineNodeIdentity(item) !== identity),
         );
     }
     try {
-        await repoApi.removeRepoTagSnapshot(client, options.tag);
+        await repoApi.removeRepoTagSnapshot(client, node.tag);
     } catch (error) {
         if (previousNodes) {
             try {
-                await writeDocumentNodes(client, options.documentId!, previousNodes);
+                await writeDocumentNodes(client, documentId!, previousNodes);
             } catch {
                 // The document-scoped tag remains and can repair the index later.
             }
         }
         throw error;
     }
+}
+
+export async function deleteTimelineNode(
+    client: SiYuanClient,
+    options: { tag: string; documentId?: string },
+): Promise<{ success: true; tag: string; snapshotId: string; scope: TimelineNodeScope; snapshotRetained: true }> {
+    const { node } = await resolveTaggedNode(client, options.tag, options.documentId);
+    await removeTimelineNode(client, node, options.documentId);
     return {
         success: true,
         tag: options.tag,
@@ -416,26 +437,24 @@ export async function rollbackTimelineDocument(
     };
 }
 
-export async function rollbackTimelineBlock(
+/**
+ * Restore one block of a comparison: revert a modified block, delete an added
+ * one, or re-insert a removed one at the first safe position.
+ */
+export async function applyTimelineBlockRestore(
     client: SiYuanClient,
-    options: { documentId: string; tag: string; changeKey: string },
-): Promise<{ success: true; documentId: string; tag: string; changeKey: string; status: BlockDiffEntry['status'] }> {
-    const comparison = await compareTimelineNodeInternal(client, options);
-    const entry = comparison.allEntries.find((item) => item.key === options.changeKey && item.status !== 'unchanged');
-    if (!entry) throw new Error('The changeKey no longer matches the current document state; run compare_node again.');
+    entry: BlockDiffEntry,
+    allEntries: BlockDiffEntry[],
+    context: Parameters<typeof getRestoreInsertPlan>[2],
+): Promise<void> {
     if (!entry.canAcceptBlock) throw new Error(entry.acceptReason || 'This block cannot be restored safely.');
-
     if (entry.status === 'modified' && entry.newBlock?.id && entry.oldBlock) {
         const payload = getUpdateBlockPayload(entry);
         await blockApi.updateBlock(client, payload.dataType, payload.data, entry.newBlock.id);
     } else if (entry.status === 'added' && entry.newBlock?.id) {
         await blockApi.deleteBlock(client, entry.newBlock.id);
     } else if (entry.status === 'removed' && entry.oldBlock) {
-        const plan = getRestoreInsertPlan(entry, comparison.allEntries, {
-            documentId: options.documentId,
-            oldFile: comparison.file?.oldFile,
-            newFile: comparison.file?.newFile,
-        });
+        const plan = getRestoreInsertPlan(entry, allEntries, context);
         if (plan.parentIDs.length === 0) throw new Error('No safe insertion position could be resolved for the removed block.');
         const payload = getRestoreBlockPayload(entry);
         let lastError: unknown;
@@ -459,6 +478,22 @@ export async function rollbackTimelineBlock(
     } else {
         throw new Error('The selected block change cannot be restored safely.');
     }
+}
+
+export async function rollbackTimelineBlock(
+    client: SiYuanClient,
+    options: { documentId: string; tag: string; changeKey: string },
+): Promise<{ success: true; documentId: string; tag: string; changeKey: string; status: BlockDiffEntry['status'] }> {
+    const comparison = await compareTimelineNodeInternal(client, options);
+    const entry = comparison.allEntries.find((item) => item.key === options.changeKey && item.status !== 'unchanged');
+    if (!entry) throw new Error('The changeKey no longer matches the current document state; run compare_node again.');
+    if (!entry.canAcceptBlock) throw new Error(entry.acceptReason || 'This block cannot be restored safely.');
+
+    await applyTimelineBlockRestore(client, entry, comparison.allEntries, {
+        documentId: options.documentId,
+        oldFile: comparison.file?.oldFile,
+        newFile: comparison.file?.newFile,
+    });
 
     return {
         success: true,

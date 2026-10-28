@@ -1,5 +1,6 @@
 import type { SiYuanClient } from '../api/client';
 import { PERMISSIONS_API_PATH } from '../core/permissions';
+import { SiYuanRequestError } from '../api/errors';
 
 export const REQUIRED_PLUGIN_NAME = 'siyuan-plugins-mcp-sisyphus';
 export const REQUIRED_PLUGIN_MANIFEST_PATH = `/data/plugins/${REQUIRED_PLUGIN_NAME}/plugin.json`;
@@ -24,9 +25,12 @@ function formatPluginNotReadyMessage(details?: string): string {
 }
 
 function isConnectivityOrAuthError(error: unknown): boolean {
+    if (error instanceof SiYuanRequestError) {
+        return error.kind === 'timeout'
+            || (error.kind === 'http' && (error.status === 401 || error.status === 403 || (error.status ?? 0) >= 500));
+    }
     const message = error instanceof Error ? error.message : String(error);
-    return /HTTP error:\s*(401|403|5\d\d)\b/i.test(message)
-        || /unauthorized/i.test(message)
+    return /unauthorized/i.test(message)
         || /forbidden/i.test(message)
         || /timeout/i.test(message)
         || /fetch failed/i.test(message)

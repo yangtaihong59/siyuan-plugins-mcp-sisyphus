@@ -389,11 +389,12 @@ describe('snapshot document timeline', () => {
         const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/SnapshotPanel.svelte'), 'utf8');
         const diffSource = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
-        expect(source).toContain('const TIMELINE_NODE_ATTR_KEY = "custom-sisyphus-timeline";');
-        expect(source).toContain('"/api/attr/getBlockAttrs"');
-        expect(source).toContain('attrs: { [TIMELINE_NODE_ATTR_KEY]: serializeTimelineNodeRecords(documentNodes) }');
-        expect(source).toContain('async function readTimelineNodes(documentId: string)');
-        expect(source).toContain('async function writeTimelineNodes(nodes');
+        // The per-document node index is read and written only by core/timeline-service.
+        expect(source).toContain('return readDocumentNodes(client, documentId);');
+        expect(source).toContain('return writeDocumentNodes(client, documentId, nodes);');
+        expect(source).not.toContain('"/api/attr/setBlockAttrs"');
+        expect(source).toContain('function readTimelineNodes(documentId: string)');
+        expect(source).toContain('function writeTimelineNodes(nodes');
         expect(source).toContain('sortTimelineNodesNewestFirst');
         expect(diffSource).toContain('createNoChangeTimelineEntry(nextSelection, currentSnapshot)');
         expect(diffSource).toContain('if (node.snapshotId === currentSnapshot.id)');
@@ -421,14 +422,12 @@ describe('snapshot document timeline', () => {
         const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/SnapshotPanel.svelte'), 'utf8');
         const createNode = source.match(/async function createTimelineNode\(\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
 
-        // 文档节点写 attrs；全局节点只写 global tag。
-        expect(createNode).toContain('"/api/repo/createSnapshot"');
-        expect(createNode).toContain('createTimelineTagName(text, currentDocumentId, existingTags)');
-        expect(createNode).toContain('createGlobalTimelineTagName(text, existingTags)');
-        expect(createNode).toContain('const taggedSnapshots = await readTimelineTagSnapshots()');
-        expect(createNode).toContain('if (createScope === "document")');
-        expect(createNode).toContain('scope: "document"');
-        expect(createNode).toContain('await writeTimelineNodes(nodes, currentDocumentId)');
+        // 文档节点写 attrs；全局节点只写 global tag——都由 core/timeline-service 完成。
+        expect(createNode).toContain('await createTimelineNodeRecordInRepo(client, {');
+        expect(createNode).toContain('scope: createScope,');
+        expect(createNode).toContain('...(createScope === "document" ? { documentId: currentDocumentId } : {})');
+        expect(createNode).toContain('if (created.partialFailure)');
+        expect(createNode).not.toContain('"/api/repo/createSnapshot"');
         expect(source).toContain('let createScope: TimelineNodeScope = "document";');
         expect(source).toContain('class:active={createScope === "global"}');
         expect(source).toContain('class="snapshot-badge"');
@@ -440,12 +439,11 @@ describe('snapshot document timeline', () => {
         const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/SnapshotPanel.svelte'), 'utf8');
         const deleteNode = source.slice(
             source.indexOf('async function deleteTimelineNode('),
-            source.indexOf('async function findNewestSnapshotForMemo'),
+            source.indexOf('async function associateLegacySnapshot'),
         );
 
-        expect(deleteNode).toContain('"/api/repo/removeRepoTagSnapshot"');
-        expect(deleteNode).toContain('previousDocumentNodes.filter');
-        expect(deleteNode).toContain('await writeTimelineNodes(previousDocumentNodes, documentId)');
+        // Index-then-tag removal with index restore lives in core/timeline-service.
+        expect(deleteNode).toContain('await removeTimelineNode(client, node, documentId);');
         expect(deleteNode).toContain('if (selectedNodeKey === selectionKey) onSelectNode(null);');
         expect(deleteNode).not.toContain('await loadSnapshots()');
         expect(deleteNode).not.toContain('removeRepoSnapshot');

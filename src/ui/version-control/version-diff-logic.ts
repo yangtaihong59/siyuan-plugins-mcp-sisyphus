@@ -1,5 +1,5 @@
 /* Pure helpers for VersionDiffPanel: diff display items, minimap geometry and DOM lookups. */
-import { fetchPost } from "siyuan";
+import { rendererPost as post } from "@/ui/plugin/renderer-client";
 import { type BlockDiffEntry } from "@/shared/version-control/block-diff";
 import { sortSnapshotsNewestFirst, type TimelineEntry, type TimelineNodeSelection, type TimelineSnapshot } from "@/shared/version-control/timeline";
 
@@ -196,17 +196,7 @@ export function minimapHeight(item: DiffMinimapItem): number {
     return Math.min(18, Math.max(4, 100 / item.total));
 }
 
-export function post<T>(endpoint: string, data: Record<string, unknown> = {}): Promise<T> {
-    return new Promise((resolve, reject) => {
-        fetchPost(endpoint, data, (response: { code: number; msg?: string; data: T }) => {
-            if (response?.code === 0) {
-                resolve(response.data);
-            } else {
-                reject(new Error(response?.msg || `SiYuan API error from ${endpoint}`));
-            }
-        });
-    });
-}
+export { rendererPost as post } from "@/ui/plugin/renderer-client";
 
 export function snapshotFromSelection(nextSelection: TimelineNodeSelection): Snapshot {
     const node = nextSelection.node;

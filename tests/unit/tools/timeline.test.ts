@@ -6,7 +6,7 @@ import {
     createTimelineNode,
     deleteTimelineNode,
     rollbackTimelineBlock,
-} from '@/shared/timeline-service';
+} from '@/core/timeline-service';
 import { callTimelineTool, listTimelineTools } from '@/tools/timeline';
 import { createMockClient } from '../../helpers/mock-client';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';

@@ -5,7 +5,7 @@ export { deriveKernelEndpointUrl, loadWriteCoordinatorSettings, selectWriteCoord
 export type { CliWriteCoordinatorSettings, CliWriteCoordinatorEndpoint } from '../core/write-coordinator-settings';
 import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
 import {
-    loadToolConfigFromApiFileWithStatus,
+    loadToolConfigForExecution,
     type ToolConfig,
 } from '../core/config';
 import { PermissionManager } from '../core/permissions';
@@ -50,7 +50,7 @@ export async function loadCliRuntimeState(
 
     await ensureRequiredPluginInstalled(client);
 
-    const toolConfig = await loadToolConfigFromAPI(client);
+    const toolConfig = await loadToolConfigForExecution(client);
     const permMgr = new PermissionManager(client);
     if (options.loadPermissions !== false) {
         await permMgr.load();
@@ -128,8 +128,4 @@ async function retargetLoopbackProfile(
     return decision.apiUrl;
 }
 
-async function loadToolConfigFromAPI(client: SiYuanClient): Promise<ToolConfig> {
-    const loaded = await loadToolConfigFromApiFileWithStatus(client);
-    if (loaded.errorMessage?.includes('Unsupported avActionsVersion')) throw new Error(loaded.errorMessage);
-    return loaded.config;
-}
+

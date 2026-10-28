@@ -7,7 +7,7 @@ import {
     listTimelineNodes,
     rollbackTimelineBlock,
     rollbackTimelineDocument,
-} from '../../shared/timeline-service';
+} from '../../core/timeline-service';
 import { isGlobalTimelineTag } from '../../shared/version-control/timeline';
 import { ensurePermissionForDocumentId } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';

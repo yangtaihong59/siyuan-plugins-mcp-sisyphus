@@ -8,6 +8,7 @@ import {
     renameAsset,
     uploadAsset,
 } from '@/api/file';
+import { requestError } from '../../helpers/request-error';
 
 describe('file api wrappers', () => {
     it('delegates uploadAsset through requestFormData', async () => {
@@ -36,7 +37,7 @@ describe('file api wrappers', () => {
     });
 
     it('propagates multipart upload timeouts', async () => {
-        const requestFormData = vi.fn().mockRejectedValueOnce(new Error('Request timeout after 5000ms'));
+        const requestFormData = vi.fn().mockRejectedValueOnce(requestError('Request timeout after 5000ms'));
         const client = {
             requestFormData,
             requestFormDataWrite: requestFormData,
@@ -46,7 +47,7 @@ describe('file api wrappers', () => {
     });
 
     it('propagates multipart upload HTTP errors', async () => {
-        const requestFormData = vi.fn().mockRejectedValueOnce(new Error('HTTP error: 413 Payload Too Large'));
+        const requestFormData = vi.fn().mockRejectedValueOnce(requestError('HTTP error: 413 Payload Too Large'));
         const client = {
             requestFormData,
             requestFormDataWrite: requestFormData,

@@ -144,6 +144,19 @@ export interface ToolConfigLoadResult {
     source: 'api_file' | 'default_fallback';
     errorMessage?: string;
     rawLength?: number;
+    /** The stored config was written by a newer, incompatible version. */
+    unsupportedVersion?: true;
+}
+
+/**
+ * A config written by a newer plugin. Every entry point fails closed on it:
+ * falling back to defaults could re-enable tools the user turned off.
+ */
+export class UnsupportedToolConfigVersionError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'UnsupportedToolConfigVersionError';
+    }
 }
 
 export const MCP_TOOLS_CONFIG_API_PATH = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/mcpToolsConfig';
@@ -464,7 +477,7 @@ function applyNestedConfig(config: ToolConfig, raw: Record<string, unknown>) {
 /** Migrate explicit raw flags before defaults; get exists in both formats. */
 export function normalizeToolConfig(raw: unknown): ToolConfig {
     if (isRecord(raw) && raw.avActionsVersion !== undefined && raw.avActionsVersion !== 1 && raw.avActionsVersion !== 2) {
-        throw new Error(`Unsupported avActionsVersion: ${String(raw.avActionsVersion)}`);
+        throw new UnsupportedToolConfigVersionError(`Unsupported avActionsVersion: ${String(raw.avActionsVersion)}`);
     }
     let source = raw;
     if (isRecord(raw) && raw.avActionsVersion !== 2 && isRecord(raw.av)) {
@@ -503,7 +516,12 @@ function formatConfigLoadError(error: unknown): string {
     return String(error);
 }
 
-export async function loadToolConfigFromApiFileWithStatus(client: SiYuanClient): Promise<ToolConfigLoadResult> {
+/**
+ * The single tool-config load policy for the server, kernel and CLI.
+ * An unreadable or corrupt file falls back to `previous` (the last good
+ * config) or defaults; an unsupported version is reported, never masked.
+ */
+export async function loadToolConfigFromApiFileWithStatus(client: SiYuanClient, previous?: ToolConfig): Promise<ToolConfigLoadResult> {
     try {
         const content = await client.readFile(MCP_TOOLS_CONFIG_API_PATH);
         if (!content) {
@@ -523,15 +541,26 @@ export async function loadToolConfigFromApiFileWithStatus(client: SiYuanClient):
             rawLength: content.length,
         };
     } catch (error) {
-        const config = buildDefaultToolConfig();
-        if (formatConfigLoadError(error).includes('Unsupported avActionsVersion')) config.av.enabled = false;
+        if (error instanceof UnsupportedToolConfigVersionError) {
+            // Only display paths (instructions, settings) read this config.
+            const config = buildDefaultToolConfig();
+            config.av.enabled = false;
+            return { config, ok: false, source: 'default_fallback', errorMessage: error.message, unsupportedVersion: true };
+        }
         return {
-            config,
+            config: previous ?? buildDefaultToolConfig(),
             ok: false,
             source: 'default_fallback',
             errorMessage: formatConfigLoadError(error),
         };
     }
+}
+
+/** Config for executing tools: throws on an unsupported version, see the load policy above. */
+export async function loadToolConfigForExecution(client: SiYuanClient, previous?: ToolConfig): Promise<ToolConfig> {
+    const loaded = await loadToolConfigFromApiFileWithStatus(client, previous);
+    if (loaded.unsupportedVersion) throw new UnsupportedToolConfigVersionError(loaded.errorMessage ?? 'Unsupported tool config version');
+    return loaded.config;
 }
 
 export async function loadToolConfigFromApiFile(client: SiYuanClient): Promise<ToolConfig> {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { createMockPermissionManager } from '../../helpers/mock-permissions';
 import { parseResult } from '../../helpers/parse-result';
+import { requestError } from '../../helpers/request-error';
 
 describe('strict AV native select filter readback', () => {
     it.each([
@@ -17,7 +18,7 @@ describe('strict AV native select filter readback', () => {
             id: viewID, type: 'table', name: 'Table', filters: [], sorts: [], table: { columns: [{ id: 'status', hidden: false }] },
         }] };
         const client = {
-            readFile: vi.fn(async () => { throw new Error('HTTP error: 404 Not Found'); }),
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
             writeFile: vi.fn(async () => undefined),
             requestRead: vi.fn(async (endpoint: string) => {
                 if (endpoint === '/api/av/getAttributeView') return { av: structuredClone(definition) };

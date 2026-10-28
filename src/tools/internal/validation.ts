@@ -2,6 +2,7 @@ import { ZodError, type ZodIssue } from 'zod';
 
 import { getActionHint } from '../../core/help';
 import type { ToolErrorContext, ToolFieldError } from './types';
+import { isSiYuanRequestError } from '../../api/errors';
 
 export function formatIssuePath(path: PropertyKey[]): string {
     return path
@@ -65,10 +66,7 @@ export function resolveHint(context?: ToolErrorContext): string | undefined {
 }
 
 export function isApiError(error: Error): boolean {
-    return error.name === 'SiYuanError'
-        || error.message.startsWith('SiYuan API error:')
-        || error.message.startsWith('HTTP error:')
-        || error.message.startsWith('Request timeout');
+    return isSiYuanRequestError(error);
 }
 
 export function includeDebugDetails(): boolean {

@@ -12,6 +12,7 @@ import * as searchApi from '@/api/search';
 import * as contextTools from '@/tools/internal/context';
 
 import { parseResult } from '../../helpers/parse-result';
+import { requestError } from '../../helpers/request-error';
 
 const searchConfig: CategoryToolConfig<'fulltext' | 'query_sql' | 'get_backlinks' | 'search_refs'> = {
     enabled: true,
@@ -301,7 +302,7 @@ describe('tool permission and filtering behavior', () => {
             denied: null,
         } as never);
         vi.spyOn(documentApi, 'getHPathByID')
-            .mockRejectedValueOnce(new Error('SiYuan API error: -1 - indexing'))
+            .mockRejectedValueOnce(requestError('SiYuan API error: -1 - indexing'))
             .mockResolvedValueOnce('/Projects/New Doc');
 
         const result = await callDocumentTool({} as never, {

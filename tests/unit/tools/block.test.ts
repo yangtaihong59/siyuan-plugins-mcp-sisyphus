@@ -5,6 +5,7 @@ import { BLOCK_VARIANTS, callBlockTool, listBlockTools } from '@/tools/block';
 import { isMissingBlockError } from '@/tools/internal/errorTranslation';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
+import { requestError } from '../../helpers/request-error';
 
 describe('block tool', () => {
     const permMgr = {
@@ -52,7 +53,7 @@ describe('block tool', () => {
     }
 
     it('treats missing block API errors as non-existent blocks', () => {
-        expect(isMissingBlockError(new Error('SiYuan API error: -1 - 未找到 ID 为 [invalid-block-id-12345] 的内容块'))).toBe(true);
+        expect(isMissingBlockError(requestError('SiYuan API error: -1 - 未找到 ID 为 [invalid-block-id-12345] 的内容块'))).toBe(true);
         expect(isMissingBlockError(new Error('some other error'))).toBe(false);
     });
 
@@ -108,7 +109,7 @@ describe('block tool', () => {
                     }];
                 }
                 if (endpoint === '/api/block/getDocInfo' && body?.id === 'missing') {
-                    throw new Error('SiYuan API error: -1 - 未找到 ID 为 [missing] 的内容块');
+                    throw requestError('SiYuan API error: -1 - 未找到 ID 为 [missing] 的内容块');
                 }
                 if (endpoint === '/api/block/getBlockKramdowns') {
                     expect(body).toEqual({

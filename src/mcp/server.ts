@@ -11,7 +11,7 @@ import { planToolCall } from './tool-call-gate';
 import { executeLocalTool, shouldSlimResponse, toolCallRequestText } from './tool-execution';
 
 import { HttpSiYuanClient, type SiYuanClient } from '../api/client';
-import { buildDefaultToolConfig, loadToolConfigFromApiFileWithStatus, type ToolConfig, type ToolConfigLoadResult } from '../core/config';
+import { loadToolConfigForExecution, loadToolConfigFromApiFileWithStatus, type ToolConfig, type ToolConfigLoadResult } from '../core/config';
 import { WriteSafetyCoordinator } from './write-safety-coordinator';
 import { callCliWriteCoordinator } from '../core/write-coordinator-client';
 import { loadWriteCoordinatorSettings } from '../core/write-coordinator-settings';
@@ -72,11 +72,6 @@ export function getMcpServerHelpText(): string {
     ].join('\n');
 }
 
-async function tryReadConfigFromAPI(client: SiYuanClient): Promise<ToolConfig | null> {
-    const result = await loadToolConfigFromApiFileWithStatus(client);
-    return result.errorMessage?.includes('Unsupported avActionsVersion') || (result.ok && result.rawLength !== 0) ? result.config : null;
-}
-
 async function initSiYuanClient(): Promise<SiYuanClient> {
     const client = new HttpSiYuanClient();
 
@@ -132,14 +127,10 @@ export async function createSiYuanServerRuntime(
     const fastClient = createFastClient();
     const instructionClient = createInstructionClient();
 
+    let lastToolConfig: ToolConfig | undefined;
     async function getToolConfig(): Promise<ToolConfig> {
-        try {
-            const config = await tryReadConfigFromAPI(fastClient);
-            if (config) return config;
-        } catch {
-            // SiYuan unreachable — fall back to defaults below.
-        }
-        return buildDefaultToolConfig();
+        lastToolConfig = await loadToolConfigForExecution(fastClient, lastToolConfig);
+        return lastToolConfig;
     }
 
     const initialConfigLoad: ToolConfigLoadResult = await loadToolConfigFromApiFileWithStatus(instructionClient);
@@ -304,7 +295,12 @@ export async function createSiYuanServer(options: CreateSiYuanServerOptions = {}
             ctx.mcpReq.envelope as { clientCapabilities?: Parameters<typeof supportsMcpApps>[0] } | undefined
         )?.clientCapabilities ?? server.getClientCapabilities();
         const appsEnabled = supportsMcpApps(clientCapabilities);
-        const config = await getToolConfig();
+        let config: ToolConfig;
+        try {
+            config = await getToolConfig();
+        } catch (error) {
+            return gateError(createErrorResult(error, { tool: name }));
+        }
         const plan = planToolCall(name, args, config, {
             appsEnabled,
             extensionTools: resolveCategory(name) === 'extension' ? officialMcpBridge.getTools() : undefined,

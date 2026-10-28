@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { Socket } from 'node:net';
 import { createMcpHandler, isJsonContentType, isLegacyRequest, type Server } from '@modelcontextprotocol/server';
 import { NodeStreamableHTTPServerTransport, originValidation, toNodeHandler, toWebRequest } from '@modelcontextprotocol/node';
+import { LEGACY_SESSION_EXPIRED_BODY, LegacySessionTable } from '../core/legacy-sessions';
 
 export interface TlsOptions {
     /** Path to PEM-encoded certificate file */
@@ -72,7 +73,8 @@ function loadTlsCredentials(tls: TlsOptions): { cert: Buffer; key: Buffer; ca?: 
 }
 
 export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpMcpServerHandle> {
-    const sessions = new Map<string, SessionEntry>();
+    // closeSessionEntry is declared below; drops only happen once requests run.
+    const sessions = new LegacySessionTable<SessionEntry>((_id, entry) => { void closeSessionEntry(entry); });
     const mcpPath = opts.path ?? '/mcp';
     const sockets = new Set<Socket>();
     let shuttingDown = false;
@@ -145,7 +147,15 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpM
             // Legacy session dispatch (2025-era clients).
             const sessionIdHeader = req.headers['mcp-session-id'];
             const sessionId = Array.isArray(sessionIdHeader) ? sessionIdHeader[0] : sessionIdHeader;
-            let entry = sessionId ? sessions.get(sessionId) : undefined;
+            sessions.sweep();
+            const entry = sessionId ? sessions.touch(sessionId) : undefined;
+            if (sessionId && !entry) {
+                // Same policy as the kernel: an unknown or idle-expired id is
+                // gone; the client must initialize a new session.
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(LEGACY_SESSION_EXPIRED_BODY));
+                return;
+            }
 
             if (!entry) {
                 // New session
@@ -158,14 +168,13 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpM
 
                 transport.onclose = () => {
                     if (transport.sessionId) {
-                        sessions.delete(transport.sessionId);
+                        sessions.forget(transport.sessionId);
                     }
                 };
 
-                entry = { server, transport };
                 await transport.handleRequest(req, res, parsedBody);
                 if (transport.sessionId) {
-                    sessions.set(transport.sessionId, entry);
+                    sessions.add(transport.sessionId, { server, transport });
                 }
                 return;
             }
@@ -225,8 +234,9 @@ export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpM
         process.off('beforeExit', handleBeforeExit);
         console.error(`[MCP][HTTP] shutting down: ${reason}`);
 
-        await Promise.allSettled(Array.from(sessions.values()).map(closeSessionEntry));
-        sessions.clear();
+        const open = Array.from(sessions.entries());
+        for (const [id] of open) sessions.forget(id);
+        await Promise.allSettled(open.map(([, entry]) => closeSessionEntry(entry)));
         try {
             await modernHandler.close();
         } catch (error) {
