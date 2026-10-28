@@ -135,12 +135,6 @@ function formatCandidates(candidates: FsDocumentPath[]): string {
     return candidates.map((candidate) => candidate.canonicalPath).join(', ');
 }
 
-export function getFsPathErrorCode(error: unknown): string | undefined {
-    return error && typeof error === 'object' && 'code' in error
-        ? String((error as { code?: unknown }).code)
-        : undefined;
-}
-
 function createFsError(code: string, message: string): Error {
     const error = new Error(message);
     Object.assign(error, { code });

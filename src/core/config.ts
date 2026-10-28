@@ -14,7 +14,7 @@ import { FLASHCARD_ACTION_SPECS } from '../tools/flashcard/actions';
 import { EXTENSION_ACTION_SPECS } from '../tools/extension/actions';
 import { MASCOT_ACTION_SPECS } from '../tools/mascot/actions';
 import { FEEDBACK_ACTION_SPECS } from '../tools/feedback/actions';
-
+import { isRecord } from '../shared/record';
 
 export const TOOL_CATEGORIES = ['fs', 'notebook', 'document', 'block', 'av', 'file', 'search', 'tag', 'timeline', 'system', 'flashcard', 'extension', 'mascot', 'feedback'] as const;
 
@@ -312,10 +312,6 @@ export function buildDefaultToolConfig(): ToolConfig {
     };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function collectLegacyToolConfigSignals(raw: Record<string, unknown>): string[] {
     const signals: string[] = [];
 
@@ -571,10 +567,6 @@ export async function saveToolConfigToApiFile(client: SiYuanClient, config: Tool
     const normalized = normalizeToolConfig(config);
     await client.writeFile(MCP_TOOLS_CONFIG_API_PATH, JSON.stringify(normalized, null, 2));
     return normalized;
-}
-
-export async function readAgentSiyuanMemory(client: SiYuanClient): Promise<string> {
-    return (await loadToolConfigFromApiFile(client)).agentSiyuanMemoryText ?? '';
 }
 
 export async function writeAgentSiyuanMemory(client: SiYuanClient, text: string): Promise<ToolConfig> {

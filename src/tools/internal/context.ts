@@ -43,18 +43,10 @@ export function normalizePath(value: string): string {
     return value.startsWith('/') ? value : `/${value}`;
 }
 
-export function isPathWithinScope(pathValue: string, scopePath: string): boolean {
-    const normalizedPath = normalizePath(pathValue);
-    const normalizedScope = normalizePath(scopePath);
-    if (normalizedScope === '/') return true;
-    return normalizedPath === normalizedScope || normalizedPath.startsWith(`${normalizedScope}/`);
-}
-
 export function extractDocumentId(pathValue: string): string {
     const segment = normalizePath(pathValue).split('/').filter(Boolean).at(-1) ?? '';
     return segment.endsWith('.sy') ? segment.slice(0, -3) : segment;
 }
-
 
 async function resolveDocumentContextViaSql(client: SiYuanClient, id: string): Promise<ResolvedDocumentContext | null> {
     const rows = await searchApi.querySQL(

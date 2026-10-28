@@ -1,7 +1,7 @@
 import type { ToolResult } from '../tools/internal/shared';
 import { isActionHelpPayload, isHelpIndexPayload } from '../shared/help-payload';
 import { translatePresentationPayload, translatePresentationText } from '../shared/invocation-format';
-
+import { isRecord as isObject } from '../shared/record';
 
 export interface RenderOptions {
     json: boolean;
@@ -643,6 +643,3 @@ function isScalar(value: unknown): value is string | number | boolean | null {
         || value === null;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}

@@ -19,6 +19,9 @@ const ALLOWED: Record<string, string[]> = {
     kernel: ['api', 'types', 'shared', 'core', 'tools', 'mcp'],
     // The renderer stays off the tool implementations and the MCP assembly.
     ui: ['api', 'types', 'shared', 'core'],
+    cli: ['api', 'types', 'shared', 'core', 'tools', 'mcp'],
+    // The MCP Apps page is a self-contained browser bundle.
+    'mcp-apps': [],
 };
 
 /** core derives its action tables from the per-tool declaration leaves. */
@@ -59,6 +62,21 @@ describe('src dependency direction', () => {
                     if (layer === 'core' && ACTION_DECLARATION.test(target)) continue;
                     violations.push(`${path.relative(SRC, file)} -> ${target}`);
                 }
+            }
+        }
+        expect(violations).toEqual([]);
+    });
+
+    it('keeps tools independent: code shared by several tools lives in tools/internal', () => {
+        const violations: string[] = [];
+        for (const file of listSourceFiles(path.join(SRC, 'tools'))) {
+            const [, own] = path.relative(SRC, file).split(path.sep);
+            if (!own || own.endsWith('.ts')) continue; // tools/index.ts aggregates every tool
+            for (const target of importedTargets(file)) {
+                const [root, tool] = target.split('/');
+                if (root !== 'tools' || !tool || tool === own || tool === 'index') continue;
+                if (own !== 'internal' && tool === 'internal') continue;
+                violations.push(`${path.relative(SRC, file)} -> ${target}`);
             }
         }
         expect(violations).toEqual([]);

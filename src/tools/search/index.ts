@@ -12,7 +12,7 @@ export {
     filterFullTextSearchResultByPermission,
     filterItemsByPermission,
     filterItemsByPermissionAndPath,
-} from './permission-filter';
+} from '../internal/permission-filter';
 
 export const SEARCH_TOOL_NAME = 'search';
 

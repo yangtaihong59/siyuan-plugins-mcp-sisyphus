@@ -11,7 +11,7 @@ import {
     SYSTEM_ACTIONS,
     TAG_ACTIONS,
     TIMELINE_ACTIONS,
-} from '../setting/tool-config';
+} from '@/core/config';
 
 export type PuppyState = 'idle' | 'reading' | 'writing' | 'deleting' | 'moving' | 'dangerous';
 export type ToolVariant = 'none' | 'fs' | 'notebook' | 'document' | 'block' | 'av' | 'file' | 'search' | 'tag' | 'timeline' | 'system' | 'flashcard' | 'mascot';

@@ -32,7 +32,7 @@ Run these only when their scope fits; read each header first.
 | `live-av-v2.cjs`, `live-av-id-contract.cjs`, `live-layout-feedback.cjs`, `live-feedback-regressions.cjs` | Writes fixtures inside the notebook named by `SIYUAN_TEST_NOTEBOOK` |
 | `live-timeline-mascot.cjs` | Real workspace; read its header before running |
 | `live-write-safety-matrix.cjs` | **Destructive**: exercises every mutation through the CLI and rewrites tool config; test workspace only |
-| `AI_INTERFACE_TEST.md` | Manual guide for AI-driven regression testing |
+| [`AI_INTERFACE_TEST.md`](../../docs/testing/AI_INTERFACE_TEST.md) | Manual guide for AI-driven regression testing |
 
 ## Persona scenarios and pi
 

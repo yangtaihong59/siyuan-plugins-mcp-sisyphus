@@ -1,6 +1,8 @@
 /* AV definition shapes and pure readers: keys, cell values, relation ids. */
 import type { AvAction } from '../../core/config';
 import { type ToolResult } from '../internal/shared';
+import { asRecord } from '../../shared/record';
+export { asRecord };
 
 export const AV_TOOL_NAME = 'av';
 
@@ -169,12 +171,6 @@ export function getNestedStringField(value: unknown, path: string[]): string | u
         current = (current as Record<string, unknown>)[segment];
     }
     return typeof current === 'string' && current.length > 0 ? current : undefined;
-}
-
-export function asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
 }
 
 export function extractKeyValueEntries(avData: unknown): Array<{ key: Record<string, unknown>; values: Array<Record<string, unknown>> }> {

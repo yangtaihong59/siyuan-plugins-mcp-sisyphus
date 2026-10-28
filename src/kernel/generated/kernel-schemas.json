@@ -5585,491 +5585,6 @@
         "description": "Set or clear one relation cell by AV item IDs, then verify the two-way reverse cell when configured."
       }
     },
-    "search": {
-      "fulltext": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "fulltext"
-          },
-          "query": {
-            "type": "string",
-            "description": "Search query string"
-          },
-          "method": {
-            "description": "Search method: 0=keyword (default), 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "methodName": {
-            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
-            "type": "string",
-            "enum": [
-              "keyword",
-              "query",
-              "query_syntax",
-              "sql",
-              "regex"
-            ]
-          },
-          "types": {
-            "description": "Block type filter. Accepts full names (e.g. {\"heading\": true}) or shortcodes (e.g. {\"h\": true, \"p\": true}). Codes: d=document, h=heading, p=paragraph, l=list, i=listItem, b=blockquote, c=codeBlock, m=mathBlock, t=table, s=superBlock, html=htmlBlock, embed=embedBlock, av=databaseBlock.",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "typeShortcodes": {
-            "description": "Alternative shorthand type filter as array: [\"h\",\"p\"]. Merged with types if both provided.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "paths": {
-            "description": "Restrict search to specific notebook IDs or storage paths",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "groupBy": {
-            "description": "0=no grouping (default), 1=group by document",
-            "type": "number"
-          },
-          "orderBy": {
-            "description": "Legacy numeric sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)",
-            "type": "number"
-          },
-          "sortBy": {
-            "description": "Semantic sort alias: \"relevance\", \"date\", \"updated_desc\", \"updated_asc\", \"created_desc\", \"created_asc\", or \"type\". Overrides orderBy if both provided.",
-            "type": "string",
-            "enum": [
-              "relevance",
-              "date",
-              "updated_desc",
-              "updated_asc",
-              "created_desc",
-              "created_asc",
-              "type"
-            ]
-          },
-          "page": {
-            "description": "Page number (1-based), default 1",
-            "type": "number"
-          },
-          "pageSize": {
-            "description": "Results per page, default 32, max 128",
-            "type": "number"
-          },
-          "parentId": {
-            "description": "Post-filter results to blocks whose root_id or parent_id matches this ID, scoping search within a document subtree.",
-            "type": "string"
-          },
-          "hasTags": {
-            "description": "When true, only return blocks that have tags. When false, only return blocks without tags.",
-            "type": "boolean"
-          },
-          "stripHtml": {
-            "description": "Legacy toggle. plainContent is now returned by default; set this when you want to emphasize plain-text-safe downstream parsing while keeping highlighted HTML content.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "action",
-          "query"
-        ],
-        "additionalProperties": false,
-        "description": "Full-text search across all blocks."
-      },
-      "semantic": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "semantic"
-          },
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Natural-language semantic search query"
-          },
-          "paths": {
-            "description": "Restrict search to notebook IDs or storage paths",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "types": {
-            "description": "Block type filter. Accepts full names or shortcodes.",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "typeShortcodes": {
-            "description": "Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "subTypes": {
-            "description": "Optional SiYuan block subtype filter",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "page": {
-            "description": "Page number (1-based), default 1",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pageSize": {
-            "description": "Results per page, default 32, max 128",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 128
-          }
-        },
-        "required": [
-          "action",
-          "query"
-        ],
-        "additionalProperties": false,
-        "description": "Semantic search across embedded workspace blocks."
-      },
-      "query_sql": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "query_sql"
-          },
-          "stmt": {
-            "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
-            "type": "string"
-          },
-          "sql": {
-            "description": "Semantic alias for stmt. Overrides stmt when both are provided.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Execute a read-only SQL query against the database."
-      },
-      "get_backlinks": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "get_backlinks"
-          },
-          "id": {
-            "type": "string",
-            "description": "Block or document ID to find backlinks for"
-          },
-          "keyword": {
-            "description": "Filter backlinks by keyword",
-            "type": "string"
-          },
-          "refTreeID": {
-            "description": "Optional document tree ID to narrow backlink scope",
-            "type": "string"
-          },
-          "scopeRootId": {
-            "description": "Semantic alias for refTreeID. Overrides refTreeID when both are provided.",
-            "type": "string"
-          },
-          "mode": {
-            "description": "Result mode: \"links\", \"mentions\", or \"both\" (default).",
-            "type": "string",
-            "enum": [
-              "links",
-              "mentions",
-              "both"
-            ]
-          }
-        },
-        "required": [
-          "action",
-          "id"
-        ],
-        "additionalProperties": false,
-        "description": "Find documents/blocks that link to or mention the given block."
-      },
-      "search_refs": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "search_refs"
-          },
-          "id": {
-            "type": "string",
-            "description": "Referenced block or document ID"
-          },
-          "rootID": {
-            "description": "Optional current root document ID",
-            "type": "string"
-          },
-          "k": {
-            "description": "Keyword filter",
-            "type": "string"
-          },
-          "beforeLen": {
-            "description": "Context length before the reference, default 512",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "isSquareBrackets": {
-            "description": "Search in square-bracket reference mode",
-            "type": "boolean"
-          },
-          "isDatabase": {
-            "description": "Whether the reference target is a database",
-            "type": "boolean"
-          },
-          "reqId": {
-            "description": "Optional passthrough request ID",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action",
-          "id"
-        ],
-        "additionalProperties": false,
-        "description": "Search blocks that reference a given block or document."
-      },
-      "find_replace": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "find_replace"
-          },
-          "k": {
-            "type": "string",
-            "description": "Find keyword"
-          },
-          "r": {
-            "type": "string",
-            "description": "Replacement text; use empty string to delete matches"
-          },
-          "ids": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Document or block IDs to mutate"
-          },
-          "paths": {
-            "description": "Optional notebook ID or storage path scope list",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "types": {
-            "description": "Optional block type filter",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "method": {
-            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "methodName": {
-            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
-            "type": "string",
-            "enum": [
-              "keyword",
-              "query",
-              "query_syntax",
-              "sql",
-              "regex"
-            ]
-          },
-          "orderBy": {
-            "description": "Legacy numeric sort order",
-            "type": "number"
-          },
-          "sortBy": {
-            "description": "Semantic sort alias that overrides orderBy when both are provided.",
-            "type": "string",
-            "enum": [
-              "relevance",
-              "date",
-              "updated_desc",
-              "updated_asc",
-              "created_desc",
-              "created_asc",
-              "type"
-            ]
-          },
-          "groupBy": {
-            "description": "Grouping mode",
-            "type": "number"
-          },
-          "replaceTypes": {
-            "description": "Replace target kinds such as text, code, docTitle, blockRef",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          }
-        },
-        "required": [
-          "action",
-          "k",
-          "r",
-          "ids"
-        ],
-        "additionalProperties": false,
-        "description": "Find and replace text in documents or blocks."
-      },
-      "search_assets": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "search_assets"
-          },
-          "k": {
-            "description": "Legacy asset filename keyword field",
-            "type": "string"
-          },
-          "query": {
-            "description": "Semantic alias for k. Overrides k when both are provided.",
-            "type": "string"
-          },
-          "exts": {
-            "description": "Optional extension filters",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Search asset files by filename."
-      },
-      "fulltext_asset_content": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "fulltext_asset_content"
-          },
-          "query": {
-            "description": "Search query string",
-            "type": "string"
-          },
-          "assetId": {
-            "description": "Asset content ID for an exact content lookup",
-            "type": "string"
-          },
-          "queryMethod": {
-            "description": "Query method for assetId lookup: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "types": {
-            "description": "Asset type filter",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "method": {
-            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "methodName": {
-            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
-            "type": "string",
-            "enum": [
-              "keyword",
-              "query",
-              "query_syntax",
-              "sql",
-              "regex"
-            ]
-          },
-          "orderBy": {
-            "description": "Legacy numeric sort order: 0=relevance DESC, 1=relevance ASC, 2=updated ASC, 3=updated DESC",
-            "type": "number"
-          },
-          "sortBy": {
-            "description": "Semantic sort alias: \"relevance_desc\", \"relevance_asc\", \"updated_asc\", or \"updated_desc\". The shorthand \"relevance\" maps to relevance_desc. Overrides orderBy if both are provided.",
-            "type": "string",
-            "enum": [
-              "relevance",
-              "relevance_desc",
-              "relevance_asc",
-              "updated_asc",
-              "updated_desc"
-            ]
-          },
-          "page": {
-            "description": "Page number (1-based)",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pageSize": {
-            "description": "Results per page",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 128
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Full-text search indexed asset contents."
-      },
-      "list_invalid_refs": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "list_invalid_refs"
-          },
-          "page": {
-            "description": "Page number (1-based)",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pageSize": {
-            "description": "Results per page",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 128
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "List invalid block references."
-      }
-    },
     "block": {
       "insert": {
         "type": "object",
@@ -9022,6 +8537,491 @@
         ],
         "additionalProperties": false,
         "description": "Get direct child documents at the notebook root. Returns a paginated { data, total, page, pageSize, pageCount, hasNextPage } payload."
+      }
+    },
+    "search": {
+      "fulltext": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "fulltext"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query string"
+          },
+          "method": {
+            "description": "Search method: 0=keyword (default), 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "methodName": {
+            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
+            "type": "string",
+            "enum": [
+              "keyword",
+              "query",
+              "query_syntax",
+              "sql",
+              "regex"
+            ]
+          },
+          "types": {
+            "description": "Block type filter. Accepts full names (e.g. {\"heading\": true}) or shortcodes (e.g. {\"h\": true, \"p\": true}). Codes: d=document, h=heading, p=paragraph, l=list, i=listItem, b=blockquote, c=codeBlock, m=mathBlock, t=table, s=superBlock, html=htmlBlock, embed=embedBlock, av=databaseBlock.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "typeShortcodes": {
+            "description": "Alternative shorthand type filter as array: [\"h\",\"p\"]. Merged with types if both provided.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paths": {
+            "description": "Restrict search to specific notebook IDs or storage paths",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupBy": {
+            "description": "0=no grouping (default), 1=group by document",
+            "type": "number"
+          },
+          "orderBy": {
+            "description": "Legacy numeric sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)",
+            "type": "number"
+          },
+          "sortBy": {
+            "description": "Semantic sort alias: \"relevance\", \"date\", \"updated_desc\", \"updated_asc\", \"created_desc\", \"created_asc\", or \"type\". Overrides orderBy if both provided.",
+            "type": "string",
+            "enum": [
+              "relevance",
+              "date",
+              "updated_desc",
+              "updated_asc",
+              "created_desc",
+              "created_asc",
+              "type"
+            ]
+          },
+          "page": {
+            "description": "Page number (1-based), default 1",
+            "type": "number"
+          },
+          "pageSize": {
+            "description": "Results per page, default 32, max 128",
+            "type": "number"
+          },
+          "parentId": {
+            "description": "Post-filter results to blocks whose root_id or parent_id matches this ID, scoping search within a document subtree.",
+            "type": "string"
+          },
+          "hasTags": {
+            "description": "When true, only return blocks that have tags. When false, only return blocks without tags.",
+            "type": "boolean"
+          },
+          "stripHtml": {
+            "description": "Legacy toggle. plainContent is now returned by default; set this when you want to emphasize plain-text-safe downstream parsing while keeping highlighted HTML content.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "query"
+        ],
+        "additionalProperties": false,
+        "description": "Full-text search across all blocks."
+      },
+      "semantic": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "semantic"
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Natural-language semantic search query"
+          },
+          "paths": {
+            "description": "Restrict search to notebook IDs or storage paths",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "types": {
+            "description": "Block type filter. Accepts full names or shortcodes.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "typeShortcodes": {
+            "description": "Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subTypes": {
+            "description": "Optional SiYuan block subtype filter",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "page": {
+            "description": "Page number (1-based), default 1",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "description": "Results per page, default 32, max 128",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128
+          }
+        },
+        "required": [
+          "action",
+          "query"
+        ],
+        "additionalProperties": false,
+        "description": "Semantic search across embedded workspace blocks."
+      },
+      "query_sql": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "query_sql"
+          },
+          "stmt": {
+            "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
+            "type": "string"
+          },
+          "sql": {
+            "description": "Semantic alias for stmt. Overrides stmt when both are provided.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Execute a read-only SQL query against the database."
+      },
+      "get_backlinks": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "get_backlinks"
+          },
+          "id": {
+            "type": "string",
+            "description": "Block or document ID to find backlinks for"
+          },
+          "keyword": {
+            "description": "Filter backlinks by keyword",
+            "type": "string"
+          },
+          "refTreeID": {
+            "description": "Optional document tree ID to narrow backlink scope",
+            "type": "string"
+          },
+          "scopeRootId": {
+            "description": "Semantic alias for refTreeID. Overrides refTreeID when both are provided.",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Result mode: \"links\", \"mentions\", or \"both\" (default).",
+            "type": "string",
+            "enum": [
+              "links",
+              "mentions",
+              "both"
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "id"
+        ],
+        "additionalProperties": false,
+        "description": "Find documents/blocks that link to or mention the given block."
+      },
+      "search_refs": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "search_refs"
+          },
+          "id": {
+            "type": "string",
+            "description": "Referenced block or document ID"
+          },
+          "rootID": {
+            "description": "Optional current root document ID",
+            "type": "string"
+          },
+          "k": {
+            "description": "Keyword filter",
+            "type": "string"
+          },
+          "beforeLen": {
+            "description": "Context length before the reference, default 512",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "isSquareBrackets": {
+            "description": "Search in square-bracket reference mode",
+            "type": "boolean"
+          },
+          "isDatabase": {
+            "description": "Whether the reference target is a database",
+            "type": "boolean"
+          },
+          "reqId": {
+            "description": "Optional passthrough request ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "id"
+        ],
+        "additionalProperties": false,
+        "description": "Search blocks that reference a given block or document."
+      },
+      "find_replace": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "find_replace"
+          },
+          "k": {
+            "type": "string",
+            "description": "Find keyword"
+          },
+          "r": {
+            "type": "string",
+            "description": "Replacement text; use empty string to delete matches"
+          },
+          "ids": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Document or block IDs to mutate"
+          },
+          "paths": {
+            "description": "Optional notebook ID or storage path scope list",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "types": {
+            "description": "Optional block type filter",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "method": {
+            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "methodName": {
+            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
+            "type": "string",
+            "enum": [
+              "keyword",
+              "query",
+              "query_syntax",
+              "sql",
+              "regex"
+            ]
+          },
+          "orderBy": {
+            "description": "Legacy numeric sort order",
+            "type": "number"
+          },
+          "sortBy": {
+            "description": "Semantic sort alias that overrides orderBy when both are provided.",
+            "type": "string",
+            "enum": [
+              "relevance",
+              "date",
+              "updated_desc",
+              "updated_asc",
+              "created_desc",
+              "created_asc",
+              "type"
+            ]
+          },
+          "groupBy": {
+            "description": "Grouping mode",
+            "type": "number"
+          },
+          "replaceTypes": {
+            "description": "Replace target kinds such as text, code, docTitle, blockRef",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          }
+        },
+        "required": [
+          "action",
+          "k",
+          "r",
+          "ids"
+        ],
+        "additionalProperties": false,
+        "description": "Find and replace text in documents or blocks."
+      },
+      "search_assets": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "search_assets"
+          },
+          "k": {
+            "description": "Legacy asset filename keyword field",
+            "type": "string"
+          },
+          "query": {
+            "description": "Semantic alias for k. Overrides k when both are provided.",
+            "type": "string"
+          },
+          "exts": {
+            "description": "Optional extension filters",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Search asset files by filename."
+      },
+      "fulltext_asset_content": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "fulltext_asset_content"
+          },
+          "query": {
+            "description": "Search query string",
+            "type": "string"
+          },
+          "assetId": {
+            "description": "Asset content ID for an exact content lookup",
+            "type": "string"
+          },
+          "queryMethod": {
+            "description": "Query method for assetId lookup: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "types": {
+            "description": "Asset type filter",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "method": {
+            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "methodName": {
+            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
+            "type": "string",
+            "enum": [
+              "keyword",
+              "query",
+              "query_syntax",
+              "sql",
+              "regex"
+            ]
+          },
+          "orderBy": {
+            "description": "Legacy numeric sort order: 0=relevance DESC, 1=relevance ASC, 2=updated ASC, 3=updated DESC",
+            "type": "number"
+          },
+          "sortBy": {
+            "description": "Semantic sort alias: \"relevance_desc\", \"relevance_asc\", \"updated_asc\", or \"updated_desc\". The shorthand \"relevance\" maps to relevance_desc. Overrides orderBy if both are provided.",
+            "type": "string",
+            "enum": [
+              "relevance",
+              "relevance_desc",
+              "relevance_asc",
+              "updated_asc",
+              "updated_desc"
+            ]
+          },
+          "page": {
+            "description": "Page number (1-based)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "description": "Results per page",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Full-text search indexed asset contents."
+      },
+      "list_invalid_refs": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "list_invalid_refs"
+          },
+          "page": {
+            "description": "Page number (1-based)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "description": "Results per page",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "List invalid block references."
       }
     },
     "system": {

@@ -24,7 +24,7 @@ import {
 import { applyExactReplaceEdits } from '../internal/replace';
 import { createJsonResult, createPaginatedResult, type ToolResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';
-import { applyDocumentKramdownDomReplacements, createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks, stripRedundantTitleHeading } from '../internal/kramdown-safe';
+import { applyDocumentKramdownDomReplacements, createReferenceSemanticsHints, stripRedundantTitleHeading } from '../internal/kramdown-safe';
 import {
     createSyntheticDocumentBlockWindow,
     listDocumentBlocksInTreeOrder,
@@ -33,6 +33,8 @@ import {
     type OrderedDocumentBlock,
 } from '../internal/document-kramdown';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
+import { escapeRegExp } from '../../shared/text';
+import { paginate } from '../internal/pagination';
 
 type FsActionHandler = ToolActionHandler;
 
@@ -307,10 +309,6 @@ async function listStorageDocumentTree(
     return nodes.filter((node): node is FsStorageTreeNode => node !== null);
 }
 
-function escapeRegExp(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function deriveDocumentTitle(hPath: string | undefined): string | undefined {
     const segment = stripSySuffix(lastSegment(hPath));
     return typeof segment === 'string' && segment.length > 0 ? segment : undefined;
@@ -508,10 +506,36 @@ async function readAgentMemoryState(client: Parameters<FsActionHandler>[0]['clie
     };
 }
 
-async function readUserRulesState(client: Parameters<FsActionHandler>[0]['client']) {
+async function readUserRulesState(client: Parameters<FsActionHandler>[0]['client']): Promise<{ content: string; updatedAt?: string }> {
     const config = await loadToolConfigFromApiFile(client);
     return {
         content: config.userRulesText ?? '',
+    };
+}
+
+/** How fs reads each virtual root file; writes stay action-specific (only AGENTS.md is writable). */
+const VIRTUAL_FILE_READERS: Record<VirtualRootFilePath, typeof readUserRulesState> = {
+    [AGENT_MEMORY_VIRTUAL_PATH]: readAgentMemoryState,
+    [USER_RULES_VIRTUAL_PATH]: readUserRulesState,
+};
+
+/** Virtual-file metadata for a read/search payload; `updatedAt` only where the file tracks it. */
+function virtualFileMeta(state: { updatedAt?: string }): Record<string, unknown> {
+    return { virtual: true, ...(state.updatedAt !== undefined ? { updatedAt: state.updatedAt || null } : {}) };
+}
+
+/** createPaginatedResult's page block for an in-memory list. */
+function pageOf<T>(items: T[], page: number | undefined, pageSize: number | undefined) {
+    const result = paginate(items, page ?? 1, pageSize ?? 50);
+    return {
+        items: result.items,
+        pagination: {
+            total: result.total,
+            page: result.page,
+            pageSize: result.pageSize,
+            pageCount: result.pageCount,
+            hasNextPage: result.hasNextPage,
+        },
     };
 }
 
@@ -594,21 +618,12 @@ const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     };
     assertNotVirtualRootFileDescendant(parsed.path);
     const virtualPath = getVirtualRootFilePath(parsed.path);
-    if (virtualPath === AGENT_MEMORY_VIRTUAL_PATH) {
-        const memory = await readAgentMemoryState(client);
-        const window = createSyntheticDocumentBlockWindow(memory.content, windowOptions);
+    if (virtualPath) {
+        const state = await VIRTUAL_FILE_READERS[virtualPath](client);
+        const window = createSyntheticDocumentBlockWindow(state.content, windowOptions);
         return createJsonResult({
-            ...createFsReadWindowPayload(AGENT_MEMORY_VIRTUAL_PATH, window, false),
-            virtual: true,
-            updatedAt: memory.updatedAt || null,
-        });
-    }
-    if (virtualPath === USER_RULES_VIRTUAL_PATH) {
-        const rules = await readUserRulesState(client);
-        const window = createSyntheticDocumentBlockWindow(rules.content, windowOptions);
-        return createJsonResult({
-            ...createFsReadWindowPayload(USER_RULES_VIRTUAL_PATH, window, false),
-            virtual: true,
+            ...createFsReadWindowPayload(virtualPath, window, false),
+            ...virtualFileMeta(state),
         });
     }
     const scope = await resolveFsScopePath(client, permMgr, parsed.path, 'read');
@@ -672,9 +687,7 @@ const handleWrite: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
             path: target.canonicalPath,
             id,
             created: true,
-            ...(hasSiyuanBlockLinks(markdown) ? createSiyuanBlockLinkHint() : {}),
-            ...(hasFootnoteReferences(markdown) ? createFootnoteReferenceHint() : {}),
-            ...(hasBlockRefIdFallbackAnchors(markdown) ? createUnresolvedBlockRefHint() : {}),
+            ...createReferenceSemanticsHints(markdown),
         }), [
             { type: 'reloadProtyle', id },
             { type: 'reloadFiletree' },
@@ -698,9 +711,7 @@ const handleWrite: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         path: existing.canonicalPath,
         id: existing.id,
         overwritten: true,
-        ...(hasSiyuanBlockLinks(markdown) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(markdown) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(markdown) ? createUnresolvedBlockRefHint() : {}),
+        ...createReferenceSemanticsHints(markdown),
         ...(attributeViews.length > 0 ? createAttributeViewFsHint(attributeViews) : {}),
     }), [
         { type: 'reloadProtyle', id: existing.id },
@@ -755,9 +766,7 @@ const handleReplace: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
             skippedComplexBlocks,
             recommendedTools: ['block.dom', 'block.update', 'av', 'file.export_md'],
         } : {}),
-        ...(hasSiyuanBlockLinks(changedMarkdown) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(changedMarkdown) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(changedMarkdown) ? createUnresolvedBlockRefHint() : {}),
+        ...createReferenceSemanticsHints(changedMarkdown),
     }), changed ? [
         { type: 'reloadProtyle', id: scope.id },
         { type: 'reloadFiletree' },
@@ -868,46 +877,12 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     assertNotVirtualRootFileDescendant(parsed.path);
     const matcher = createMatcher(parsed.query, parsed.regex, parsed.caseSensitive);
     const virtualPath = getVirtualRootFilePath(parsed.path);
-    if (virtualPath === AGENT_MEMORY_VIRTUAL_PATH) {
-        const memory = await readAgentMemoryState(client);
-        const matches = collectVirtualTextMatches(memory.content, matcher, AGENT_MEMORY_VIRTUAL_PATH);
-        const page = parsed.page ?? 1;
-        const pageSize = parsed.pageSize ?? 50;
-        const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
-        const normalizedPage = Math.min(page, pageCount);
-        const start = (normalizedPage - 1) * pageSize;
-        return createPaginatedResult(matches.slice(start, start + pageSize), {
-            total: matches.length,
-            page: normalizedPage,
-            pageSize,
-            pageCount,
-            hasNextPage: normalizedPage < pageCount,
-        }, {
-            path: AGENT_MEMORY_VIRTUAL_PATH,
-            virtual: true,
-            updatedAt: memory.updatedAt || null,
-            query: parsed.query,
-            regex: parsed.regex ?? false,
-            caseSensitive: parsed.caseSensitive ?? false,
-        });
-    }
-    if (virtualPath === USER_RULES_VIRTUAL_PATH) {
-        const rules = await readUserRulesState(client);
-        const matches = collectVirtualTextMatches(rules.content, matcher, USER_RULES_VIRTUAL_PATH);
-        const page = parsed.page ?? 1;
-        const pageSize = parsed.pageSize ?? 50;
-        const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
-        const normalizedPage = Math.min(page, pageCount);
-        const start = (normalizedPage - 1) * pageSize;
-        return createPaginatedResult(matches.slice(start, start + pageSize), {
-            total: matches.length,
-            page: normalizedPage,
-            pageSize,
-            pageCount,
-            hasNextPage: normalizedPage < pageCount,
-        }, {
-            path: USER_RULES_VIRTUAL_PATH,
-            virtual: true,
+    if (virtualPath) {
+        const state = await VIRTUAL_FILE_READERS[virtualPath](client);
+        const { items, pagination } = pageOf(collectVirtualTextMatches(state.content, matcher, virtualPath), parsed.page, parsed.pageSize);
+        return createPaginatedResult(items, pagination, {
+            path: virtualPath,
+            ...virtualFileMeta(state),
             query: parsed.query,
             regex: parsed.regex ?? false,
             caseSensitive: parsed.caseSensitive ?? false,
@@ -922,8 +897,9 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const docs = await collectSearchDocuments(client, permMgr, scope);
     const matches: Array<{ path: string; line: number; text: string }> = [];
     if (scope.type === 'root') {
-        matches.push(...collectVirtualTextMatches((await readAgentMemoryState(client)).content, matcher, AGENT_MEMORY_VIRTUAL_PATH));
-        matches.push(...collectVirtualTextMatches((await readUserRulesState(client)).content, matcher, USER_RULES_VIRTUAL_PATH));
+        for (const path of VIRTUAL_ROOT_FILES) {
+            matches.push(...collectVirtualTextMatches((await VIRTUAL_FILE_READERS[path](client)).content, matcher, path));
+        }
     }
     for (const doc of docs) {
         const markdown = normalizeMarkdownContent(await fileApi.exportMdContent(client, doc.id));
@@ -948,18 +924,8 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         return true;
     });
 
-    const page = parsed.page ?? 1;
-    const pageSize = parsed.pageSize ?? 50;
-    const pageCount = Math.max(1, Math.ceil(uniqueMatches.length / pageSize));
-    const normalizedPage = Math.min(page, pageCount);
-    const start = (normalizedPage - 1) * pageSize;
-    return createPaginatedResult(uniqueMatches.slice(start, start + pageSize), {
-        total: uniqueMatches.length,
-        page: normalizedPage,
-        pageSize,
-        pageCount,
-        hasNextPage: normalizedPage < pageCount,
-    }, {
+    const { items, pagination } = pageOf(uniqueMatches, parsed.page, parsed.pageSize);
+    return createPaginatedResult(items, pagination, {
         path: scope.canonicalPath,
         query: parsed.query,
         regex: parsed.regex ?? false,

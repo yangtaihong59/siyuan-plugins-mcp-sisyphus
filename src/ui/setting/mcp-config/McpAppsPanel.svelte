@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { McpAppsConfig, ToolConfig } from "../tool-config";
+    import type { McpAppsConfig, ToolConfig } from "@/core/config";
 
     export let display = false;
     export let config: ToolConfig;

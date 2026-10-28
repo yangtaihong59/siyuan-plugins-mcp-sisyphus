@@ -161,33 +161,6 @@ export function getCuratedActionExamples(category: ToolCategory, action: string)
     return TOOL_ACTION_EXAMPLES[category]?.[action] ?? [];
 }
 
-export function buildActionShapes<Action extends string>(
-    variants: ActionVariant<Action>[],
-    action: string,
-): string[] {
-    return variants
-        .filter((variant) => variant.action === action)
-        .flatMap((variant) => requiredFieldAlternatives(variant.schema)
-            .map((fields) => fields.length > 0 ? fields.join(' + ') : 'action only'));
-}
-
-function formatFieldList(fields: string[]): string {
-    return fields.length > 0 ? fields.join(', ') : 'no additional fields';
-}
-
-export function buildActionUsageSummary<Action extends string>(variants: ActionVariant<Action>[]): string {
-    const actionShapes = new Map<string, string[]>();
-
-    for (const variant of variants) {
-        const shape = requiredFieldAlternatives(variant.schema).map(formatFieldList).join(' | ');
-        const shapes = actionShapes.get(variant.action) ?? [];
-        if (!shapes.includes(shape)) shapes.push(shape);
-        actionShapes.set(variant.action, shapes);
-    }
-
-    return [...actionShapes.entries()].map(([action, shapes]) => `${action}: ${shapes.join(' | ')}`).join('; ');
-}
-
 /**
  * Compact per-action call signatures for tool descriptions, e.g.
  * `read(path) · write(path, markdown) · rm*(path)`. Only required fields are
@@ -211,23 +184,6 @@ export function buildActionSignatures<Action extends string>(
         const marker = isDangerousAction(category, action) ? '*' : '';
         return `${action}${marker}(${shapes.filter(Boolean).join(' | ')})`;
     }).join(' · ');
-}
-
-export function buildParameterContract<Action extends string>(
-    category: ToolCategory,
-    variants: ActionVariant<Action>[],
-): string {
-    const seen = new Set<string>();
-    return variants.flatMap((variant) => {
-        if (seen.has(variant.action)) return [];
-        seen.add(variant.action);
-
-        const alternatives = requiredFieldAlternatives(variant.schema);
-        const required = alternatives.flat();
-        const optional = getSchemaFieldNames(variant.schema, false).filter((field) => !required.includes(field));
-
-        return [`${category}.${variant.action}: required ${required.length > 0 ? alternatives.map((fields) => `[${fields.join(', ')}]`).join(' OR ') : '[]'} | optional ${optional.length > 0 ? `[${optional.join(', ')}]` : '[]'}`];
-    }).join('\n');
 }
 
 export function buildHelpIndex<Action extends string>(

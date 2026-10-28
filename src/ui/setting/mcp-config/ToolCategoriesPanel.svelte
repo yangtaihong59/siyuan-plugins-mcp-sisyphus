@@ -21,7 +21,7 @@
         type TimelineAction,
         type ToolCategory,
         type ToolConfig,
-    } from "../tool-config";
+    } from "@/core/config";
     import { CATEGORY_TAB_DEFS, ICON_SVGS } from "../mcp-config-tabs";
     import type { UiOfficialMcpDiscovery } from "../official-plugin-tools";
 

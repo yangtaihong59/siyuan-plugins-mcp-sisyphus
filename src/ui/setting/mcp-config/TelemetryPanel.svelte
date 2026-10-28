@@ -4,7 +4,7 @@
 
     import SettingPanel from "../../shared/setting-panel.svelte";
     import type { AnalyticsEvent, AnalyticsSummary } from "../../../core/analytics";
-    import type { ToolConfig } from "../tool-config";
+    import type { ToolConfig } from "@/core/config";
     import type { TelemetryConfig } from "../tool-config-storage";
     import { type HeatmapDay, type HeatmapMonth, type TransportChartItem, buildDailyHeatmap, buildHeatmapMonths, buildTelemetryItems, buildTransportGradient, formatApproxTokens, formatChars, formatDuration, formatTimestamp, readStorageFile, writeClipboardText } from "./telemetry-panel-logic";
 

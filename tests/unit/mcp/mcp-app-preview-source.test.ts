@@ -3,8 +3,10 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { readMcpAppSource } from '../../helpers/mcp-app-source';
+
 describe('MCP App documentation preview source contract', () => {
-    const appSource = readFileSync(resolve(process.cwd(), 'src/mcp-apps/index.ts'), 'utf8');
+    const appSource = readMcpAppSource();
 
     it('keeps preview fixtures development-only', () => {
         expect(appSource).toContain('const previewMode = import.meta.env.DEV');
@@ -25,5 +27,13 @@ describe('MCP App documentation preview source contract', () => {
         expect(appSource).toContain('requestId: payload.requestId');
         expect(appSource).toContain("toolErrorCode(preflight) === 'strict_mode_disabled'");
         expect(appSource).toContain("typeof payload?.requestId !== 'string'");
+    });
+
+    it('uses only the App tool names the server registers', async () => {
+        const names = await import('@/core/mcp-app-names');
+        const registered = new Set(Object.values(names).filter((value) => typeof value === 'string'));
+        const used = new Set([...appSource.matchAll(/'((?:flashcard_review|timeline|mascot_shop)_(?:app_action|session|app))'/g)].map((match) => match[1]));
+        expect(used.size).toBeGreaterThan(0);
+        for (const name of used) expect(registered).toContain(name);
     });
 });

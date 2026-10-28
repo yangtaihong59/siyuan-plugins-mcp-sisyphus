@@ -36,13 +36,13 @@ import {
 import { escapeSqlString } from '../../shared/sql';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { getNotebookNameArgumentHint, resolveNotebookName } from '../internal/helpers/notebook-names';
-import { filterBacklinkResultByPermission, filterItemsByPermissionAndPath } from '../search';
+import { filterBacklinkResultByPermission, filterItemsByPermissionAndPath } from '../internal/permission-filter';
 import { createJsonResult, createPermissionDeniedResult, createSetIconReminder, type ToolResult } from '../internal/shared';
 import { applyUiRefresh, type UiRefreshOperation } from '../internal/ui-refresh';
 import { sleep } from '../../shared/async';
 import { stripRedundantTitleHeading } from '../internal/kramdown-safe';
 import { readDocumentBlockWindow } from '../internal/document-kramdown';
-import { createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks } from '../internal/kramdown-safe';
+import { createReferenceSemanticsHints } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs } from '../internal/markdown-input';
 import { applyDocumentReorder, readDocumentReorderState } from '../internal/helpers/document-reorder';
 import { SiYuanRequestError } from '../../api/errors';
@@ -410,9 +410,7 @@ const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         success: true,
         notebook: parsed.notebook,
         path,
-        ...(hasSiyuanBlockLinks(markdown) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(markdown) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(markdown) ? createUnresolvedBlockRefHint() : {}),
+        ...createReferenceSemanticsHints(markdown),
         ...(parsed.parentPath ? { parentPath: parsed.parentPath } : {}),
         ...(parentPath && parentPath !== parsed.parentPath ? { resolvedParentPath: parentPath } : {}),
         ...(parsed.title ? { title: parsed.title } : {}),

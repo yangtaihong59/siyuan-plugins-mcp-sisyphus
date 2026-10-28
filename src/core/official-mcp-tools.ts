@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isRecord } from '../shared/record';
 
 const SELF_PLUGIN_TOOL_PREFIX = 'plugin__siyuan_plugins_mcp_sisyphus__';
 
@@ -42,10 +43,6 @@ export interface OfficialMcpDiscoverySnapshot {
     lastAttemptAt?: string;
     error?: string;
     changed: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function normalizeOfficialInputSchema(

@@ -1,17 +1,37 @@
 import { App } from '@modelcontextprotocol/ext-apps/app-with-deps';
 
 import './style.css';
-
-type JsonObject = Record<string, any>;
-
-interface ReviewTrace {
-    deckID: string;
-    cardID: string;
-    prompt: string;
-    referenceAnswer: string;
-    rating: number;
-    elapsedMs: number;
-}
+import {
+    applyTheme,
+    blockText,
+    cardFace,
+    chineseCount,
+    emptyState,
+    errorMessage,
+    escapeAttr,
+    escapeHtml,
+    formatTime,
+    isAppMutation,
+    isFlashcardAction,
+    isMascotAction,
+    isObject,
+    isTimelineAction,
+    isToolError,
+    numberOrUndefined,
+    previewResult,
+    ratingCount,
+    ratingEnglish,
+    ratingLabel,
+    restoreBlockIcon,
+    restoreDocumentIcon,
+    resultPayload,
+    shortId,
+    toolErrorCode,
+    toolErrorMessage,
+    type JsonObject,
+} from './format';
+import { applyFlashcardPreview, applyShopPreview, applyTimelinePreview } from './preview';
+import { flashcardState, shopState, timelineState, type ReviewTrace } from './state';
 
 const previewMode = import.meta.env.DEV
     ? new URLSearchParams(window.location.search).get('preview')
@@ -29,35 +49,6 @@ let busy = false;
 let notice = '';
 let noticeError = false;
 let pendingConfirmation = '';
-
-const flashcardState = {
-    cards: [] as JsonObject[],
-    index: 0,
-    revealed: false,
-    selectionReason: '',
-    omittedCards: [] as JsonObject[],
-    cardStartedAt: Date.now(),
-    reviewedCards: [] as Array<{ cardID: string; rating: number }>,
-    traces: [] as ReviewTrace[],
-    teachingSent: false,
-    appActions: new Set<string>(),
-};
-
-const timelineState = {
-    documentId: '',
-    nodes: [] as JsonObject[],
-    comparison: undefined as JsonObject | undefined,
-    page: 1,
-    appActions: new Set<string>(),
-};
-
-const shopState = {
-    balance: undefined as number | undefined,
-    totalEarned: undefined as number | undefined,
-    items: [] as JsonObject[],
-    pendingItems: [] as JsonObject[],
-    appActions: new Set<string>(),
-};
 
 app.ontoolinput = (params) => {
     lastToolInput = isObject(params.arguments) ? params.arguments : {};
@@ -98,95 +89,15 @@ renderLoading('正在连接 MCP Host…');
 if (previewMode) loadPreview(previewMode);
 else void connectApp();
 
+function loadFlashcardPreview() { applyFlashcardPreview(); renderFlashcards(); }
+function loadTimelinePreview() { applyTimelinePreview(); renderTimeline(); }
+function loadShopPreview() { applyShopPreview(); renderShop(); }
+
 function loadPreview(mode: string) {
     if (mode === 'flashcard') loadFlashcardPreview();
     else if (mode === 'timeline') loadTimelinePreview();
     else if (mode === 'shop') loadShopPreview();
     else renderError(`未知预览：${mode}`);
-}
-
-function loadFlashcardPreview() {
-    flashcardState.selectionReason = '优先选择了遗忘次数较多的组合导航卡，并搭配一张基础概念卡。';
-    flashcardState.cards = [
-        {
-            cardID: 'preview-card-1',
-            deckID: 'deck-navigation',
-            state: '待复习',
-            review: {
-                kind: 'heading',
-                prompt: '为什么组合导航中通常用位置、速度误差作为量测，而不是直接校正姿态？',
-                referenceAnswer: '位置和速度能够由外部传感器独立观测，误差通过滤波器状态与姿态误差耦合，从而间接估计并校正姿态；直接姿态量测通常不可得。',
-                gradable: true,
-            },
-        },
-        {
-            cardID: 'preview-card-2',
-            deckID: 'deck-navigation',
-            state: '新卡',
-            review: {
-                kind: 'cloze',
-                prompt: '卡尔曼滤波的两个核心步骤是 ____ 与 ____。',
-                referenceAnswer: '预测；更新',
-                gradable: true,
-            },
-        },
-    ];
-    flashcardState.revealed = true;
-    flashcardState.appActions = new Set(['review_card']);
-    renderFlashcards();
-}
-
-function loadTimelinePreview() {
-    timelineState.documentId = '20260810123456-sisyphus';
-    timelineState.appActions = new Set(['list_nodes', 'compare_node', 'rollback_document', 'rollback_block']);
-    timelineState.comparison = {
-        documentId: timelineState.documentId,
-        node: {
-            tag: 'sisyphus-timeline/research-baseline',
-            name: '实验基线',
-            scope: 'document',
-            created: Date.UTC(2026, 7, 10, 4, 30),
-        },
-        stats: { addedLines: 5, removedLines: 3 },
-        changes: [
-            {
-                status: 'modified',
-                changeKey: 'block-method',
-                old: { markdown: '组合导航采用 15 维误差状态模型。' },
-                current: { markdown: '组合导航采用 18 维误差状态模型，并补充杆臂误差。' },
-                rollbackable: true,
-            },
-            {
-                status: 'added',
-                changeKey: 'block-result',
-                current: { markdown: '实验结果：水平定位误差降低 23.6%。' },
-                rollbackable: true,
-            },
-            {
-                status: 'removed',
-                changeKey: 'block-todo',
-                old: { markdown: 'TODO：补充静态对准实验。' },
-                rollbackable: true,
-            },
-        ],
-    };
-    renderTimeline();
-}
-
-function loadShopPreview() {
-    shopState.balance = 42;
-    shopState.totalEarned = 128;
-    shopState.appActions = new Set(['buy']);
-    shopState.items = [
-        { id: 'fish', label: '小鱼干', type: 'food', emoji: '🐟', cost: 3 },
-        { id: 'cake', label: '草莓蛋糕', type: 'food', emoji: '🍰', cost: 6 },
-        { id: 'yarn', label: '毛线球', type: 'toy', emoji: '🧶', cost: 8 },
-        { id: 'box', label: '纸箱', type: 'toy', emoji: '📦', cost: 10 },
-        { id: 'flower', label: '小花', type: 'gift', emoji: '🌼', cost: 12 },
-        { id: 'crown', label: '猫猫皇冠', type: 'gift', emoji: '👑', cost: 20 },
-    ];
-    shopState.pendingItems = [shopState.items[0]];
-    renderShop();
 }
 
 async function connectApp() {
@@ -351,13 +262,6 @@ function simulatePreviewToolCall(
         return previewResult({ action, success: true });
     }
     return previewResult({ action, success: true });
-}
-
-function previewResult(payload: JsonObject) {
-    return {
-        content: [{ type: 'text', text: JSON.stringify(payload) }],
-        structuredContent: payload,
-    };
 }
 
 function confirmTimelineAction(key: string, message: string) {
@@ -642,16 +546,6 @@ async function collectShopItem(index: number) {
     renderShop();
 }
 
-function chineseCount(value: number) {
-    if (!Number.isInteger(value) || value < 0 || value >= 100) return String(value);
-    const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-    if (value < 10) return digits[value];
-    if (value === 10) return '十';
-    const tens = Math.floor(value / 10);
-    const ones = value % 10;
-    return `${tens === 1 ? '' : digits[tens]}十${ones === 0 ? '' : digits[ones]}`;
-}
-
 function renderFlashcards() {
     const card = flashcardState.cards[flashcardState.index];
     const total = flashcardState.cards.length;
@@ -849,14 +743,6 @@ function renderUnifiedDiff(change: JsonObject, tag: string, firstChange: boolean
     </article>`;
 }
 
-function restoreBlockIcon() {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5M5 12h9.5A5.5 5.5 0 0 1 20 17.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-}
-
-function restoreDocumentIcon() {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.8 3.5h3.95L19 7.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-8.5A2.25 2.25 0 0 1 6 18.25V9.9M14.5 3.75V8h4.25M4.8 9.4V8.5a5 5 0 0 1 5-5h.65M2 6.55 4.8 9.4l2.85-2.85" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-}
-
 function renderShell(view: string, icon: string, title: string, subtitle: string, content: string, actions = '', shellClass = '', showHeader = true) {
     const header = showHeader ? `<header class="app-header">
             <div class="app-icon">${icon}</div>
@@ -907,129 +793,6 @@ function renderJson(payload: JsonObject) {
     renderShell('json', '📦', '工具结果', String(payload.action ?? 'structuredContent'), `<pre class="json-view">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`);
 }
 
-function resultPayload(result: any): JsonObject | undefined {
-    if (isObject(result?.structuredContent)) return result.structuredContent;
-    const text = Array.isArray(result?.content)
-        ? result.content.find((item: JsonObject) => item?.type === 'text')?.text
-        : undefined;
-    if (typeof text !== 'string') return undefined;
-    try {
-        const parsed = JSON.parse(text);
-        return isObject(parsed) ? parsed : { value: parsed };
-    } catch {
-        return { value: text };
-    }
-}
-
-function isToolError(result: unknown) {
-    return isObject(result) && result.isError === true;
-}
-
-function toolErrorMessage(result: unknown) {
-    const payload = resultPayload(result);
-    const error = isObject(payload?.error) ? payload.error : undefined;
-    return String(error?.message ?? payload?.message ?? payload?.value ?? '工具调用失败。');
-}
-
-function toolErrorCode(result: unknown) {
-    const payload = resultPayload(result);
-    const error = isObject(payload?.error) ? payload.error : undefined;
-    return String(error?.code ?? '');
-}
-
 function ratingButton(rating: number, label: string, english: string) {
     return `<button data-action="flash-rating" data-rating="${rating}" ${flashcardState.revealed && flashcardState.appActions.has('review_card') ? '' : 'disabled'}><strong>${label}</strong><span>${english}</span></button>`;
-}
-
-function ratingLabel(rating: number) {
-    return ({ 1: '重来', 2: '困难', 3: '良好', 4: '简单' } as Record<number, string>)[rating] ?? String(rating);
-}
-
-function ratingEnglish(rating: number) {
-    return ({ 1: 'Again', 2: 'Hard', 3: 'Good', 4: 'Easy' } as Record<number, string>)[rating] ?? String(rating);
-}
-
-function ratingCount(rating: number, label: string, count: number) {
-    return `<div class="rating-count rating-${rating}"><span>${escapeHtml(label)}</span><strong>${count}</strong></div>`;
-}
-
-function emptyState(icon: string, title: string, detail: string) {
-    return `<div class="empty-state"><span>${icon}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>`;
-}
-
-function cardFace(card: JsonObject | undefined, keys: string[]) {
-    if (!card) return '';
-    for (const key of keys) {
-        if (typeof card[key] === 'string' && card[key].trim()) return stripHtml(card[key]).trim();
-    }
-    return '';
-}
-
-function blockText(block: unknown) {
-    if (!isObject(block)) return '';
-    return String(block.markdown ?? block.content ?? block.text ?? '');
-}
-
-function stripHtml(value: string) {
-    const template = document.createElement('template');
-    template.innerHTML = value;
-    return template.content.textContent ?? value;
-}
-
-function applyTheme(theme: unknown) {
-    document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
-}
-
-function formatTime(value: unknown) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return '未知时间';
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(number));
-}
-
-function shortId(value: string) {
-    if (!value) return '—';
-    return value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
-}
-
-function isFlashcardAction(action: string) {
-    return ['flashcard_review_session', 'review_card'].includes(action);
-}
-
-function isTimelineAction(action: string) {
-    return ['list_nodes', 'create_node', 'compare_node', 'delete_node', 'rollback_document', 'rollback_block'].includes(action);
-}
-
-function isMascotAction(action: string) {
-    return ['get_balance', 'shop', 'buy'].includes(action);
-}
-
-function isAppMutation(action: string) {
-    return [
-        'review_card',
-        'create_node',
-        'delete_node',
-        'rollback_document',
-        'rollback_block',
-        'buy',
-    ].includes(action);
-}
-
-function isObject(value: unknown): value is JsonObject {
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function numberOrUndefined(value: unknown) {
-    return Number.isFinite(Number(value)) ? Number(value) : undefined;
-}
-
-function errorMessage(error: unknown) {
-    return error instanceof Error ? error.message : String(error);
-}
-
-function escapeHtml(value: string) {
-    return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
-}
-
-function escapeAttr(value: string) {
-    return escapeHtml(value).replace(/`/g, '&#96;');
 }

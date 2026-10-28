@@ -2,6 +2,15 @@
  * Strict-write state probes: the pre/post-write state each mutation hashes,
  * plus semantic verification of the post-write readback. Coordinator-internal.
  */
+import * as avApi from '../api/av';
+import * as blockApi from '../api/block';
+import * as documentApi from '../api/document';
+import * as fileApi from '../api/file';
+import * as flashcardApi from '../api/flashcard';
+import * as notebookApi from '../api/notebook';
+import * as repoApi from '../api/repo';
+import * as searchApi from '../api/search';
+import * as systemApi from '../api/system';
 
 import { prepareDocumentConversion } from '../tools/document/conversion';
 import { readFlashcardReviewState } from '../tools/flashcard/review-state';
@@ -71,15 +80,15 @@ export async function probeCreatedNotebook(client: SiYuanClient, result: ToolRes
     let notebook: Record<string, unknown> | undefined;
     for (const delay of [0, 50, 100, 200, 400]) {
         if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-        const listed = await client.requestRead<{ notebooks?: Array<Record<string, unknown>> }>('/api/notebook/lsNotebooks');
-        notebook = (listed?.notebooks ?? []).find((item) => item.id === notebookID);
+        const listed = await notebookApi.listNotebooks(client);
+        notebook = (listed?.notebooks ?? []).find((item) => item.id === notebookID) as unknown as Record<string, unknown> | undefined;
         if (notebook) break;
     }
     if (!notebook) {
         throw safetyError('readback_mismatch', `The created notebook ${notebookID} was not observed during bounded readback.`);
     }
 
-    const conf = await client.requestRead('/api/notebook/getNotebookConf', { notebook: notebookID });
+    const conf = await notebookApi.getNotebookConf(client, notebookID);
     const state = { category: 'notebook', action: 'create', notebook, conf };
     return {
         hash: hashWriteState(state),
@@ -187,7 +196,7 @@ export async function probeCurrentState(
     } else if (category === 'mascot') {
         state.mascot = await readPuppyStats(client);
     } else if (category === 'notebook') {
-        const notebooks = await client.requestRead<{ notebooks?: Array<Record<string, unknown>> }>('/api/notebook/lsNotebooks');
+        const notebooks = await notebookApi.listNotebooks(client);
         const selected = (notebooks?.notebooks ?? []).filter((item) => {
             const id = typeof item.id === 'string' ? item.id : '';
             return targetIds.length === 0 || targetIds.includes(id);
@@ -195,11 +204,11 @@ export async function probeCurrentState(
         state.notebooks = selected;
         for (const item of selected) {
             const id = typeof item.id === 'string' ? item.id : '';
-            if (id) state[`conf:${id}`] = await client.requestRead('/api/notebook/getNotebookConf', { notebook: id });
+            if (id) state[`conf:${id}`] = await notebookApi.getNotebookConf(client, id);
         }
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
-        state.av = await client.requestRead('/api/av/getAttributeView', { id: args.avID });
+        state.av = await avApi.getAttributeView(client, args.avID);
         if (action === 'add_rows' && Array.isArray(args.rows)) {
             // Composite rows write into an existing AV, so the carrier and
             // every column/type/view/group involved in the batch must enter
@@ -229,7 +238,7 @@ export async function probeCurrentState(
             if (definition.id !== args.avID) throw safetyError('readback_mismatch', 'Rendered AV identity was not persisted.');
             const blockID = typeof args.blockID === 'string' ? args.blockID : '';
             if (blockID) {
-                const carrier = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: blockID });
+                const carrier = await blockApi.getBlockDOM(client, blockID);
                 if (!carrier.dom?.includes('data-type="NodeAttributeView"') || !carrier.dom.includes(`data-av-id="${args.avID}"`)) {
                     throw safetyError('readback_mismatch', 'Rendered AV carrier does not bind the returned AV identity.');
                 }
@@ -257,9 +266,9 @@ export async function probeCurrentState(
                 throw safetyError('precondition_required', 'AV view configuration requires explicit avID, blockID, and viewID.');
             }
             const [attrs, dom, blockInfo] = await Promise.all([
-                client.requestRead('/api/attr/getBlockAttrs', { id: blockID }),
-                client.requestRead('/api/block/getBlockDOM', { id: blockID }),
-                client.requestRead('/api/block/getBlockInfo', { id: blockID }),
+                blockApi.getBlockAttrs(client, blockID),
+                blockApi.getBlockDOM(client, blockID),
+                blockApi.getBlockInfo(client, blockID),
             ]);
             const selectedViewID = isRecord(attrs) && typeof attrs['custom-sy-av-view'] === 'string'
                 ? attrs['custom-sy-av-view']
@@ -301,11 +310,7 @@ export async function probeCurrentState(
             state.flashcardReview = card;
             targetIds = [...new Set([...targetIds, card.blockID, card.box])].sort();
         } else if (typeof args.deckID === 'string') {
-            const cards = await client.requestRead<Record<string, unknown>>('/api/riff/getRiffCards', {
-                id: args.deckID,
-                page: 1,
-                pageSize: 999,
-            });
+            const cards = await flashcardApi.getRiffCards(client, args.deckID, 1, 999) as unknown as Record<string, unknown>;
             const cardID = typeof args.cardID === 'string' ? args.cardID : undefined;
             const blockIDs = Array.isArray(args.blockIDs)
                 ? args.blockIDs.filter((item): item is string => typeof item === 'string')
@@ -331,13 +336,13 @@ export async function probeCurrentState(
                 ? args.blockIDs.filter((item): item is string => typeof item === 'string')
                 : [];
             state.flashcards = blockIDs.length > 0
-                ? await client.requestRead('/api/riff/getRiffCardsByBlockIDs', { blockIDs })
+                ? await flashcardApi.getRiffCardsByBlockIDs(client, blockIDs)
                 : [];
         }
     } else if (category === 'file') {
         await appendFileState(client, action, args, state);
     } else if (category === 'timeline') {
-        state.timelineTags = await client.requestRead('/api/repo/getRepoTagSnapshots', {});
+        state.timelineTags = await repoApi.getRepoTagSnapshots(client);
         if (typeof args.documentId === 'string' && args.documentId) {
             const blocks = await listDocumentBlocksInTreeOrder(client, args.documentId);
             state.timelineDocument = {
@@ -348,7 +353,7 @@ export async function probeCurrentState(
         }
         await appendBlockRows(client, args, state);
     } else if (category === 'system') {
-        state.system = await client.requestRead('/api/system/getConf', {});
+        state.system = await systemApi.getConf(client);
     } else if (category === 'document' && action === 'rename' && Array.isArray(args.items)) {
         if (isRecord(precomputed?.batchRename)) {
             state.batchRename = precomputed.batchRename;
@@ -446,7 +451,7 @@ async function probeDocumentReorderState(
     const orderedIDs = Array.isArray(args.orderedIDs)
         ? args.orderedIDs.filter((value): value is string => typeof value === 'string')
         : [];
-    const listed = await client.requestRead<{ notebooks?: Array<{ id?: string }> }>('/api/notebook/lsNotebooks');
+    const listed = await notebookApi.listNotebooks(client);
     const isNotebook = (listed?.notebooks ?? []).some((item) => item.id === parentID);
     let notebook: string;
     let parentPath: string;
@@ -454,7 +459,7 @@ async function probeDocumentReorderState(
         notebook = parentID;
         parentPath = '/';
     } else {
-        const pathInfo = await client.requestRead<{ notebook?: string; box?: string; path?: string }>('/api/filetree/getPathByID', { id: parentID });
+        const pathInfo = await documentApi.getPathByID(client, parentID);
         notebook = pathInfo.notebook || pathInfo.box || '';
         parentPath = pathInfo.path || '';
         const resolvedID = parentPath.split('/').filter(Boolean).at(-1)?.replace(/\.sy$/i, '');
@@ -500,7 +505,7 @@ async function appendFileState(
         return;
     }
     if (action === 'remove_unused_assets') {
-        state.unusedAssets = await client.requestRead('/api/asset/getUnusedAssets', {});
+        state.unusedAssets = await fileApi.getUnusedAssets(client);
         return;
     }
     const assetPath = typeof args.oldPath === 'string'
@@ -538,7 +543,7 @@ async function appendHumanPathState(
     const physicalPaths = paths.filter((path) => path !== AGENT_MEMORY_VIRTUAL_PATH && path !== USER_RULES_VIRTUAL_PATH);
     if (physicalPaths.length === 0) return;
 
-    const response = await client.requestRead<{ notebooks?: Array<{ id?: string; name?: string }> }>('/api/notebook/lsNotebooks');
+    const response = await notebookApi.listNotebooks(client);
     const notebooks = response?.notebooks ?? [];
     const pathState: Record<string, unknown> = {};
     for (const path of physicalPaths) {
@@ -552,10 +557,7 @@ async function appendHumanPathState(
         const hpath = `/${parts.join('/')}`;
         let ids: string[] = [];
         try {
-            const resolved = await client.requestRead<unknown>('/api/filetree/getIDsByHPath', {
-                path: hpath,
-                notebook: notebook.id,
-            });
+            const resolved: unknown = await documentApi.getIDsByHPath(client, hpath, notebook.id);
             if (Array.isArray(resolved)) {
                 ids = resolved.filter((value): value is string => typeof value === 'string');
             }
@@ -563,9 +565,7 @@ async function appendHumanPathState(
             // Fall through to the SQL compatibility path below.
         }
         if (ids.length === 0) {
-            const roots = await client.requestRead<Array<Record<string, unknown>>>('/api/query/sql', {
-                stmt: `SELECT * FROM blocks WHERE box = ${sqlString(notebook.id)} AND hpath = ${sqlString(hpath)} ORDER BY id LIMIT 1`,
-            });
+            const roots = await searchApi.querySQL(client, `SELECT * FROM blocks WHERE box = ${sqlString(notebook.id)} AND hpath = ${sqlString(hpath)} ORDER BY id LIMIT 1`) as Array<Record<string, unknown>>;
             ids = Array.isArray(roots)
                 ? roots.flatMap((row) => typeof row?.id === 'string' ? [row.id] : [])
                 : [];
@@ -578,7 +578,7 @@ async function appendHumanPathState(
         // Path and SQL indexes can still return a document immediately after
         // deletion. Confirm its live existence before reading the block tree.
         // Only an explicit false proves absence; transport errors must escape.
-        if (await client.requestRead('/api/block/checkBlockExist', { id: rootID }) === false) {
+        if (await blockApi.checkBlockExist(client, rootID) === false) {
             pathState[path] = { notebookID: notebook.id, hpath, missing: true };
             continue;
         }
@@ -617,7 +617,7 @@ async function appendBlockRows(
         for (const id of ids) {
             let exists: boolean | undefined;
             try {
-                const value = await client.requestRead<unknown>('/api/block/checkBlockExist', { id });
+                const value = await blockApi.checkBlockExist(client, id);
                 if (typeof value === 'boolean') exists = value;
             } catch {
                 exists = undefined;
@@ -628,11 +628,11 @@ async function appendBlockRows(
             }
             if (exists === true) {
                 const [info, attrs, kramdown, children, dom] = await Promise.all([
-                    client.requestRead('/api/block/getBlockInfo', { id }),
-                    client.requestRead('/api/attr/getBlockAttrs', { id }),
-                    client.requestRead('/api/block/getBlockKramdown', { id }),
-                    client.requestRead('/api/block/getChildBlocks', { id }),
-                    client.requestRead('/api/block/getBlockDOM', { id }),
+                    blockApi.getBlockInfo(client, id),
+                    blockApi.getBlockAttrs(client, id),
+                    blockApi.getBlockKramdown(client, id),
+                    blockApi.getChildBlocks(client, id),
+                    blockApi.getBlockDOM(client, id),
                 ]);
                 liveBlocks[id] = normalizeLiveBlockState({ info, attrs, kramdown, children });
                 // Kramdown can omit persisted inline textmark attributes.
@@ -656,9 +656,7 @@ async function appendBlockRows(
         state.blocks = [];
         return;
     }
-    state.blocks = await client.requestRead<unknown[]>('/api/query/sql', {
-        stmt: `SELECT * FROM blocks WHERE ${typeof args.notebook === 'string' ? `box = ${sqlString(args.notebook)} AND ` : ''}(${clauses.join(' OR ')}) ORDER BY id`,
-    });
+    state.blocks = await searchApi.querySQL(client, `SELECT * FROM blocks WHERE ${typeof args.notebook === 'string' ? `box = ${sqlString(args.notebook)} AND ` : ''}(${clauses.join(' OR ')}) ORDER BY id`);
 }
 
 function canonicalizeBlockDom(dom: string): string {
@@ -784,7 +782,7 @@ export async function verifyPostWriteSemanticState(
     const replacement = typeof args.r === 'string' ? args.r : '';
     if (ids.length === 0 || !keyword) return;
 
-    const readbacks = await Promise.all(ids.map((id) => client.requestRead<unknown>('/api/block/getBlockKramdown', { id })));
+    const readbacks = await Promise.all(ids.map((id) => blockApi.getBlockKramdown(client, id)));
     const markdown = readbacks.map((value) => {
         if (isRecord(value) && typeof value.kramdown === 'string') return value.kramdown;
         return typeof value === 'string' ? value : '';

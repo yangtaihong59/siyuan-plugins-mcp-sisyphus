@@ -1,12 +1,8 @@
 import * as blockApi from '../../api/block';
 import type { SiYuanClient } from '../../api/client';
-import { assertSafeBlockReferenceMarkdown, extractKramdownContentForEditing, normalizeBlockRefQuoteStyle } from './kramdown-safe';
+import { assertSafeBlockReferenceMarkdown, escapeBlockRefAnchor, extractKramdownContentForEditing, normalizeBlockRefQuoteStyle } from './kramdown-safe';
 
 const NAKED_BLOCK_REF_PATTERN = /\(\(([0-9]{14}-[a-z0-9]{7})\)\)/g;
-
-function escapeBlockRefAnchor(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
 
 function stripInlineMarkdown(value: string): string {
     return value

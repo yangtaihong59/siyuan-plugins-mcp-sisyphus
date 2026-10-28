@@ -1,5 +1,6 @@
 import type { SiYuanClient } from '../../api/client';
 import type { PermissionManager } from '../../core/permissions';
+import { asRecord } from '../../shared/record';
 
 export const BATCH_RENAME_MAX_ITEMS = 50;
 export const BATCH_RENAME_MAX_INPUT_BYTES = 256 * 1024;
@@ -56,12 +57,6 @@ export const BATCH_RENAME_CONTEXT = Symbol.for('siyuan.sisyphus.batchRenameConte
 
 function safetyError(code: string, message: string): Error & { code: string } {
     return Object.assign(new Error(message), { name: 'BatchRenameError', code });
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
 }
 
 function normalizeTitle(value: unknown, index: number): string {

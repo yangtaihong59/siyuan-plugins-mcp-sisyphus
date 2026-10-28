@@ -188,21 +188,6 @@ export class KernelSiYuanClient implements SiYuanClient {
         }
     }
 
-    /** @deprecated parity with SiYuanClient; defaults to write semantics. */
-    async request<T>(endpoint: string, data?: object): Promise<T> {
-        return this.requestWrite(endpoint, data);
-    }
-
-    async requestApi(endpoint: string, method: string, body?: string | ArrayBuffer): Promise<unknown> {
-        const upper = method.toUpperCase();
-        const init: { method: string; headers: Record<string, string>; body?: string | ArrayBuffer } = {
-            method: upper,
-            headers: { 'Content-Type': 'application/json' },
-        };
-        if (body !== undefined && upper !== 'GET' && upper !== 'HEAD') init.body = body;
-        return this.readData<unknown>(endpoint, init);
-    }
-
     async readFile(path: string): Promise<string> { return this.retryRead(() => this.readFileOnce(path)); }
     private async readFileOnce(path: string): Promise<string> {
         // storage/petal paths resolve via siyuan.storage; workspace paths go
@@ -293,9 +278,6 @@ export class KernelSiYuanClient implements SiYuanClient {
         return this.sendMultipart<T>(endpoint, fields);
     }
 
-    async requestFormData<T>(endpoint: string, formData: unknown): Promise<T> {
-        return this.requestFormDataWrite<T>(endpoint, formData);
-    }
 }
 
 const PETAL_PREFIX = '/data/storage/petal/siyuan-plugins-mcp-sisyphus/';

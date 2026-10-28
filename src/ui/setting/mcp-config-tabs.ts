@@ -1,4 +1,4 @@
-import type { ToolCategory } from "./tool-config";
+import type { ToolCategory } from "@/core/config";
 
 export interface TabItem {
     id: string;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildDefaultToolConfig, normalizeToolConfig } from '@/ui/setting/tool-config';
+import { buildDefaultToolConfig, normalizeToolConfig } from '@/core/config';
 
 describe('setting tool config', () => {
     it('enables document cover actions by default', () => {

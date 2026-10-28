@@ -1,4 +1,5 @@
 import { generateSiYuanNodeId } from '../../shared/siyuan-id';
+import { asRecord } from '../../shared/record';
 
 /** One composite add_rows batch may not be split into an unbounded write. */
 export const AV_ADD_ROWS_MAX_ROWS = 200;
@@ -73,12 +74,6 @@ const WRITABLE_KEY_TYPES = new Set(
 
 function validationError(message: string): Error & { code: string } {
     return Object.assign(new Error(message), { name: 'AvAddRowsValidationError', code: 'validation_error' });
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
 }
 
 function rawDefinition(avData: unknown): Record<string, unknown> {

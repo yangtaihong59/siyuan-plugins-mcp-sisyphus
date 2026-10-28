@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BLOCK_ACTIONS } from "../../core/config";
-import { FsReplaceEditSchema } from "../fs/schemas";
+import { ReplaceEditSchema as FsReplaceEditSchema } from "../internal/replace-schema";
 
 export const BlockActionSchema = z.enum(BLOCK_ACTIONS);
 

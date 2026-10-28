@@ -2,6 +2,10 @@
  * Attribute-view checks for the write-safety coordinator: view configuration
  * readback, verified carrier permission, and high-risk cross-AV inspection.
  */
+import * as avApi from '../api/av';
+import * as blockApi from '../api/block';
+import * as searchApi from '../api/search';
+import * as notebookApi from '../api/notebook';
 
 import { firstJsonDifferencePath } from '../shared/canonical-state';
 import { normalizeAvFilters, normalizeAvGroup, expectedAvGroup, viewFields as rawViewFields } from '../tools/av/view-config';
@@ -12,6 +16,7 @@ import { escapeSqlString } from '../shared/sql';
 import { canonicalizeAvCarrierDom, isExactAvCarrierDom } from '../shared/av-carrier-dom';
 import { safetyError } from '../core/write-safety-error';
 import { type StateProbe, isRecord, sortedUniqueIds } from '../core/write-safety-records';
+import { asRecord } from '../shared/record';
 
 export function verifyAvViewConfigurationReadback(
     action: string,
@@ -259,12 +264,6 @@ function sameAvValue(left: unknown, right: unknown): boolean {
     return canonicalizeWriteState(left) === canonicalizeWriteState(right);
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
-}
-
 function stringField(value: unknown, keys: string[]): string | undefined {
     const record = asRecord(value);
     for (const key of keys) {
@@ -338,7 +337,7 @@ async function resolveVerifiedAvCarrier(
     const candidates: string[] = explicitBlockID ? [explicitBlockID] : [];
     if (!explicitBlockID) {
         try {
-            const mirrors = await client.requestRead<{ refDefs?: Array<{ refID?: string }> }>('/api/av/getMirrorDatabaseBlocks', { avID });
+            const mirrors = await avApi.getMirrorDatabaseBlocks(client, avID);
             for (const ref of mirrors?.refDefs ?? []) {
                 if (typeof ref.refID === 'string' && ref.refID && !candidates.includes(ref.refID)) candidates.push(ref.refID);
             }
@@ -348,9 +347,7 @@ async function resolveVerifiedAvCarrier(
             // to grant a cross-AV write.
         }
         const escapedAvID = escapeSqlString(avID);
-        const rows = await client.requestRead<unknown[]>('/api/query/sql', {
-            stmt: `SELECT id FROM blocks WHERE type = 'av' AND (markdown LIKE '%${escapedAvID}%' OR ial LIKE '%${escapedAvID}%' OR content LIKE '%${escapedAvID}%') ORDER BY updated DESC LIMIT 20`,
-        });
+        const rows = await searchApi.querySQL(client, `SELECT id FROM blocks WHERE type = 'av' AND (markdown LIKE '%${escapedAvID}%' OR ial LIKE '%${escapedAvID}%' OR content LIKE '%${escapedAvID}%') ORDER BY updated DESC LIMIT 20`);
         for (const row of Array.isArray(rows) ? rows : []) {
             const id = stringField(row, ['id']);
             if (id && !candidates.includes(id)) candidates.push(id);
@@ -360,7 +357,7 @@ async function resolveVerifiedAvCarrier(
     // A stable choice keeps the permission target and lease scope identical.
     for (const candidate of candidates.sort()) {
         try {
-            const response = await client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: candidate });
+            const response = await blockApi.getBlockDOM(client, candidate);
             const dom = typeof response?.dom === 'string' ? response.dom : '';
             if (isExactAvCarrierDom(dom, candidate, avID)) return candidate;
         } catch {
@@ -372,7 +369,7 @@ async function resolveVerifiedAvCarrier(
 }
 
 async function resolveCarrierNotebook(client: SiYuanClient, carrierBlockID: string): Promise<string | undefined> {
-    const info = await client.requestRead<unknown>('/api/block/getBlockInfo', { id: carrierBlockID });
+    const info = await blockApi.getBlockInfo(client, carrierBlockID);
     return stringField(info, ['box', 'notebook', 'notebookID']);
 }
 
@@ -395,8 +392,8 @@ export async function requireCarrierWritePermission(
         throw safetyError('permission_denied', `Notebook ${notebook} does not allow writes to attribute view "${avID}".`);
     }
     const [domResponse, info] = await Promise.all([
-        client.requestRead<{ dom?: string }>('/api/block/getBlockDOM', { id: carrierBlockID }),
-        client.requestRead<unknown>('/api/block/getBlockInfo', { id: carrierBlockID }),
+        blockApi.getBlockDOM(client, carrierBlockID),
+        blockApi.getBlockInfo(client, carrierBlockID),
     ]);
     const rawDom = typeof domResponse?.dom === 'string' ? domResponse.dom : '';
     const dom = canonicalizeAvCarrierDom(rawDom);
@@ -565,7 +562,7 @@ export async function inspectHighRiskAvMutation(
     const destinations = [];
     const targetIds: string[] = [avID, sourceCarrier.carrierBlockID, sourceCarrier.notebook];
     for (const destination of inspectDuplicateRowsRelationDestinations(source, sourceRowIDs)) {
-        const response = await client.requestRead('/api/av/getAttributeView', { id: destination.avID });
+        const response = await avApi.getAttributeView(client, destination.avID);
         const av = avEnvelope(response);
         const carrier = await requireCarrierWritePermission(client, permMgr, destination.avID);
         targetIds.push(
@@ -648,7 +645,7 @@ async function inspectAvMutationDestination(
     avID: string,
     explicitBlockID?: string,
 ): Promise<{ av: unknown; carrierBlockID: string; notebook: string }> {
-    const response = await client.requestRead('/api/av/getAttributeView', { id: avID });
+    const response = await avApi.getAttributeView(client, avID);
     const carrier = await requireCarrierWritePermission(client, permMgr, avID, explicitBlockID);
     // A destination AV can be mutated by a relation/template action even though
     // the API request names only the source. Keeping its raw definition,
@@ -702,6 +699,6 @@ async function inspectTemplateDocumentDestination(
     }
     return {
         notebook,
-        config: await client.requestRead('/api/notebook/getNotebookConf', { notebook }),
+        config: await notebookApi.getNotebookConf(client, notebook),
     };
 }

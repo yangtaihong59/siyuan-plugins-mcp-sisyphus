@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FS_ACTIONS } from "../../core/config";
+import { ReplaceEditSchema as FsReplaceEditSchema } from "../internal/replace-schema";
 
 export const FsActionSchema = z.enum(FS_ACTIONS);
 
@@ -40,11 +41,7 @@ export const FsWriteSchema = z.object({
     overwrite: z.boolean().optional().describe("When true, replace an existing document body while keeping the document node and title. This is a full body replacement."),
 });
 
-export const FsReplaceEditSchema = z.object({
-    old: z.string().min(1).describe("Original text to match exactly. Supports multi-line strings."),
-    new: z.string().describe("Replacement text. Supports multi-line strings."),
-    replace_all: z.boolean().optional().describe("When true, replace every exact match. Defaults to false."),
-});
+export { ReplaceEditSchema as FsReplaceEditSchema } from "../internal/replace-schema";
 
 export const FsReplaceSchema = z.object({
     action: z.literal("replace"),

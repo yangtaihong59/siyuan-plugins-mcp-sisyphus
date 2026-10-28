@@ -3,8 +3,10 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { readMcpAppSource } from '../../helpers/mcp-app-source';
+
 describe('MCP App timeline diff source contract', () => {
-    const appSource = readFileSync(resolve(process.cwd(), 'src/mcp-apps/index.ts'), 'utf8');
+    const appSource = readMcpAppSource();
     const appStyles = readFileSync(resolve(process.cwd(), 'src/mcp-apps/style.css'), 'utf8');
 
     it('uses the plugin-style compact unified diff instead of metric and change cards', () => {

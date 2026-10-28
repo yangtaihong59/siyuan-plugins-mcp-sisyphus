@@ -132,7 +132,7 @@ CLI 的结果渲染在 `src/cli/render.ts` 中。如需支持新的 payload 类�
 
 #### 新增配置项
 
-1. 在 `src/ui/setting/tool-config.ts` 或相关 schema 文件中定义新字段
+1. 在 `src/core/config.ts`（`ToolConfig`、默认值与 `normalizeToolConfig`）中定义新字段
 2. 在 `src/ui/setting/tool-config-storage.ts` 中添加 `loadXxx()` / `saveXxx()` 函数
 3. 在 `src/ui/setting/mcp-config.svelte` 的 `onChanged` 分发器中添加 key 前缀路由
 4. 在对应子面板组件中添加 UI 控件

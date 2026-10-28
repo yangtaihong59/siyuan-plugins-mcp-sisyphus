@@ -1,7 +1,5 @@
 import { sha256V1 } from './sha256-v1';
 
-export const MARKDOWN_SNAPSHOT_SCHEMA_VERSION = '1.0.0' as const;
-
 export interface SnapshotDocumentCandidate {
     id: string;
     path?: string;

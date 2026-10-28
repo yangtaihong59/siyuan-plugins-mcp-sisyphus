@@ -1,6 +1,7 @@
 import type { ToolCategory } from './config';
 import { stripSafetyFields } from './write-safety-fields';
 import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';
+import { asRecord } from '../shared/record';
 
 export const WRITE_PREFLIGHT_VERSION = 2;
 /** Executable commitArgs larger than this are rejected, never truncated. */
@@ -32,12 +33,6 @@ export interface WritePreflightEnvelope {
     ttlMs: number;
     counts: WritePreflightCounts;
     commitArgs: Record<string, unknown>;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
 }
 
 function stringArrayLength(value: unknown): number {

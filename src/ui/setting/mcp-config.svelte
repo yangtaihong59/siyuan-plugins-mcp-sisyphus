@@ -2,7 +2,7 @@
     import { onMount, tick } from "svelte";
     import { fetchPost, showMessage } from "siyuan";
 
-    import { buildDefaultToolConfig, normalizeToolConfig, type ToolCategory, type ToolConfig } from "./tool-config";
+    import { buildDefaultToolConfig, normalizeToolConfig, type ToolCategory, type ToolConfig } from "@/core/config";
     import {
         buildDefaultHttpServerSettings,
         buildDefaultPermissionDisplaySettings,

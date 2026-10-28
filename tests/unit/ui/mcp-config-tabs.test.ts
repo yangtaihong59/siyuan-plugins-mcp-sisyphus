@@ -11,7 +11,7 @@ import {
     ANALYTICS_GROUP_KEY,
     USER_RULES_GROUP_KEY,
 } from '@/ui/setting/mcp-config-tabs';
-import { TOOL_CATEGORIES } from '@/ui/setting/tool-config';
+import { TOOL_CATEGORIES } from '@/core/config';
 
 describe('mcp-config-tabs icon system', () => {
     it('has all required icon keys', () => {

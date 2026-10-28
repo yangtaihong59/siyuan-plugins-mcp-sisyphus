@@ -1,5 +1,6 @@
 import type { ToolCategory } from './config';
 import type { ToolResult } from './tool-result';
+import { isRecord } from '../shared/record';
 
 interface SlimContext {
     category: ToolCategory;
@@ -134,10 +135,6 @@ const ITEM_DROP_KEYS = new Set([
     'dueFlashcardCount',
     'flashcardCount',
 ]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 function createTextResult(result: ToolResult, value: unknown): ToolResult {
     const first = result.content[0];

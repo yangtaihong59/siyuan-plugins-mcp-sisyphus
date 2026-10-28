@@ -1,6 +1,6 @@
 <script lang="ts">
     import SettingPanel from "../../shared/setting-panel.svelte";
-    import type { ToolConfig } from "../tool-config";
+    import type { ToolConfig } from "@/core/config";
     import type { PuppySettings, VersionControlSettings } from "../tool-config-storage";
 
     export let group: string;

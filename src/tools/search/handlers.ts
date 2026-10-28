@@ -27,7 +27,7 @@ import {
     filterFullTextSearchResultByPermission,
     filterItemsByPermission,
     isPermissionRelatedApiError,
-} from './permission-filter';
+} from '../internal/permission-filter';
 import { ensureRawSqlReadAccess, getBacklinksWithFallback } from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';

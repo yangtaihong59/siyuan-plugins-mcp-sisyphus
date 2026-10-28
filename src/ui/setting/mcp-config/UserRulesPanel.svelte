@@ -1,7 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
     import SettingPanel from "../../shared/setting-panel.svelte";
-    import type { ToolConfig } from "../tool-config";
+    import type { ToolConfig } from "@/core/config";
 
     export let group: string;
     export let display = false;

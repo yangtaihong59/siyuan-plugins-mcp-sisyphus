@@ -1,6 +1,6 @@
 import type { SiYuanClient } from '../../api/client';
 import type { PermissionManager } from '../../core/permissions';
-import { createResultResolutionCache, resolveResultItemContext } from '../internal/context';
+import { createResultResolutionCache, resolveResultItemContext } from './context';
 
 function getNotebookIdFromItem(item: unknown): string | undefined {
     if (!item || typeof item !== 'object') return undefined;

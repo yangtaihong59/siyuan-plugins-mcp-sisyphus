@@ -9,10 +9,10 @@ import { BlockAddToDailyNoteSchema, BlockAppendSchema, BlockBatchKramdownSchema,
 import { isMissingBlockError } from '../internal/errorTranslation';
 import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
-import { filterItemsByPermission } from '../search';
+import { filterItemsByPermission } from '../internal/permission-filter';
 import { createJsonResult, createPaginatedResult, createWriteSuccessResult, paginate, type ToolResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';
-import { createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks, normalizeDomInlineRefsAndTags, replaceEditTouchesIndexedInline, replaceSingleKramdownBlockContentInDom } from '../internal/kramdown-safe';
+import { createReferenceSemanticsHints, hasReferenceSemanticsHints, normalizeDomInlineRefsAndTags, withReferenceSemanticsHints, replaceEditTouchesIndexedInline, replaceSingleKramdownBlockContentInDom } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
 import { escapeSqlString } from '../../shared/sql';
 
@@ -58,23 +58,6 @@ function createDatabaseBlockHint(actionName: string): Record<string, unknown> {
             write: 'av(action="set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column", avID="<av-id>", ...)',
         },
     };
-}
-
-function withReferenceSemanticsHints<T extends Record<string, unknown>>(payload: T, data: string): T & Record<string, unknown> {
-    return {
-        ...payload,
-        ...(hasSiyuanBlockLinks(data) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(data) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(data) ? createUnresolvedBlockRefHint() : {}),
-    };
-}
-
-function hasReferenceSemanticsHints(data: string): boolean {
-    return hasSiyuanBlockLinks(data) || hasFootnoteReferences(data) || hasBlockRefIdFallbackAnchors(data);
-}
-
-function createReferenceSemanticsHints(data: string): Record<string, unknown> {
-    return withReferenceSemanticsHints({}, data);
 }
 
 function isLowLevelRecentBlockType(value: unknown): boolean {

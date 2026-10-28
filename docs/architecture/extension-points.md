@@ -132,7 +132,7 @@ The settings panel uses Svelte components integrated with SiYuan native UI (`b3-
 
 #### Adding New Config Fields
 
-1. Define new field in `src/ui/setting/tool-config.ts` or related schema file
+1. Define new field in `src/core/config.ts` (`ToolConfig`, defaults and `normalizeToolConfig`)
 2. Add `loadXxx()` / `saveXxx()` in `src/ui/setting/tool-config-storage.ts`
 3. Add key prefix routing in `src/ui/setting/mcp-config.svelte`'s `onChanged` dispatcher
 4. Add UI control in corresponding sub-panel component

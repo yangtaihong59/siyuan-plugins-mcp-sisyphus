@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultHttpServerSettings } from '@/ui/setting/tool-config-storage';
-import { buildDefaultTelemetryConfig } from '@/ui/setting/telemetry-config';
+import { buildDefaultTelemetryConfig } from '@/core/telemetry-config';
 import {
     generateCodexConfig,
     getCurrentWorkspaceApiUrl,

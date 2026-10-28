@@ -5,6 +5,8 @@
 
 import type { ToolResult } from './tool-result';
 import { escapeSqlString } from '../shared/sql';
+import { isRecord } from '../shared/record';
+export { isRecord };
 
 export interface StateProbe {
     hash: string;
@@ -97,6 +99,3 @@ export function parseResultObject(result: ToolResult): Record<string, unknown> |
     }
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}

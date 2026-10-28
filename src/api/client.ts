@@ -314,11 +314,6 @@ export class HttpSiYuanClient implements SiYuanClient {
         await this.requestFormDataWrite<null>('/api/file/putFile', formData);
     }
 
-    /** @deprecated Prefer requestFormDataRead/requestFormDataWrite. Defaults to write-safe semantics. */
-    async requestFormData<T>(endpoint: string, formData: FormData): Promise<T> {
-        return this.requestFormDataWrite(endpoint, formData);
-    }
-
     async requestFormDataRead<T>(endpoint: string, formData: FormData): Promise<T> {
         return this.requestFormDataWithSemantics(endpoint, formData, 'read');
     }
@@ -339,11 +334,6 @@ export class HttpSiYuanClient implements SiYuanClient {
             headers: this.getAuthHeaders(),
             body: formData,
         }, semantics);
-    }
-
-    /** @deprecated Prefer requestRead/requestWrite. Defaults to write-safe semantics. */
-    async request<T>(endpoint: string, data?: object): Promise<T> {
-        return this.requestWrite(endpoint, data);
     }
 
     async requestRead<T>(endpoint: string, data?: object, maxResponseBytes?: number): Promise<T> {
