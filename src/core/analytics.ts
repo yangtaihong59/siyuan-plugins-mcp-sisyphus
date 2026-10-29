@@ -246,6 +246,14 @@ export function buildTokenUsageSummary(
     };
 }
 
+/** The calendar day (YYYY-MM-DD) of a time in the local time zone; `dailyTrend` is keyed by it. */
+export function localDateKey(time: number | Date): string {
+    const date = new Date(time);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+}
+
 export function getRecentAnalyticsEvents(events: AnalyticsEvent[], limit = 100): AnalyticsEvent[] {
     return [...events]
         .sort((a, b) => {
@@ -287,7 +295,7 @@ export function computeAnalyticsSummary(
             });
         }
 
-        const date = new Date(e.ts).toISOString().slice(0, 10);
+        const date = localDateKey(e.ts);
         const dayEntry = dayMap.get(date);
         if (dayEntry) {
             dayEntry.count += 1;

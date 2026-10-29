@@ -4,6 +4,7 @@ import {
     buildTokenUsageSummary,
     computeAnalyticsSummary,
     getRecentAnalyticsEvents,
+    localDateKey,
     parseJsonl,
     clearAnalyticsData,
     estimateResultSizeHint,
@@ -202,7 +203,7 @@ describe('analytics', () => {
         });
 
         it('computes correct aggregates', () => {
-            const baseDate = new Date('2024-01-15T10:00:00Z').getTime();
+            const baseDate = new Date(2024, 0, 15, 10).getTime();
             const events: AnalyticsEvent[] = [
                 { seq: 1, ts: baseDate, tool: 'notebook', action: 'list', status: 'success', durationMs: 100, paramKeys: [], transport: 'cli', totalApproxTokens: 100, tokenMode: APPROX_TOKEN_MODE },
                 { seq: 2, ts: baseDate + 1, tool: 'notebook', action: 'list', status: 'success', durationMs: 200, paramKeys: [], transport: 'stdio', totalApproxTokens: 200, tokenMode: APPROX_TOKEN_MODE },
@@ -227,6 +228,21 @@ describe('analytics', () => {
                 mcpAvgApproxTokens: 250,
             });
             expect(summary.tokenUsage).toMatchObject({ mcpInitialChars: 4000, mcpInitialApproxTokens: 1000 });
+        });
+
+        it('groups the daily trend by local calendar day', () => {
+            const event = (seq: number, ts: number): AnalyticsEvent => ({ seq, ts, tool: 'notebook', action: 'list', status: 'success', durationMs: 1, paramKeys: [], transport: 'stdio' });
+            const summary = computeAnalyticsSummary([
+                event(1, new Date(2024, 0, 15, 0, 30).getTime()),
+                event(2, new Date(2024, 0, 15, 23, 30).getTime()),
+                event(3, new Date(2024, 0, 16, 0, 10).getTime()),
+            ]);
+
+            expect(summary.dailyTrend).toEqual([
+                { date: '2024-01-15', count: 2, errorCount: 0 },
+                { date: '2024-01-16', count: 1, errorCount: 0 },
+            ]);
+            expect(localDateKey(new Date(2024, 8, 5, 23, 59))).toBe('2024-09-05');
         });
     });
 

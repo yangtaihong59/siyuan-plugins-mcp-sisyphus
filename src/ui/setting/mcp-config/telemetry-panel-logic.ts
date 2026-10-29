@@ -1,6 +1,6 @@
 /* Pure helpers for TelemetryPanel: heatmap/series builders and formatting. */
 import { fetchPost } from "siyuan";
-import type { AnalyticsSummary } from "../../../core/analytics";
+import { type AnalyticsSummary, localDateKey } from "../../../core/analytics";
 import type { TelemetryConfig } from "../tool-config-storage";
 
 export interface HeatmapDay {
@@ -102,22 +102,21 @@ export function formatDuration(value: unknown) {
 }
 
 export function buildDailyHeatmap(trend: AnalyticsSummary["dailyTrend"]): HeatmapDay[] {
-    const millisecondsPerDay = 24 * 60 * 60 * 1000;
     const days = new Map(trend.map((day) => [day.date, day]));
-    const today = new Date();
-    const utcToday = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-    const currentWeekStart = utcToday - today.getUTCDay() * millisecondsPerDay;
-    const rangeStart = currentWeekStart - 51 * 7 * millisecondsPerDay;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Step by local calendar day rather than 24 hours, so a DST change cannot repeat or skip a date.
+    const rangeStartDate = today.getDate() - today.getDay() - 51 * 7;
     const result = Array.from({ length: 52 * 7 }, (_, index) => {
-        const timestamp = rangeStart + index * millisecondsPerDay;
-        const key = new Date(timestamp).toISOString().slice(0, 10);
+        const date = new Date(today.getFullYear(), today.getMonth(), rangeStartDate + index);
+        const key = localDateKey(date);
         const existing = days.get(key);
         return {
             date: key,
             count: existing?.count ?? 0,
             errorCount: existing?.errorCount ?? 0,
             level: 0,
-            future: timestamp > utcToday,
+            future: date > today,
         };
     });
     const maxCount = Math.max(1, ...result.map((day) => day.count));
@@ -130,6 +129,7 @@ export function buildDailyHeatmap(trend: AnalyticsSummary["dailyTrend"]): Heatma
 
 export function buildHeatmapMonths(days: HeatmapDay[], locale = getUiLocale()): HeatmapMonth[] {
     const months: HeatmapMonth[] = [];
+    // Day keys are already local calendar dates; reading and formatting them as UTC midnight keeps the label from shifting.
     const formatter = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
 
     for (let week = 0; week < 52; week += 1) {

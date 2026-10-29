@@ -99,7 +99,7 @@
 
     async function exportAnalyticsReport() {
         try {
-            const { ANALYTICS_PATH, ANALYTICS_ROTATED_PATH, MCP_INITIAL_COST_PATH, computeAnalyticsSummary, parseJsonl, parseMcpInitialTokenCost } = await import("../../../core/analytics");
+            const { ANALYTICS_PATH, ANALYTICS_ROTATED_PATH, MCP_INITIAL_COST_PATH, computeAnalyticsSummary, localDateKey, parseJsonl, parseMcpInitialTokenCost } = await import("../../../core/analytics");
             const parts: string[] = [];
             try { parts.push(await readStorageFile(ANALYTICS_PATH)); } catch { /* ignore */ }
             try { parts.push(await readStorageFile(ANALYTICS_ROTATED_PATH)); } catch { /* ignore */ }
@@ -108,6 +108,8 @@
             const summary = computeAnalyticsSummary(events, { initialCost });
             const report = {
                 generatedAt: new Date().toISOString(),
+                // summary.dailyTrend dates are calendar days in this zone.
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 summary,
                 rawEventCount: events.length,
             };
@@ -115,7 +117,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `siyuan-mcp-analytics-${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `siyuan-mcp-analytics-${localDateKey(Date.now())}.json`;
             a.click();
             URL.revokeObjectURL(url);
             showMessage(getLabel("analyticsExported", "✅ Analytics report exported"));

@@ -62,4 +62,19 @@ describe('settings panel logic', () => {
         expect(buildHeatmapMonths(days, 'zh-CN').map((month) => month.label)).toContain('1月');
         expect(formatTimestamp(Date.UTC(2026, 9, 29, 1, 2, 3), 'en-US')).toMatch(/10\/2[89]\/2026/);
     });
+
+    it('lays out the heatmap in local calendar days ending with the current week', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 9, 29, 7, 30));
+        try {
+            const days = buildDailyHeatmap([{ date: '2026-10-29', count: 3, errorCount: 1 }]);
+            expect(days).toHaveLength(52 * 7);
+            expect(days[0].date).toBe('2025-11-02');
+            expect(days.slice(1).every((day, index) => Date.parse(day.date) - Date.parse(days[index].date) === 24 * 60 * 60 * 1000)).toBe(true);
+            expect(days.find((day) => day.date === '2026-10-29')).toMatchObject({ count: 3, errorCount: 1, level: 4, future: false });
+            expect(days.find((day) => day.date === '2026-10-30')?.future).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
