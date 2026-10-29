@@ -56,6 +56,28 @@ The same response also contains a normalized `preflight` object (`version: 2`). 
 
 Copy `preflight.commitArgs` unchanged as the next call arguments. Do not reconstruct `requestId`, hash fields, or business arguments by hand. `counts` is action-specific: `operationCount` is always present; `rowCount`, `cellCount`, and `guardTargetCount` appear only when they can be computed, and equal values are never deduplicated into a smaller cell count. `expiresAt` and `ttlMs` describe the same ten-minute first-execution window. Top-level `requestId` and hash fields remain during the migration window for 0.6.13 clients; both describe one execution path, not a second retry mechanism. If a batch is too large to return executable arguments within the response limit, it is rejected explicitly rather than truncated.
 
+### Impact preview
+
+Every successful preflight also returns a top-level `preview` describing what the commit will change. Read it and compare it with the intent before committing:
+
+```json
+{
+  "preview": {
+    "detail": "summary",
+    "targets": [{ "id": "20260812120000-abcdefg", "kind": "document", "title": "Meeting", "hPath": "/Meeting",
+                  "notebook": { "id": "20260101000000-nbaaaaa", "name": "Work", "permission": "rw" } }],
+    "changes": [{ "kind": "heading_to_doc", "summary": "Moves heading «Action items» and the 2 block(s) under it (3 blocks) out of «Meeting» into a new document «Action items» at Work:/Action items (at the notebook root). The source keeps 0 of 3 top-level block(s). The source document becomes EMPTY.", "movedBlockCount": 3 }],
+    "risk": ["empties_source"]
+  }
+}
+```
+
+- `targets`: affected documents, blocks, databases, notebooks or tags, with hPath, notebook name and this client's permission.
+- `changes`: one human-readable `summary` per change plus structured detail. Specific summaries exist for block update/replace/delete/move, fs write (overwrite)/replace/rm/mv/reorder, document remove/move/reorder/heading_to_doc/doc_to_heading, search find_replace, tag rename/remove and av remove_rows/remove_column/set_cells; other writes get a generic line with the key arguments.
+- `risk`: any of `deletes`, `empties_source`, `cross_notebook`, `irreversible`, `large_batch` (more than 20 items), `workspace_wide`, `overwrites_content`.
+
+The default detail truncates excerpts to about 200 characters and lists at most 5 entries per list. Pass `preview: "full"` (CLI `--preview full`) with `validateOnly=true` for complete before/after text. `preview` is response-only: it is excluded from the argument digest and `commitArgs`, and never changes the hash. The preview is built read-only; if it cannot be built, the preflight still succeeds with `preview: { "error": "..." }`.
+
 The credential field name matches the write parameter, so copy that field and value directly. Remove `validateOnly` (or set it to `false`) and copy the returned `requestId`:
 
 ```json

@@ -56,6 +56,16 @@
 
 提交时原样复制 `preflight.commitArgs`，不要自行重建 `requestId`、哈希字段或业务参数。`counts` 按 action 计算：`operationCount` 总是存在；`rowCount`、`cellCount`、`guardTargetCount` 只在可计算时出现，相同值不会把显式单元格数去重变小。`expiresAt` 与 `ttlMs` 表示同一个 10 分钟首次提交窗口。迁移期仍保留顶层 `requestId` 与哈希字段，供 0.6.13 客户端使用；两者指向同一条执行路径，不是第二条重试通道。若批次过大无法在响应上限内给出完整可执行参数，会明确拒绝而不是截断。
 
+### 影响预览
+
+每次成功的预检还会在顶层返回 `preview`，说明提交将改变什么。提交前请阅读它，并与本次意图核对：
+
+- `targets`：受影响的文档、块、数据库、笔记本或标签，附 hPath、笔记本名称与当前客户端对该笔记本的权限。
+- `changes`：每项变更一条可读的 `summary` 与结构化细节。以下 action 有专门摘要：block update/replace/delete/move，fs write（覆盖）/replace/rm/mv/reorder，document remove/move/reorder/heading_to_doc/doc_to_heading，search find_replace，tag rename/remove，av remove_rows/remove_column/set_cells；其余写入给出通用说明与关键参数。
+- `risk`：可能包含 `deletes`、`empties_source`、`cross_notebook`、`irreversible`、`large_batch`（超过 20 项）、`workspace_wide`、`overwrites_content`。
+
+默认摘要级别把摘录截断到约 200 字符、每个列表最多 5 项。在 `validateOnly=true` 时传 `preview: "full"`（CLI 用 `--preview full`）可获得完整的前后文本。`preview` 只影响响应：它不进入参数摘要和 `commitArgs`，也不改变哈希。预览只读构建；构建失败时预检仍然成功，并返回 `preview: { "error": "..." }`。
+
 凭证字段名与正式写入参数一致，可直接复制该字段和值；正式执行时移除 `validateOnly`（或设为 `false`），并复制预检返回的 `requestId`：
 
 ```json

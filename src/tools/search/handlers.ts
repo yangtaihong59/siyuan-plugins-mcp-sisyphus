@@ -1,7 +1,6 @@
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
 import * as searchApi from '../../api/search';
-import * as blockApi from '../../api/block';
 import type { SearchAction } from '../../core/config';
 import {
     expandTypeShortcodes,
@@ -29,6 +28,7 @@ import {
     filterItemsByPermission,
     isPermissionRelatedApiError,
 } from '../internal/permission-filter';
+import { countFindReplaceMatches, findReplacePattern } from './find-replace-count';
 import { ensureRawSqlReadAccess, getBacklinksWithFallback, queryReferencingBlocks, REFERENCING_BLOCKS_LIMIT } from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';
@@ -256,40 +256,6 @@ async function resolveFindReplaceTargetIDs(
         if (blocks.length === 0 && !replaceTypes.docTitle) resolved.add(id);
     }
     return [...resolved];
-}
-
-/**
- * The kernel's findReplace returns nothing about what it changed. Count the
- * search text in the caller's scope (IALs stripped) before and after, so a
- * caller sees whether anything was replaced. Only literal (0) and regex (3)
- * searches can be counted, and only when the replacement cannot re-match.
- */
-function findReplacePattern(k: string, method: number | undefined): RegExp | undefined {
-    if (k === '') return undefined;
-    try {
-        if (method === 3) return new RegExp(k, 'g');
-        if (method === undefined || method === 0) return new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    } catch {
-        // An invalid regex is the kernel's to report.
-    }
-    return undefined;
-}
-
-async function countFindReplaceMatches(
-    client: SiYuanClient,
-    ids: string[],
-    k: string,
-    method: number | undefined,
-): Promise<number | undefined> {
-    const pattern = findReplacePattern(k, method);
-    if (!pattern) return undefined;
-    let total = 0;
-    for (const id of [...new Set(ids)]) {
-        const result = await blockApi.getBlockKramdown(client, id).catch(() => undefined);
-        const text = typeof result?.kramdown === 'string' ? result.kramdown.replace(/\{:\s(?:[^}"]|"(?:[^"\\]|\\.)*")*\}/g, '') : '';
-        total += text.match(pattern)?.length ?? 0;
-    }
-    return total;
 }
 
 export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {

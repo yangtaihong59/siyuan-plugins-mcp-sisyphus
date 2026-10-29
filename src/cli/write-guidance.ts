@@ -9,12 +9,14 @@ import type { ToolResult } from '../tools/internal/shared';
 
 const PREFLIGHT_REQUIRED_CODES = new Set(['precondition_required', 'invalid_request_id']);
 
-export const CLI_PREFLIGHT_HINT = 'Writes are two steps: rerun this exact command with --validate-only, then run the commit command it prints (it already carries --request-id and any --expected-*-hash).';
+export const CLI_PREFLIGHT_HINT = 'Writes are two steps: rerun this exact command with --validate-only, check the preview it prints, then run the commit command it prints (it already carries --request-id and any --expected-*-hash).';
 
 export interface CliWriteGuidance {
     result: ToolResult;
     /** Paste-ready commit command after a successful preflight. */
     commitCommand?: string;
+    /** Human output only: the preflight's write-impact preview, formatted for the terminal. */
+    previewLines?: string[];
 }
 
 /** `json` adds commitCommand to the payload; human output prints it once, untruncated, after the result. */
@@ -30,10 +32,19 @@ export function applyCliWriteGuidance(result: ToolResult, tool: string, json = t
     if (!payload || typeof payload !== 'object') return { result };
 
     let commitCommand: string | undefined;
+    let previewLines: string[] | undefined;
     if (!result.isError && payload.validateOnly === true && isRecord(payload.preflight?.commitArgs)) {
         commitCommand = buildCliCommand(tool, payload.preflight.commitArgs);
-        if (!json) return { result, commitCommand };
-        payload = { ...payload, commitCommand };
+        if (json) {
+            payload = { ...payload, commitCommand };
+        } else {
+            if (!isRecord(payload.preview)) return { result, commitCommand };
+            // Printed once in readable form before the commit command instead
+            // of through the generic renderer.
+            previewLines = formatWritePreview(payload.preview);
+            const { preview: _preview, ...rest } = payload;
+            payload = rest;
+        }
     } else if (result.isError && isRecord(payload.error) && PREFLIGHT_REQUIRED_CODES.has(payload.error.code)) {
         payload = { ...payload, error: { ...payload.error, hint: CLI_PREFLIGHT_HINT } };
     } else {
@@ -43,7 +54,70 @@ export function applyCliWriteGuidance(result: ToolResult, tool: string, json = t
     const content = [...result.content];
     content[index] = { type: 'text', text: JSON.stringify(payload) };
     const structured = isRecord(result.structuredContent) ? { structuredContent: payload } : {};
-    return { result: { ...result, content, ...structured } as ToolResult, commitCommand };
+    return { result: { ...result, content, ...structured } as ToolResult, commitCommand, ...(previewLines ? { previewLines } : {}) };
+}
+
+/** Terminal rendering of a preflight `preview` object (targets, changes, risk). */
+export function formatWritePreview(preview: Record<string, any>): string[] {
+    if (typeof preview.error === 'string') return [`Preview unavailable: ${preview.error}`];
+    const lines: string[] = ['Preview (read it before committing):'];
+    const targets = Array.isArray(preview.targets) ? preview.targets.filter(isRecord) : [];
+    if (targets.length > 0) {
+        const more = typeof preview.targetCount === 'number' && preview.targetCount > targets.length
+            ? ` (${targets.length} of ${preview.targetCount})`
+            : '';
+        lines.push(`  Targets${more}:`);
+        for (const target of targets) lines.push(`    - ${formatTarget(target)}`);
+    }
+    const changes = Array.isArray(preview.changes) ? preview.changes.filter(isRecord) : [];
+    if (changes.length > 0) {
+        lines.push('  Changes:');
+        for (const change of changes) {
+            lines.push(`    - ${String(change.summary ?? change.kind ?? '')}`);
+            for (const [key, value] of Object.entries(change)) {
+                if (key === 'kind' || key === 'summary') continue;
+                lines.push(...formatDetail(key, value, '        '));
+            }
+        }
+    }
+    const risk = Array.isArray(preview.risk) ? preview.risk.map(String) : [];
+    lines.push(`  Risk: ${risk.length > 0 ? risk.join(', ') : 'none flagged'}`);
+    return lines;
+}
+
+function formatTarget(target: Record<string, any>): string {
+    const name = target.title ?? target.excerpt;
+    const parts = [`${String(target.kind ?? 'target')} ${String(target.id ?? '')}`];
+    if (typeof name === 'string' && name) parts.push(`"${name}"`);
+    if (typeof target.hPath === 'string' && target.hPath) parts.push(target.hPath);
+    if (isRecord(target.notebook)) {
+        const notebook = target.notebook;
+        parts.push(`[notebook ${notebook.name ?? notebook.id}${notebook.permission ? `, ${notebook.permission}` : ''}]`);
+    }
+    return parts.join(' ');
+}
+
+/** Before/after text and example lists are the reviewable detail; counts already sit in the summary. */
+function formatDetail(key: string, value: unknown, indent: string): string[] {
+    if (key === 'before' || key === 'after' || key === 'from' || key === 'to') {
+        if (typeof value === 'string') return [`${indent}${key}: ${value}`];
+        if (Array.isArray(value)) return [`${indent}${key}: ${value.map(String).join(' | ')}`];
+        return [];
+    }
+    if (!Array.isArray(value) || value.length === 0) return [];
+    const lines: string[] = [];
+    for (const item of value) {
+        if (isRecord(item) && typeof item.before === 'string' && typeof item.after === 'string') {
+            lines.push(`${indent}${key}: ${item.before}`, `${indent}${' '.repeat(key.length)}→ ${item.after}`);
+        } else if (isRecord(item) && Array.isArray(item.examples)) {
+            for (const example of item.examples) lines.push(...formatDetail(key, [example], indent));
+        } else if (isRecord(item)) {
+            lines.push(`${indent}${key}: ${Object.entries(item).map(([name, field]) => `${name}=${typeof field === 'string' ? field : JSON.stringify(field)}`).join(', ')}`);
+        } else {
+            lines.push(`${indent}${key}: ${String(item)}`);
+        }
+    }
+    return lines;
 }
 
 export function buildCliCommand(tool: string, args: Record<string, unknown>): string {

@@ -96,6 +96,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -415,6 +416,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -501,6 +503,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -590,6 +593,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -692,6 +696,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -748,6 +753,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -829,6 +835,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -885,6 +892,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -954,6 +962,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -1205,6 +1214,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -1273,6 +1283,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -1356,6 +1367,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -1912,6 +1924,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -2004,6 +2017,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -2171,6 +2185,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -2258,6 +2273,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -4133,6 +4149,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -4307,6 +4324,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -4385,6 +4403,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -4452,6 +4471,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -4601,6 +4621,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -4965,6 +4986,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5047,6 +5069,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5114,6 +5137,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5258,6 +5282,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5316,6 +5341,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5370,6 +5396,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5429,6 +5456,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5552,6 +5580,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5784,6 +5813,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -5943,6 +5973,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -5992,6 +6023,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -6047,6 +6079,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -6092,6 +6125,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -6257,6 +6291,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -6529,6 +6564,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -6729,6 +6765,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -6981,6 +7018,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -7095,6 +7133,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -7154,6 +7193,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -7278,6 +7318,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -7444,6 +7485,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -7849,6 +7891,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -7891,6 +7934,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -7936,6 +7980,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -8487,6 +8532,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -8536,6 +8582,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -8663,6 +8710,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -8731,6 +8779,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -8806,6 +8855,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -8977,6 +9027,7 @@ Actions (required fields): upload_asset*() · list_templates() · read_template(
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -9071,6 +9122,7 @@ Actions (required fields): upload_asset*() · list_templates() · read_template(
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -9309,6 +9361,7 @@ Actions (required fields): upload_asset*() · list_templates() · read_template(
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -9388,6 +9441,7 @@ Actions (required fields): upload_asset*() · list_templates() · read_template(
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -9470,6 +9524,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -9566,6 +9621,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -9692,6 +9748,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -9826,6 +9883,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -9872,6 +9930,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10047,6 +10106,7 @@ Actions (required fields): list_cards(scope, filter) · get_decks() · get_cards
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10152,6 +10212,7 @@ Actions (required fields): ls(path) · tree(path) · read(path) · write(path, m
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -10202,6 +10263,7 @@ Actions (required fields): ls(path) · tree(path) · read(path) · write(path, m
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10321,6 +10383,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -10370,6 +10433,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10568,6 +10632,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10619,6 +10684,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10698,6 +10764,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10748,6 +10815,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10800,6 +10868,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10855,6 +10924,7 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -10956,6 +11026,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -11084,6 +11155,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -11731,6 +11803,7 @@ Actions (required fields): fulltext(query) · semantic(query) · query_sql() · 
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -12248,6 +12321,7 @@ Actions (required fields): workspace_info*() · network() · conf() · notify(ms
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -12301,6 +12375,7 @@ Actions (required fields): workspace_info*() · network() · conf() · notify(ms
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -12359,6 +12434,7 @@ Actions (required fields): list() · rename(oldLabel, newLabel) · remove*(label
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],
@@ -12489,6 +12565,7 @@ Actions (required fields): list() · rename(oldLabel, newLabel) · remove*(label
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -12541,6 +12618,7 @@ Actions (required fields): list() · rename(oldLabel, newLabel) · remove*(label
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -12666,6 +12744,7 @@ Actions (required fields): list() · rename(oldLabel, newLabel) · remove*(label
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -12721,6 +12800,7 @@ Actions (required fields): list() · rename(oldLabel, newLabel) · remove*(label
         "writeWorkflow": [
           "Confirm the user-authorized target and operation scope.",
           "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+          "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
           "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
           "Read the target back or inspect the returned receipt before reporting success.",
         ],
@@ -12799,6 +12879,7 @@ Actions (required fields): list_nodes(scope) · create_node(name, scope) · comp
       "writeWorkflow": [
         "Confirm the user-authorized target and operation scope.",
         "Call the same action with validateOnly=true to obtain preflight.commitArgs.",
+        "Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.",
         "Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.",
         "Read the target back or inspect the returned receipt before reporting success.",
       ],

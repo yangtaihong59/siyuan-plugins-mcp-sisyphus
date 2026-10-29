@@ -14,5 +14,10 @@ export function stripSafetyFields(args: Record<string, unknown>): Record<string,
     delete out.expectedValueHash;
     delete out.expectedManifestHash;
     delete out.expectedSourceHash;
+    // The write-impact preview detail ("summary" | "full") only shapes the
+    // preflight response. It never enters argsHash or commitArgs. Boolean
+    // `preview` is a business argument of read actions (document.get_outline,
+    // file.render) and stays.
+    if (typeof out.preview === 'string') delete out.preview;
     return out;
 }

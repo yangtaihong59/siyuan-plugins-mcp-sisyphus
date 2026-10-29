@@ -128,8 +128,9 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
             );
         };
 
-        const { result, commitCommand } = applyCliWriteGuidance(await runPage(), tool, cli.json);
+        const { result, commitCommand, previewLines } = applyCliWriteGuidance(await runPage(), tool, cli.json);
         const code = renderToolResult(result, { json: cli.json, debug: cli.debug });
+        if (previewLines && !cli.json) process.stdout.write(`\n${previewLines.join('\n')}\n`);
         if (commitCommand && !cli.json) process.stdout.write(`\nPreflight OK. To commit, run:\n  ${commitCommand}\n`);
         if (code !== 0 || cli.json) return code;
 

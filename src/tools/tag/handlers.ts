@@ -17,6 +17,20 @@ import { applyUiRefresh } from '../internal/ui-refresh';
  * schema-reflection path that hangs the sandbox.
  */
 /**
+ * Every indexed block carrying the tag or one of its sub-tags, one row per
+ * (box, block_id). Shared with the write-impact preview.
+ */
+export async function queryTagCarrierRows(client: SiYuanClient, label: string): Promise<Array<Record<string, unknown>>> {
+    const literal = escapeSqlString(label);
+    const rows = await searchApi.querySQL(
+        client,
+        `SELECT DISTINCT box, block_id FROM spans WHERE type LIKE '%tag%' AND (content = '${literal}' OR substr(content, 1, length('${literal}') + 1) = '${literal}/')`,
+    );
+    return (Array.isArray(rows) ? rows : [])
+        .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object');
+}
+
+/**
  * Renaming or removing a tag rewrites every block carrying it (and its
  * sub-tags), so every notebook that holds such a block must allow writes.
  * The span index can lag a just-written tag; that window is accepted.
@@ -26,13 +40,7 @@ async function ensureTagNotebooksWritable(
     permMgr: PermissionManager,
     label: string,
 ): Promise<{ denied: ToolResult | null; blockCount: number }> {
-    const literal = escapeSqlString(label);
-    const rows = await searchApi.querySQL(
-        client,
-        `SELECT DISTINCT box, block_id FROM spans WHERE type LIKE '%tag%' AND (content = '${literal}' OR substr(content, 1, length('${literal}') + 1) = '${literal}/')`,
-    );
-    const records = (Array.isArray(rows) ? rows : [])
-        .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object');
+    const records = await queryTagCarrierRows(client, label);
     const boxes = new Set(records
         .map((row) => row.box)
         .filter((box): box is string => typeof box === 'string' && box.length > 0));

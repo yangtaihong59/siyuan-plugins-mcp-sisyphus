@@ -19,6 +19,7 @@ import { safetyError } from '../core/write-safety-error';
 import { WriteSafetyLedger, stripSafetyFields, type WriteLedgerEntry } from './write-safety-ledger';
 import { assertDestinationNotebooksWritable, derivePostWriteProbeArgs, probeCreatedNotebook, probeCurrentState, probePostWriteState, probeUploadedResult, verifyPostWriteSemanticState } from './write-safety-probe';
 import { type StateProbe, collectTargetSelectors, isRecord, parseResultObject } from '../core/write-safety-records';
+import { buildWriteImpactPreview } from './write-impact-preview';
 
 export interface WriteSafetyExecution {
     client: SiYuanClient;
@@ -211,6 +212,9 @@ export class WriteSafetyCoordinator {
                 targetIds: before.targetIds,
             };
             if (validateOnly) {
+                // Read-only and never fatal: built from the probe before any
+                // credential is issued, so its reads cannot shorten the lease.
+                const preview = await buildWriteImpactPreview({ client, permMgr, category, action, args, before, conversion });
                 let request;
                 try {
                     assertPreflightCommitArgsSize(args);
@@ -248,6 +252,7 @@ export class WriteSafetyCoordinator {
                         credentialField: expectedField,
                         credential: issued.credential,
                     }),
+                    preview,
                 });
             }
             const resolved = this.preflightLeases.resolve(leaseScope, digestPrefix!);
@@ -267,6 +272,7 @@ export class WriteSafetyCoordinator {
                 });
             }
         } else if (validateOnly) {
+            const preview = await buildWriteImpactPreview({ client, permMgr, category, action, args });
             let request;
             try {
                 assertPreflightCommitArgsSize(args);
@@ -290,6 +296,7 @@ export class WriteSafetyCoordinator {
                     requestId: request.requestId,
                     expiresAt: request.requestIdExpiresAt,
                 }),
+                preview,
             });
         }
 
@@ -549,6 +556,7 @@ export class WriteSafetyCoordinator {
                 if (existing?.av) throw safetyError('already_exists', 'A new create request cannot reuse an existing AV.');
             }
             if (args.validateOnly === true) {
+                const preview = await buildWriteImpactPreview({ client, permMgr, category: 'av', action: 'create', args });
                 assertPreflightCommitArgsSize(args);
                 const request = await this.ledger.issue('av', 'create', args);
                 return jsonResult({
@@ -566,6 +574,7 @@ export class WriteSafetyCoordinator {
                         requestId: request.requestId,
                         expiresAt: request.requestIdExpiresAt,
                     }),
+                    preview,
                 });
             }
             execution.beforeCommit?.();

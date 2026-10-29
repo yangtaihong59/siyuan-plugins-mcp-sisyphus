@@ -127,7 +127,7 @@ ${formattedUserRules}
                 ? 'Stale. Before relying on it, ask the user whether to refresh `/AGENTS.md`; if they agree, verify the current state first.'
                 : 'Fresh enough to use as startup context; still verify details before high-impact edits.';
     const strictWritesRule = instructionInput.strictWrites
-        ? '\n- Strict safe writes: preflight the intended mutation with validateOnly=true. To execute, keep its business arguments unchanged, set validateOnly=false, and copy the returned requestId and required hash fields before expiry. Reuse requestId for retries; after a conflict or expired preflight, read current state before preparing a new write.'
+        ? '\n- Strict safe writes: preflight the intended mutation with validateOnly=true and check its preview (targets, changes, risk; preview="full" for complete text) against the intent. To execute, keep its business arguments unchanged, set validateOnly=false, and copy the returned requestId and required hash fields before expiry. Reuse requestId for retries; after a conflict or expired preflight, read current state before preparing a new write.'
         : '';
     return `${userRulesSection}# Agent siyuan memory (/AGENTS.md)
 
