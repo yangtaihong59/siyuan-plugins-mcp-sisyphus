@@ -13,7 +13,8 @@ const sqlEntrypoints = [
 ];
 
 describe.each(sqlEntrypoints)('$name notebook scope', ({ args, sqlKey, endpoint }) => {
-    it('reloads permissions and refuses SQL before either SQL endpoint is called', async () => {
+    // query_sql switches to restricted mode instead (see search-restricted-sql.test.ts).
+    it.runIf(endpoint !== '/api/query/sql')('reloads permissions and refuses SQL before either SQL endpoint is called', async () => {
         let readable = true;
         const reload = vi.fn(async () => { readable = false; });
         const permMgr = { reload, canRead: (id: string) => id !== 'blocked' || readable };
