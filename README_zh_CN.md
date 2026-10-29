@@ -32,7 +32,7 @@
 </p>
 <p align="center"><sub>AI 刚整理完一篇周复盘：文件树显示它能操作的范围，文档 Diff 列出它改了什么，猫猫报告最近一次工具调用。</sub></p>
 
-> **最新版本 v0.6.13**：不支持表单确认的客户端不再触发 elicitation 错误，权限与安全预检照常生效；MCP 设置页新增 DSH 的 Cordis YAML 配置。更早的版本见[更新日志](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/CHANGELOG.md)。
+> **最新版本 v0.7.0**：严格写入预检新增写入影响预览；存在不可读笔记本时 `query_sql` 改为按笔记本限定的受限 SQL；读取返回 `ifMatch`，并可选开启“低风险一步写入”（默认关闭）；`document create` 支持批量 `docs`；另修复多轮 AI 体验测试发现的一批问题。CLI 同步提升至 `v0.3.0`。更早的版本见[更新日志](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/CHANGELOG.md)。
 
 ## 亮点
 

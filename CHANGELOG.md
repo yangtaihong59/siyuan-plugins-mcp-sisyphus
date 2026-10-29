@@ -2,6 +2,15 @@
 
 本文件记录项目的主要版本变更。
 
+## v0.7.0 - 2026-10-29
+
+- 严格写入预检新增写入影响预览：列出目标、变更摘要与风险标记（删除、跨笔记本、覆盖内容、不可逆等），可用 `--preview full` / `preview="full"` 查看完整前后文本；CLI 先显示预览再给提交命令
+- 存在不可读笔记本时 `query_sql` 改为受限 SQL：只允许白名单表、按可读笔记本过滤结果，执行前做内核 canary 自检，不通过即拒绝（不再整体拒绝，也不会退回不受限执行）；`PRAGMA`、变更语句改报 `permission_denied`
+- 读取结果返回 `ifMatch`，写入可带 `ifMatch` 校验目标未变；新增可选的“低风险一步写入”分级（默认关闭，在安全设置中开启）：新增类可免预检，覆盖类需带匹配的 `ifMatch`（CLI `--if-match`），危险与结构性动作仍须两步
+- `document create` 新增批量 `docs`（最多 20 篇，首个失败即停并给出逐条回执），`document set_attr` 支持 `custom-*` 属性；新增 `av.rename`，`av create` 可直接命名
+- 按多轮 AI 体验测试修复一批问题：替换或更新块时自定义属性丢失、写入后 SQL 索引滞后、内核明确拒绝归类为 `not_applied`、数据库预检引用校验与 ID 别名（keyID/columnID）、不含时间的日期显示等；CLI 同步提升至 v0.3.0
+- 不兼容变化：`search_refs` 改为按 refs 表返回引用块并移除 `beforeLen`/`isSquareBrackets`/`isDatabase`/`reqId`，`flashcard get_cards` 以 `cardID` 为主，MCP 服务端 `upload_asset` 拒绝相对路径
+
 ## v0.6.13 - 2026-10-20
 
 - 修复 DSH 不适配问题：客户端不支持表单确认时跳过弹框，保留权限与安全预检

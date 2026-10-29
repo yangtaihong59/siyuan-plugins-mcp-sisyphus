@@ -32,7 +32,7 @@
 </p>
 <p align="center"><sub>An agent has just tidied up a weekly review. The file tree shows what it may touch, the Document Diff dock shows what it changed, and the mascot reports the last tool call.</sub></p>
 
-> **Latest: v0.6.13.** Clients without form-confirmation support no longer hit elicitation errors, while permissions and safe-write preflight still apply. The MCP settings page now also generates DSH Cordis YAML. See the [changelog](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/CHANGELOG.md) for earlier releases.
+> **Latest: v0.7.0.** Safe-write preflight now shows a write-impact preview; `query_sql` runs in a restricted, notebook-scoped mode when some notebooks are unreadable; reads return `ifMatch`, with an optional low-risk one-step write mode (off by default); `document create` supports batch `docs`. Includes many fixes from multi-round AI usability testing. CLI is now `v0.3.0`. See the [changelog](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/CHANGELOG.md) for earlier releases.
 
 ## Highlights
 
