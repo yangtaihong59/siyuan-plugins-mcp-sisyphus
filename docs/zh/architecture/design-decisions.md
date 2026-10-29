@@ -172,7 +172,7 @@ notebook(action="rename")
 ```
 共用的层：
 ├── src/api/client.ts           SiYuanClient
-├── src/core/tool-registry.ts    TOOL_REGISTRY
+├── src/mcp/tool-registry.ts    TOOL_REGISTRY
 ├── src/core/tool-lifecycle.ts   runToolCall (puppy/analytics/telemetry)
 ├── src/core/config.ts           buildDefaultToolConfig, ACTIONS_BY_CATEGORY
 ├── src/core/permissions.ts      PermissionManager
@@ -181,9 +181,9 @@ notebook(action="rename")
 
 CLI 不经过的层：
 ├── @modelcontextprotocol/server 不启动 MCP server
-├── src/core/server.ts           不走 ListTools/CallTool handler
-├── src/core/http-transport.ts   不启动 HTTP server
-├── src/core/resources.ts        不暴露 MCP Resources
+├── src/mcp/server.ts           不走 ListTools/CallTool handler
+├── src/mcp/http-transport.ts   不启动 HTTP server
+├── src/mcp/resources.ts        不暴露 MCP Resources
 ├── src/core/server-instructions.ts  无 instructions
 └── src/index.ts                不走插件生命周期
 ```

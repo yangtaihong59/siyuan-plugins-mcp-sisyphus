@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildDefaultToolConfig, normalizeToolConfig } from '@/ui/setting/tool-config';
+import { buildDefaultToolConfig, normalizeToolConfig } from '@/core/config';
 
 describe('setting tool config', () => {
     it('enables document cover actions by default', () => {
@@ -321,6 +321,13 @@ describe('setting tool config', () => {
     it('keeps strict write safety enabled for old config and honors an explicit opt-out', () => {
         expect(normalizeToolConfig({}).writeSafety.strictMode).toBe(true);
         expect(normalizeToolConfig({ writeSafety: { strictMode: false } }).writeSafety.strictMode).toBe(false);
+    });
+
+    it('keeps one-step writes off unless explicitly set to a known mode', () => {
+        expect(normalizeToolConfig({}).writeSafety.oneStep).toBe('off');
+        expect(normalizeToolConfig({ writeSafety: { oneStep: 'low_risk' } }).writeSafety).toEqual({ strictMode: true, oneStep: 'low_risk' });
+        expect(normalizeToolConfig({ writeSafety: { oneStep: 'everything' } }).writeSafety.oneStep).toBe('off');
+        expect(normalizeToolConfig({ writeSafety: { oneStep: true } }).writeSafety.oneStep).toBe('off');
     });
 
     it('ignores legacy flat and category config formats', () => {

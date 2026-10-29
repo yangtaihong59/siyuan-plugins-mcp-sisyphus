@@ -2,18 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { CategoryToolConfig, SearchAction } from '../../core/config';
 import { SEARCH_ACTION_HINTS, SEARCH_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    SearchActionSchema,
-    SearchAssetsSchema,
-    SearchFindReplaceSchema,
-    SearchFulltextAssetContentSchema,
-    SearchFulltextSchema,
-    SearchGetBacklinksSchema,
-    SearchListInvalidRefsSchema,
-    SearchQuerySqlSchema,
-    SearchRefsSchema,
-    SearchSemanticSchema,
-} from '../../core/types';
+import { SearchActionSchema, SearchAssetsSchema, SearchFindReplaceSchema, SearchFulltextAssetContentSchema, SearchFulltextSchema, SearchGetBacklinksSchema, SearchListInvalidRefsSchema, SearchQuerySqlSchema, SearchRefsSchema, SearchSemanticSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { SEARCH_ACTION_HANDLERS } from './handlers';
@@ -23,7 +12,7 @@ export {
     filterFullTextSearchResultByPermission,
     filterItemsByPermission,
     filterItemsByPermissionAndPath,
-} from './permission-filter';
+} from '../internal/permission-filter';
 
 export const SEARCH_TOOL_NAME = 'search';
 

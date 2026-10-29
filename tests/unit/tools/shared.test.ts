@@ -18,6 +18,7 @@ import {
     type ActionVariant,
 } from '@/tools/internal/shared';
 import type { ToolCategory, CategoryToolConfig } from '@/core/config';
+import { requestError } from '../../helpers/request-error';
 
 describe('createActionSchema', () => {
     it('should create schema with action and properties', () => {
@@ -152,7 +153,7 @@ describe('createErrorResult', () => {
     });
 
     it('should create error result from API error', () => {
-        const error = new Error('SiYuan API error: 404 - Not found');
+        const error = requestError('SiYuan API error: 404 - Not found');
         const result = createErrorResult(error);
 
         const parsed = JSON.parse(result.content[0].text);
@@ -207,8 +208,9 @@ describe('createPermissionDeniedResult', () => {
     it('should include helpful message', () => {
         const result = createPermissionDeniedResult('nb', 'none', 'read');
         const parsed = JSON.parse(result.content[0].text);
-        expect(parsed.error.message).toContain('notebook');
-        expect(parsed.error.message).toContain('set_permission');
+        expect(parsed.error.message).toContain('Notebook');
+        // set_permission is often disabled, so it is mentioned only as a user-side option.
+        expect(parsed.error.hint).toContain('Only the user can change notebook permissions');
     });
 });
 

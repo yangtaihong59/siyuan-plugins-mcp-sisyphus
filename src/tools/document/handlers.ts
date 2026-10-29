@@ -1,4 +1,7 @@
-import { availableReadSteps, databaseReadSteps, documentReadInfo, kramdownDatabases, type ReadStep } from '../internal/read-guidance';
+import { BATCH_HINTS } from '../internal/batch-hints';
+import { prepareDocumentConversion } from './conversion';
+import { handleDocumentQuery } from './query';
+import { availableReadSteps, databaseNote, databaseReadSteps, documentReadInfo, kramdownDatabases, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
@@ -6,27 +9,14 @@ import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import * as transactionApi from '../../api/transaction';
 import type { DocumentAction } from '../../core/config';
-import type { PermissionManager } from '../../core/permissions';
 import {
-    DocumentCreateSchema,
-    DocumentEnsureLinkTargetsSchema,
-    DocumentCreateDailyNoteSchema,
-    DocumentDocToHeadingSchema,
-    DocumentDuplicateSchema,
-    DocumentGetChildBlocksSchema,
-    DocumentGetChildDocsSchema,
-    DocumentGetDocSchema,
-    DocumentGetOutlineSchema,
-    DocumentHeadingToDocSchema,
-    DocumentListTreeSchema,
-    DocumentMoveSchema,
-    DocumentReorderSchema,
-    DocumentLookupSchema,
-    DocumentRemoveSchema,
-    DocumentRenameSchema,
-    DocumentSearchDocsSchema,
-    DocumentSetAttrSchema,
-} from '../../core/types';
+    BATCH_RENAME_CONTEXT,
+    overallBatchRenameState,
+    type BatchRenameContext,
+    type BatchRenameItemReceipt,
+} from './batch-rename-plan';
+import type { PermissionManager } from '../../core/permissions';
+import { DocumentCreateSchema, DocumentEnsureLinkTargetsSchema, DocumentCreateDailyNoteSchema, DocumentDocToHeadingSchema, DocumentDuplicateSchema, DocumentGetChildBlocksSchema, DocumentGetChildDocsSchema, DocumentGetDocSchema, DocumentGetOutlineSchema, DocumentHeadingToDocSchema, DocumentListTreeSchema, DocumentMoveSchema, DocumentReorderSchema, DocumentLookupSchema, DocumentRemoveSchema, DocumentRenameSchema, DocumentSearchDocsSchema, DocumentSetAttrSchema } from './schemas';
 import {
     findScopedLinkTarget,
     linkTargetError,
@@ -35,26 +25,29 @@ import {
     scopedLinkTargetTitleExists,
     type LinkTargetDocumentIdentity,
     type LinkTargetScope,
-} from '../../core/document-link-targets';
+} from './link-targets';
 import {
     ensurePermissionForDocumentId,
     ensurePermissionForNotebook,
-    escapeSqlString,
+    extractDocumentId,
     listChildDocumentsByPath,
+    normalizePath,
     resolveMoveTargetNotebook,
     resolveNotebookForPath,
 } from '../internal/context';
+import { escapeSqlString } from '../../shared/sql';
 import type { ToolActionHandler } from '../internal/define-tool';
-import { resolveNotebookName } from '../internal/helpers/notebook-names';
-import { filterBacklinkResultByPermission, filterItemsByPermissionAndPath } from '../search';
-import { createJsonResult, createPermissionDeniedResult, createSetIconReminder } from '../internal/shared';
+import { getNotebookNameArgumentHint, resolveNotebookName } from '../internal/helpers/notebook-names';
+import { filterBacklinkResultByPermission, filterItemsByPermissionAndPath } from '../internal/permission-filter';
+import { createJsonResult, createPermissionDeniedResult, createSetIconReminder, type ToolResult } from '../internal/shared';
 import { applyUiRefresh, type UiRefreshOperation } from '../internal/ui-refresh';
 import { sleep } from '../../shared/async';
 import { stripRedundantTitleHeading } from '../internal/kramdown-safe';
 import { readDocumentBlockWindow } from '../internal/document-kramdown';
-import { createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks } from '../internal/kramdown-safe';
+import { createReferenceSemanticsHints } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs } from '../internal/markdown-input';
 import { applyDocumentReorder, readDocumentReorderState } from '../internal/helpers/document-reorder';
+import { isAmbiguousWriteFailure, SiYuanRequestError } from '../../api/errors';
 
 type DocumentActionHandler = ToolActionHandler;
 
@@ -82,8 +75,10 @@ async function setDocumentAttrsViaTransaction(
 }
 
 function isIndexingError(error: unknown): boolean {
-    return error instanceof Error
-        && /SiYuan API error:\s*-1\s*-\s*indexing/i.test(error.message);
+    return error instanceof SiYuanRequestError
+        && error.kind === 'api'
+        && error.apiCode === -1
+        && /indexing/i.test(error.message);
 }
 
 async function getHPathByIdWithRetry(client: SiYuanClient, id: string): Promise<string> {
@@ -130,7 +125,7 @@ function createLookupPathResult(fields: {
     };
 }
 
-function normalizeDocumentCoverSource(source: string): { source: string; titleImg: string } {
+export function normalizeDocumentCoverSource(source: string): { source: string; titleImg: string } {
     const normalizedSource = source.trim();
     if (!normalizedSource) {
         throw new Error('Cover source must not be empty.');
@@ -383,7 +378,22 @@ async function filterSearchDocsResult(
 const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentCreateSchema.parse(rawArgs);
     await permMgr.reload();
+    if (parsed.docs && permMgr.canWrite(parsed.notebook)) return handleBatchCreate(client, parsed.notebook, parsed.docs);
     if (!permMgr.canWrite(parsed.notebook)) {
+        // A notebook name must not be mistaken for an ID with default r
+        // permission, which misleadingly sends callers to change permissions.
+        const hint = await getNotebookNameArgumentHint(client, permMgr, parsed.notebook);
+        if (hint) {
+            return {
+                ...createJsonResult({ error: {
+                    type: 'validation_error',
+                    code: 'invalid_arguments',
+                    message: 'document.create notebook requires a notebook ID, not its name. No document was created.',
+                    hint,
+                } }),
+                isError: true,
+            };
+        }
         return createPermissionDeniedResult(parsed.notebook, permMgr.get(parsed.notebook), 'write');
     }
     const parentPath = parsed.parentPath
@@ -403,9 +413,7 @@ const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         success: true,
         notebook: parsed.notebook,
         path,
-        ...(hasSiyuanBlockLinks(markdown) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(markdown) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(markdown) ? createUnresolvedBlockRefHint() : {}),
+        ...createReferenceSemanticsHints(markdown),
         ...(parsed.parentPath ? { parentPath: parsed.parentPath } : {}),
         ...(parentPath && parentPath !== parsed.parentPath ? { resolvedParentPath: parentPath } : {}),
         ...(parsed.title ? { title: parsed.title } : {}),
@@ -418,6 +426,95 @@ const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs })
             { type: 'reloadFiletree' },
         ]);
 };
+
+type BatchCreateItemState = 'created' | 'not_applied' | 'unknown';
+
+interface BatchCreateItemReceipt {
+    index: number;
+    path: string;
+    state: BatchCreateItemState;
+    id?: string;
+    error?: string;
+}
+
+/**
+ * Batch create: documents are created one by one in the given order (so a
+ * parent listed earlier exists before its child). The first failure stops the
+ * batch. When nothing was created the error propagates unchanged and the
+ * coordinator classifies it (not_applied / unknown). After at least one
+ * creation the receipt lists every item: created (with id), the failed item
+ * (not_applied when SiYuan explicitly rejected it, unknown when the outcome
+ * cannot be known) and the remaining items as not_applied (never sent).
+ */
+async function handleBatchCreate(
+    client: SiYuanClient,
+    notebook: string,
+    docs: Array<{ path: string; markdown?: string }>,
+): Promise<ToolResult> {
+    const receipts: BatchCreateItemReceipt[] = docs.map((item, index) => ({ index, path: item.path.trim(), state: 'not_applied' }));
+    // Check every body before the first write, so a bad item fails the whole batch with nothing created.
+    const bodies: string[] = [];
+    for (const [index, item] of docs.entries()) {
+        bodies.push(await normalizeMarkdownInputRefs(
+            client,
+            stripRedundantTitleHeading(item.markdown ?? '', deriveTitleFromCreatePath(receipts[index].path)),
+            `document.create docs[${index}]`,
+        ));
+    }
+    let failedAt: number | undefined;
+    for (const [index, receipt] of receipts.entries()) {
+        try {
+            receipt.id = await documentApi.createDoc(client, notebook, receipt.path, bodies[index]);
+            receipt.state = 'created';
+        } catch (error) {
+            if (index === 0) throw error;
+            receipt.state = isAmbiguousWriteFailure(error) ? 'unknown' : 'not_applied';
+            receipt.error = error instanceof Error ? error.message : String(error);
+            failedAt = index;
+            break;
+        }
+    }
+    const created = receipts.filter((item) => item.state === 'created');
+    const refresh: UiRefreshOperation[] = [{ type: 'reloadFiletree' }];
+    if (failedAt === undefined) {
+        return applyUiRefresh(client, createJsonResult({
+            success: true,
+            notebook,
+            count: created.length,
+            created: created.map(({ index, path, id }) => ({ index, path, id })),
+        }), refresh);
+    }
+    const failed = receipts[failedAt];
+    const skipped = receipts.slice(failedAt + 1);
+    const overallState = failed.state === 'unknown' ? 'unknown' : 'partial';
+    const line = (item: BatchCreateItemReceipt) => `  [${item.index}] ${item.path}${item.id ? ` → ${item.id}` : ''}`;
+    const details = [
+        `created (${created.length}):`, ...created.map(line),
+        `failed (${failed.state}): [${failed.index}] ${failed.path}: ${failed.error}`,
+        ...(skipped.length > 0 ? [`not_applied, never sent (${skipped.length}):`, ...skipped.map(line)] : []),
+    ].join('\n');
+    // Refresh for the documents that were created, then report the batch as failed.
+    const refreshed = await applyUiRefresh(client, createJsonResult({
+            success: false,
+            overallState,
+            notebook,
+            created: created.map(({ index, path, id }) => ({ index, path, id })),
+            failed: { index: failed.index, path: failed.path, state: failed.state, error: failed.error },
+            notApplied: skipped.map(({ index, path }) => ({ index, path })),
+            counts: { requested: receipts.length, created: created.length, failed: 1, notApplied: skipped.length },
+            error: {
+                type: 'batch_partial',
+                message: `Batch create stopped at docs[${failed.index}] (${failed.path}): ${created.length} of ${receipts.length} document(s) were created, docs[${failed.index}] is ${failed.state}${skipped.length > 0 ? ` and ${skipped.length} later item(s) were not sent` : ''}. Do not resend the whole batch: ${failed.state === 'unknown' ? `first check whether ${failed.path} exists, then ` : ''}send only the items that were not created.`,
+                details,
+            },
+        }), refresh);
+    return { ...refreshed, isError: true };
+}
+
+/** Same shape as fs not_found: a caller-correctable error, not an empty success. */
+function lookupNotFound(hPath: string, notebook: string): Error {
+    return Object.assign(new Error(`No document found at hpath "${hPath}" in notebook ${notebook}. Check the path with document(action="list_tree") or fs(action="ls").`), { code: 'not_found' });
+}
 
 const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentLookupSchema.parse(rawArgs);
@@ -434,17 +531,25 @@ const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     if (parsed.id) {
         const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
         if (denied) return denied;
+        // The SQL index lags a document move by a few seconds; the file tree
+        // does not. Report (and authorize) the live location.
+        const live = await documentApi.getPathByID(client, context.documentId).catch(() => undefined);
+        const notebook = live?.notebook || context.notebook;
+        if (notebook !== context.notebook) {
+            const deniedLive = await ensurePermissionForNotebook(permMgr, notebook, 'read');
+            if (deniedLive) return deniedLive;
+        }
         result.id = parsed.id;
-        result.notebook = context.notebook;
-        result.path = context.path;
+        result.notebook = notebook;
+        result.path = live?.path ? normalizePath(live.path) : context.path;
         if (include.has('path')) {
-            result.path = await documentApi.getPathByID(client, parsed.id);
+            result.path = live ?? await documentApi.getPathByID(client, parsed.id);
         }
         result.hPath = await getHPathByIdWithRetry(client, parsed.id);
         if (include.has('docInfo')) {
             result.docInfo = await blockApi.getDocInfo(client, parsed.id);
         }
-        const notebookName = await resolveNotebookName(client, context.notebook);
+        const notebookName = await resolveNotebookName(client, notebook);
         if (notebookName) result.notebookName = notebookName;
         return createJsonResult(createLookupPathResult(result));
     }
@@ -461,6 +566,7 @@ const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         if (!looksLikeStoragePath(parsed.path)) {
             const ids = await getDocumentIdsByHPathWithSqlFallback(client, parsed.notebook!, parsed.path);
             const primaryId = ids[0];
+            if (!primaryId) throw lookupNotFound(parsed.path, notebookName ?? parsed.notebook!);
             result.source = { type: 'hpath', notebook: parsed.notebook, hPath: parsed.path, providedAs: 'path' };
             result.hPath = parsed.path;
             result.interpretedPathAs = 'hpath';
@@ -492,6 +598,7 @@ const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     }
 
     const ids = await getDocumentIdsByHPathWithSqlFallback(client, parsed.notebook!, hpathInput!);
+    if (ids.length === 0) throw lookupNotFound(hpathInput!, notebookName ?? parsed.notebook!);
     result.notebook = parsed.notebook;
     if (notebookName) result.notebookName = notebookName;
     result.hPath = hpathInput;
@@ -683,13 +790,141 @@ const handleEnsureLinkTargets: DocumentActionHandler = async ({ client, permMgr,
     }), created.length > 0 ? [{ type: 'reloadFiletree' }] : []);
 };
 
+const handleBatchRename = async (
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    rawArgs: Record<string, unknown>,
+): Promise<ToolResult> => {
+    const context = (rawArgs as Record<string | symbol, unknown>)[BATCH_RENAME_CONTEXT] as BatchRenameContext | undefined;
+    if (!context) {
+        throw new Error('Batch document.rename requires a coordinator-issued plan; run validateOnly preflight first.');
+    }
+    const plan = context.plan;
+    const receipts: BatchRenameItemReceipt[] = plan.items.map((item) => ({
+        index: item.index,
+        id: item.id,
+        title: item.title,
+        state: 'not_started',
+        previousHPath: item.currentHPath,
+        targetHPath: item.targetHPath,
+    }));
+    const reloadRefresh: Array<{ type: 'reloadProtyle'; id: string }> = [];
+    let stopped = false;
+
+    for (let position = 0; position < plan.items.length; position += 1) {
+        const item = plan.items[position];
+        const receipt = receipts[position];
+        if (stopped) continue;
+
+        if (!permMgr.canWrite(item.notebook)) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = 'permission_revoked';
+            stopped = true;
+            continue;
+        }
+
+        let currentPath: { notebook?: string; box?: string; path?: string } | undefined;
+        let currentHPath: string | undefined;
+        try {
+            currentPath = await documentApi.getPathByID(client, item.id);
+            currentHPath = await documentApi.getHPathByID(client, item.id);
+        } catch (error) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = `target_unreadable: ${error instanceof Error ? error.message : String(error)}`;
+            stopped = true;
+            continue;
+        }
+        const notebook = currentPath?.notebook || currentPath?.box || '';
+        if (notebook !== item.notebook || currentPath?.path !== item.currentPath) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = 'target_changed_after_preflight';
+            stopped = true;
+            continue;
+        }
+        if (currentHPath === item.targetHPath) {
+            receipt.state = 'no_change';
+            reloadRefresh.push({ type: 'reloadProtyle', id: item.id });
+            continue;
+        }
+        if (currentHPath !== item.currentHPath) {
+            receipt.state = 'failed_before_execute';
+            receipt.reason = 'target_path_changed_after_preflight';
+            stopped = true;
+            continue;
+        }
+
+        // Persist the exact item about to be dispatched before the kernel
+        // call. A crash after this point leaves that item unknown, never
+        // silently retried, while completed items keep their receipts.
+        await context.checkpoint({ overallState: 'unknown', items: receipts.map((entry) => ({ ...entry })), inProgressIndex: item.index });
+        try {
+            await documentApi.renameDocByID(client, item.id, item.title);
+        } catch (error) {
+            receipt.state = 'unknown';
+            receipt.reason = `kernel_error: ${error instanceof Error ? error.message : String(error)}`;
+            stopped = true;
+            continue;
+        }
+        try {
+            const readback = await documentApi.getHPathByID(client, item.id);
+            if (readback !== item.targetHPath) {
+                receipt.state = 'unknown';
+                receipt.reason = `readback_mismatch: expected ${item.targetHPath}, observed ${readback || '<empty>'}`;
+                stopped = true;
+                continue;
+            }
+        } catch (error) {
+            receipt.state = 'unknown';
+            receipt.reason = `readback_failed: ${error instanceof Error ? error.message : String(error)}`;
+            stopped = true;
+            continue;
+        }
+        receipt.state = 'committed';
+        reloadRefresh.push({ type: 'reloadProtyle', id: item.id });
+    }
+
+    const overallState = overallBatchRenameState(receipts);
+    await context.checkpoint({ overallState, items: receipts.map((entry) => ({ ...entry })) });
+    const count = (state: BatchRenameItemReceipt['state']) => receipts.filter((item) => item.state === state).length;
+    const payload = {
+        success: overallState === 'committed',
+        changed: count('committed') > 0,
+        overallState,
+        partial: overallState === 'partial' || overallState === 'unknown',
+        items: receipts,
+        counts: {
+            requested: receipts.length,
+            committed: count('committed'),
+            noChange: count('no_change'),
+            failedBeforeExecute: count('failed_before_execute'),
+            unknown: count('unknown'),
+            notStarted: count('not_started'),
+        },
+        ...(overallState === 'unknown' ? {
+            next: 'Inspect the unknown item before any retry. Only proven not_started items may be submitted as a new preflight.',
+        } : {}),
+    };
+    const result = createJsonResult(payload);
+    // An unknown item must stay an unknown tool outcome. Returning a plain
+    // success-shaped receipt would let the coordinator record this batch as
+    // committed even though one rename may have been applied.
+    return applyUiRefresh(
+        client,
+        overallState === 'unknown' ? { ...result, isError: true } : result,
+        [...reloadRefresh, { type: 'reloadFiletree' }],
+    );
+};
+
 const handleRename: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentRenameSchema.parse(rawArgs);
+    if (parsed.items) {
+        return handleBatchRename(client, permMgr, rawArgs);
+    }
     if (parsed.id) {
         const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
         if (denied) return denied;
         await documentApi.renameDocByID(client, parsed.id, parsed.title);
-        return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, title: parsed.title }), [
+        return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, title: parsed.title, batchHint: BATCH_HINTS.documentRename }), [
             { type: 'reloadProtyle', id: context.documentId },
             { type: 'reloadFiletree' },
         ]);
@@ -704,6 +939,7 @@ const handleRename: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         notebook: parsed.notebook,
         path: parsed.path,
         title: parsed.title,
+        batchHint: BATCH_HINTS.documentRename,
     }), [{ type: 'reloadFiletree' }]);
 };
 
@@ -780,7 +1016,7 @@ const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) =
             sourceDocumentIDs.push(context.documentId);
         }
         await documentApi.moveDocsByID(client, parsed.fromIDs, parsed.toID!);
-        return applyUiRefresh(client, createJsonResult({ success: true, fromIDs: parsed.fromIDs, toID: parsed.toID }), [
+        return applyUiRefresh(client, createJsonResult({ success: true, fromIDs: parsed.fromIDs, toID: parsed.toID, ...(parsed.fromIDs.length === 1 ? { batchHint: BATCH_HINTS.documentMove } : {}) }), [
             ...sourceDocumentIDs.map((id) => ({ type: 'reloadProtyle' as const, id })),
             { type: 'reloadFiletree' },
         ]);
@@ -799,6 +1035,7 @@ const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) =
         fromPaths: parsed.fromPaths,
         toNotebook: parsed.toNotebook,
         toPath: parsed.toPath,
+        ...(parsed.fromPaths!.length === 1 ? { batchHint: BATCH_HINTS.documentMove } : {}),
     }), [{ type: 'reloadFiletree' }]);
 };
 
@@ -879,6 +1116,13 @@ const handleSetAttr: DocumentActionHandler = async ({ client, permMgr, rawArgs }
         }
         operations.push({ type: 'reloadProtyle', id: context.documentId }, { type: 'reloadFiletree' });
     }
+    // custom-* attributes go on the document root block, exactly as block set_attrs writes them.
+    const custom = Object.fromEntries(Object.entries(parsed.attrs).filter(([key]) => key.startsWith('custom-'))) as Record<string, string>;
+    if (Object.keys(custom).length > 0) {
+        Object.assign(attrs, custom);
+        response.attrs = custom;
+        if (!operations.some((operation) => operation.type === 'reloadProtyle')) operations.push({ type: 'reloadProtyle', id: context.documentId });
+    }
     await setDocumentAttrsViaTransaction(client, parsed.id, attrs);
     return applyUiRefresh(client, createJsonResult(response), operations);
 };
@@ -888,16 +1132,10 @@ const handleListTree: DocumentActionHandler = async ({ client, permMgr, rawArgs 
     const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
     if (denied) return denied;
     const maxDepth = parsed.maxDepth ?? 3;
-    let result: unknown;
-    if (parsed.path === '/') {
-        result = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
-    } else {
-        try {
-            result = await documentApi.listDocTree(client, parsed.notebook, parsed.path);
-        } catch {
-            result = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
-        }
-    }
+    // listDocsByPath honours the notebook's manual sort (as get_child_docs and
+    // fs tree do); /api/filetree/listDocTree does not, so it would contradict
+    // them right after a reorder.
+    const result: unknown = { tree: await listDocumentTreeByPath(client, parsed.notebook, parsed.path, maxDepth) };
     const depthHint = 'Use maxDepth to control tree depth. Use document(action="list_tree") with a deeper path to expand specific subtrees.';
     if (result && typeof result === 'object' && Array.isArray((result as Record<string, unknown>).tree)) {
         const enriched = await enrichTreeNodesWithDocInfo(client, (result as Record<string, unknown>).tree);
@@ -912,17 +1150,49 @@ const handleListTree: DocumentActionHandler = async ({ client, permMgr, rawArgs 
     return createJsonResult({ tree: truncateTreeByDepth(enriched, maxDepth), maxDepth, depthHint });
 };
 
+/**
+ * searchDocs returns a bare array of hits from every notebook, each with the
+ * doc's naming attribute as `name` (usually empty), no ID and no notebook ID;
+ * hPath starts with the notebook name. Give each hit its ID and title, and
+ * keep the notebook the caller asked about.
+ */
+function shapeSearchDocHits(data: unknown, notebook: string, notebookName?: string): { docs: unknown; otherNotebookCount: number } {
+    const record = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : undefined;
+    const docs = Array.isArray(data) ? data : Array.isArray(record?.docs) ? record.docs as unknown[] : undefined;
+    if (!docs) return { docs: data, otherNotebookCount: 0 };
+    const items = docs.filter((doc): doc is Record<string, unknown> => !!doc && typeof doc === 'object');
+    const inNotebook = (doc: Record<string, unknown>) => typeof doc.box === 'string'
+        ? doc.box === notebook
+        : !notebookName || typeof doc.hPath !== 'string' || doc.hPath.startsWith(`${notebookName}/`);
+    const kept = items.filter(inNotebook);
+    const shaped = kept.map((doc) => {
+        const storagePath = typeof doc.path === 'string' ? doc.path : '';
+        const id = storagePath.match(/([^/]+)\.sy$/)?.[1];
+        const hPath = typeof doc.hPath === 'string' ? doc.hPath : '';
+        const { name, alias, boxIcon, ...rest } = doc;
+        return {
+            ...(id ? { id, title: hPath.split('/').filter(Boolean).pop() ?? '' } : { notebookRoot: true }),
+            ...rest,
+            ...(typeof name === 'string' && name ? { name } : {}),
+            ...(typeof alias === 'string' && alias ? { alias } : {}),
+        };
+    });
+    return { docs: shaped, otherNotebookCount: items.length - kept.length };
+}
+
 const handleSearchDocs: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentSearchDocsSchema.parse(rawArgs);
     const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
     if (denied) return denied;
     const result = await documentApi.searchDocs(client, parsed.query);
     const filtered = await filterSearchDocsResult(client, result, permMgr, parsed.path);
+    const shaped = shapeSearchDocHits(filtered.data, parsed.notebook, await resolveNotebookName(client, parsed.notebook));
     const totalFilteredOutCount = filtered.permissionFilteredOutCount + filtered.pathFilteredOutCount;
     return createJsonResult({
         ...((filtered.data && typeof filtered.data === 'object' && !Array.isArray(filtered.data))
-            ? filtered.data as Record<string, unknown>
-            : { docs: filtered.data }),
+            ? { ...filtered.data as Record<string, unknown>, ...(Array.isArray((filtered.data as Record<string, unknown>).docs) ? { docs: shaped.docs } : {}) }
+            : { docs: shaped.docs }),
+        ...(shaped.otherNotebookCount > 0 ? { otherNotebookCount: shaped.otherNotebookCount } : {}),
         ...(parsed.path ? { path: parsed.path, pathApplied: true } : {}),
         ...(filtered.permissionFilteredOutCount > 0 ? { partial: true, reason: 'permission_filtered' } : {}),
         ...(totalFilteredOutCount > 0 ? { filteredOutCount: totalFilteredOutCount } : {}),
@@ -968,7 +1238,8 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     const steps: ReadStep[] = nextWindow
         ? [{ purpose: 'continue_read', tool: 'document', arguments: nextWindow }]
         : [];
-    steps.push(...databaseReadSteps(kramdownDatabases(window.content)));
+    const databases = kramdownDatabases(window.content);
+    steps.push(...databaseReadSteps(databases));
     const nextSteps = await availableReadSteps(client, steps);
     return createJsonResult({
         id: parsed.id,
@@ -979,6 +1250,8 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         ...windowPayload,
         ...(parsed.includeBlockIds ? { blockRefs } : {}),
         readInfo: documentReadInfo(window, (blockRefs ?? []).map(block => block.type)),
+        // Content stays verbatim for round-trip safety; the note explains the div.
+        ...(databases.length ? { databaseNote: databaseNote(databases.map(database => database.avID)) } : {}),
         ...(nextSteps.length ? { nextSteps } : {}),
         ...(nextWindow ? {
             nextWindow,
@@ -1000,6 +1273,28 @@ function countOutlineNodes(nodes: unknown): number {
     return count;
 }
 
+/**
+ * The native outline nests sub-headings under `blocks`/`children` with
+ * inconsistent fields; a flat, document-order list reads at a glance.
+ */
+function flattenOutline(nodes: unknown, depth = 0, out: Array<Record<string, unknown>> = []): Array<Record<string, unknown>> {
+    if (!Array.isArray(nodes)) return out;
+    for (const node of nodes) {
+        if (!node || typeof node !== 'object') continue;
+        const typed = node as Record<string, unknown>;
+        const title = typeof typed.name === 'string' && typed.name ? typed.name : typed.content;
+        out.push({
+            id: typed.id,
+            depth,
+            ...(typeof typed.subType === 'string' && typed.subType ? { level: typed.subType } : {}),
+            title,
+        });
+        flattenOutline(typed.blocks, depth + 1, out);
+        flattenOutline(typed.children, depth + 1, out);
+    }
+    return out;
+}
+
 const handleGetOutline: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentGetOutlineSchema.parse(rawArgs);
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
@@ -1017,6 +1312,7 @@ const handleGetOutline: DocumentActionHandler = async ({ client, permMgr, rawArg
         notebook: context.notebook,
         preview,
         headingCount: countOutlineNodes(outline),
+        headings: flattenOutline(outline),
         outline,
     });
 };
@@ -1065,13 +1361,24 @@ const handleHeadingToDoc: DocumentActionHandler = async ({ client, permMgr, rawA
     if (source.denied) return source.denied;
     const denied = await ensurePermissionForNotebook(permMgr, parsed.targetNotebook, 'write');
     if (denied) return denied;
-    await documentApi.headingToDoc(client, parsed.headingID, parsed.targetNotebook, parsed.targetPath, parsed.previousPath);
+    const plan = await prepareDocumentConversion(client, permMgr, parsed.action, parsed);
+    await documentApi.headingToDoc(client, parsed.headingID, parsed.targetNotebook, plan.targetPath, plan.previousPath);
+    const converted = await client.requestRead<{ rootID: string; box: string; path?: string; rootTitle?: string }>('/api/block/getBlockInfo', { id: parsed.headingID });
+    if (converted.rootID !== parsed.headingID || converted.box !== parsed.targetNotebook) throw new Error('Heading conversion readback mismatch');
+    const hPath = await documentApi.getHPathByID(client, parsed.headingID).catch(() => undefined);
     return applyUiRefresh(client, createJsonResult({
         success: true,
+        // The heading's ID becomes the new document's ID.
+        id: parsed.headingID,
+        ...(converted.rootTitle ? { title: converted.rootTitle } : {}),
+        ...(converted.path ? { path: converted.path } : {}),
+        ...(typeof hPath === 'string' ? { hPath } : {}),
+        notebook: parsed.targetNotebook,
+        sourceID: source.context.documentId,
         headingID: parsed.headingID,
         targetNotebook: parsed.targetNotebook,
-        ...(parsed.targetPath ? { targetPath: parsed.targetPath } : {}),
-        ...(parsed.previousPath ? { previousPath: parsed.previousPath } : {}),
+        targetPath: plan.targetPath,
+        ...(plan.previousPath ? { previousPath: plan.previousPath } : {}),
     }), [
         { type: 'reloadProtyle', id: source.context.documentId },
         { type: 'reloadFiletree' },
@@ -1084,7 +1391,10 @@ const handleDocToHeading: DocumentActionHandler = async ({ client, permMgr, rawA
     if (source.denied) return source.denied;
     const target = await ensurePermissionForDocumentId(client, permMgr, parsed.targetID, 'write');
     if (target.denied) return target.denied;
+    const plan = await prepareDocumentConversion(client, permMgr, parsed.action, parsed);
     const result = await documentApi.docToHeading(client, parsed.srcID, parsed.targetID, parsed.after ?? false);
+    const converted = await client.requestRead<{ rootID: string }>('/api/block/getBlockInfo', { id: parsed.srcID });
+    if (converted.rootID !== plan.target.documentId) throw new Error('Document conversion readback mismatch');
     return applyUiRefresh(client, createJsonResult({
         success: true,
         srcID: parsed.srcID,
@@ -1101,6 +1411,7 @@ const handleDocToHeading: DocumentActionHandler = async ({ client, permMgr, rawA
 export const DOCUMENT_ACTION_HANDLERS: Record<DocumentAction, DocumentActionHandler> = {
     create: handleCreate,
     lookup: handleLookup,
+    query: handleDocumentQuery,
     ensure_link_targets: handleEnsureLinkTargets,
     rename: handleRename,
     remove: handleRemove,

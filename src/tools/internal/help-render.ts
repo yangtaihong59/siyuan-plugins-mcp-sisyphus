@@ -1,5 +1,7 @@
-import { getActionTier, isDangerousAction, type ActionTier, type ToolCategory } from '../../core/config';
+import { ACTIONS_BY_CATEGORY, getActionTier, isDangerousAction, type ActionTier, type ToolCategory } from '../../core/config';
 import { TOOL_ACTION_EXAMPLES, TOOL_ACTION_HINTS, TOOL_GUIDANCE_BY_CATEGORY, type HelpExample } from '../../core/help';
+import { getActionSafetyPolicy } from '../../core/write-safety-policy';
+import { WRITE_WORKFLOW_STEPS } from '../../core/write-preflight';
 import { getSchemaProperties, getSchemaRequired } from './schema-analyzer';
 import type { ActionVariant, JsonSchema } from './types';
 
@@ -155,35 +157,55 @@ export function buildActionExampleObjects<Action extends string>(
     }));
 }
 
+/*
+ * Actions whose schema fixes no field because the handler accepts one of
+ * several shapes (validated in a refinement). Help shows these alternatives
+ * instead of "none fixed by the schema". Help text only; the mounted schema
+ * and the action signatures in tool descriptions are unchanged.
+ */
+const ACTION_REQUIRED_ALTERNATIVES: Partial<Record<ToolCategory, Record<string, string[][]>>> = {
+    document: {
+        remove: [['id'], ['notebook', 'path'], ['ids'], ['paths']],
+        lookup: [['id'], ['notebook', 'path'], ['notebook', 'hpath']],
+        move: [['fromIDs', 'toID'], ['fromPaths', 'toNotebook', 'toPath']],
+    },
+    block: {
+        insert: [['dataType', 'data', 'previousID'], ['dataType', 'data', 'nextID'], ['dataType', 'data', 'parentID'], ['blocks']],
+        update: [['id', 'dataType', 'data'], ['items']],
+        move: [['id', 'previousID'], ['id', 'parentID'], ['ids', 'previousID'], ['ids', 'parentID']],
+        docs_info: [['id'], ['ids']],
+    },
+    file: {
+        upload_asset: [['localFilePath'], ['uploadSource']],
+    },
+    search: {
+        query_sql: [['sql'], ['stmt']],
+        search_assets: [['query'], ['k']],
+        fulltext_asset_content: [['query'], ['assetId']],
+    },
+};
+
+/** Accepted shapes that name a common optional field (help text only; requiredFields is unchanged). */
+const ACTION_SHAPE_OVERRIDES: Partial<Record<ToolCategory, Record<string, string[]>>> = {
+    av: {
+        create: ['parentID', 'parentID + name (database name at creation)'],
+        add_rows: [
+            'avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}] (rows with their cells, dates included; up to 200 in one call)',
+            'avID + primaryKeyTexts (text-only rows)',
+            'avID + blockIDs (rows bound to existing blocks)',
+        ],
+    },
+    fs: {
+        mv: ['from + to', 'items:[{from, to}] (up to 20 moves in one call)'],
+    },
+    document: {
+        rename: ['id + title', 'notebook + path + title', 'items:[{id, title}] (up to 50 renames in one call)'],
+        move: ['fromIDs + toID (fromIDs takes several documents)', 'fromPaths + toNotebook + toPath (fromPaths takes several documents)'],
+    },
+};
+
 export function getCuratedActionExamples(category: ToolCategory, action: string): HelpExample[] {
     return TOOL_ACTION_EXAMPLES[category]?.[action] ?? [];
-}
-
-export function buildActionShapes<Action extends string>(
-    variants: ActionVariant<Action>[],
-    action: string,
-): string[] {
-    return variants
-        .filter((variant) => variant.action === action)
-        .flatMap((variant) => requiredFieldAlternatives(variant.schema)
-            .map((fields) => fields.length > 0 ? fields.join(' + ') : 'action only'));
-}
-
-function formatFieldList(fields: string[]): string {
-    return fields.length > 0 ? fields.join(', ') : 'no additional fields';
-}
-
-export function buildActionUsageSummary<Action extends string>(variants: ActionVariant<Action>[]): string {
-    const actionShapes = new Map<string, string[]>();
-
-    for (const variant of variants) {
-        const shape = requiredFieldAlternatives(variant.schema).map(formatFieldList).join(' | ');
-        const shapes = actionShapes.get(variant.action) ?? [];
-        if (!shapes.includes(shape)) shapes.push(shape);
-        actionShapes.set(variant.action, shapes);
-    }
-
-    return [...actionShapes.entries()].map(([action, shapes]) => `${action}: ${shapes.join(' | ')}`).join('; ');
 }
 
 /**
@@ -211,23 +233,6 @@ export function buildActionSignatures<Action extends string>(
     }).join(' · ');
 }
 
-export function buildParameterContract<Action extends string>(
-    category: ToolCategory,
-    variants: ActionVariant<Action>[],
-): string {
-    const seen = new Set<string>();
-    return variants.flatMap((variant) => {
-        if (seen.has(variant.action)) return [];
-        seen.add(variant.action);
-
-        const alternatives = requiredFieldAlternatives(variant.schema);
-        const required = alternatives.flat();
-        const optional = getSchemaFieldNames(variant.schema, false).filter((field) => !required.includes(field));
-
-        return [`${category}.${variant.action}: required ${required.length > 0 ? alternatives.map((fields) => `[${fields.join(', ')}]`).join(' OR ') : '[]'} | optional ${optional.length > 0 ? `[${optional.join(', ')}]` : '[]'}`];
-    }).join('\n');
-}
-
 export function buildHelpIndex<Action extends string>(
     category: ToolCategory,
     enabledActions: Action[],
@@ -252,12 +257,14 @@ export function buildHelpIndex<Action extends string>(
     }
 
     const confirmationActions = enabledActions.filter((action) => isDangerousAction(category, action));
+    const hasMutation = enabledActions.some((action) => getActionSafetyPolicy(category, action).mode === 'mutation');
     return {
         tool: category,
         commonActions: tierGroups.basic,
         sharedTopics: ['ai-layout-guide'],
         advancedActions: tierGroups.advanced,
         guidance: TOOL_GUIDANCE_BY_CATEGORY[category] ?? [],
+        ...(hasMutation ? { writeWorkflow: [...WRITE_WORKFLOW_STEPS] } : {}),
         actions,
         actionSummaries,
         ...(confirmationActions.length > 0 ? { requiresConfirmation: confirmationActions } : {}),
@@ -271,13 +278,25 @@ export function buildHelpIndex<Action extends string>(
     };
 }
 
+/**
+ * Tool guidance is written per tool; most lines name one action. Action help
+ * keeps the lines about this action plus the general ones, instead of every
+ * other action's caveats.
+ */
+function guidanceForAction(lines: readonly string[], action: string, actions: string[]): string[] {
+    const mentions = (line: string, name: string) => new RegExp(`(^|[^A-Za-z_-])(${name}|${name.replace(/_/g, '-')})(?![A-Za-z_-])`).test(line);
+    const others = [...new Set(actions)].filter((name) => name !== action);
+    return lines.filter((line) => mentions(line, action) || !others.some((name) => mentions(line, name)));
+}
+
 export function buildActionHelp<Action extends string>(
     category: ToolCategory,
     action: Action,
     enabledVariants: ActionVariant<Action>[],
 ): Record<string, unknown> {
     const matching = enabledVariants.filter((variant) => variant.action === action);
-    const requiredFieldSets = matching.flatMap((variant) => requiredFieldAlternatives(variant.schema));
+    const requiredFieldSets = ACTION_REQUIRED_ALTERNATIVES[category]?.[action]?.map((fields) => [...fields])
+        ?? matching.flatMap((variant) => requiredFieldAlternatives(variant.schema));
     const generatedExamples = buildActionExampleObjects(matching, action);
     const curatedExamples = getCuratedActionExamples(category, action);
     const example = curatedExamples[0]?.mcp
@@ -287,13 +306,18 @@ export function buildActionHelp<Action extends string>(
         tool: category,
         action,
         ...(TOOL_ACTION_HINTS[category]?.[action] ? { hint: TOOL_ACTION_HINTS[category][action] } : {}),
-        shapes: requiredFieldSets.map((fields) => fields.length > 0 ? fields.join(' + ') : 'action only'),
+        // Multi-mode actions validate their alternatives in a refinement, so the
+        // schema alone has no required field; say so instead of "action only".
+        shapes: ACTION_SHAPE_OVERRIDES[category]?.[action] ?? requiredFieldSets.map((fields) => fields.length > 0 ? fields.join(' + ') : curatedExamples.length > 0 ? 'see examples' : hasOptionalFields(matching) ? 'optional fields only' : 'action only'),
         requiredFields: requiredFieldSets.length === 1 ? requiredFieldSets[0] : requiredFieldSets,
         parameters: matching.length === 1 ? matching[0].schema : matching.map((variant) => variant.schema),
         example,
         ...(curatedExamples.length > 0 ? { examples: curatedExamples } : {}),
-        guidance: TOOL_GUIDANCE_BY_CATEGORY[category] ?? [],
+        guidance: guidanceForAction(TOOL_GUIDANCE_BY_CATEGORY[category] ?? [], action, [...ACTIONS_BY_CATEGORY[category]]),
         requiresConfirmation: isDangerousAction(category, action),
+        ...(getActionSafetyPolicy(category, action).mode === 'mutation'
+            ? { writeWorkflow: [...WRITE_WORKFLOW_STEPS] }
+            : {}),
         fullDocResource: `siyuan://help/action/${category}/${action}`,
     };
 }
@@ -332,3 +356,7 @@ export function buildShapeSummaryMarkdown<Action extends string>(
 }
 
 export type { ToolCategory };
+
+function hasOptionalFields<Action extends string>(variants: ActionVariant<Action>[]): boolean {
+    return variants.some((variant) => getSchemaFieldNames(variant.schema, false).some((field) => field !== 'action'));
+}

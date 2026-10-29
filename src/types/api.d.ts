@@ -457,6 +457,8 @@ interface IResReadDirItem {
 
 interface IReqExportMdContent {
     id: string;
+    /** SiYuan block-ref export mode; 3 = anchor text only (no footnotes with referenced content). Defaults to the user's export setting. */
+    refMode?: number;
 }
 
 interface IReqExportResources {
@@ -538,6 +540,7 @@ export type {
     IReqCloseNotebook,
     IReqCreateDocWithMd,
     IReqCreateNotebook,
+    IReqDocSaveAsTemplate,
     IReqDeleteBlock,
     IReqExportMdContent,
     IReqExportResources,

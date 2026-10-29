@@ -1,10 +1,6 @@
 import type { MascotAction } from '../../core/config';
 import { readPuppyStats, spendPuppyBalance } from '../../core/puppy-state';
-import {
-    MascotBuySchema,
-    MascotGetBalanceSchema,
-    MascotShopSchema,
-} from '../../core/types';
+import { MascotBuySchema, MascotGetBalanceSchema, MascotShopSchema } from './schemas';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult } from '../internal/shared';
 import { getShopItem, SHOP_ITEMS } from './shop-items';

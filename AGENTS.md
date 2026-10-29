@@ -9,14 +9,14 @@
 **SiYuan MCP Sisyphus** 是 SiYuan Note（思源笔记）的插件 + 独立 CLI 工具，让 AI Agent 能够通过两种接口安全地操作思源笔记：
 
 1. **MCP Server 插件**：作为 SiYuan 插件运行，对外暴露 MCP（Model Context Protocol）服务。AI 客户端（Claude Desktop、Cursor、Cherry Studio 等）通过 HTTP 或 stdio 连接。
-2. **独立 CLI `siyuan-sisyphus`**：发布到 npm 的包名 `siyuan-sisyphus`，安装后提供 `siyuan-sisyphus` / `siyuan` 命令。直接通过思源 HTTP API 执行单次操作后退出，无需 MCP 客户端。
+2. **独立 CLI `siyuan-sisyphus`**：发布到 npm 的包名 `siyuan-sisyphus`，安装后提供 `siyuan-sisyphus` / `sisyphus` 命令。直接通过思源 HTTP API 执行单次操作后退出，无需 MCP 客户端。
 
 两种接口共享同一套底层能力，覆盖思源绝大部分功能：笔记本管理、文档操作、块级读写、属性视图（数据库）、搜索、标签、文件资源、闪卡、系统接口等。聚合工具类别和静态 action 清单以 `src/core/config.ts` 的 `TOOL_CATEGORIES` 与 `ACTIONS_BY_CATEGORY` 为唯一事实来源；`extension` 还可按官方注册表发现动态 action。
 
 - 仓库地址：`https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus`
 - 作者：Taihong Yang
 - 许可证：MIT
-- 当前版本：`0.6.1`（根 `package.json` 与 `plugin.json` 同步）
+- 当前版本：以根 `package.json` 为准（与 `plugin.json` 同步；CLI 子包版本独立）
 
 ---
 
@@ -46,10 +46,9 @@
 siyuan-plugins-mcp-sisyphus/
 ├── src/
 │   ├── index.ts                 # 插件入口（SiYuan Plugin 基类）
-│   ├── server-launcher.ts       # HttpServerLauncher：在插件进程内 spawn mcp-server.cjs 子进程
 │   ├── index.scss               # 插件全局样式（几乎为空）
 │   │
-│   ├── api/                     # 思源 HTTP API 封装层
+│   ├── api/                     # 思源 HTTP API 封装层（errors.ts：两个客户端共用的类型化错误）
 │   │   ├── client.ts            # SiYuanClient：fetch 封装、token 注入、超时控制
 │   │   ├── notebook.ts          # /api/notebook/*
 │   │   ├── document.ts          # /api/filetree/* 与文档相关
@@ -62,15 +61,28 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── flashcard.ts         # /api/riff/*
 │   │   └── transaction.ts       # /api/transaction 批量操作
 │   │
-│   ├── core/                    # MCP 服务器核心与工具元数据
+│   ├── mcp/                     # 装配层：把工具组装成可调用的 MCP 运行时（server / kernel / CLI 共用）
 │   │   ├── server.ts            # MCP Server 入口：createSiYuanServer()、startMcpServer()
 │   │   ├── http-transport.ts    # HTTP MCP 2026 无状态 + legacy 有会话双协议传输
 │   │   ├── tool-registry.ts     # TOOL_REGISTRY：聚合工具注册表
+│   │   ├── tool-call-gate.ts    # planToolCall：三入口共用的 tools/call 决策（别名规范化、开关、确认、写入策略、协调写）
+│   │   ├── tool-execution.ts    # executeLocalTool：三入口共用的执行链（写协调器 + 参数校验 + 处理函数）
+│   │   ├── write-safety-coordinator.ts # 严格写入协调器主流程（锁、租约、账本、提交）
+│   │   ├── write-safety-probe.ts / write-safety-av.ts / write-safety-ledger.ts # 状态探针、AV 校验、请求账本
+│   │   ├── write-safety-if-match.ts # 读取哈希 ifMatch（与预检同一探针）与一步写入的 help 标注；分级表在 core/write-safety-policy.ts
+│   │   ├── resources.ts / mcp-apps.ts # MCP Resources（help 文档）与 MCP Apps 注册、App 工具执行与结果投影
+│   │   └── mcp-initial-cost.ts  # tools/list 时写入初始 token 成本
+│   │
+│   ├── core/                    # 基础层：工具与装配层共用的配置、权限、元数据、写入安全原语（不得 import 工具实现）
+│   │   ├── tool-result.ts       # ToolResult / ToolDescriptor 等 MCP 结果形状（纯类型）
+│   │   ├── write-safety-{policy,hash,fields,error,records}.ts # 写入策略表、sha256:v1 哈希、安全字段、错误、记录小工具
+│   │   ├── write-coordinator-client.ts # 严格写入委托 kernel 协调器的客户端（CLI 与 server 共用）
+│   │   ├── kernel-file-transfer.ts # 委托写入时的文件暂存上传与导出落盘
 │   │   ├── tool-lifecycle.ts    # 工具调用生命周期：analytics、telemetry、token 计数、错误包装
-│   │   ├── config.ts            # ToolConfig 类型、默认值、配置迁移（扁平 → 嵌套）、危险动作定义
+│   │   ├── config.ts            # ToolConfig 类型、默认值、配置迁移（扁平 → 嵌套）、危险动作定义、三入口共用的配置加载策略
+│   │   ├── legacy-sessions.ts   # 旧协议会话策略（上限、空闲过期、未知 ID 返回 404），kernel 与 HTTP 传输共用
+│   │   ├── timeline-service.ts  # 时间线节点的创建、删除、比对与回退（timeline 工具与版本面板共用）
 │   │   ├── permissions.ts       # PermissionManager：笔记本级权限（rwd/rw/r/none）
-│   │   ├── types.ts             # 所有 action 的 Zod schema 定义
-│   │   ├── resources.ts         # MCP Resources：help 文档资源路由
 │   │   ├── help.ts              # 各工具的帮助文案与提示
 │   │   ├── normalize.ts         # 请求参数归一化（类型短码展开、sortBy 别名等）
 │   │   ├── analytics.ts         # 调用统计与洞察数据聚合
@@ -90,17 +102,22 @@ siyuan-plugins-mcp-sisyphus/
 │   │   │   ├── ui-refresh.ts    # 触发思源 UI 刷新（所有模式默认开启）
 │   │   │   ├── help-render.ts   # help action 输出渲染
 │   │   │   ├── schema-analyzer.ts # schema 分析与描述裁剪
+│   │   │   ├── permission-filter.ts # 搜索/反链结果的读权限过滤（search、block、document 共用）
 │   │   │   └── helpers/         # 跨工具小型 helper，如 notebookName 补全
-│   │   ├── notebook/            # notebook 工具（index.ts + handlers.ts）
+│   │   ├── notebook/            # notebook 工具（index.ts + handlers.ts + schemas.ts）
 │   │   ├── document/            # document 工具
 │   │   ├── block/               # block 工具
-│   │   ├── av/                  # av（数据库）工具
-│   │   ├── search/              # search 工具（含 sql-builder、permission-filter）
+│   │   ├── av/                  # av（数据库）工具：definition → rows → carrier → transaction 基础模块 + 按领域的 *-handlers.ts
+│   │   ├── search/              # search 工具（含 sql-builder、restricted-sql 受限 SQL 改写与 restricted-sql-canary 内核自检）
 │   │   ├── file/                # file 工具
 │   │   ├── tag/                 # tag 工具
 │   │   ├── system/              # system 工具
 │   │   ├── flashcard/           # flashcard 工具
-│   │   └── mascot/              # mascot（吉祥物余额）工具
+│   │   ├── mascot/              # mascot（吉祥物余额）工具
+│   │   ├── fs/                  # fs 工具：基于人类可读路径的文档门面
+│   │   ├── timeline/            # timeline 工具：文档历史与版本对比
+│   │   ├── extension/           # extension 工具：桥接官方插件注册的 MCP 工具
+│   │   └── feedback/            # feedback 工具
 │   │
 │   ├── cli/                     # 独立 CLI 源码（被 cli Vite target 打包）
 │   │   ├── index.ts             # CLI 入口：命令分发（dispatch/list/help/init/config/version）
@@ -115,22 +132,27 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── plugin-check.ts      # 插件在线检测
 │   │   └── runtime.ts           # CLI 运行时环境检测
 │   │
+│   ├── kernel/                  # kernel target：运行在思源内核 goja 沙箱中的 MCP 端点
+│   │   ├── index.ts             # 入口：请求分发、会话、调度
+│   │   ├── client.ts            # KernelSiYuanClient（内核内直连 API）
+│   │   ├── baked-action-schemas.ts # 构建期替换 zod schema 的预烘焙 JSON Schema
+│   │   └── node-shims.ts / polyfill.ts # goja 环境下的 Node/Web API 垫片
+│   │
+│   ├── mcp-apps/                # mcp-app target：MCP Apps 富交互页面（单文件 HTML；index.ts 控制与渲染，format / state / preview 为纯函数、视图状态与开发预览数据）
+│   │
 │   ├── ui/                      # Svelte UI 与设置面板
+│   │   ├── plugin/              # 插件入口的功能控制器：版本控制、权限树（含新建笔记本授权）、宠物、反馈传输、HttpServerLauncher（spawn mcp-server.cjs）、renderer-client（基于 fetchPost 的 SiYuanClient）；src/index.ts 只做组装
 │   │   ├── components/          # 桌面悬浮宠物组件与行为逻辑
 │   │   ├── setting/             # 插件设置面板
+│   │   ├── version-control/     # 快照与版本对比面板（Svelte；纯逻辑在 shared/version-control，写操作走 core/timeline-service）
 │   │   └── shared/              # UI 共享组件
 │   │
-│   ├── shared/                  # 跨层通用工具库
-│   │   ├── error.ts             # 错误处理辅助
-│   │   ├── promise-pool.ts      # 并发池
-│   │   └── invocation-format.ts # 调用格式化
+│   ├── shared/                  # 跨入口纯函数（版本比较、哈希规范化、token 估算、路径/SQL、对象判断 record.ts、文本 text.ts、AV 载体判定等）
+│   │   └── version-control/     # 纯逻辑：snapshot-types → snapshot-parse / snapshot-files → block-diff（比对与恢复计划），timeline（节点记录）
 │   │
-│   ├── types/
-│   │   ├── index.d.ts           # 思源常用数据结构（Block、Notebook 等）
-│   │   └── api.d.ts             # API 响应类型定义
-│   │
-│   └── presentation/            # 展示层辅助
-│       └── invocation-format.ts # 调用格式化
+│   └── types/
+│       ├── index.d.ts           # 思源常用数据结构（Block、Notebook 等）
+│       └── api.d.ts             # API 请求/响应类型定义
 │
 ├── cli/                         # 独立 npm 子包（发布为 `siyuan-sisyphus`）
 │   ├── package.json             # 子包元数据（version 与根包独立，bin 指向 dist/cli.cjs）
@@ -144,6 +166,9 @@ siyuan-plugins-mcp-sisyphus/
 │   ├── smoke/                   # 冒烟测试（需真实思源实例）
 │   ├── mocks/siyuan.ts          # `siyuan` 模块 mock（用于 vitest alias）
 │   └── helpers/                 # 测试辅助函数
+│
+├── assets/                      # README 展示图与封面/图标的生成提示词
+│   └── readme/                  # README 引用的图片（真实界面截图合成的 WebP、明暗两版架构图 SVG；构建时打入 package.zip）
 │
 ├── docs/                        # VitePress 文档站点（双语：en / zh）
 │   ├── .vitepress/config.ts     # VitePress 配置
@@ -179,12 +204,14 @@ siyuan-plugins-mcp-sisyphus/
 
 ### Vite 多 Target 构建
 
-`vite.config.ts` 根据环境变量 `BUILD_TARGET` 分三路构建：
+`vite.config.ts` 根据环境变量 `BUILD_TARGET` 分五路构建：
 
 | Target | 入口 | 产物 | 说明 |
 |--------|------|------|------|
 | `renderer` | `src/index.ts` | `dist/index.js` + `dist/index.css` | 插件 UI（SiYuan 加载） |
-| `server` | `src/core/server.ts` | `dist/mcp-server.cjs` | MCP Server（Node 进程） |
+| `server` | `src/mcp/server.ts` | `dist/mcp-server.cjs` | MCP Server（Node 进程） |
+| `kernel` | `src/kernel/index.ts` | `dist/kernel.js`（IIFE） | 内核托管 MCP 端点（goja 沙箱） |
+| `mcp-app` | `src/mcp-apps/index.html` | `.mcp-app-dist/index.html` | MCP Apps 单文件页面，被 server/kernel 内联 |
 | `cli` | `src/cli/index.ts` | `cli/dist/cli.cjs` | 独立 CLI（npm 发布） |
 
 **新增 target 必须在 `vite.config.ts` 的 `validTargets` 数组中登记。**
@@ -219,15 +246,18 @@ pnpm install
 pnpm dev
 
 # 生产构建
-pnpm build              # renderer + server
+pnpm build              # renderer + kernel + server（含 mcp-app）
 pnpm build:cli          # 仅 CLI
 pnpm publish:cli        # 构建并发布 siyuan-sisyphus 到 npm
+
+# 质量门禁（CI：.github/workflows/ci.yml 在 push/PR 到 main、dev 时执行 typecheck + test + build）
+pnpm typecheck          # tsc --noEmit，须保持 0 错误
 
 # 测试
 pnpm test               # 运行全部单元/集成测试（vitest run）
 pnpm test:watch         # 测试 watch 模式
 pnpm test:coverage      # 覆盖率报告（v8 provider）
-pnpm test:smoke         # 冒烟测试（需真实思源实例）
+pnpm test:live          # 安全实测（需真实思源；只写临时笔记本并清理）
 
 # 开发辅助
 pnpm make-link          # 创建 dev/ 到思源插件目录的符号链接
@@ -252,7 +282,7 @@ pnpm update-version     # 同步版本号到 plugin.json 与 cli/package.json
 
 1. 在 `src/tools/<tool>/index.ts` 使用 `defineTool({ name, description, variants, handlers, actionSchema })` 定义。
 2. `variants`：每个 action 的 schema 变体（参数、必填字段、描述）。
-3. `handlers`：通常放在 `src/tools/<tool>/handlers.ts`，按 action 分发；`handler` 内部自行用 Zod schema 解析 `rawArgs`，保持类型狭窄。
+3. `handlers`：通常放在 `src/tools/<tool>/handlers.ts`，按 action 分发；`handler` 内部自行用同目录 `schemas.ts` 的 Zod schema 解析 `rawArgs`，保持类型狭窄。
 4. 工厂自动处理：`action="help"` 路由、action 禁用检查、错误包装。
 
 工具层共享基础设施放在 `src/tools/internal/`。新增跨工具 helper 时优先放入 `src/tools/internal/helpers/`，不要再把 helper 文件散放到 `src/tools/` 根目录；根目录只保留 `index.ts` 和各工具目录。
@@ -354,7 +384,8 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 |------|------|------|
 | 单元测试 | `tests/unit/` | 按 `src/` 结构镜像。覆盖 api、cli、mcp、components、setting 等模块。使用 mock 隔离外部依赖。 |
 | 集成测试 | `tests/integration/` | 测试模块间交互：`http-concurrency.test.ts`（HTTP 并发）、`mcp-e2e.test.ts`（端到端 MCP 调用）、`server.test.ts`（server 启动）。 |
-| 冒烟测试 | `tests/smoke/` | `live_mcp_smoke.cjs`：需要真实运行的思源实例，验证完整调用链路。 |
+| 实测 | `tests/live/` | `verify.cjs`（`pnpm test:live`）：在真实思源中只于临时笔记本内写入并全部清理，可安全用于个人工作区。 |
+| 专项冒烟 | `tests/smoke/` | 针对特定回归的脚本，各自作用范围见该目录 README，运行前先看头部说明。 |
 
 ### 测试编写规范
 
@@ -379,7 +410,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 1. `pnpm build:cli` 生成 `cli/dist/cli.cjs`（自包含 CJS，无依赖）。
 2. `pnpm publish:cli` 进入 `cli/` 目录执行 `npm publish --access public`。
-3. 发布到 npm 后，用户可通过 `npm i -g siyuan-sisyphus` 安装，获得 `siyuan-sisyphus` 与 `siyuan` 两个命令。
+3. 发布到 npm 后，用户可通过 `npm i -g siyuan-sisyphus` 安装，获得 `siyuan-sisyphus` 与 `sisyphus` 两个命令。
 
 ### 版本同步
 
@@ -411,16 +442,47 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 ---
 
+## 已知结构债（2026-10-28 更新）
+
+2026-10-28 独立复审发现的债务已分三批清理完毕，当前无已确认未处理的结构债。已知但暂不处理：
+
+- `mcp-apps/index.ts`（约 770 行）仍是单个控制器：三个 App 的渲染共用模块级可变状态（`busy`、`notice` 等），按 App 拆分需要先把这些状态收进共享对象，收益有限。
+- `tests/integration/http-concurrency.test.ts` 先探测空闲端口再启动服务，偶发 `EADDRINUSE`；重跑即过。
+
+已决定、不再视为债务的事项：
+
+- **旧客户端的危险动作确认**（已决定：避免调用失败）：不支持 MRTR 确认的旧客户端，server 只靠指令层提示确认、不拦截执行；kernel 的 schema 公开 `confirm` 参数，缺省时返回 `dangerous_action_requires_confirmation` 并提示带 `confirm=true` 重发。不要收紧 server。
+- **两种 sha256:v1 规范化**：`shared/canonical-state.ts`（写入前置条件、AV 后像）与 `shared/markdown-snapshot.ts`（快照元数据，按字典序拼串）规范化规则不同且值会持久化/放进游标，**不得合并**。哈希格式与 Web Crypto 实现统一在 `shared/sha256-v1.ts`；`core/write-safety-hash.ts` 因需同步 API（含 kernel）保留 Node crypto 实现，但格式与校验都走 `sha256-v1`。
+
+### 已收敛的约定（勿回退）
+
+- tools/call 前置错误统一用 `tools/internal/shared.ts` 的 `createUnknownToolResult` / `createDisabledToolResult` / `createDisabledActionResult`；执行中逃逸的异常用 `createErrorResult` 包成工具错误。server、kernel、CLI 不要再各写一份。
+- 插件入口 `src/index.ts` 只负责生命周期组装与对外方法；新功能放进 `src/ui/plugin/<feature>.ts` 控制器（构造时拿到 plugin 实例），不要再往入口类里堆状态。
+- 依赖方向（架构测试守护）：`api`/`types` → `shared` → `core`（基础层）→ `tools` → `mcp`（装配层）→ `kernel` / `cli`。`core` 只能 import `tools/*/actions.ts` 声明叶子；`ui` 只能依赖 `api`/`types`/`shared`/`core`。需要被工具与装配层共用的类型或原语放 `core`（如 `tool-result.ts`、`write-safety-error.ts`），不要让 `core` 反向 import 工具。
+- 路径与 SQL 小工具统一放在 `src/shared/`：`siyuan-path.ts`（`stripSySuffix` / `normalizeFsPath`）、`sql.ts`（`escapeSqlString`）。不要在模块内再写本地副本。
+- av 工具按领域分文件：基础模块 `definition.ts`（定义形状与纯读取）→ `rows.ts`（行定位与轮询）→ `carrier.ts`（载体与权限）→ `transaction.ts`（`updated` 戳、派发、刷新），只能按此方向依赖；`read-` / `row-` / `column-` / `template-` / `relation-` / `view-handlers.ts` 按领域实现，`handlers.ts` 只留 create/duplicate 与动作映射；基础模块不得 import handler 文件。
+- 大型 Svelte 面板的样式放同名 `.scss`（`<style lang="scss">@use "./Name";</style>`，仍为组件作用域），纯逻辑放 `*-logic.ts`；组件只留模板与状态。
+- av 写入用 `dispatchAvTransaction`（载体解析 + `updated` 戳 + 派发）与 `avWriteSuccess`（刷新目标 + 成功结果）；仅当操作体本身要引用载体 ID 时才手写 `withUpdatedOperation`。
+- AV 载体块判定统一用 `shared/av-carrier-dom.ts` 的 `isExactAvCarrierDom`（要求块自身开标签上同时有 `data-node-id`、`data-type="NodeAttributeView"`、`data-av-id`）；不要用 `dom.includes(...)` 粗判。
+- 工具层只依赖 `SiYuanClient` **接口**（`api/client.ts`）；HTTP 实现为 `HttpSiYuanClient`，内核实现为 `KernelSiYuanClient`。不要在生产代码里探测 `request` 等废弃方法，测试替身用 `tests/helpers/mock-client.ts`。
+- renderer（UI）不得 import `tool-registry` 或任何工具实现；MCP 初始成本由 server/kernel 在 tools/list 时写入 `mcp-initial-cost.json`，UI 只读取。
+- tools/call 的决策只在 `mcp/tool-call-gate.ts` 的 `planToolCall` 里做（别名规范化、开关、App 隐藏、危险确认、写入策略、是否走协调器）。server/kernel/CLI 只负责确认 UI、调度与渲染，不要在入口里再写判定。
+- 配置加载统一用 `core/config.ts` 的 `loadToolConfigForExecution`：配置版本不受支持时三入口都报错（`UnsupportedToolConfigVersionError`），读取失败沿用上次配置；不要在入口里再写一份回退逻辑。
+- 客户端错误按类型分类：`api/errors.ts` 的 `SiYuanRequestError`（`kind` / `status` / `apiCode`）、`ResponseSizeLimitError`、`WriteOutcomeUnknownError`，两个客户端都抛这些类型；不要按 `HTTP error:` 等报错文字判断。kernel 专属能力是 `SiYuanClient` 的可选成员，新增客户端成员要在 `CLIENT_MEMBER_IO` 里标明是否为 I/O。
+- 旧协议会话统一用 `core/legacy-sessions.ts`；UI 的时间线写操作经 `ui/plugin/renderer-client.ts` 调用 `core/timeline-service.ts`，不要在面板里直接 `fetchPost` 写接口。
+- 工具之间不得互相 import（架构测试守护），多个工具共用的代码放 `tools/internal/`；对象判断用 `shared/record.ts`，`escapeRegExp` / `countOccurrences` 用 `shared/text.ts`。
+- tools/call 的执行统一走 `mcp/tool-execution.ts`（`executeLocalTool`：写协调器 + 参数校验 + 处理函数；`toolCallRequestText`、`shouldSlimResponse`）与 `mcp/mcp-apps.ts` 的 `executeAppTool` / `finalizeToolResult`。入口不得直接调 `TOOL_REGISTRY[...].callTool` 或 `coordinator.run`（`tests/unit/mcp/tool-execution.test.ts` 守护）；CLI 非协调写入也走本地协调器。
+- 写处理函数自己负责笔记本权限：块目标用 `ensurePermissionForDocumentId`，跨笔记本操作（如 tag rename/remove）对每个涉及的笔记本检查。写入成功结果用 `createWriteSuccessResult`（带 `success: true`）；新增需要在精简响应里保留的字段加到 `core/slim-response.ts` 的 `SUCCESS_KEEP_KEYS`。
+
 ## 给 AI 编码代理的特别提醒
 
-1. **修改工具配置或 action 列表时**，必须同步更新：
-   - `src/core/config.ts`（`TOOL_CATEGORIES`、action 常量、`buildDefaultToolConfig()`）
-   - `src/core/tool-registry.ts`（注册表导入）
-   - `src/core/types.ts`（Zod schema）
-   - `src/core/help.ts`（帮助文案）
-   - `src/tools/` 下的对应工具目录或文件（`index.ts` 中的 variants + `handlers.ts`）
-   - `src/tools/index.ts`（如有新增工具，需 barrel export）
-   - 文档（README、docs/、API_MCP_MAPPING.md 等）
+1. **新增或修改 action 时**：
+   - `src/tools/<tool>/actions.ts`：**唯一声明处**——动作名（顺序即全局顺序）、`tier`、写入策略 `policy`、`defaultEnabled`、`dangerous`。`config.ts` 的动作列表/层级/危险集合/默认配置与 `write-safety-policy` 的策略表都由此推导，不要在别处再写。该文件只允许 import `core/action-spec`（架构测试守护）。
+   - `src/tools/<tool>/schemas.ts`（Zod schema）、`index.ts`（variants）、`handlers.ts`：类型按动作名约束，漏写会编译失败。
+   - `src/core/help.ts`：帮助文案；`public/i18n/*.json`：设置面板文案（i18n 测试守护）。
+   - 依赖参数的写入策略分支（如 `fs.write` 的 `overwrite`）仍写在 `getActionSafetyPolicy`。
+   - 新增**工具**时另需：`TOOL_CATEGORIES`、`ACTION_SPECS_BY_CATEGORY`、`tool-registry.ts`、`src/tools/index.ts`。
+   - 文档（README、docs/、API_MCP_MAPPING.md 等）。
 
 2. **新增 Vite build target** 时，必须在 `vite.config.ts` 的 `validTargets` 数组中登记。
 

@@ -63,3 +63,12 @@ export function kramdownDatabases(kramdown: string): Array<{ avID: string }> {
     while ((match = pattern.exec(kramdown))) ids.add(match[1]);
     return [...ids].map(avID => ({ avID }));
 }
+
+/**
+ * Markdown reads keep a database as its native `<div data-type="NodeAttributeView" …>`
+ * line (rewriting it would break write-back); say so next to the content.
+ */
+export function databaseNote(avIDs: string[]): string {
+    const target = avIDs.length === 1 ? avIDs[0] : '<av-id>';
+    return `${avIDs.length} database block(s) appear in content as <div data-type="NodeAttributeView" data-av-id="…"> lines: the native Markdown form, not their rows. Read rows with av(action="query", avID="${target}"); leave the line unchanged when editing the text around it.`;
+}

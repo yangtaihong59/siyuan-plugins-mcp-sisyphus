@@ -8,7 +8,7 @@ description: Publish the SiYuan Sisyphus plugin, standalone CLI, or both. Use fo
 Use this skill when the user wants to publish a new version of this SiYuan Sisyphus repo. The repo ships two related but independently versioned products:
 
 - **SiYuan plugin / MCP server**: marketplace plugin metadata and bundled `dist/mcp-server.cjs`
-- **Standalone CLI**: npm package `siyuan-sisyphus`, with `siyuan-sisyphus` and `siyuan` binaries
+- **Standalone CLI**: npm package `siyuan-sisyphus`, with `siyuan-sisyphus` and `sisyphus` binaries
 
 ## Release Type Gate
 

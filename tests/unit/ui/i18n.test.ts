@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ACTIONS_BY_CATEGORY, FEEDBACK_ACTIONS, FS_ACTIONS, TOOL_CATEGORIES } from '@/core/config';
+import { ACTIONS_BY_CATEGORY, buildDefaultToolConfig, FEEDBACK_ACTIONS, FS_ACTIONS, TOOL_CATEGORIES } from '@/core/config';
 
 function readI18n(locale: string): Record<string, unknown> {
     const raw = readFileSync(join(process.cwd(), 'public', 'i18n', `${locale}.json`), 'utf8');
@@ -118,6 +118,23 @@ describe('settings i18n', () => {
                 for (const action of ACTIONS_BY_CATEGORY[category]) {
                     expect(i18n[`${category}_action_${action}`], `${locale} ${category}_action_${action}`).toEqual(expect.any(String));
                     expect(i18n[`desc_${category}_action_${action}`], `${locale} desc_${category}_action_${action}`).toEqual(expect.any(String));
+                }
+            }
+        }
+    });
+
+    it('covers MCP App titles and human action labels in bundled locales', () => {
+        const { mcpApps } = buildDefaultToolConfig();
+        for (const locale of ['en_US', 'zh_CN']) {
+            const i18n = readI18n(locale);
+
+            expect(i18n.mcpAppEnabled, `${locale} mcpAppEnabled`).toEqual(expect.any(String));
+            for (const [app, { actions }] of Object.entries(mcpApps)) {
+                expect(i18n[`mcpApp_${app}_title`], `${locale} mcpApp_${app}_title`).toEqual(expect.any(String));
+                expect(i18n[`mcpApp_${app}_desc`], `${locale} mcpApp_${app}_desc`).toEqual(expect.any(String));
+                for (const action of Object.keys(actions)) {
+                    expect(i18n[`mcpApp_${app}_${action}`], `${locale} mcpApp_${app}_${action}`).toEqual(expect.any(String));
+                    expect(i18n[`desc_mcpApp_${app}_${action}`], `${locale} desc_mcpApp_${app}_${action}`).toEqual(expect.any(String));
                 }
             }
         }

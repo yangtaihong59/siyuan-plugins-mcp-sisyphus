@@ -1,16 +1,16 @@
 import { normalizeKernelOptions, type KernelOptions } from '../../core/kernel-options';
-import { getLegacyToolConfigWarning, normalizeToolConfig, type ToolConfig } from "./tool-config";
+import { getLegacyToolConfigWarning, normalizeToolConfig, type ToolConfig } from "@/core/config";
 import {
     TELEMETRY_CONFIG_STORAGE_KEY,
     buildDefaultTelemetryConfig,
     normalizeTelemetryConfig,
     type TelemetryConfig,
-} from "./telemetry-config";
+} from "@/core/telemetry-config";
 export {
     buildDefaultTelemetryConfig,
     normalizeTelemetryConfig,
     type TelemetryConfig,
-} from "./telemetry-config";
+} from "@/core/telemetry-config";
 
 const CONFIG_STORAGE_KEY = "mcpToolsConfig";
 const PUPPY_SETTINGS_STORAGE_KEY = "puppySettings";

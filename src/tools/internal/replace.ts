@@ -1,3 +1,5 @@
+import { countOccurrences } from '../../shared/text';
+
 export interface ExactReplaceEdit {
     old: string;
     new: string;
@@ -8,17 +10,6 @@ export interface ExactReplaceSummary {
     index: number;
     replaced: number;
     replace_all: boolean;
-}
-
-function countOccurrences(content: string, needle: string): number {
-    let count = 0;
-    let index = 0;
-    while (true) {
-        index = content.indexOf(needle, index);
-        if (index === -1) return count;
-        count += 1;
-        index += needle.length;
-    }
 }
 
 export function applyExactReplaceEdit(

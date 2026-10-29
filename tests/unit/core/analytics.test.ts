@@ -4,6 +4,7 @@ import {
     buildTokenUsageSummary,
     computeAnalyticsSummary,
     getRecentAnalyticsEvents,
+    localDateKey,
     parseJsonl,
     clearAnalyticsData,
     estimateResultSizeHint,
@@ -14,16 +15,15 @@ import {
     ANALYTICS_ROTATED_PATH,
     type AnalyticsEvent,
 } from '../../../src/core/analytics';
-import { SiYuanClient } from '../../../src/api/client';
-import { buildDefaultToolConfig } from '../../../src/core/config';
+import { HttpSiYuanClient } from '../../../src/api/client';
 import { APPROX_TOKEN_MODE } from '../../../src/core/token-usage';
 
 describe('analytics', () => {
     let writtenFiles: Record<string, string> = {};
 
-    function createMockClient(): SiYuanClient {
+    function createMockClient(): HttpSiYuanClient {
         writtenFiles = {};
-        const client = new SiYuanClient();
+        const client = new HttpSiYuanClient();
         client.readFile = vi.fn(async (path: string) => {
             if (path in writtenFiles) {
                 return writtenFiles[path];
@@ -203,13 +203,13 @@ describe('analytics', () => {
         });
 
         it('computes correct aggregates', () => {
-            const baseDate = new Date('2024-01-15T10:00:00Z').getTime();
+            const baseDate = new Date(2024, 0, 15, 10).getTime();
             const events: AnalyticsEvent[] = [
                 { seq: 1, ts: baseDate, tool: 'notebook', action: 'list', status: 'success', durationMs: 100, paramKeys: [], transport: 'cli', totalApproxTokens: 100, tokenMode: APPROX_TOKEN_MODE },
                 { seq: 2, ts: baseDate + 1, tool: 'notebook', action: 'list', status: 'success', durationMs: 200, paramKeys: [], transport: 'stdio', totalApproxTokens: 200, tokenMode: APPROX_TOKEN_MODE },
                 { seq: 3, ts: baseDate + 2, tool: 'document', action: 'create', status: 'error', durationMs: 300, paramKeys: ['path'], transport: 'http', errorCode: 'UnknownError', totalApproxTokens: 300, tokenMode: APPROX_TOKEN_MODE },
             ];
-            const summary = computeAnalyticsSummary(events, { currentToolConfig: buildDefaultToolConfig() });
+            const summary = computeAnalyticsSummary(events, { initialCost: { mcpInitialChars: 4000, mcpInitialApproxTokens: 1000 } });
             expect(summary.totalCalls).toBe(3);
             expect(summary.errorCalls).toBe(1);
             expect(summary.errorRate).toBeCloseTo(1 / 3);
@@ -227,7 +227,22 @@ describe('analytics', () => {
                 cliAvgApproxTokens: 100,
                 mcpAvgApproxTokens: 250,
             });
-            expect(summary.tokenUsage.mcpInitialApproxTokens).toBeGreaterThan(0);
+            expect(summary.tokenUsage).toMatchObject({ mcpInitialChars: 4000, mcpInitialApproxTokens: 1000 });
+        });
+
+        it('groups the daily trend by local calendar day', () => {
+            const event = (seq: number, ts: number): AnalyticsEvent => ({ seq, ts, tool: 'notebook', action: 'list', status: 'success', durationMs: 1, paramKeys: [], transport: 'stdio' });
+            const summary = computeAnalyticsSummary([
+                event(1, new Date(2024, 0, 15, 0, 30).getTime()),
+                event(2, new Date(2024, 0, 15, 23, 30).getTime()),
+                event(3, new Date(2024, 0, 16, 0, 10).getTime()),
+            ]);
+
+            expect(summary.dailyTrend).toEqual([
+                { date: '2024-01-15', count: 2, errorCount: 0 },
+                { date: '2024-01-16', count: 1, errorCount: 0 },
+            ]);
+            expect(localDateKey(new Date(2024, 8, 5, 23, 59))).toBe('2024-09-05');
         });
     });
 
@@ -236,13 +251,13 @@ describe('analytics', () => {
             const summary = buildTokenUsageSummary([
                 { seq: 1, ts: 1, tool: 'notebook', action: 'list', status: 'success', durationMs: 10, paramKeys: [], transport: 'cli' },
                 { seq: 2, ts: 2, tool: 'system', action: 'get_version', status: 'success', durationMs: 10, paramKeys: [], transport: 'http', totalApproxTokens: 20, tokenMode: APPROX_TOKEN_MODE },
-            ], buildDefaultToolConfig());
+            ], { mcpInitialChars: 40, mcpInitialApproxTokens: 10 });
 
             expect(summary.cliMeasuredCalls).toBe(0);
             expect(summary.cliAvgApproxTokens).toBeNull();
             expect(summary.mcpMeasuredCalls).toBe(1);
             expect(summary.mcpAvgApproxTokens).toBe(20);
-            expect(summary.mcpInitialApproxTokens).toBeGreaterThan(0);
+            expect(summary.mcpInitialApproxTokens).toBe(10);
         });
     });
 

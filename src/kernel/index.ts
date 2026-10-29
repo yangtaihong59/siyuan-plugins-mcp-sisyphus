@@ -9,8 +9,8 @@ import { withStructuredContent } from '../core/structured-result';
 import { MODERN_VERSION, modernContext, modernResult, KernelConfirmations, type ModernContext, header, isObject } from './modern-protocol';
 import { MAX_TRANSFER_FILE_BYTES } from '../core/upload-source';
 import { KernelScheduler, KernelQueueError, type KernelTask } from './scheduler';
-import { getActionSafetyPolicy } from '../core/write-safety-policy';
 import { randomUUID } from './node-shims';
+import { LEGACY_SESSION_EXPIRED_BODY, LegacySessionTable } from '../core/legacy-sessions';
 /* Kernel transport: shared dispatcher and validators, build-time action schemas. */
 import './polyfill';
 declare const siyuan: any;
@@ -20,25 +20,23 @@ declare const siyuan: any;
 process.env.SIYUAN_MCP_TRANSPORT = 'kernel';
 
 import { KernelSiYuanClient } from './client';
-import { PermissionManager } from '../core/permissions';
-import { WriteSafetyCoordinator } from '../core/write-safety-coordinator';
-import { buildDefaultToolConfig, normalizeToolConfig, isDangerousAction } from '../core/config';
+import { PERMISSIONS_API_PATH, PermissionManager } from '../core/permissions';
+import { WriteSafetyCoordinator } from '../mcp/write-safety-coordinator';
+import { loadToolConfigForExecution, MCP_TOOLS_CONFIG_API_PATH } from '../core/config';
 import { runToolCall } from '../core/tool-lifecycle';
-import { translateError } from '../tools/internal/errorTranslation';
-import type { ToolResult } from '../tools/internal/shared';
-import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../core/tool-registry';
-import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
+import { createErrorResult, type ToolResult } from '../tools/internal/shared';
+import { TOOL_REGISTRY, listAllTools, resolveCategory } from '../mcp/tool-registry';
 import { normalizeActionAlias } from '../core/action-aliases';
-import { normalizeToolArguments } from '../core/argument-aliases';
 import { buildServerInstructions } from '../core/server-instructions';
+import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from '../mcp/mcp-initial-cost';
+import { planToolCall } from '../mcp/tool-call-gate';
+import { executeLocalTool, shouldSlimResponse, toolCallRequestText } from '../mcp/tool-execution';
 import { kernelOfficialRuntime } from './official-mcp';
 import { getExposedExtensionTools } from '../tools/extension';
 import {
     MCP_APPS_EXTENSION_ID, MCP_APP_MIME_TYPE, supportsMcpApps, decorateToolsWithMcpApps, listMcpAppResources, readMcpAppResource,
-    compactMcpAppToolResult, callFlashcardReviewSessionTool, callTimelineAppTool, callMascotShopAppTool,
-    FLASHCARD_REVIEW_SESSION_TOOL_NAME, TIMELINE_APP_TOOL_NAME, MASCOT_SHOP_APP_TOOL_NAME,
-    FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME, TIMELINE_APP_ACTION_TOOL_NAME, MASCOT_SHOP_APP_ACTION_TOOL_NAME,
-} from '../core/mcp-apps';
+    executeAppTool, finalizeToolResult,
+} from '../mcp/mcp-apps';
 import {
     kernelGetPrompt,
     kernelListPrompts,
@@ -54,7 +52,6 @@ import {
 } from '../core/skills';
 
 const CONFIG_PATH = 'mcpHttpSettings';
-const PLUGIN_NAME = 'siyuan-plugins-mcp-sisyphus';
 // Legacy initialization remains available alongside stateless modern discovery.
 const PROTOCOL_VERSION = '2025-11-25';
 const TASK_META = 'io.siyuan.sisyphus/taskId';
@@ -74,8 +71,8 @@ let uploadsInFlight = 0;
 async function ensureRuntime(refreshConfig = false) {
     if (!client) {
         client = new KernelSiYuanClient();
-        permMgr = new PermissionManager(client as any);
-        coordinator = new WriteSafetyCoordinator(client as any);
+        permMgr = new PermissionManager(client);
+        coordinator = new WriteSafetyCoordinator(client);
         try { await permMgr.load(); } catch { /* Calls reload permissions before executing. */ }
     }
     // Re-read the tool config on every call so that tools/list and callTool
@@ -83,14 +80,11 @@ async function ensureRuntime(refreshConfig = false) {
     // a client does not subscribe to the optional legacy SSE invalidations.
     if (refreshConfig || config === null) {
         try {
-            const raw = await client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/mcpToolsConfig');
-            config = normalizeToolConfig(raw ? JSON.parse(raw) : null);
+            config = await loadToolConfigForExecution(client, config ?? undefined);
         } catch (error) {
-            if (String(error).includes("Unsupported avActionsVersion")) {
-                config = null;
-                throw error;
-            }
-            config = config ?? buildDefaultToolConfig();
+            // Fail closed until the config is readable again; see the shared load policy.
+            config = null;
+            throw error;
         }
     }
     return { client, permMgr: permMgr!, coordinator: coordinator!, config };
@@ -143,8 +137,8 @@ async function accessRevision(): Promise<string> {
     // A changed permission/config snapshot invalidates cached disclosure.
     const { client } = await ensureRuntime();
     return hashWriteState(await Promise.all([
-        client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/mcpToolsConfig'),
-        client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/notebookPermissions'),
+        client.readFile(MCP_TOOLS_CONFIG_API_PATH),
+        client.readFile(PERMISSIONS_API_PATH),
     ]));
 }
 function taskKey(owner: string, id: string) { return JSON.stringify([owner, 'string', id]); }
@@ -166,58 +160,33 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     const budget = new KernelReadBudget(options.readMaxRequests, (options.readMaxMiB + (imageRead ? 20 : 0)) * 1024 * 1024);
     c.configure(options);
     const scoped = taskClient(c, scheduler, task, budget);
-    const pm = new PermissionManager(scoped as any);
-    const appEntries = {
-        [FLASHCARD_REVIEW_SESSION_TOOL_NAME]: { config: cfg.mcpApps.flashcardReview, call: callFlashcardReviewSessionTool },
-        [TIMELINE_APP_TOOL_NAME]: { config: cfg.mcpApps.timeline, call: callTimelineAppTool },
-        [MASCOT_SHOP_APP_TOOL_NAME]: { config: cfg.mcpApps.mascotShop, call: callMascotShopAppTool },
-    };
-    const appEntry = appEntries[name];
-    if (appEntry) {
-        if (!appEntry.config.enabled) return toolResultToMcp(errorResult('tool_disabled', `${name} is disabled.`));
-        if (name === FLASHCARD_REVIEW_SESSION_TOOL_NAME && (!cfg.flashcard.enabled || !cfg.flashcard.actions.list_cards)) {
-            return toolResultToMcp(errorResult('action_disabled', 'Flashcard candidate selection is disabled.'));
-        }
+    const pm = new PermissionManager(scoped);
+    // Extension discovery must precede planning so confirmation sees each tool's readOnlyHint.
+    if (resolveCategory(name) === 'extension' && cfg.extension.enabled) await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
+    const plan = planToolCall(name, input, cfg, {
+        appsEnabled,
+        extensionTools: resolveCategory(name) === 'extension' ? getExposedExtensionTools(cfg.extension, kernelOfficialRuntime) : undefined,
+    });
+    if (plan.kind === 'rejected') return toolResultToMcp(plan.result);
+    if (plan.kind === 'app') {
         return scheduler.run(task, 'exclusive', async () => {
             await pm.load();
-            const result = await appEntry.call(scoped as any, pm, input, appEntry.config);
+            const result = await executeAppTool(name, plan, scoped, pm, input);
             scheduler.checkpoint(task);
-            return toolResultToMcp(result);
+            return toolResultToMcp(result as ToolResult);
         });
     }
-    const appActionCategory = name === TIMELINE_APP_ACTION_TOOL_NAME ? 'timeline'
-        : name === FLASHCARD_REVIEW_APP_ACTION_TOOL_NAME ? 'flashcard'
-        : name === MASCOT_SHOP_APP_ACTION_TOOL_NAME ? 'mascot' : undefined;
-    const category = appActionCategory ?? resolveCategory(name);
-    if (!category) return toolResultToMcp(errorResult('unknown_tool', `Unknown tool '${name}'`));
-    const args = normalizeToolArguments(category, {
-        ...input,
-        action: category === 'extension' ? input.action : normalizeActionAlias(category, typeof input.action === 'string' ? input.action : ''),
-    });
-    const action = String(args.action ?? '');
-    const actionConfig = appActionCategory === 'timeline' ? cfg.mcpApps.timeline
-        : appActionCategory === 'flashcard' ? cfg.mcpApps.flashcardReview
-        : appActionCategory === 'mascot' ? cfg.mcpApps.mascotShop : cfg[category];
-    if (!actionConfig.enabled) return toolResultToMcp(errorResult('tool_disabled', `${name} is disabled.`));
-    if (action !== 'help' && (category !== 'extension' || Object.prototype.hasOwnProperty.call(actionConfig.actions, action)) && !actionConfig.actions[action]) {
-        return toolResultToMcp(errorResult('action_disabled', `${name}.${action} is disabled or unknown.`));
-    }
+    const { category, action, args, policy } = plan;
     if (category === 'file' && action === 'upload_asset' && !args.uploadSource) {
         return toolResultToMcp(errorResult('kernel_local_file_unavailable',
             'Stage bytes at the authenticated /transfer/upload endpoint and pass uploadSource instead of localFilePath. CLI/Node do this automatically (maximum 10 MiB). No write was attempted.'));
     }
-    if (category === 'extension') await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
-    const extensionTool = category === 'extension'
-        ? getExposedExtensionTools(cfg.extension, kernelOfficialRuntime).find(t => t.name === action)
-        : undefined;
-    const needsConfirmation = category === 'extension'
-        ? extensionTool !== undefined && !extensionTool.readOnlyHint
-        : isDangerousAction(category, action);
-    if (needsConfirmation && args.validateOnly !== true && modern) {
+    const needsConfirmation = plan.needsConfirmation;
+    if (needsConfirmation && modern) {
         const challenge = confirmations.check(modern, name, args);
         if (challenge) return challenge;
     }
-    if (needsConfirmation && args.validateOnly !== true && !modern && args.confirm !== true) {
+    if (needsConfirmation && !modern && args.confirm !== true) {
         return toolResultToMcp(errorResult('dangerous_action_requires_confirmation',
             `Action ${name}.${action} was not executed. Confirm with the user, then resend the same arguments with confirm=true.`));
     }
@@ -226,28 +195,27 @@ async function callTool(name: string, input: Record<string, unknown>, appsEnable
     const execute = async () => {
         if (task.readOnly) task.deadline = Date.now() + options.readTimeoutMs;
         await pm.reload();
-        return runToolCall({ client: c as any, category, name, action, args: cleanArgs, slimResponses: cfg.debug.slimResponses && args.delivery !== 'download' },
-            () => coord.run({
-                client: scoped as any, permMgr: pm, category, action, args: cleanArgs,
-                strictMode: cfg.writeSafety.strictMode,
-                beforeCommit: () => scheduler.beginCommit(task),
-                validateArgs: safeArgs => validateRegisteredToolArguments(category, safeArgs),
-                execute: safeArgs => TOOL_REGISTRY[category].callTool(scoped as any, safeArgs, actionConfig, pm, kernelOfficialRuntime),
-            }));
+        return runToolCall({
+            client: c, category, name, action, args: cleanArgs,
+            requestText: toolCallRequestText(category, name, action, input),
+            slimResponses: shouldSlimResponse(cfg, args),
+        }, () => executeLocalTool({
+            plan, client: scoped, permMgr: pm, coordinator: coord, config: cfg, args: cleanArgs,
+            runtime: kernelOfficialRuntime, beforeCommit: () => scheduler.beginCommit(task),
+        }));
     };
-    const policy = getActionSafetyPolicy(category, action, cleanArgs);
     // Third-party calls remain serial even with readOnlyHint: their shared bridge
     // and side effects are outside our owned read-action policy.
     const lane = category !== 'extension' && policy.mode === 'read' ? 'read' : 'exclusive';
     task.readOnly = lane === 'read';
     const result = await scheduler.run(task, lane, execute).catch(error => {
         if (error instanceof KernelQueueError) throw error;
-        const translated = translateError(error instanceof Error ? error : new Error(String(error)));
-        return errorResult(translated?.code ?? 'handler_error', translated?.hint ?? String(error));
+        // Same shape as an error raised inside a tool handler on any transport.
+        return createErrorResult(error, { tool: name, action });
     });
     scheduler.checkpoint(task);
     if (task.readOnly) budget.check();
-    return toolResultToMcp(compactMcpAppToolResult(name, action, withStructuredContent(result), appsEnabled, cfg.mcpApps) as ToolResult);
+    return toolResultToMcp(finalizeToolResult(name, action, result, appsEnabled, cfg) as ToolResult);
 }
 
 /** Advice only: never fabricate a cursor, advance a failed page or re-run a write. */
@@ -265,12 +233,9 @@ function readRecovery(name: string, args: Record<string, unknown>) {
 
 // Only negotiated presentation capabilities are stored here, never auth or
 // write leases. Bounded idle expiry avoids retaining abandoned client state.
-const sessions = new Map<string, { apps: boolean; seen: number; owner: string }>();
+const sessions = new LegacySessionTable<{ apps: boolean; owner: string }>((id) => scheduler.cancelSession(id));
 function requestSessionId(request: any): string | undefined {
-    for (const [name, value] of Object.entries(request?.request?.headers ?? {})) {
-        if (name.toLowerCase() === 'mcp-session-id') return Array.isArray(value) ? value[0] : String(value);
-    }
-    return undefined;
+    return header(request, 'mcp-session-id') || undefined;
 }
 
 
@@ -289,11 +254,10 @@ async function handleMcp(request: any): Promise<any> {
     const result = (value: any) => jsonRpcResult(id, modern ? modernResult(method, value, siyuan.plugin?.version ?? '0.0.0') : value);
     if (modern && ['initialize', 'ping', 'notifications/initialized', 'notifications/cancelled'].includes(method)) return jsonRpcError(id, -32601, 'Method unavailable in this protocol revision');
     const now = Date.now();
-    for (const [key, session] of sessions) if (now - session.seen > 30 * 60_000) { scheduler.cancelSession(key); sessions.delete(key); }
+    sessions.sweep(now);
     const sid = modern ? undefined : requestSessionId(request);
-    const session = sid ? sessions.get(sid) : undefined;
-    if (sid && (!session || session.owner !== taskOwner(request))) return plainResponse(404, { error: 'session_expired' });
-    if (session) session.seen = now;
+    const session = sid && sessions.peek(sid, now)?.owner === taskOwner(request) ? sessions.touch(sid, now) : undefined;
+    if (sid && !session) return plainResponse(404, LEGACY_SESSION_EXPIRED_BODY);
     const appsEnabled = modern ? supportsMcpApps(modern.capabilities) : session?.apps === true;
 
     try {
@@ -306,12 +270,7 @@ async function handleMcp(request: any): Promise<any> {
             case 'initialize': {
                 const { config: cfg } = await ensureRuntime(true);
                 const sessionId = randomUUID();
-                if (sessions.size >= 256) {
-                    const oldest = sessions.keys().next().value!;
-                    scheduler.cancelSession(oldest);
-                    sessions.delete(oldest);
-                }
-                sessions.set(sessionId, { owner: taskOwner(request), apps: supportsMcpApps(params?.capabilities), seen: now });
+                sessions.add(sessionId, { owner: taskOwner(request), apps: supportsMcpApps(params?.capabilities) }, now);
                 const response = jsonRpcResult(id, {
                     protocolVersion: ['2024-11-05', '2025-03-26', '2025-06-18', PROTOCOL_VERSION].includes(params?.protocolVersion) ? params.protocolVersion : PROTOCOL_VERSION,
                     instructions: buildServerInstructions(cfg),
@@ -352,6 +311,7 @@ async function handleMcp(request: any): Promise<any> {
                         })) } : {}),
                     },
                 }));
+                await recordMcpInitialTokenCost(client!, measureMcpInitialTokenCost(cfg, tools));
                 return result({ tools });
             }
             case 'tools/call': {
@@ -450,7 +410,7 @@ async function handleRequest(request: any): Promise<any> {
         });
     }
     if (path.endsWith('/health') || path.endsWith('/ping')) {
-        return plainResponse(200, { ok: true, plugin: siyuan.plugin?.name ?? 'unknown', version: siyuan.plugin?.version ?? '', queue: scheduler.snapshot(), uploadsInFlight, events: events.snapshot(), taskResults: taskResults.snapshot(), readBudget: { maxRequests: options.readMaxRequests, maxBytes: options.readMaxMiB * 1024 * 1024, imageExtraBytes: 20 * 1024 * 1024, timeoutMs: options.readTimeoutMs, hostAbort: false }, telemetry: client ? getTelemetryStatus(client as any) : { status: 'idle' }, kernelOptions: options, taskControl: { version: '2', path: '/tasks', meta: TASK_META } });
+        return plainResponse(200, { ok: true, plugin: siyuan.plugin?.name ?? 'unknown', version: siyuan.plugin?.version ?? '', queue: scheduler.snapshot(), uploadsInFlight, events: events.snapshot(), taskResults: taskResults.snapshot(), readBudget: { maxRequests: options.readMaxRequests, maxBytes: options.readMaxMiB * 1024 * 1024, imageExtraBytes: 20 * 1024 * 1024, timeoutMs: options.readTimeoutMs, hostAbort: false }, telemetry: client ? getTelemetryStatus(client) : { status: 'idle' }, kernelOptions: options, taskControl: { version: '2', path: '/tasks', meta: TASK_META } });
     }
     const method = request?.request?.method;
     if (path.endsWith('/tasks')) {
@@ -501,7 +461,7 @@ async function handleRequest(request: any): Promise<any> {
 
     if (method === 'DELETE') {
         const sid = requestSessionId(request);
-        if (sid && sessions.get(sid)?.owner === taskOwner(request)) { scheduler.cancelSession(sid); sessions.delete(sid); }
+        if (sid && sessions.peek(sid)?.owner === taskOwner(request)) sessions.delete(sid);
         return { statusCode: 204, headers: {}, body: null };
     }
     if (method && method !== 'POST') return plainResponse(405, { error: 'method_not_allowed' });
@@ -515,20 +475,17 @@ siyuan.server.private.http.handler = function (request: any) {
 // SiYuan dispatches requests with Accept exactly text/event-stream to this hook.
 const events = new KernelEvents(async () => {
     if ((await readKernelConfig()).kernelEndpointEnabled !== true) throw new Error('Endpoint disabled');
-    const { client } = await ensureRuntime();
-    const raw = await client.readFile('/data/storage/petal/' + PLUGIN_NAME + '/mcpToolsConfig');
-    const cfg = normalizeToolConfig(raw ? JSON.parse(raw) : null);
+    const { config: cfg } = await ensureRuntime(true);
     await TOOL_REGISTRY.extension.prepare?.(cfg.extension, kernelOfficialRuntime);
     return hashWriteState({ config: cfg, tools: listAllTools(cfg, kernelOfficialRuntime) });
 }, (owner, sid) => {
-    const session = sessions.get(sid);
-    return !!session && session.owner === owner && Date.now() - session.seen < 30 * 60_000;
+    return sessions.peek(sid)?.owner === owner;
 });
 if (siyuan.server.private.es) siyuan.server.private.es.handler = async (request: any) => {
     const sid = requestSessionId(request);
     const options = normalizeKernelOptions((await readKernelConfig()).kernelOptions);
     if (!isKernelOriginAllowed(header(request, 'origin'), request?.url?.host ?? '', options)) throw new Error('Untrusted origin');
     if (request.request.method !== 'GET' || !request.url.path.endsWith('/mcp') || !sid
-        || sessions.get(sid)?.owner !== taskOwner(request)) throw new Error('SSE requires an authenticated legacy MCP session');
+        || sessions.peek(sid)?.owner !== taskOwner(request)) throw new Error('SSE requires an authenticated legacy MCP session');
     await events.attach(request.port, taskOwner(request), sid);
 };

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { slimToolResult } from '@/core/slim-response';
-import { verifyAvCellsReadback } from '@/core/av-cell-readback';
-import { readHelpResource } from '@/core/resources';
-import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { verifyAvCellsReadback } from '@/tools/av/cell-readback';
+import { readHelpResource } from '@/mcp/resources';
+import { TOOL_REGISTRY } from '@/mcp/tool-registry';
 import { buildDefaultToolConfig } from '@/core/config';
-import { DocumentCreateSchema } from '@/core/types';
+import { DocumentCreateSchema } from '@/tools/document/schemas';
 import { validateRegisteredToolArguments } from '@/tools/internal/define-tool';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { parseResult } from '../../helpers/parse-result';
 
 const config = buildDefaultToolConfig();
@@ -41,7 +41,7 @@ describe('layout feedback regressions', () => {
     it('returns a valid minimal create example and both legal shapes', async () => {
         const result = parseResult(await TOOL_REGISTRY.document.callTool({} as any,
             { action: 'help', topic: 'create' }, config.document, {} as any));
-        expect(result.shapes).toEqual(['notebook + path', 'notebook + parentPath + title']);
+        expect(result.shapes).toEqual(['notebook + path', 'notebook + parentPath + title', 'notebook + docs']);
         expect(DocumentCreateSchema.safeParse(result.example).success).toBe(true);
         expect(() => validateRegisteredToolArguments('document', { action: 'create', notebook: 'nb', parentPath: '/', title: 'Title' })).not.toThrow();
     });

@@ -8,5 +8,5 @@
 
 - 插件入口和 CLI 入口复用同一工具时，行为要保持一致
 - 沿用现有的聚合工具模型，不要把每个 action 拆成单独工具
-- 文档事实应和 `src/core/config.ts`、`src/core/tool-registry.ts`、当前 build target 保持一致
+- 文档事实应和 `src/core/config.ts`、`src/mcp/tool-registry.ts`、当前 build target 保持一致
 - 远程安全相关操作优先走 SiYuan API，而不是直接操作本地文件系统

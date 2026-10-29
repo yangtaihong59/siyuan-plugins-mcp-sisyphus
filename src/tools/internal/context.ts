@@ -5,6 +5,8 @@ import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import type { PermissionManager } from '../../core/permissions';
 import { createPermissionDeniedResult, type ToolResult } from './shared';
+import { stripSySuffix } from '../../shared/siyuan-path';
+import { escapeSqlString } from '../../shared/sql';
 
 export interface ResolvedDocumentContext {
     documentId: string;
@@ -35,30 +37,15 @@ export interface ResultResolutionCache {
     notebookByPath: Map<string, Promise<string | null>>;
 }
 
-function stripSySuffix(name: string | undefined): string | undefined {
-    return typeof name === 'string' ? name.replace(/\.sy$/, '') : undefined;
-}
-
 type PermissionRequirement = 'read' | 'write' | 'delete';
 
 export function normalizePath(value: string): string {
     return value.startsWith('/') ? value : `/${value}`;
 }
 
-export function isPathWithinScope(pathValue: string, scopePath: string): boolean {
-    const normalizedPath = normalizePath(pathValue);
-    const normalizedScope = normalizePath(scopePath);
-    if (normalizedScope === '/') return true;
-    return normalizedPath === normalizedScope || normalizedPath.startsWith(`${normalizedScope}/`);
-}
-
-function extractDocumentId(pathValue: string): string {
+export function extractDocumentId(pathValue: string): string {
     const segment = normalizePath(pathValue).split('/').filter(Boolean).at(-1) ?? '';
     return segment.endsWith('.sy') ? segment.slice(0, -3) : segment;
-}
-
-export function escapeSqlString(value: string): string {
-    return value.replace(/\0/g, '').replace(/'/g, "''");
 }
 
 async function resolveDocumentContextViaSql(client: SiYuanClient, id: string): Promise<ResolvedDocumentContext | null> {

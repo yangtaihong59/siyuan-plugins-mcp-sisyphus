@@ -188,6 +188,13 @@
         margin-bottom: 4px;
     }
 
+    /* Overrides SiYuan's 14px !important, as in form-wrap. */
+    .config__child-meta .b3-label__text {
+        color: var(--mcp-config-caption-color, var(--b3-theme-on-surface-light));
+        font-size: 12px !important;
+        line-height: 1.55;
+    }
+
     .config__child-input {
         display: flex;
         justify-content: flex-end;

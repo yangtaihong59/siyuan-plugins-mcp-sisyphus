@@ -171,7 +171,7 @@ describe('kernel shared dispatch', () => {
         await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
         const port = (http.address() as any).port;
         try {
-            const { callCliWriteCoordinator } = await import('@/cli/write-coordinator');
+            const { callCliWriteCoordinator } = await import('@/core/write-coordinator-client');
             const settings = { owner: 'kernel' as const, endpoints: [{ url: `http://127.0.0.1:${port}/plugin/private/test/mcp` }] };
             const args = { action: 'create', name: 'fixture', requestId: credential.requestId };
             const result = await callCliWriteCoordinator(settings, 'notebook', args);
@@ -385,6 +385,13 @@ it('rejects oversized read bodies even when the tool handler catches the budget 
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result)).toContain('read_budget_exceeded');
 });
+it('returns the shared tools/call gate error shape for unknown and hidden App tools', async () => {
+    for (const name of ['no_such_tool', 'timeline_app_action']) {
+        const result = await call(name, { action: 'create_node' });
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text).error).toMatchObject({ type: 'unknown_tool', tool: name });
+    }
+});
 it('advertises App capabilities and honors the persisted Skills switch', async () => {
     storage.set('mcpHttpSettings', JSON.stringify({ kernelEndpointEnabled: true, skillsExtensionEnabled: false }));
     const init = (await rpc('initialize')).result;
@@ -421,7 +428,7 @@ it('uses the host URL authority for HTTP and SSE without Host or forwarded-host 
         url: { host, path: '/mcp' }, request: { method: 'GET', headers: {
             'Mcp-Session-Id': [sid], ...(origin ? { Origin: [origin] } : {}),
             'X-Forwarded-Host': ['evil.example'],
-        } }, port: { send: vi.fn(), close: vi.fn() },
+        } }, port: { send: vi.fn(), close: vi.fn(), onclose: undefined as undefined | (() => void) },
     });
     const sse = (globalThis as any).siyuan.server.private.es.handler;
     for (const origin of [undefined, 'http://127.0.0.1:16807', 'https://allowed.example']) {

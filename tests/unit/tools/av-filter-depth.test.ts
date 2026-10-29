@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { AV_FILTER_MAX_DEPTH } from '@/core/types';
+import { AV_FILTER_MAX_DEPTH } from '@/tools/av/schemas';
 import { buildDefaultToolConfig, type AvAction, type CategoryToolConfig } from '@/core/config';
 import { AV_TOOL_NAME, AV_VARIANTS, listAvTools } from '@/tools/av';
 import { prepareViewUpdate } from '@/tools/av/view-config';

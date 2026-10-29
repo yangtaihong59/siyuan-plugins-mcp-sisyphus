@@ -31,7 +31,7 @@ import {
     GLOBAL_TIMELINE_TAG_VERIFICATION_ERROR,
     TIMELINE_TAG_PREFIX,
     type TimelineEntry,
-} from '@/ui/version-control/timeline';
+} from '@/shared/version-control/timeline';
 
 describe('snapshot document timeline', () => {
     it('builds stable document-scoped selection keys and sorts mixed-scope nodes', () => {
@@ -113,6 +113,18 @@ describe('snapshot document timeline', () => {
         expect(snapshotLabel({ id: 'snap', tag: `${GLOBAL_TIMELINE_TAG_PREFIX}release`, memo: 'memo' })).toBe('release');
         expect(snapshotLabel({ id: 'snap', tag: `${TIMELINE_TAG_PREFIX}legacy`, memo: 'memo' })).toBe('legacy');
         expect(snapshotLabel({ id: 'snap', memo: 'memo' })).toBe('memo');
+    });
+
+    it('labels timeline nodes with the name as typed when the tag was derived from the memo', () => {
+        const docId = '20260514120000-aaaaaaa';
+        const memo = 'Q4 planning: baseline';
+        const globalTag = createGlobalTimelineTagName(memo);
+        expect(snapshotLabel({ id: 'snap', tag: globalTag, memo })).toBe(memo);
+        expect(snapshotLabel({ id: 'snap', tag: createTimelineTagName(memo, docId), memo: ` ${memo} ` })).toBe(memo);
+        expect(snapshotLabel({ id: 'snap', tag: createGlobalTimelineTagName(memo, [globalTag]), memo })).toBe(memo);
+        expect(snapshotLabel({ id: 'snap', tag: createGlobalTimelineTagName('---'), memo: '---' })).toBe('---');
+        expect(snapshotLabel({ id: 'snap', tag: globalTag, memo: 'Q4 planning' })).toBe('Q4planningbaseline');
+        expect(createTimelineNodeRecord({ id: 'snap', tag: globalTag, memo, created: 1710000000000 }, 'global').name).toBe(memo);
     });
 
     it('extracts the document id and label from per-document timeline tags', () => {
@@ -216,6 +228,36 @@ describe('snapshot document timeline', () => {
         expect(result.globalNodes).toEqual([createTimelineNodeRecord(global, 'global')]);
         expect(result.legacySnapshots).toEqual([]);
         expect(result.attrChanged).toBe(true);
+    });
+
+    it('matches a converted global node to its legacy link by tag label, not display name', () => {
+        const stampedLabel = 'Releasev120260514120000';
+        const linked = {
+            name: stampedLabel,
+            created: 1710000000000,
+            snapshotId: 'snap-shared',
+            tag: `${TIMELINE_TAG_PREFIX}${stampedLabel}`,
+            scope: 'document' as const,
+            source: 'legacy' as const,
+        };
+        const global = { id: 'snap-shared', tag: `${GLOBAL_TIMELINE_TAG_PREFIX}${stampedLabel}`, memo: 'Release v1', created: 1710000000000 };
+        const result = reconcileDocumentTimelineNodes('20260514120000-aaaaaaa', [linked], [global]);
+
+        expect(result.globalNodes.map((node) => node.name)).toEqual(['Release v1']);
+        expect(result.documentNodes).toEqual([]);
+    });
+
+    it('keeps the legacy tag label when converting a node shown by its memo', async () => {
+        const legacy = { id: 'snap-legacy', tag: `${TIMELINE_TAG_PREFIX}Releasev120260514120000`, memo: 'Release v1' };
+        const added: string[] = [];
+        const result = await migrateLegacyTimelineSnapshotToGlobal(legacy, [], {
+            addTag: async (_id, tag) => { added.push(tag); },
+            readTaggedSnapshots: async () => added.map((tag) => ({ ...legacy, tag })),
+            removeTag: async () => undefined,
+        });
+
+        expect(snapshotLabel(legacy)).toBe('Release v1');
+        expect(result.globalTag).toBe(`${GLOBAL_TIMELINE_TAG_PREFIX}Releasev120260514120000`);
     });
 
     it('verifies a new global tag before removing the legacy tag', async () => {
@@ -370,7 +412,7 @@ describe('snapshot document timeline', () => {
     });
 
     it('calculates only the selected node in the diff panel and refreshes only that selection after restore', () => {
-        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const source = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
         const loadSelection = source.slice(
             source.indexOf('async function loadSelection('),
             source.indexOf('function snapshotFromSelection'),
@@ -385,15 +427,22 @@ describe('snapshot document timeline', () => {
         expect(source).not.toContain('autoTimelineCollapsed');
     });
 
+    it('titles the diff with the selected node name rather than its sanitized tag', () => {
+        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+
+        expect(source).toContain('selectedSnapshotTitle = selectedEntry ? (selection?.node.name || snapshotLabel(selectedEntry.snapshot)) : ""');
+    });
+
     it('drives the document timeline from per-document attrs and shows no-change nodes as markers', () => {
         const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/SnapshotPanel.svelte'), 'utf8');
-        const diffSource = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const diffSource = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
-        expect(source).toContain('const TIMELINE_NODE_ATTR_KEY = "custom-sisyphus-timeline";');
-        expect(source).toContain('"/api/attr/getBlockAttrs"');
-        expect(source).toContain('attrs: { [TIMELINE_NODE_ATTR_KEY]: serializeTimelineNodeRecords(documentNodes) }');
-        expect(source).toContain('async function readTimelineNodes(documentId: string)');
-        expect(source).toContain('async function writeTimelineNodes(nodes');
+        // The per-document node index is read and written only by core/timeline-service.
+        expect(source).toContain('return readDocumentNodes(client, documentId);');
+        expect(source).toContain('return writeDocumentNodes(client, documentId, nodes);');
+        expect(source).not.toContain('"/api/attr/setBlockAttrs"');
+        expect(source).toContain('function readTimelineNodes(documentId: string)');
+        expect(source).toContain('function writeTimelineNodes(nodes');
         expect(source).toContain('sortTimelineNodesNewestFirst');
         expect(diffSource).toContain('createNoChangeTimelineEntry(nextSelection, currentSnapshot)');
         expect(diffSource).toContain('if (node.snapshotId === currentSnapshot.id)');
@@ -421,14 +470,12 @@ describe('snapshot document timeline', () => {
         const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/SnapshotPanel.svelte'), 'utf8');
         const createNode = source.match(/async function createTimelineNode\(\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
 
-        // 文档节点写 attrs；全局节点只写 global tag。
-        expect(createNode).toContain('"/api/repo/createSnapshot"');
-        expect(createNode).toContain('createTimelineTagName(text, currentDocumentId, existingTags)');
-        expect(createNode).toContain('createGlobalTimelineTagName(text, existingTags)');
-        expect(createNode).toContain('const taggedSnapshots = await readTimelineTagSnapshots()');
-        expect(createNode).toContain('if (createScope === "document")');
-        expect(createNode).toContain('scope: "document"');
-        expect(createNode).toContain('await writeTimelineNodes(nodes, currentDocumentId)');
+        // 文档节点写 attrs；全局节点只写 global tag——都由 core/timeline-service 完成。
+        expect(createNode).toContain('await createTimelineNodeRecordInRepo(client, {');
+        expect(createNode).toContain('scope: createScope,');
+        expect(createNode).toContain('...(createScope === "document" ? { documentId: currentDocumentId } : {})');
+        expect(createNode).toContain('if (created.partialFailure)');
+        expect(createNode).not.toContain('"/api/repo/createSnapshot"');
         expect(source).toContain('let createScope: TimelineNodeScope = "document";');
         expect(source).toContain('class:active={createScope === "global"}');
         expect(source).toContain('class="snapshot-badge"');
@@ -440,12 +487,11 @@ describe('snapshot document timeline', () => {
         const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/SnapshotPanel.svelte'), 'utf8');
         const deleteNode = source.slice(
             source.indexOf('async function deleteTimelineNode('),
-            source.indexOf('async function findNewestSnapshotForMemo'),
+            source.indexOf('async function associateLegacySnapshot'),
         );
 
-        expect(deleteNode).toContain('"/api/repo/removeRepoTagSnapshot"');
-        expect(deleteNode).toContain('previousDocumentNodes.filter');
-        expect(deleteNode).toContain('await writeTimelineNodes(previousDocumentNodes, documentId)');
+        // Index-then-tag removal with index restore lives in core/timeline-service.
+        expect(deleteNode).toContain('await removeTimelineNode(client, node, documentId);');
         expect(deleteNode).toContain('if (selectedNodeKey === selectionKey) onSelectNode(null);');
         expect(deleteNode).not.toContain('await loadSnapshots()');
         expect(deleteNode).not.toContain('removeRepoSnapshot');
@@ -456,7 +502,7 @@ describe('snapshot document timeline', () => {
     });
 
     it('anchors diff scrolling to live document blocks by block id', () => {
-        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const source = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
         expect(source).toContain('queueDocumentScrollSync();');
         expect(source).toContain('on:click={handleDiffClick}');
@@ -499,7 +545,7 @@ describe('snapshot document timeline', () => {
     });
 
     it('guards diff viewport raf scheduling and live block lookup caches in the panel source', () => {
-        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+        const source = ['src/ui/version-control/VersionDiffPanel.svelte', 'src/ui/version-control/version-diff-logic.ts'].map((file) => readFileSync(resolve(process.cwd(), file), 'utf8')).join('\n');
 
         expect(source).toContain('let diffViewportFrame = 0;');
         expect(source).toContain('if (diffViewportFrame) return;');

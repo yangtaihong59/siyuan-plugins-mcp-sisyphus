@@ -6,7 +6,9 @@
 
 Direct command-line control for [SiYuan Note](https://b3log.org/siyuan). Think of it like `obsidian-cli` but for SiYuan — every MCP tool (fs, block, document, notebook, av, search, tag, file, timeline, system, flashcard, extension, mascot, feedback) is exposed as a subcommand you can call directly from a shell.
 
-> **Latest:** `v0.2.13` — Fixes database filter defaults, validation, and carrier identification for reliable preflight, commits, and no-change detection; fixes same-path document creation across notebooks, template readback, and scoped reference queries; preserves complete link-target mappings and clarifies SQL permissions and bilingual help. Shared fixes with plugin `v0.6.12`.
+> **Latest:** `v0.3.0` — Preflight prints a write-impact preview before the commit command (`--preview full` for full before/after text); restricted, notebook-scoped `query_sql`; `--if-match` for the optional low-risk one-step write mode (off by default); batch `document create --docs-json`; many fixes from multi-round AI usability testing. Breaking: `search_refs` now returns referencing blocks and drops `beforeLen`/`isSquareBrackets`/`isDatabase`/`reqId`. Shared with plugin `v0.7.0`.
+
+> **v0.2.13：** Fixes database filter defaults, validation, and carrier identification for reliable preflight, commits, and no-change detection; fixes same-path document creation across notebooks, template readback, and scoped reference queries; preserves complete link-target mappings and clarifies SQL permissions and bilingual help. Shared fixes with plugin `v0.6.12`.
 
 > **v0.2.12：** adopts AV v2 structure reads, paginated `query`, explicit `create`, and combined `update_view`, sharing durable creation receipts and configuration checks with plugin `v0.6.11`. Legacy AV actions and the top-level `id` alias are removed; see the [migration guide](../docs/reference/tools/av.md#configuration-migration).
 

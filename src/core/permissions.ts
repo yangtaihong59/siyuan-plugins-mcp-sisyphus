@@ -1,4 +1,5 @@
 import type { SiYuanClient } from '../api/client';
+import { NEW_NOTEBOOK_PERMISSION } from '../shared/constants';
 
 export type NotebookPermission = 'none' | 'r' | 'rw' | 'rwd';
 const VALID_NOTEBOOK_PERMISSIONS: NotebookPermission[] = ['none', 'r', 'rw', 'rwd'];
@@ -121,6 +122,18 @@ export class PermissionManager {
     async set(notebookId: string, perm: NotebookPermission): Promise<void> {
         this.permissions[notebookId] = perm;
         await this.save();
+    }
+
+    /**
+     * Record NEW_NOTEBOOK_PERMISSION for a freshly created notebook. Re-reads the
+     * file first so another writer's entries survive, and never overrides an
+     * explicit choice. Returns the notebook's effective permission.
+     */
+    async grantNewNotebook(notebookId: string): Promise<NotebookPermission> {
+        await this.reload();
+        if (Object.prototype.hasOwnProperty.call(this.permissions, notebookId)) return this.get(notebookId);
+        await this.set(notebookId, NEW_NOTEBOOK_PERMISSION);
+        return NEW_NOTEBOOK_PERMISSION;
     }
 
     getAll(): Record<string, NotebookPermission> {

@@ -6,7 +6,7 @@ import type {
     OfficialMcpTool,
 } from '../../core/official-mcp-bridge';
 import type { PermissionManager } from '../../core/permissions';
-import type { ToolDescriptor } from '../../core/tool-registry';
+import type { ToolDescriptor } from '../../core/tool-result';
 import type { ActionVariant, ToolResult } from '../internal/shared';
 import {
     toPluginMcpToolName,
@@ -18,9 +18,10 @@ const EXTENSION_DESCRIPTION = [
     'action="list" shows discovery status; call a discovered tool with action="<official name>", arguments={...}.',
     'Confirm with the user before any tool lacking readOnlyHint=true. validate_package and diagnose_plugin_mcp are read-only diagnostics.',
 ].join(' ');
+
 // The aggregate owns these names. Filtering them prevents a discovered
 // official tool from silently being routed to a different local action.
-const RESERVED_EXTENSION_ACTIONS = new Set(['help', 'list', 'validate_package', 'diagnose_plugin_mcp']);
+export const RESERVED_EXTENSION_ACTIONS: ReadonlySet<string> = new Set(['help', 'list', 'validate_package', 'diagnose_plugin_mcp']);
 
 export const EXTENSION_VARIANTS: ActionVariant<'list' | 'validate_package' | 'diagnose_plugin_mcp'>[] = [{
     action: 'list',
@@ -391,9 +392,9 @@ function formatDiscovery(
             : {}),
         hint: snapshot.error
             ? 'Official MCP tools require SiYuan 3.7.0+, an administrator session, and a valid API token.'
-            : config.includeNativeTools
-                ? 'Plugin and native SiYuan tools are exposed. Call extension(action="<official tool name>", arguments={...}).'
-                : 'Plugin tools are exposed. Enable includeNativeTools in settings to expose native SiYuan tools.',
+            : exposed.length === 0
+                ? 'No official tools are currently exposed. Check discoveredBySource, blockedTools and includeNativeTools in settings.'
+                : `${exposed.length} official tools are exposed. Call extension(action="<official tool name>", arguments={...}).${config.includeNativeTools ? '' : ' Native tools are disabled; enable includeNativeTools in settings to expose them.'}`,
     };
 }
 

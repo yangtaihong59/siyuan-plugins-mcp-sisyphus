@@ -26,7 +26,7 @@ export interface UiOfficialMcpDiscovery {
 
 const SELF_PLUGIN_TOOL_PREFIX = "plugin__siyuan_plugins_mcp_sisyphus__";
 
-async function getSiYuanVersion(): Promise<string> {
+export async function getSiYuanVersion(): Promise<string> {
     const response = await fetch("/api/system/version", {
         method: "POST",
         credentials: "same-origin",

@@ -87,6 +87,12 @@ describe('search SQL read-only guard', () => {
         }
     });
 
+    it('names PRAGMA and EXPLAIN instead of calling them mutations', () => {
+        expect(() => assertReadOnlySql('PRAGMA table_info(blocks)')).toThrow(/PRAGMA statements are not allowed.*schema metadata is not exposed/);
+        expect(() => assertReadOnlySql('explain SELECT 1')).toThrow(/EXPLAIN statements are not allowed/);
+        expect(() => assertReadOnlySql('PRAGMA table_info(blocks)')).toThrow(expect.objectContaining({ code: 'permission_denied', hint: expect.stringContaining('SELECT * FROM blocks LIMIT 1') }));
+    });
+
     it('blocks unsafe CTE SQL before calling the SiYuan query endpoint', async () => {
         const request = vi.fn();
         const client = createMockClient({ request });
@@ -105,6 +111,8 @@ describe('search SQL read-only guard', () => {
 
         const parsed = parseResult(result);
         expect(parsed.error.message).toMatch(/Only SELECT statements/);
+        // A rejected statement is the caller's to fix, never internal_error.
+        expect(parsed.error).toMatchObject({ type: 'permission_denied', code: 'sql_statement_not_allowed' });
         expect(request).not.toHaveBeenCalled();
     });
 });
@@ -471,22 +479,67 @@ describe('search tool filtering', () => {
         });
     });
 
+    it('find_replace reports before/after match counts in the ids scope, ignoring IALs', async () => {
+        const runCase = async (afterKramdown: string, args: Record<string, unknown> = {}) => {
+            let replacedYet = false;
+            const client = createMockClient({
+                request: vi.fn(async (endpoint: string) => {
+                    if (endpoint === '/api/query/sql') {
+                        return [{ id: 'block-1', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', type: 'p' }];
+                    }
+                    if (endpoint === '/api/block/getBlockInfo') return { id: 'block-1', rootID: 'doc-1' };
+                    if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'nb-1', name: 'NB', closed: false }] };
+                    if (endpoint === '/api/block/getBlockKramdown') {
+                        return {
+                            id: 'block-1',
+                            kramdown: replacedYet ? afterKramdown : 'old and old.\n{: id="block-1" custom-note="old"}',
+                        };
+                    }
+                    if (endpoint === '/api/search/findReplace') {
+                        replacedYet = true;
+                        return null;
+                    }
+                    return null;
+                }),
+            });
+            const permMgr = { reload: vi.fn(async () => undefined), canWrite: () => true, canRead: () => true, canDelete: () => true, get: () => 'rwd' };
+            const result = await callSearchTool(client, {
+                action: 'find_replace', k: 'old', r: 'new', ids: ['block-1'], ...args,
+            }, buildDefaultToolConfig().search, permMgr as never);
+            return { parsed: parseResult(result), client };
+        };
+
+        const clean = await runCase('new and new.\n{: id="block-1" custom-note="old"}');
+        expect(clean.parsed).toMatchObject({ success: true, count: 2, matchesBefore: 2, matchesRemaining: 0 });
+        expect(clean.parsed.warning).toBeUndefined();
+
+        const partial = await runCase('new and [old](x).\n{: id="block-1"}');
+        expect(partial.parsed).toMatchObject({ count: 1, matchesBefore: 2, matchesRemaining: 1 });
+        expect(partial.parsed.warning).toContain('1 match(es) remain');
+
+        // Regex mode counts with the regex itself.
+        const regex = await runCase('new and new.', { k: 'o.d', method: 3 });
+        expect(regex.parsed).toMatchObject({ count: 2, matchesBefore: 2, matchesRemaining: 0 });
+
+        // Uncountable: a replacement that re-matches, a paths scope, or query-syntax search.
+        for (const args of [{ r: 'older' }, { paths: ['nb-1'] }, { method: 1 }]) {
+            const skipped = await runCase('new and new.', args);
+            expect(skipped.parsed, JSON.stringify(args)).toMatchObject({ success: true });
+            expect(skipped.parsed.count).toBeUndefined();
+            expect(skipped.parsed.matchesBefore).toBeUndefined();
+            expect(skipped.client.request).not.toHaveBeenCalledWith('/api/block/getBlockKramdown', expect.anything());
+        }
+    });
+
     it('maps search_refs keyword alias to k while still requiring id', async () => {
+        const statements: string[] = [];
         const client = createMockClient({
             request: async (endpoint: string, body: unknown) => {
-                if (endpoint === '/api/query/sql') {
-                    return [{
-                        id: 'target-block',
-                        root_id: 'doc-1',
-                        box: 'nb-1',
-                        path: '/doc-1.sy',
-                        hpath: '/Doc',
-                        type: 'p',
-                    }];
-                }
-                expect(endpoint).toBe('/api/search/searchRefBlock');
-                expect(body).toMatchObject({ id: 'target-block', k: 'needle' });
-                return { blocks: [] };
+                expect(endpoint).toBe('/api/query/sql');
+                const stmt = (body as { stmt: string }).stmt;
+                statements.push(stmt);
+                if (stmt.includes('FROM refs')) return [];
+                return [{ id: 'target-block', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', hpath: '/Doc', type: 'p' }];
             },
         });
         const permMgr = {
@@ -504,6 +557,41 @@ describe('search tool filtering', () => {
         }, buildDefaultToolConfig().search, permMgr as never);
 
         expect(result.isError).toBeUndefined();
+        const refsStmt = statements.find((stmt) => stmt.includes('FROM refs'));
+        expect(refsStmt).toContain("r.def_block_id = 'target-block'");
+        expect(refsStmt).toContain("LIKE '%needle%'");
+    });
+
+    it('search_refs returns only blocks referencing the target id and is empty when nothing references it', async () => {
+        const referrers: Record<string, unknown[]> = {
+            'cited-block': [{ id: 'citing-1', root_id: 'doc-2', box: 'nb-1', path: '/doc-2.sy', hpath: '/Doc2', type: 'p', content: 'see ((cited-block))', ref_text: 'cited' }],
+        };
+        const client = createMockClient({
+            request: async (endpoint: string, body: unknown) => {
+                expect(endpoint).not.toBe('/api/search/searchRefBlock');
+                const stmt = (body as { stmt: string }).stmt;
+                if (stmt.includes('FROM refs')) {
+                    const match = /r\.def_block_id = '([^']+)'/.exec(stmt);
+                    return referrers[match?.[1] ?? ''] ?? [];
+                }
+                return [{ id: 'x', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', hpath: '/Doc', type: 'p' }];
+            },
+        });
+        const permMgr = {
+            reload: async () => undefined,
+            canWrite: () => true,
+            canRead: () => true,
+            canDelete: () => true,
+            get: () => 'rwd',
+        };
+
+        const empty = JSON.parse((await callSearchTool(client, { action: 'search_refs', id: 'lonely-block' }, buildDefaultToolConfig().search, permMgr as never)).content[0].text);
+        expect(empty.blocks).toEqual([]);
+        expect(empty.total).toBe(0);
+
+        const cited = JSON.parse((await callSearchTool(client, { action: 'search_refs', id: 'cited-block' }, buildDefaultToolConfig().search, permMgr as never)).content[0].text);
+        expect(cited.total).toBe(1);
+        expect(cited.blocks[0].id).toBe('citing-1');
     });
 
     it('adds notebookName to fulltext search blocks when the notebook can be resolved', async () => {
@@ -703,8 +791,8 @@ describe('search tool filtering', () => {
         expect(parseResult(result)).toMatchObject({ data: [{ n: 42 }], total: 1 });
     });
 
-    it('rejects raw SQL before execution when any notebook is unreadable', async () => {
-        const request = vi.fn(async (endpoint: string) => {
+    it('rejects unscoped tables in restricted SQL before running the caller query', async () => {
+        const request = vi.fn(async (endpoint: string, _body?: unknown) => {
             if (endpoint === '/api/notebook/lsNotebooks') {
                 return {
                     notebooks: [
@@ -713,6 +801,7 @@ describe('search tool filtering', () => {
                     ],
                 };
             }
+            if (endpoint === '/api/query/sql') return [{ name: 'blocks' }, { name: 'stat' }];
             throw new Error(`unexpected endpoint ${endpoint}`);
         });
         const client = createMockClient({ request });
@@ -726,16 +815,21 @@ describe('search tool filtering', () => {
 
         const result = await callSearchTool(client, {
             action: 'query_sql',
-            stmt: 'SELECT COUNT(*) AS n FROM blocks',
+            stmt: 'SELECT * FROM stat',
         }, buildDefaultToolConfig().search, permMgr as never);
         const parsed = parseResult(result);
 
         expect(result.isError).toBe(true);
         expect(parsed.error).toMatchObject({
-            code: 'raw_sql_unavailable_with_restricted_notebooks',
+            code: 'restricted_sql_rejected',
             reason: 'permission_scope_not_enforceable',
+            excludedNotebooks: 1,
         });
-        expect(request).not.toHaveBeenCalledWith('/api/query/sql', expect.anything());
+        expect(parsed.error.hint).toContain('blocks, spans, attributes, assets, refs, file_annotation_refs');
+        // The first words say why restricted mode is on, before the table detail.
+        expect(parsed.error.message).toMatch(/^Restricted mode is active because notebook\(s\) \S+ is unreadable; table "stat" cannot be scoped/);
+        const sqlCalls = request.mock.calls.filter(([endpoint]) => endpoint === '/api/query/sql');
+        expect(sqlCalls.every(([, body]) => String((body as { stmt: string }).stmt).startsWith('SELECT name FROM sqlite_master'))).toBe(true);
     });
 
     it('adds an indexing hint when tag search returns empty for a non-empty keyword', async () => {

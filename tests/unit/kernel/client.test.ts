@@ -32,7 +32,7 @@ it('does not turn HTTP file read failures into file content', async () => {
 });
 
 import { readTemplateSource } from '@/api/template';
-import { WriteSafetyCoordinator } from '@/core/write-safety-coordinator';
+import { WriteSafetyCoordinator } from '@/mcp/write-safety-coordinator';
 import { PermissionManager } from '@/core/permissions';
 it('reads template bytes through native fetch without a global fetch implementation', async () => {
     const fetch = vi.fn(async (_path: string) => ({ ok: true, status: 200, text: async () => '中文模板 🌏' }));

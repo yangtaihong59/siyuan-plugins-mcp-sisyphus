@@ -4,15 +4,15 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import type { ParsedArgs } from '@/cli/args';
-import { SiYuanClient } from '@/api/client';
-import * as writeCoordinator from '@/cli/write-coordinator';
+import { HttpSiYuanClient } from '@/api/client';
+import * as writeCoordinator from '@/core/write-coordinator-client';
 import { runDispatch } from '@/cli/dispatch';
 import * as pluginCheck from '@/cli/plugin-check';
 import { buildDefaultToolConfig } from '@/core/config';
 import { PermissionManager } from '@/core/permissions';
 import { OfficialMcpBridge, type OfficialMcpTool } from '@/core/official-mcp-bridge';
 import { runToolCall } from '@/core/tool-lifecycle';
-import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { TOOL_REGISTRY } from '@/mcp/tool-registry';
 
 vi.mock('@/core/tool-lifecycle', () => ({
     runToolCall: vi.fn(async (_ctx: unknown, handler: () => Promise<unknown>) => handler()),
@@ -60,7 +60,7 @@ describe('cli/dispatch', () => {
         vi.spyOn(pluginCheck, 'ensureRequiredPluginInstalled').mockResolvedValue(undefined);
         const legacyConfig = buildDefaultToolConfig();
         legacyConfig.writeSafety.strictMode = false;
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(legacyConfig));
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(legacyConfig));
         vi.spyOn(PermissionManager.prototype, 'load').mockResolvedValue(undefined);
         delete process.env.SIYUAN_MCP_TRANSPORT;
         delete process.env.SIYUAN_API_URL;
@@ -80,7 +80,7 @@ describe('cli/dispatch', () => {
 
     it('does not fall back to enabled actions for an unknown AV config version', async () => {
         const io = captureStdIO();
-        vi.mocked(SiYuanClient.prototype.readFile).mockResolvedValue('{"avActionsVersion":99}');
+        vi.mocked(HttpSiYuanClient.prototype.readFile).mockResolvedValue('{"avActionsVersion":99}');
         const direct = vi.spyOn(TOOL_REGISTRY.av, 'callTool').mockResolvedValue(okResult());
         const code = await runDispatch({ command: 'dispatch', tool: 'av', action: 'get', rest: ['--av-id', 'test'], url: 'http://127.0.0.1:6806', json: true, debug: false } as ParsedArgs);
         expect(code).toBe(1); expect(direct).not.toHaveBeenCalled();
@@ -169,7 +169,7 @@ describe('cli/dispatch', () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();
         config.extension.includeNativeTools = true;
-        vi.mocked(SiYuanClient.prototype.readFile).mockResolvedValue(JSON.stringify(config));
+        vi.mocked(HttpSiYuanClient.prototype.readFile).mockResolvedValue(JSON.stringify(config));
         const tool: OfficialMcpTool = {
             name: 'document',
             description: 'Native document tool',
@@ -482,7 +482,7 @@ describe('cli/dispatch', () => {
         const config = buildDefaultToolConfig();
         config.mascot.enabled = false;
         config.writeSafety.strictMode = false;
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValueOnce(JSON.stringify(config));
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValueOnce(JSON.stringify(config));
         const callToolSpy = vi.spyOn(TOOL_REGISTRY.mascot, 'callTool');
 
         const code = await runDispatch({
@@ -497,7 +497,7 @@ describe('cli/dispatch', () => {
 
         expect(code).toBe(1);
         expect(callToolSpy).not.toHaveBeenCalled();
-        expect(io.stdout).toContain('Tool "mascot" is disabled.');
+        expect(io.stderr).toContain('[tool_disabled] Tool "mascot" is disabled.');
         io.restore();
     });
 
@@ -506,7 +506,7 @@ describe('cli/dispatch', () => {
         const config = buildDefaultToolConfig();
         config.mascot.actions.buy = false;
         config.writeSafety.strictMode = false;
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValueOnce(JSON.stringify(config));
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValueOnce(JSON.stringify(config));
 
         const code = await runDispatch({
             command: 'dispatch',

@@ -1,4 +1,5 @@
 import type { ExactReplaceEdit, ExactReplaceSummary } from './replace';
+import { countOccurrences, escapeRegExp } from '../../shared/text';
 
 interface ParsedKramdownBlock {
     content: string;
@@ -136,7 +137,7 @@ function parseKramdownBlock(kramdown: string): ParsedKramdownBlock {
     };
 }
 
-function escapeBlockRefAnchor(value: string): string {
+export function escapeBlockRefAnchor(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
@@ -282,24 +283,9 @@ export function extractKramdownContentForEditing(kramdown: string, blockType?: s
     return toEditableMarkdownBlock({ kramdown, type: blockType });
 }
 
-export function joinDocumentKramdownContent(blocks: Array<{ kramdown: string; type?: string }>): string {
-    return joinEditableMarkdownBlocks(blocks);
-}
-
 function buildKramdownBlock(content: string, parsed: ParsedKramdownBlock): string {
     const normalizedContent = content.trimEnd();
     return parsed.ial ? `${normalizedContent}\n${parsed.ial}` : normalizedContent;
-}
-
-function countOccurrences(content: string, needle: string): number {
-    let count = 0;
-    let index = 0;
-    while (true) {
-        index = content.indexOf(needle, index);
-        if (index === -1) return count;
-        count += 1;
-        index += needle.length;
-    }
 }
 
 function applyReplaceToContent(
@@ -882,6 +868,20 @@ export function stripRedundantTitleHeading(markdown: string, title: string | und
     return `${leadingWhitespace}${rest.replace(headingPattern, '').replace(/^\r?\n+/, '')}`;
 }
 
-function escapeRegExp(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Reference-semantics hints for markdown a tool wrote or returned (block links, footnotes, unresolved refs). */
+export function withReferenceSemanticsHints<T extends Record<string, unknown>>(payload: T, data: string): T & Record<string, unknown> {
+    return {
+        ...payload,
+        ...(hasSiyuanBlockLinks(data) ? createSiyuanBlockLinkHint() : {}),
+        ...(hasFootnoteReferences(data) ? createFootnoteReferenceHint() : {}),
+        ...(hasBlockRefIdFallbackAnchors(data) ? createUnresolvedBlockRefHint() : {}),
+    };
+}
+
+export function hasReferenceSemanticsHints(data: string): boolean {
+    return hasSiyuanBlockLinks(data) || hasFootnoteReferences(data) || hasBlockRefIdFallbackAnchors(data);
+}
+
+export function createReferenceSemanticsHints(data: string): Record<string, unknown> {
+    return withReferenceSemanticsHints({}, data);
 }

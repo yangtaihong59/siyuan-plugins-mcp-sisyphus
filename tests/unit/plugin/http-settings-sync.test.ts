@@ -113,7 +113,7 @@ import SiyuanMCP from '@/index';
 import { resetToolConfigWarningStateForTests } from '@/core/config';
 import type { HttpServerSettings } from '@/ui/setting/tool-config-storage';
 
-import { HttpServerLauncher } from '@/server-launcher';
+import { HttpServerLauncher } from '@/ui/plugin/server-launcher';
 import { showMessage } from 'siyuan';
 
 class FakeElement {
@@ -249,6 +249,23 @@ describe('HTTP settings sync', () => {
     let addIcons: ReturnType<typeof vi.fn>;
     let eventBusOn: ReturnType<typeof vi.fn>;
     let eventBusOff: ReturnType<typeof vi.fn>;
+    // ws-main also carries the always-on new-notebook permission hook; count timeline hooks only.
+    const timelineEventCalls = () => eventBusOn.mock.calls.filter(([name]) => name !== 'ws-main');
+
+    it('grants rwd to notebooks newly created in the SiYuan UI, independent of the file-tree badges', async () => {
+        const stored: Record<string, unknown> = { notebookPermissions: { other: 'r', kept: 'none' } };
+        loadData.mockImplementation(async (name: string) => stored[name]);
+        saveData.mockImplementation(async (name: string, value: unknown) => { stored[name] = value; });
+        await plugin.onload();
+        const handler = eventBusOn.mock.calls.find(([name, fn]) => name === 'ws-main' && fn === (plugin as any).permissionTree.handleNewNotebookWebSocket)?.[1];
+        expect(handler).toBeTypeOf('function');
+
+        await handler({ detail: { cmd: 'createnotebook', data: { box: { id: 'nb-new' }, existed: false } } });
+        await handler({ detail: { cmd: 'createnotebook', data: { box: { id: 'nb-reopened' }, existed: true } } });
+        await handler({ detail: { cmd: 'createnotebook', data: { box: { id: 'kept' }, existed: false } } });
+
+        expect(stored.notebookPermissions).toEqual({ other: 'r', kept: 'none', 'nb-new': 'rwd' });
+    });
 
     it('handles runtime data changes without reloading the plugin or stopping HTTP', async () => {
         const onload = vi.spyOn(plugin, 'onload');
@@ -756,7 +773,7 @@ describe('HTTP settings sync', () => {
         expect(addIcons).toHaveBeenCalledWith(expect.stringContaining('<symbol id="iconSisyphusTimelineDock"'));
         expect(addDock).not.toHaveBeenCalled();
         expect(addCommand).not.toHaveBeenCalled();
-        expect(eventBusOn).not.toHaveBeenCalled();
+        expect(timelineEventCalls()).toHaveLength(0);
 
         resolveFirstLoad(undefined);
         await loading;
@@ -777,8 +794,8 @@ describe('HTTP settings sync', () => {
             show: false,
         }));
         expect(addCommand).toHaveBeenCalledTimes(1);
-        expect(eventBusOn).toHaveBeenCalledTimes(4);
-        expect(eventBusOn).toHaveBeenCalledWith("ws-main", expect.any(Function));
+        expect(timelineEventCalls()).toHaveLength(3);
+        expect(eventBusOn.mock.calls.filter(([name]) => name === 'ws-main')).toHaveLength(2);
     });
 
     it('passes loaded timeline settings into the dock panel when it initializes', async () => {
@@ -824,7 +841,7 @@ describe('HTTP settings sync', () => {
         getAllEditorMock.mockReturnValue([{
             protyle: {
                 element: editorElement,
-                block: { rootID: 'doc-active' },
+                block: { rootID: '20260514120000-aaaaaaa' },
                 title: 'Active Doc',
             },
         }]);
@@ -833,8 +850,28 @@ describe('HTTP settings sync', () => {
         addDock.mock.calls[0][0].init({ element: new FakeElement() });
 
         expect((snapshotPanelInstances[0].args as any).props).toEqual(expect.objectContaining({
-            currentDocumentId: 'doc-active',
+            currentDocumentId: '20260514120000-aaaaaaa',
             currentDocumentTitle: 'Active Doc',
+        }));
+    });
+
+    it('skips a restored tab whose document has not loaded instead of binding to its protyle id', async () => {
+        delete (globalThis as any).window.siyuan.config.system.workspaceDir;
+        const loadedElement = document.createElement('div');
+        const loadingElement = document.createElement('div');
+        document.body.appendChild(loadedElement);
+        document.body.appendChild(loadingElement);
+        getAllEditorMock.mockReturnValue([
+            { protyle: { id: '0cac3a10-ccbb-437a-91a4-1a5bc1eabbc0', element: loadedElement, block: { rootID: '20260514120000-aaaaaaa' }, title: 'Loaded Doc' } },
+            { protyle: { id: '08040326-afdd-47b9-9f86-930de9220000', element: loadingElement, block: {} } },
+        ]);
+
+        await plugin.onload();
+        addDock.mock.calls[0][0].init({ element: new FakeElement() });
+
+        expect((snapshotPanelInstances[0].args as any).props).toEqual(expect.objectContaining({
+            currentDocumentId: '20260514120000-aaaaaaa',
+            currentDocumentTitle: 'Loaded Doc',
         }));
     });
 
@@ -876,7 +913,7 @@ describe('HTTP settings sync', () => {
         const leftDock = (globalThis as any).window.siyuan.layout.leftDock;
         expect(addDock).not.toHaveBeenCalled();
         expect(addCommand).not.toHaveBeenCalled();
-        expect(eventBusOn).not.toHaveBeenCalled();
+        expect(timelineEventCalls()).toHaveLength(0);
         expect(snapshotPanelInstances).toHaveLength(0);
         expect(diffPanelInstances).toHaveLength(0);
         expect(leftDock.remove).not.toHaveBeenCalled();
@@ -898,7 +935,7 @@ describe('HTTP settings sync', () => {
 
         expect(addCommand).toHaveBeenCalledTimes(1);
         expect((plugin as any).commands).toHaveLength(1);
-        expect(eventBusOn).toHaveBeenCalledTimes(3);
+        expect(timelineEventCalls()).toHaveLength(3);
         expect(snapshotPanelInstances).toHaveLength(1);
         expect(diffPanelInstances).toHaveLength(1);
 
@@ -1034,8 +1071,8 @@ describe('HTTP settings sync', () => {
         const snapshotDock = addDock.mock.calls.find(([options]) => options.type === SNAPSHOT_DOCK_TYPE)?.[0];
         const diffDock = addDock.mock.calls.find(([options]) => options.type === TIMELINE_DOCK_TYPE)?.[0];
         snapshotDock.init({ element: new FakeElement() });
-        (plugin as any).currentDocument = { id: 'doc-1', title: 'Doc 1' };
-        (plugin as any).updateVersionControlDocument({ id: 'doc-1', title: 'Doc 1' }, { force: true });
+        (plugin as any).versionControl.currentDocument = { id: 'doc-1', title: 'Doc 1' };
+        (plugin as any).versionControl.updateVersionControlDocument({ id: 'doc-1', title: 'Doc 1' }, { force: true });
         const selection = {
             documentId: 'doc-1',
             documentTitle: 'Doc 1',
@@ -1063,14 +1100,14 @@ describe('HTTP settings sync', () => {
         await plugin.onload();
         addDock.mock.calls[0][0].init({ element: new FakeElement() });
         addDock.mock.calls[1][0].init({ element: new FakeElement() });
-        (plugin as any).currentDocument = { id: 'doc-1', title: 'Doc 1' };
-        (plugin as any).timelineSelection = {
+        (plugin as any).versionControl.currentDocument = { id: 'doc-1', title: 'Doc 1' };
+        (plugin as any).versionControl.timelineSelection = {
             documentId: 'doc-1',
             documentTitle: 'Doc 1',
             node: { name: 'A', created: 1, snapshotId: 'snapshot-a', scope: 'document' },
         };
 
-        (plugin as any).updateVersionControlDocument({ id: 'doc-2', title: 'Doc 2' });
+        (plugin as any).versionControl.updateVersionControlDocument({ id: 'doc-2', title: 'Doc 2' });
 
         expect(diffPanelInstances[0].$set).toHaveBeenLastCalledWith(expect.objectContaining({
             currentDocumentId: 'doc-2',

@@ -43,7 +43,7 @@ Path shape:
 ## High-risk Actions
 
 - `rm` deletes a document and requires explicit confirmation.
-- `mv` moves or renames a document and requires explicit confirmation.
+- `mv` moves or renames a document and requires explicit confirmation. `items:[{from,to}]` moves up to 20 documents in one call (mutually exclusive with `from`/`to`; CLI `--items-json`). Every source, destination and permission is resolved before the first move; duplicate sources or destinations, chained/swapped moves and existing destinations are rejected with nothing moved. Moves then run in order and the first failure stops the batch: the receipt lists `moved`, `failed` (`not_applied` or `unknown`) and the never-sent `notApplied` items, so resend only the items that were not moved. A batch still uses the two-step preflight.
 
 ## Examples
 

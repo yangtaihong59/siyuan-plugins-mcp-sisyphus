@@ -2,7 +2,7 @@ import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildDefaultToolConfig } from '@/core/config';
-import { createSiYuanServer } from '@/core/server';
+import { createSiYuanServer } from '@/mcp/server';
 
 function officialFetch(): typeof fetch {
     const sessionId = 'official-extension-session';

@@ -1,21 +1,12 @@
-import { availableReadSteps, databaseReadSteps, documentReadInfo, type ReadStep } from '../internal/read-guidance';
+import { availableReadSteps, databaseNote, databaseReadSteps, documentReadInfo, type ReadStep } from '../internal/read-guidance';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
 import * as fileApi from '../../api/file';
 import * as notebookApi from '../../api/notebook';
 import { AGENT_MEMORY_VIRTUAL_PATH, USER_RULES_VIRTUAL_PATH, loadToolConfigFromApiFile, writeAgentSiyuanMemory, type FsAction } from '../../core/config';
 import { normalizeMarkdownContent } from '../../core/normalize';
-import {
-    FsLsSchema,
-    FsMvSchema,
-    FsReorderSchema,
-    FsReplaceSchema,
-    FsReadSchema,
-    FsRmSchema,
-    FsSearchSchema,
-    FsTreeSchema,
-    FsWriteSchema,
-} from '../../core/types';
+import { normalizeFsPath, stripSySuffix } from '../../shared/siyuan-path';
+import { FsLsSchema, FsMvSchema, FsReorderSchema, FsReplaceSchema, FsReadSchema, FsRmSchema, FsSearchSchema, FsTreeSchema, FsWriteSchema } from './schemas';
 import { ensurePermissionForNotebook, listChildDocumentsByPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import {
@@ -32,8 +23,11 @@ import {
 } from '../internal/helpers/document-reorder';
 import { applyExactReplaceEdits } from '../internal/replace';
 import { createJsonResult, createPaginatedResult, type ToolResult } from '../internal/shared';
-import { applyUiRefresh } from '../internal/ui-refresh';
-import { applyDocumentKramdownDomReplacements, createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks, stripRedundantTitleHeading } from '../internal/kramdown-safe';
+import { applyUiRefresh, type UiRefreshOperation } from '../internal/ui-refresh';
+import { BATCH_HINTS } from '../internal/batch-hints';
+import { isAmbiguousWriteFailure } from '../../api/errors';
+import { ZodError } from 'zod';
+import { applyDocumentKramdownDomReplacements, createReferenceSemanticsHints, stripRedundantTitleHeading } from '../internal/kramdown-safe';
 import {
     createSyntheticDocumentBlockWindow,
     listDocumentBlocksInTreeOrder,
@@ -42,6 +36,9 @@ import {
     type OrderedDocumentBlock,
 } from '../internal/document-kramdown';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
+import { escapeRegExp } from '../../shared/text';
+import { updatePreservingAttrs } from '../internal/helpers/preserved-attrs';
+import { paginate } from '../internal/pagination';
 
 type FsActionHandler = ToolActionHandler;
 
@@ -122,10 +119,6 @@ function createComplexBlocksNotSupportedResult(
     };
 }
 
-function stripSySuffix(name: string | undefined): string | undefined {
-    return typeof name === 'string' ? name.replace(/\.sy$/, '') : undefined;
-}
-
 function lastSegment(path: string | undefined): string | undefined {
     if (!path) return undefined;
     return path.split('/').filter(Boolean).at(-1);
@@ -134,14 +127,6 @@ function lastSegment(path: string | undefined): string | undefined {
 function joinHumanPath(parent: string, name: string): string {
     const base = parent === '/' ? '' : parent.replace(/\/+$/, '');
     return `${base}/${name.replace(/^\/+/, '')}`;
-}
-
-function normalizeFsPath(path: string): string {
-    const trimmed = path.trim();
-    if (!trimmed) throw new Error('fs path must not be empty.');
-    const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-    const collapsed = withLeadingSlash.replace(/\/+/g, '/');
-    return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed;
 }
 
 const VIRTUAL_ROOT_FILES = [AGENT_MEMORY_VIRTUAL_PATH, USER_RULES_VIRTUAL_PATH] as const;
@@ -328,10 +313,6 @@ async function listStorageDocumentTree(
     return nodes.filter((node): node is FsStorageTreeNode => node !== null);
 }
 
-function escapeRegExp(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function deriveDocumentTitle(hPath: string | undefined): string | undefined {
     const segment = stripSySuffix(lastSegment(hPath));
     return typeof segment === 'string' && segment.length > 0 ? segment : undefined;
@@ -456,17 +437,21 @@ async function replaceDocumentBlocksSafely(
     }));
     const replaced = applyDocumentKramdownDomReplacements(kramdownBlocks, edits, 'fs.replace');
 
+    const restoredAttrs: Record<string, string[]> = {};
     for (const block of replaced.blocks) {
-        const shouldReparseIndexedInline = block.touchesIndexedInline && block.type !== 'l';
-        await blockApi.updateBlock(
+        // A Markdown reparse (tags, refs) rebuilds the IAL; restore user attributes.
+        const dataType = block.touchesIndexedInline && block.type !== 'l' ? 'markdown' : 'dom';
+        const data = dataType === 'markdown' ? block.markdown : block.dom;
+        const preserved = await updatePreservingAttrs(
             client,
-            shouldReparseIndexedInline ? 'markdown' : 'dom',
-            shouldReparseIndexedInline ? block.markdown : block.dom,
-            block.id,
+            [{ id: block.id, dataType, data, alwaysRestore: true }],
+            () => blockApi.updateBlock(client, dataType, data, block.id),
         );
+        Object.assign(restoredAttrs, preserved.restoredAttrs);
     }
 
     return {
+        restoredAttrs,
         summary: replaced.summary,
         changedBlockCount: replaced.blocks.length,
         changedMarkdown: replaced.blocks.map((block) => block.markdown).join('\n'),
@@ -529,10 +514,36 @@ async function readAgentMemoryState(client: Parameters<FsActionHandler>[0]['clie
     };
 }
 
-async function readUserRulesState(client: Parameters<FsActionHandler>[0]['client']) {
+async function readUserRulesState(client: Parameters<FsActionHandler>[0]['client']): Promise<{ content: string; updatedAt?: string }> {
     const config = await loadToolConfigFromApiFile(client);
     return {
         content: config.userRulesText ?? '',
+    };
+}
+
+/** How fs reads each virtual root file; writes stay action-specific (only AGENTS.md is writable). */
+const VIRTUAL_FILE_READERS: Record<VirtualRootFilePath, typeof readUserRulesState> = {
+    [AGENT_MEMORY_VIRTUAL_PATH]: readAgentMemoryState,
+    [USER_RULES_VIRTUAL_PATH]: readUserRulesState,
+};
+
+/** Virtual-file metadata for a read/search payload; `updatedAt` only where the file tracks it. */
+function virtualFileMeta(state: { updatedAt?: string }): Record<string, unknown> {
+    return { virtual: true, ...(state.updatedAt !== undefined ? { updatedAt: state.updatedAt || null } : {}) };
+}
+
+/** createPaginatedResult's page block for an in-memory list. */
+function pageOf<T>(items: T[], page: number | undefined, pageSize: number | undefined) {
+    const result = paginate(items, page ?? 1, pageSize ?? 50);
+    return {
+        items: result.items,
+        pagination: {
+            total: result.total,
+            page: result.page,
+            pageSize: result.pageSize,
+            pageCount: result.pageCount,
+            hasNextPage: result.hasNextPage,
+        },
     };
 }
 
@@ -595,10 +606,15 @@ const handleTree: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
     if (denied) return denied;
     const result = await listStorageDocumentTree(client, scope.notebook, scope.storagePath, maxDepth);
+    const tree = await normalizeTreeNodes(client, result, scope.canonicalPath, scope.notebookName, maxDepth);
     return createJsonResult({
         path: scope.canonicalPath,
-        tree: await normalizeTreeNodes(client, result, scope.canonicalPath, scope.notebookName, maxDepth),
+        tree,
         maxDepth,
+        // tree lists child documents only; an empty tree under a document is not an empty document.
+        ...(tree.length === 0 && scope.type !== 'notebook'
+            ? { note: 'This document has no child documents. tree lists child documents only; use fs(action="read") for its content.' }
+            : {}),
     });
 };
 
@@ -615,25 +631,20 @@ const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     };
     assertNotVirtualRootFileDescendant(parsed.path);
     const virtualPath = getVirtualRootFilePath(parsed.path);
-    if (virtualPath === AGENT_MEMORY_VIRTUAL_PATH) {
-        const memory = await readAgentMemoryState(client);
-        const window = createSyntheticDocumentBlockWindow(memory.content, windowOptions);
+    if (virtualPath) {
+        const state = await VIRTUAL_FILE_READERS[virtualPath](client);
+        const window = createSyntheticDocumentBlockWindow(state.content, windowOptions);
         return createJsonResult({
-            ...createFsReadWindowPayload(AGENT_MEMORY_VIRTUAL_PATH, window, false),
-            virtual: true,
-            updatedAt: memory.updatedAt || null,
-        });
-    }
-    if (virtualPath === USER_RULES_VIRTUAL_PATH) {
-        const rules = await readUserRulesState(client);
-        const window = createSyntheticDocumentBlockWindow(rules.content, windowOptions);
-        return createJsonResult({
-            ...createFsReadWindowPayload(USER_RULES_VIRTUAL_PATH, window, false),
-            virtual: true,
+            ...createFsReadWindowPayload(virtualPath, window, false),
+            ...virtualFileMeta(state),
         });
     }
     const scope = await resolveFsScopePath(client, permMgr, parsed.path, 'read');
-    if (scope.type !== 'document') throw new Error(`fs.read requires a document path, got "${parsed.path}".`);
+    if (scope.type === 'notebook') {
+        const notebookDenied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
+        if (notebookDenied) return notebookDenied;
+    }
+    if (scope.type !== 'document') throw notDocumentPathError('read', parsed.path);
     const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
     if (denied) return denied;
     const readWindow = await readDocumentBlockWindow(client, scope.id, { ...windowOptions, includeBlockIds: true });
@@ -653,7 +664,11 @@ const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     return createJsonResult({
         ...payload,
         readInfo: documentReadInfo(readWindow, blocks.map(block => block.type)),
-        ...(attributeViews.length > 0 ? { attributeViews } : {}),
+        ...(attributeViews.length > 0 ? {
+            attributeViews,
+            // The div is the database's Markdown form; rewriting it would break write-back.
+            databaseNote: databaseNote(attributeViews.map((view) => view.avID).filter((id): id is string => typeof id === 'string')),
+        } : {}),
         ...(nextSteps.length ? { nextSteps } : {}),
     });
 };
@@ -693,9 +708,7 @@ const handleWrite: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
             path: target.canonicalPath,
             id,
             created: true,
-            ...(hasSiyuanBlockLinks(markdown) ? createSiyuanBlockLinkHint() : {}),
-            ...(hasFootnoteReferences(markdown) ? createFootnoteReferenceHint() : {}),
-            ...(hasBlockRefIdFallbackAnchors(markdown) ? createUnresolvedBlockRefHint() : {}),
+            ...createReferenceSemanticsHints(markdown),
         }), [
             { type: 'reloadProtyle', id },
             { type: 'reloadFiletree' },
@@ -719,9 +732,7 @@ const handleWrite: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         path: existing.canonicalPath,
         id: existing.id,
         overwritten: true,
-        ...(hasSiyuanBlockLinks(markdown) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(markdown) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(markdown) ? createUnresolvedBlockRefHint() : {}),
+        ...createReferenceSemanticsHints(markdown),
         ...(attributeViews.length > 0 ? createAttributeViewFsHint(attributeViews) : {}),
     }), [
         { type: 'reloadProtyle', id: existing.id },
@@ -756,13 +767,17 @@ const handleReplace: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         });
     }
     const scope = await resolveFsScopePath(client, permMgr, parsed.path, 'write');
-    if (scope.type !== 'document') throw new Error(`fs.replace requires a document path, got "${parsed.path}".`);
+    if (scope.type === 'notebook') {
+        const notebookDenied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'write');
+        if (notebookDenied) return notebookDenied;
+    }
+    if (scope.type !== 'document') throw notDocumentPathError('replace', parsed.path);
     const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'write');
     if (denied) return denied;
 
     const edits = await normalizeReplaceEditsRefs(client, Array.isArray(parsed.edit) ? parsed.edit : [parsed.edit], 'fs.replace');
     const replaceResult = await replaceDocumentBlocksSafely(client, scope.id, edits);
-    const { summary, changedBlockCount, changedMarkdown, skippedComplexBlocks } = replaceResult;
+    const { summary, changedBlockCount, changedMarkdown, skippedComplexBlocks, restoredAttrs } = replaceResult;
     const changed = changedBlockCount > 0;
 
     return applyUiRefresh(client, createJsonResult({
@@ -771,14 +786,13 @@ const handleReplace: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         changed,
         editsApplied: summary.length,
         replacements: summary,
+        ...(Object.keys(restoredAttrs).length > 0 ? { restoredAttrs } : {}),
         ...(skippedComplexBlocks.length > 0 ? {
             warning: 'This document contains SiYuan-native complex blocks. fs.replace edited only matched non-complex Markdown blocks; complex blocks were skipped.',
             skippedComplexBlocks,
             recommendedTools: ['block.dom', 'block.update', 'av', 'file.export_md'],
         } : {}),
-        ...(hasSiyuanBlockLinks(changedMarkdown) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(changedMarkdown) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(changedMarkdown) ? createUnresolvedBlockRefHint() : {}),
+        ...createReferenceSemanticsHints(changedMarkdown),
     }), changed ? [
         { type: 'reloadProtyle', id: scope.id },
         { type: 'reloadFiletree' },
@@ -811,23 +825,35 @@ const handleRm: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     ]);
 };
 
-const handleMv: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
-    const parsed = FsMvSchema.parse(rawArgs);
-    assertUserRulesWritable(parsed.from);
-    assertUserRulesWritable(parsed.to);
-    if (getVirtualRootFilePath(parsed.from) === AGENT_MEMORY_VIRTUAL_PATH
-        || getVirtualRootFilePath(parsed.to) === AGENT_MEMORY_VIRTUAL_PATH
-        || getVirtualRootFileDescendantPath(parsed.from) === AGENT_MEMORY_VIRTUAL_PATH
-        || getVirtualRootFileDescendantPath(parsed.to) === AGENT_MEMORY_VIRTUAL_PATH) {
+type FsMvTarget = Awaited<ReturnType<typeof resolveFsDestinationTarget>>;
+type FsMvSource = Awaited<ReturnType<typeof resolveFsScopePath>>;
+
+function assertMvPathsMovable(from: string, to: string): void {
+    assertUserRulesWritable(from);
+    assertUserRulesWritable(to);
+    if (getVirtualRootFilePath(from) === AGENT_MEMORY_VIRTUAL_PATH
+        || getVirtualRootFilePath(to) === AGENT_MEMORY_VIRTUAL_PATH
+        || getVirtualRootFileDescendantPath(from) === AGENT_MEMORY_VIRTUAL_PATH
+        || getVirtualRootFileDescendantPath(to) === AGENT_MEMORY_VIRTUAL_PATH) {
         throw new Error(`${AGENT_MEMORY_VIRTUAL_PATH} is a fixed virtual file and cannot be moved or renamed.`);
     }
-    const source = await resolveFsScopePath(client, permMgr, parsed.from, 'write');
-    if (source.type !== 'document') throw new Error(`fs.mv source must be a document path, got "${parsed.from}".`);
-    const destination = await resolveFsDestinationTarget(client, permMgr, parsed.to);
+}
+
+/** Resolve and authorize one move; returns a permission-denied result instead of throwing. */
+async function resolveMv(
+    client: Parameters<FsActionHandler>[0]['client'],
+    permMgr: Parameters<FsActionHandler>[0]['permMgr'],
+    from: string,
+    to: string,
+): Promise<{ denied: ToolResult } | { source: FsMvSource & { type: 'document' }; destination: FsMvTarget }> {
+    assertMvPathsMovable(from, to);
+    const source = await resolveFsScopePath(client, permMgr, from, 'write');
+    if (source.type !== 'document') throw new Error(`fs.mv source must be a document path, got "${from}".`);
+    const destination = await resolveFsDestinationTarget(client, permMgr, to);
     const sourceDenied = await ensurePermissionForNotebook(permMgr, source.notebook, 'write');
-    if (sourceDenied) return sourceDenied;
+    if (sourceDenied) return { denied: sourceDenied };
     const destinationDenied = await ensurePermissionForNotebook(permMgr, destination.notebook, 'write');
-    if (destinationDenied) return destinationDenied;
+    if (destinationDenied) return { denied: destinationDenied };
     try {
         const existingDestination = await resolveFsScopePath(client, permMgr, destination.canonicalPath, 'write');
         if (existingDestination.type === 'document' && existingDestination.id !== source.id) {
@@ -838,20 +864,146 @@ const handleMv: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
             throw error;
         }
     }
+    return { source: source as FsMvSource & { type: 'document' }, destination };
+}
 
+/** Move then (if the title changes) rename; reports how many writes SiYuan acknowledged. */
+async function executeMv(
+    client: Parameters<FsActionHandler>[0]['client'],
+    source: FsMvSource & { type: 'document' },
+    destination: FsMvTarget,
+    progress: { writes: number },
+): Promise<void> {
     await documentApi.moveDocsByID(client, [source.id], destination.parentId ?? destination.notebook);
+    progress.writes += 1;
     if (source.name !== destination.title) {
         await documentApi.renameDocByID(client, source.id, destination.title);
+        progress.writes += 1;
     }
+}
+
+const handleMv: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = FsMvSchema.parse(rawArgs);
+    if (parsed.items) return handleBatchMv(client, permMgr, parsed.items);
+    const resolved = await resolveMv(client, permMgr, parsed.from!, parsed.to!);
+    if ('denied' in resolved) return resolved.denied;
+    const { source, destination } = resolved;
+    await executeMv(client, source, destination, { writes: 0 });
     return applyUiRefresh(client, createJsonResult({
         success: true,
         path: source.canonicalPath,
         movedTo: destination.canonicalPath,
+        batchHint: BATCH_HINTS.fsMv,
     }), [
         { type: 'reloadProtyle', id: source.id },
         { type: 'reloadFiletree' },
     ]);
 };
+
+interface BatchMvReceipt {
+    index: number;
+    from: string;
+    to: string;
+    id: string;
+    state: 'moved' | 'not_applied' | 'unknown';
+    error?: string;
+}
+
+function batchMvInvalid(index: number, field: 'from' | 'to', message: string): ZodError {
+    return new ZodError([{ code: 'custom', path: ['items', index, field], message: `${message} Nothing was moved.` }]);
+}
+
+/**
+ * Batch mv: every source, destination and permission is resolved before the
+ * first write, so a bad item fails the whole batch with nothing moved. Moves
+ * then run one by one in order and the first failure stops the batch. When
+ * the first item fails the error propagates unchanged and the coordinator
+ * classifies it (not_applied / unknown); after at least one move the receipt
+ * lists moved, the failed item and the never-sent notApplied items.
+ */
+async function handleBatchMv(
+    client: Parameters<FsActionHandler>[0]['client'],
+    permMgr: Parameters<FsActionHandler>[0]['permMgr'],
+    items: Array<{ from: string; to: string }>,
+): Promise<ToolResult> {
+    const plans: Array<{ source: FsMvSource & { type: 'document' }; destination: FsMvTarget }> = [];
+    for (const [index, item] of items.entries()) {
+        let resolved: Awaited<ReturnType<typeof resolveMv>>;
+        try {
+            resolved = await resolveMv(client, permMgr, item.from, item.to);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw batchMvInvalid(index, /destination|^to\b/i.test(message) ? 'to' : 'from', `items[${index}]: ${message}`);
+        }
+        if ('denied' in resolved) return resolved.denied;
+        plans.push(resolved);
+    }
+    const sources = new Map<string, number>();
+    const destinations = new Map<string, number>();
+    for (const [index, { source, destination }] of plans.entries()) {
+        const seenSource = sources.get(source.id);
+        if (seenSource !== undefined) throw batchMvInvalid(index, 'from', `items[${index}].from resolves to the same document as items[${seenSource}].from (${source.canonicalPath}).`);
+        sources.set(source.id, index);
+        const seenDestination = destinations.get(destination.canonicalPath);
+        if (seenDestination !== undefined) throw batchMvInvalid(index, 'to', `items[${index}].to resolves to the same path as items[${seenDestination}].to (${destination.canonicalPath}).`);
+        destinations.set(destination.canonicalPath, index);
+        if (destination.parentId === source.id) throw batchMvInvalid(index, 'to', `items[${index}] would move ${source.canonicalPath} under itself.`);
+    }
+    for (const [index, { destination }] of plans.entries()) {
+        const other = plans.findIndex(({ source }, otherIndex) => otherIndex !== index && source.canonicalPath === destination.canonicalPath);
+        if (other >= 0) throw batchMvInvalid(index, 'to', `items[${index}].to is the current path of items[${other}].from; chained or swapped moves are not supported in one batch.`);
+    }
+
+    const receipts: BatchMvReceipt[] = plans.map(({ source, destination }, index) => ({
+        index, from: source.canonicalPath, to: destination.canonicalPath, id: source.id, state: 'not_applied',
+    }));
+    let failedAt: number | undefined;
+    for (const [index, receipt] of receipts.entries()) {
+        const progress = { writes: 0 };
+        try {
+            await executeMv(client, plans[index].source, plans[index].destination, progress);
+            receipt.state = 'moved';
+        } catch (error) {
+            if (index === 0) throw error;
+            // A move that landed before its rename failed is half done: never report it as not applied.
+            receipt.state = progress.writes > 0 || isAmbiguousWriteFailure(error) ? 'unknown' : 'not_applied';
+            receipt.error = `${error instanceof Error ? error.message : String(error)}${progress.writes > 0 ? ' (the document was moved but not renamed)' : ''}`;
+            failedAt = index;
+            break;
+        }
+    }
+    const moved = receipts.filter((item) => item.state === 'moved');
+    const refresh: UiRefreshOperation[] = [
+        ...moved.map(({ id }) => ({ type: 'reloadProtyle' as const, id })),
+        { type: 'reloadFiletree' },
+    ];
+    const brief = ({ index, from, to, id }: BatchMvReceipt) => ({ index, from, to, id });
+    if (failedAt === undefined) {
+        return applyUiRefresh(client, createJsonResult({ success: true, count: moved.length, moved: moved.map(brief) }), refresh);
+    }
+    const failed = receipts[failedAt];
+    const skipped = receipts.slice(failedAt + 1);
+    const line = (item: BatchMvReceipt) => `  [${item.index}] ${item.from} → ${item.to}`;
+    const details = [
+        `moved (${moved.length}):`, ...moved.map(line),
+        `failed (${failed.state}): [${failed.index}] ${failed.from} → ${failed.to}: ${failed.error}`,
+        ...(skipped.length > 0 ? [`not_applied, never sent (${skipped.length}):`, ...skipped.map(line)] : []),
+    ].join('\n');
+    const refreshed = await applyUiRefresh(client, createJsonResult({
+        success: false,
+        overallState: failed.state === 'unknown' ? 'unknown' : 'partial',
+        moved: moved.map(brief),
+        failed: { ...brief(failed), state: failed.state, error: failed.error },
+        notApplied: skipped.map(brief),
+        counts: { requested: receipts.length, moved: moved.length, failed: 1, notApplied: skipped.length },
+        error: {
+            type: 'batch_partial',
+            message: `Batch mv stopped at items[${failed.index}] (${failed.from}): ${moved.length} of ${receipts.length} document(s) were moved, items[${failed.index}] is ${failed.state}${skipped.length > 0 ? ` and ${skipped.length} later item(s) were not sent` : ''}. Do not resend the whole batch: ${failed.state === 'unknown' ? `first check where ${failed.from} is now, then ` : ''}send only the items that were not moved.`,
+            details,
+        },
+    }), refresh);
+    return { ...refreshed, isError: true };
+}
 
 const handleReorder: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FsReorderSchema.parse(rawArgs);
@@ -884,51 +1036,20 @@ const handleReorder: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     }), [{ type: 'reloadFiletree' }]);
 };
 
+/** SiYuan export BlockRefMode 3: keep only the anchor text of block references. */
+const EXPORT_REF_MODE_ANCHOR_TEXT = 3;
+
 const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FsSearchSchema.parse(rawArgs);
     assertNotVirtualRootFileDescendant(parsed.path);
     const matcher = createMatcher(parsed.query, parsed.regex, parsed.caseSensitive);
     const virtualPath = getVirtualRootFilePath(parsed.path);
-    if (virtualPath === AGENT_MEMORY_VIRTUAL_PATH) {
-        const memory = await readAgentMemoryState(client);
-        const matches = collectVirtualTextMatches(memory.content, matcher, AGENT_MEMORY_VIRTUAL_PATH);
-        const page = parsed.page ?? 1;
-        const pageSize = parsed.pageSize ?? 50;
-        const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
-        const normalizedPage = Math.min(page, pageCount);
-        const start = (normalizedPage - 1) * pageSize;
-        return createPaginatedResult(matches.slice(start, start + pageSize), {
-            total: matches.length,
-            page: normalizedPage,
-            pageSize,
-            pageCount,
-            hasNextPage: normalizedPage < pageCount,
-        }, {
-            path: AGENT_MEMORY_VIRTUAL_PATH,
-            virtual: true,
-            updatedAt: memory.updatedAt || null,
-            query: parsed.query,
-            regex: parsed.regex ?? false,
-            caseSensitive: parsed.caseSensitive ?? false,
-        });
-    }
-    if (virtualPath === USER_RULES_VIRTUAL_PATH) {
-        const rules = await readUserRulesState(client);
-        const matches = collectVirtualTextMatches(rules.content, matcher, USER_RULES_VIRTUAL_PATH);
-        const page = parsed.page ?? 1;
-        const pageSize = parsed.pageSize ?? 50;
-        const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
-        const normalizedPage = Math.min(page, pageCount);
-        const start = (normalizedPage - 1) * pageSize;
-        return createPaginatedResult(matches.slice(start, start + pageSize), {
-            total: matches.length,
-            page: normalizedPage,
-            pageSize,
-            pageCount,
-            hasNextPage: normalizedPage < pageCount,
-        }, {
-            path: USER_RULES_VIRTUAL_PATH,
-            virtual: true,
+    if (virtualPath) {
+        const state = await VIRTUAL_FILE_READERS[virtualPath](client);
+        const { items, pagination } = pageOf(collectVirtualTextMatches(state.content, matcher, virtualPath), parsed.page, parsed.pageSize);
+        return createPaginatedResult(items, pagination, {
+            path: virtualPath,
+            ...virtualFileMeta(state),
             query: parsed.query,
             regex: parsed.regex ?? false,
             caseSensitive: parsed.caseSensitive ?? false,
@@ -943,14 +1064,23 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const docs = await collectSearchDocuments(client, permMgr, scope);
     const matches: Array<{ path: string; line: number; text: string }> = [];
     if (scope.type === 'root') {
-        matches.push(...collectVirtualTextMatches((await readAgentMemoryState(client)).content, matcher, AGENT_MEMORY_VIRTUAL_PATH));
-        matches.push(...collectVirtualTextMatches((await readUserRulesState(client)).content, matcher, USER_RULES_VIRTUAL_PATH));
+        for (const path of VIRTUAL_ROOT_FILES) {
+            matches.push(...collectVirtualTextMatches((await VIRTUAL_FILE_READERS[path](client)).content, matcher, path));
+        }
     }
     for (const doc of docs) {
-        const markdown = normalizeMarkdownContent(await fileApi.exportMdContent(client, doc.id));
-        const content = typeof markdown.content === 'string' ? markdown.content : '';
+        // Anchor-text refs only: the default footnote mode appends the referenced
+        // blocks' text, which would be reported as lines of this document.
+        const markdown = normalizeMarkdownContent(await fileApi.exportMdContent(client, doc.id, { refMode: EXPORT_REF_MODE_ANCHOR_TEXT }));
+        const rawContent = typeof markdown.content === 'string' ? markdown.content : '';
         const hPath = typeof markdown.hPath === 'string' ? markdown.hPath : `/${doc.id}`;
         const path = `/${doc.notebookName}${hPath}`;
+        // Match the body as fs.read returns it: the YAML front matter and the
+        // leading "# <title>" heading are not document lines. A title hit is
+        // reported once with line 0.
+        const title = deriveDocumentTitle(hPath);
+        if (title && matcher(title)) matches.push({ path, line: 0, text: `# ${title}` });
+        const content = stripExportedDocumentWrapper({ ...markdown, content: rawContent, hPath });
         content.split(/\r?\n/).forEach((line, index) => {
             if (matcher(line)) {
                 matches.push({
@@ -969,19 +1099,10 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         return true;
     });
 
-    const page = parsed.page ?? 1;
-    const pageSize = parsed.pageSize ?? 50;
-    const pageCount = Math.max(1, Math.ceil(uniqueMatches.length / pageSize));
-    const normalizedPage = Math.min(page, pageCount);
-    const start = (normalizedPage - 1) * pageSize;
-    return createPaginatedResult(uniqueMatches.slice(start, start + pageSize), {
-        total: uniqueMatches.length,
-        page: normalizedPage,
-        pageSize,
-        pageCount,
-        hasNextPage: normalizedPage < pageCount,
-    }, {
+    const { items, pagination } = pageOf(uniqueMatches, parsed.page, parsed.pageSize);
+    return createPaginatedResult(items, pagination, {
         path: scope.canonicalPath,
+        lineBase: 'Document lines are 1-based within the Markdown body (front matter and title heading excluded); line 0 is a title match.',
         query: parsed.query,
         regex: parsed.regex ?? false,
         caseSensitive: parsed.caseSensitive ?? false,
@@ -999,3 +1120,10 @@ export const FS_ACTION_HANDLERS: Record<FsAction, FsActionHandler> = {
     reorder: handleReorder,
     search: handleSearch,
 };
+
+function notDocumentPathError(action: 'read' | 'replace', path: string): Error {
+    return Object.assign(
+        new Error(`fs.${action} needs a document path, but "${path}" is ${path.replace(/\/+$/, '') === '' ? 'the workspace root' : 'a notebook'}. Use fs(action="ls", path="${path}") to list its documents, then pass /<notebook>/<document>.`),
+        { code: 'invalid_path' },
+    );
+}

@@ -1,0 +1,16 @@
+Asset: ../icon.png
+Generated: 2026-10-21
+Tool: built-in image_gen
+Delivery: 512x512 RGBA PNG; generated master resized with macOS sips
+Packaged: 160x160 RGBA PNG (2026-10-28), the bazaar-recommended size; the bazaar rejects icons over 64 KiB.
+          The 512x512 master is preserved in git history (commit 9b8ac9b).
+References: previous icon.png (edit target), ../preview.png (brand palette)
+
+Use-case: logo-brand; precise-object-edit of an existing software app icon.
+Edit target: image 1, existing icon.png for SiYuan Sisyphus.
+Supporting reference: image 2, the newly redesigned product cover preview.png, for the calm red/black brand palette and polished simplicity only. Do not reproduce its text or paper illustration.
+Deliverable: ONE finished square 1024x1024 app icon PNG, transparent background outside its rounded-square tile. The icon itself is opaque.
+Preserve the recognizable identity of image 1: a crimson-red rounded-square tile carrying a black diagonal interlocking connection mark, similar to a compact chain or flowing S. This is a careful professional refinement of the existing icon, not a completely new pictogram.
+Improve: make the central symbol about 20 percent larger relative to the tile, simplify and clean the paths, use bold perfectly consistent near-black strokes with smooth rounded caps, generous open negative spaces between the interlocking curves, exact optical centering. Preserve its characteristic diagonal orientation and connected loop silhouette. Make it recognizable at 24 and 32 pixels. The symbol should be one cohesive, intentional graphic without extra dots, microdetails, tiny detached marks or sharp kinks.
+Tile: a rich clear slightly brighter crimson around #CC1938, near-black symbol around #101014. Flat even colors, premium restrained vector-style finish, smooth precise antialiasing. Rounded-square corner radius approximately 23 percent of tile width. Tile occupies 90 percent of the square canvas, centered with 5 percent transparent padding on each edge. Mark occupies approximately 63 percent of tile width. No extra outer shadow or halo.
+Avoid gradients, grain, gloss, bevels, 3D, texture, lighting, drop shadows, wallpaper, frames, letters, text, watermarks, stars, sparkles, paper sheets, robots, or added decorations. In particular remove the tiny stray sparkle in the lower-right of the old reference. Return only the clean finished icon on genuine alpha transparency, no mockup, no comparison board.

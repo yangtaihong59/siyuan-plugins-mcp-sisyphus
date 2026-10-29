@@ -1,4 +1,4 @@
-import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { TOOL_REGISTRY } from '@/mcp/tool-registry';
 import { buildDefaultToolConfig } from '@/core/config';
 import { describe, expect, it } from 'vitest';
 

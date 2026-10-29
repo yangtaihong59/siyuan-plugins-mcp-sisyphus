@@ -1,7 +1,11 @@
+import { SiYuanRequestError } from '../../api/errors';
+
 /**
  * Translates raw SiYuan kernel errors into semantic codes with actionable hints
  * so LLMs can branch on failure type without regex-matching Chinese messages.
  */
+
+const KERNEL_UNREACHABLE_HINT = 'MCP server is running but the SiYuan kernel is unreachable. Prompt the user to start SiYuan. Do not explore source files to debug this.';
 
 export type ErrorCode =
     | 'block_not_found'
@@ -64,8 +68,10 @@ const ERROR_RULES: ErrorRule[] = [
             /kernel still initializing/i,
             /closed_or_initializing/i,
             /笔记本已关闭/,
+            // createDocWithMd and friends report a closed box only as a failed lookup.
+            /Query notebook failed/i,
         ],
-        hint: 'Re-open the notebook via notebook(action="set_open_state", opened=true) or retry after a short wait.',
+        hint: 'The notebook is closed (or the ID does not exist). Check notebook(action="list") for closed=true, re-open it via notebook(action="set_open_state", opened=true), then retry.',
     },
     {
         code: 'document_not_found',
@@ -96,18 +102,17 @@ const ERROR_RULES: ErrorRule[] = [
     {
         code: 'kernel_unreachable',
         patterns: [
-            /HTTP error:/i,
-            /Request timeout/i,
             /ECONNREFUSED/i,
             /fetch failed/i,
         ],
-        hint: 'MCP server is running but the SiYuan kernel is unreachable. Prompt the user to start SiYuan. Do not explore source files to debug this.',
+        hint: KERNEL_UNREACHABLE_HINT,
     },
 ];
 
 export function translateError(error: Error): ErrorTranslation | null {
     const message = error.message ?? '';
-    const status = Number(message.match(/HTTP error:\s*(\d{3})\b/i)?.[1]);
+    if (error instanceof SiYuanRequestError && error.kind === 'timeout') return { code: 'kernel_unreachable', hint: KERNEL_UNREACHABLE_HINT };
+    const status = error instanceof SiYuanRequestError && error.kind === 'http' ? error.status : undefined;
     if (status === 401) return { code: 'authentication_failed', hint: 'Check the API URL and token belong to the same SiYuan workspace.' };
     if (status === 403) return { code: 'permission_denied', hint: 'The HTTP endpoint denied access. Check its authentication and access policy; changing notebook permissions may not help.' };
     if (status === 429) return { code: 'rate_limited', hint: 'The SiYuan endpoint is rate limiting requests. Wait before retrying and verify the API URL and workspace token.' };

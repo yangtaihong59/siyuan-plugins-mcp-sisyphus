@@ -1,10 +1,13 @@
 import { usesBakedActionSchemas } from '../../core/action-schema-runtime';
 import { renderAiLayoutGuide } from '../../core/ai-layout-guide';
-import { z, ZodError, type ZodIssue } from 'zod';
+import { z, ZodError } from 'zod';
 
 import { getEnabledActions, isDangerousAction, type CategoryToolConfig, type ToolCategory } from '../../core/config';
-import { getActionHint } from '../../core/help';
 import { translateError } from './errorTranslation';
+import type { ActionVariant, AggregatedToolOptions, JsonSchema, PaginatedPayload, ToolErrorContext, ToolResult } from './types';
+import { formatZodIssues, getValidationMessage, includeDebugDetails, isApiError, resolveHint } from './validation';
+export { applyTruncation, paginate } from './pagination';
+export type { ToolTextContent, ToolImageContent, ToolContent, ToolResult, JsonSchema, ActionVariant, AggregatedToolOptions, TruncationMeta, PaginationResult, PaginatedPayload } from './types';
 import { buildActionHelp, buildActionSignatures, buildHelpIndex } from './help-render';
 import {
     getSchemaProperties,
@@ -13,59 +16,9 @@ import {
     normalizeJsonSchema,
 } from './schema-analyzer';
 
-export interface ToolTextContent {
-    type: 'text';
-    text: string;
-    data?: never;
-    mimeType?: never;
-}
-
-export interface ToolImageContent {
-    type: 'image';
-    data: string;
-    mimeType: string;
-    text?: never;
-    _meta?: Record<string, unknown>;
-}
-
-export type ToolContent = ToolTextContent | ToolImageContent;
-
-export interface ToolResult {
-    _meta?: Record<string, unknown>;
-    content: ToolContent[];
-    isError?: boolean;
-    structuredContent?: Record<string, unknown>;
-}
-
-export type JsonSchema = Record<string, any>;
-
-export interface ActionVariant<Action extends string> {
-    action: Action;
-    schema: JsonSchema;
-    validate?: (args: Record<string, unknown>) => void;
-}
-
 export const ACTION_SCHEMA_BRANCHES_KEY = 'x-sisyphus-actionSchemas';
 
 export { getSchemaProperties, getSchemaRequired, normalizeJsonSchema };
-
-export interface AggregatedToolOptions<Action extends string> {
-    guidance?: string[];
-    actionHints?: Partial<Record<Action, string>>;
-    propertyDescriptionOverrides?: Record<string, string>;
-}
-
-interface ToolErrorContext {
-    tool?: string;
-    action?: string;
-    rawArgs?: Record<string, unknown>;
-    hint?: string;
-}
-
-interface ToolFieldError {
-    path: string;
-    message: string;
-}
 
 export function createActionSchema(
     action: string,
@@ -230,83 +183,11 @@ function buildHelpActionSchema(enabledActions: string[]): JsonSchema {
     };
 }
 
-function formatIssuePath(path: PropertyKey[]): string {
-    return path
-        .map((segment) => typeof segment === 'number' ? `[${segment}]` : String(segment))
-        .join('.')
-        .replace(/\.\[/g, '[');
-}
-
-function getValueAtPath(value: unknown, path: PropertyKey[]): unknown {
-    let current = value;
-    for (const segment of path) {
-        if (current === null || current === undefined) return undefined;
-        if (typeof segment === 'number') {
-            if (!Array.isArray(current)) return undefined;
-            current = current[segment];
-            continue;
-        }
-        if (typeof current !== 'object') return undefined;
-        current = (current as Record<string, unknown>)[String(segment)];
-    }
-    return current;
-}
-
-function formatIssueMessage(issue: ZodIssue, rawArgs?: Record<string, unknown>): string {
-    const path = formatIssuePath(issue.path);
-    const valueAtPath = path ? getValueAtPath(rawArgs, issue.path) : undefined;
-
-    if (issue.code === 'invalid_type') {
-        if (valueAtPath === undefined && path) {
-            return `${path} is required.`;
-        }
-        return path ? `${path} has an invalid type.` : 'Invalid input type.';
-    }
-
-    if (issue.code === 'unrecognized_keys' && 'keys' in issue && Array.isArray(issue.keys)) {
-        return `Unexpected field(s): ${issue.keys.join(', ')}.`;
-    }
-
-    if (issue.message && issue.message !== 'Invalid input') {
-        return issue.message;
-    }
-
-    return path ? `Invalid value for ${path}.` : 'Invalid input.';
-}
-
-function formatZodIssues(error: ZodError, rawArgs?: Record<string, unknown>): ToolFieldError[] {
-    return error.issues.map((issue) => ({
-        path: formatIssuePath(issue.path),
-        message: formatIssueMessage(issue, rawArgs),
-    }));
-}
-
-function getValidationMessage(tool?: string, action?: string): string {
-    if (tool && action) return `Invalid arguments for ${tool}(action="${action}").`;
-    if (tool) return `Invalid arguments for tool "${tool}".`;
-    return 'Invalid arguments.';
-}
-
-function resolveHint(context?: ToolErrorContext): string | undefined {
-    return context?.hint ?? getActionHint(context?.tool, context?.action);
-}
-
 function toErrorText(payload: Record<string, unknown>, isError = true): ToolResult {
     return {
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
         isError,
     };
-}
-
-function isApiError(error: Error): boolean {
-    return error.name === 'SiYuanError'
-        || error.message.startsWith('SiYuan API error:')
-        || error.message.startsWith('HTTP error:')
-        || error.message.startsWith('Request timeout');
-}
-
-function includeDebugDetails(): boolean {
-    return process.env.SIYUAN_MCP_DEBUG_ERRORS === '1';
 }
 
 /**
@@ -447,68 +328,6 @@ export function tryHandleHelpAction<Action extends string>(
     return createJsonResult(buildHelpIndex(category, enabledActions, enabledVariants));
 }
 
-export interface TruncationMeta {
-    truncated: boolean;
-    showing: number;
-    total: number;
-    hint: string;
-}
-
-export function applyTruncation<T>(
-    items: T[],
-    limit: number,
-    hint: string,
-): { items: T[]; meta?: TruncationMeta } {
-    if (items.length <= limit) return { items };
-    return {
-        items: items.slice(0, limit),
-        meta: {
-            truncated: true,
-            showing: limit,
-            total: items.length,
-            hint,
-        },
-    };
-}
-
-export interface PaginationResult<T> {
-    items: T[];
-    total: number;
-    page: number;
-    pageSize: number;
-    pageCount: number;
-    showing: number;
-    truncated: boolean;
-    hasNextPage: boolean;
-}
-
-export function paginate<T>(items: T[], page: number, pageSize: number): PaginationResult<T> {
-    const total = items.length;
-    const pageCount = Math.max(1, Math.ceil(total / pageSize));
-    const normalizedPage = Math.min(page, pageCount);
-    const start = (normalizedPage - 1) * pageSize;
-    const paged = items.slice(start, start + pageSize);
-    return {
-        items: paged,
-        total,
-        page: normalizedPage,
-        pageSize,
-        pageCount,
-        showing: paged.length,
-        truncated: pageCount > 1,
-        hasNextPage: normalizedPage < pageCount,
-    };
-}
-
-export interface PaginatedPayload<T> {
-    data: T[];
-    total: number | null;
-    page: number;
-    pageSize: number;
-    pageCount: number;
-    hasNextPage: boolean;
-}
-
 /**
  * Build the standard `{ data, total, page, pageSize, pageCount, hasNextPage }` shape
  * used by every list-style action. `extras` are merged at the top level (e.g. avID,
@@ -588,9 +407,10 @@ export function createErrorResult(error: unknown, context?: ToolErrorContext): T
 
     const payload: Record<string, unknown> = {
         error: {
-            type: isApiError(normalizedError) ? 'api_error' : 'internal_error',
+            type: isApiError(normalizedError) ? 'api_error' : (clientErrorCode(normalizedError) ?? 'internal_error'),
             ...(translation ? { code: translation.code } : {}),
             message: normalizedError.message,
+            ...clientErrorDetails(normalizedError),
             ...(context?.tool ? { tool: context.tool } : {}),
             ...(context?.action ? { action: context.action } : {}),
             ...(combinedHint ? { hint: combinedHint } : {}),
@@ -601,11 +421,30 @@ export function createErrorResult(error: unknown, context?: ToolErrorContext): T
     return toErrorText(payload);
 }
 
+/** Caller-correctable errors raised with an explicit code (see fs-path createFsError). */
+const CLIENT_ERROR_CODES = new Set(['not_found', 'ambiguous_path', 'invalid_path', 'permission_denied']);
+
+function clientErrorCode(error: Error): string | undefined {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' && CLIENT_ERROR_CODES.has(code) ? code : undefined;
+}
+
+function clientErrorDetails(error: Error): Record<string, unknown> {
+    if (!clientErrorCode(error)) return {};
+    const details: Record<string, unknown> = {};
+    for (const key of ['notebook', 'current_permission', 'required_permission'] as const) {
+        const value = (error as unknown as Record<string, unknown>)[key];
+        if (typeof value === 'string') details[key] = value;
+    }
+    return details;
+}
+
 export function createPermissionDeniedResult(notebookId: string, currentPerm: string, required: 'read' | 'write' | 'delete'): ToolResult {
     return toErrorText({
         error: {
             type: 'permission_denied',
-            message: `Notebook "${notebookId}" has permission "${currentPerm}", ${required} access is required. Use notebook(action="set_permission") to change.`,
+            message: `Notebook "${notebookId}" has permission "${currentPerm}", ${required} access is required. Nothing was changed.`,
+            hint: 'Only the user can change notebook permissions (plugin settings, or notebook(action="set_permission") if they have enabled it). Ask them, or pick a notebook listed as writable by notebook(action="get_permissions").',
             notebook: notebookId,
             current_permission: currentPerm,
             required_permission: required,
@@ -613,14 +452,68 @@ export function createPermissionDeniedResult(notebookId: string, currentPerm: st
     });
 }
 
-export function createDisabledActionResult(name: ToolCategory, action: string): ToolResult {
+const ENABLE_IN_SETTINGS_HINT = 'Enable it in Settings -> Plugins -> SiYuan MCP sisyphus, or call listTools() again to inspect the currently enabled tools and actions.';
+
+/*
+ * tools/call gate errors. The Node server, kernel endpoint and CLI all return
+ * these exact shapes, so clients can branch on error.type regardless of transport.
+ */
+/** POSIX, Windows drive (C:\\ or C:/) and UNC paths. */
+export function isAbsoluteLocalPath(value: string): boolean {
+    return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value);
+}
+
+/**
+ * A server-side process cannot know the caller's working directory, so a
+ * relative localFilePath would silently resolve against the server's cwd.
+ */
+export function createRelativeLocalPathResult(name: string, action: string, localFilePath: string): ToolResult {
+    return toErrorText({
+        error: {
+            type: 'validation_error',
+            message: `localFilePath must be an absolute path on the MCP server host; got relative path "${localFilePath}".`,
+            tool: name,
+            action,
+            field: 'localFilePath',
+            hint: 'Pass an absolute path (e.g. /Users/me/Pictures/cover.png). The CLI resolves relative paths against your current directory automatically. No write was attempted.',
+        },
+    });
+}
+
+export function createUnknownToolResult(name: string): ToolResult {
+    return toErrorText({
+        error: {
+            type: 'unknown_tool',
+            message: `Unknown tool "${name}".`,
+            tool: name,
+            hint: 'Call listTools() to see the tools currently exposed by this server.',
+        },
+    });
+}
+
+export function createDisabledToolResult(name: string): ToolResult {
+    return toErrorText({
+        error: {
+            type: 'tool_disabled',
+            message: `Tool "${name}" is disabled.`,
+            tool: name,
+            hint: ENABLE_IN_SETTINGS_HINT,
+        },
+    });
+}
+
+export function createDisabledActionResult(
+    name: string,
+    action: string,
+    message = `Action "${action}" is disabled for tool "${name}".`,
+): ToolResult {
     return toErrorText({
         error: {
             type: 'action_disabled',
-            message: `Action "${action}" is disabled for tool "${name}".`,
+            message,
             tool: name,
             action,
-            hint: 'Enable the action in Settings -> Plugins -> SiYuan MCP sisyphus, or call listTools() again to inspect the currently enabled actions.',
+            hint: ENABLE_IN_SETTINGS_HINT,
         },
     });
 }

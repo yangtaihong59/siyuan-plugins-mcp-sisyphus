@@ -8,28 +8,7 @@ import * as documentApi from '../../api/document';
 import { normalizeMarkdownContent } from '../../core/normalize';
 import type { FileAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    FileCreateTemplateSchema,
-    FileDeleteTemplateSchema,
-    FileDeleteAssetSchema,
-    FileExportMdSchema,
-    FileExportMarkdownSnapshotSchema,
-    FileExportResourcesSchema,
-    FileExtractDocSchema,
-    FileGetDocAssetsSchema,
-    FileAuditImageRefsSchema,
-    FileReadImageSchema,
-    FileGetImageOCRTextSchema,
-    FileListTemplatesSchema,
-    FileListUnusedAssetsSchema,
-    FileReadTemplateSchema,
-    FileRemoveUnusedAssetsSchema,
-    FileRenameAssetSchema,
-    FileRenderSchema,
-    FileSaveDocAsTemplateSchema,
-    FileUpdateTemplateSchema,
-    FileUploadAssetSchema,
-} from '../../core/types';
+import { FileCreateTemplateSchema, FileDeleteTemplateSchema, FileDeleteAssetSchema, FileExportMdSchema, FileExportMarkdownSnapshotSchema, FileExportResourcesSchema, FileExtractDocSchema, FileGetDocAssetsSchema, FileAuditImageRefsSchema, FileReadImageSchema, FileGetImageOCRTextSchema, FileListTemplatesSchema, FileListUnusedAssetsSchema, FileReadTemplateSchema, FileRemoveUnusedAssetsSchema, FileRenameAssetSchema, FileRenderSchema, FileSaveDocAsTemplateSchema, FileUpdateTemplateSchema, FileUploadAssetSchema } from './schemas';
 import { ensurePermissionForDocumentId, ensurePermissionForNotebook } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult, createPaginatedResult, paginate, type ToolResult } from '../internal/shared';
@@ -283,7 +262,7 @@ const handleUploadAsset = (thresholdMB: number, largeUploadThresholdBytes: numbe
             if (source.bytes.byteLength > largeUploadThresholdBytes && parsed.confirmLargeFile !== true) {
                 return createJsonResult({ success: false, requiresConfirmation: true, reason: 'file_too_large', fileSizeBytes: source.bytes.byteLength, thresholdMB });
             }
-            const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, source.bytes, source.fileName);
+            const result = await fileApi.uploadAsset(client, parsed.assetsDirPath ?? '/assets/', source.bytes, source.fileName);
             return createJsonResult({ ...result, uploadedFileName: source.fileName, uploadSource: parsed.uploadSource });
         }
         if (getInvocationTransport() === 'kernel') return kernelUploadAssetGuidance({ localFilePath: parsed.localFilePath! });
@@ -309,7 +288,7 @@ const handleUploadAsset = (thresholdMB: number, largeUploadThresholdBytes: numbe
         }
         const fileName = nodePath().basename(localFilePath);
         const fileBytes = nodeFs().readFileSync(localFilePath);
-        const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, fileBytes, fileName);
+        const result = await fileApi.uploadAsset(client, parsed.assetsDirPath ?? '/assets/', fileBytes, fileName);
         return createJsonResult({
             ...result,
             localFilePath,
@@ -327,7 +306,8 @@ const handleRender: ToolActionHandler = async ({ client, permMgr, rawArgs }) => 
     const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id!, 'read');
     if (denied) return denied;
     try {
-        const result = await templateApi.renderTemplate(client, parsed.id!, parsed.path!, parsed.preview);
+        const templatePath = await templateApi.resolveTemplateRenderPath(client, parsed.path!);
+        const result = await templateApi.renderTemplate(client, parsed.id!, templatePath, parsed.preview);
         return createJsonResult(result);
     } catch (error) {
         if (isWorkspaceTemplatePathError(error)) {
@@ -356,6 +336,21 @@ const handleListTemplates: ToolActionHandler = async ({ client, rawArgs }) => {
     });
 };
 
+/**
+ * Templates saved from a document keep every block IAL ({: id=... fold=...}),
+ * both on their own lines and inline after list markers. Creating a document
+ * from them as-is would reuse the source block IDs, so offer a copy without IALs.
+ */
+export function stripTemplateIals(markdown: string): string {
+    return markdown
+        .split('\n')
+        .filter((line) => !/^\s*\{:\s[^\n]*\}\s*$/.test(line))
+        .map((line) => line.replace(/\{:\s(?:[^}"]|"(?:[^"\\]|\\.)*")*\}/g, ''))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 const handleReadTemplate: ToolActionHandler = async ({ client, rawArgs }) => {
     const parsed = FileReadTemplateSchema.parse(rawArgs);
     try {
@@ -375,6 +370,11 @@ const handleReadTemplate: ToolActionHandler = async ({ client, rawArgs }) => {
             limit,
             truncated,
             ...(truncated ? { nextOffset } : {}),
+            // Only for the full source: a window could cut an IAL in half.
+            ...(offset === 0 && !truncated ? {
+                documentMarkdown: stripTemplateIals(source.markdown),
+                documentMarkdownHint: 'documentMarkdown is the template without block IALs (ids, fold state, custom attributes); pass it as markdown to document create to make a new document from this template. Template .action{...} expressions are kept as text; use file render to evaluate them.',
+            } : {}),
         });
     } catch (error) {
         return templateErrorResult(
@@ -511,11 +511,87 @@ const handleSaveDocAsTemplate: ToolActionHandler = async ({ client, permMgr, raw
 
 const handleExportMd: ToolActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FileExportMdSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
     if (denied) return denied;
     const result = normalizeMarkdownContent(await fileApi.exportMdContent(client, parsed.id));
-    return createJsonResult(result);
+    if (!parsed.includeChildren) return createJsonResult(result);
+
+    // Descendants share the root's notebook, so its read permission covers them.
+    const descendants: string[] = [];
+    let truncated = false;
+    const visit = async (path: string): Promise<void> => {
+        const listed = await documentApi.listDocsByPath(client, context.notebook, path, { maxListCount: 0, showHidden: false, ignoreMaxListHint: true });
+        for (const file of listed.files ?? []) {
+            if (descendants.length >= EXPORT_MD_MAX_DESCENDANTS) { truncated = true; return; }
+            const id = typeof file.id === 'string' && file.id ? file.id : file.path.match(/([^/]+)\.sy$/)?.[1];
+            if (!id) continue;
+            descendants.push(id);
+            if ((file.subFileCount ?? 1) !== 0) await visit(file.path);
+        }
+    };
+    await visit(context.path);
+    const parts = [{ id: parsed.id, ...result }];
+    for (const id of descendants) parts.push({ id, ...normalizeMarkdownContent(await fileApi.exportMdContent(client, id)) });
+    return createJsonResult({
+        hPath: result.hPath,
+        // The root keeps its YAML front matter. Each descendant's front matter
+        // is dropped (a second `---` block would read as a double rule) and
+        // replaced by a marker comment plus its title heading.
+        content: parts.map((part, index) => index === 0
+            ? part.content.trim()
+            : exportMdChildSection(part.id, part.hPath, part.content)).join('\n\n---\n\n'),
+        documents: parts.map((part) => ({ id: part.id, hPath: part.hPath })),
+        documentCount: parts.length,
+        ...(truncated ? { truncated: true, hint: `Stopped after ${EXPORT_MD_MAX_DESCENDANTS} descendants; use export_markdown_snapshot with roots for larger trees.` } : {}),
+    });
 };
+
+const EXPORT_MD_MAX_DESCENDANTS = 100;
+
+/**
+ * Descendant tree of a snapshot root. Some kernels reject listDocTree for "/"
+ * ("path escapes notebook directory") or fail for a document without a child
+ * directory; the listDocsByPath walk covers both.
+ */
+async function listSnapshotRootTree(client: Parameters<ToolActionHandler>[0]['client'], notebook: string, root: string): Promise<unknown> {
+    try {
+        return await documentApi.listDocTree(client, notebook, root);
+    } catch (treeError) {
+        const walk = async (path: string): Promise<unknown[]> => {
+            const listed = await documentApi.listDocsByPath(client, notebook, path, { maxListCount: 0, showHidden: false, ignoreMaxListHint: true });
+            const nodes: any[] = [];
+            for (const file of listed.files ?? []) {
+                const id = typeof file.id === 'string' && file.id ? file.id : file.path.match(/([^/]+)\.sy$/)?.[1];
+                if (!id) continue;
+                nodes.push({ id, path: file.path, ...(typeof file.name === 'string' ? { name: file.name.replace(/\.sy$/, '') } : {}),
+                    children: (file.subFileCount ?? 1) !== 0 ? await walk(file.path) : [] });
+            }
+            return nodes;
+        };
+        try {
+            return { tree: await walk(root) };
+        } catch {
+            throw treeError;
+        }
+    }
+}
+
+/** Split a leading YAML front matter block; returns its title (when present) and the remaining body. */
+export function splitMarkdownFrontMatter(content: string): { title?: string; body: string } {
+    const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(content);
+    if (!match) return { body: content };
+    const titleLine = /^title:[ \t]*(.*)$/m.exec(match[1]);
+    const title = titleLine?.[1].trim().replace(/^(["'])(.*)\1$/, '$2');
+    return { ...(title ? { title } : {}), body: content.slice(match[0].length) };
+}
+
+function exportMdChildSection(id: string, hPath: string | undefined, content: string): string {
+    const { title, body } = splitMarkdownFrontMatter(content);
+    const trimmed = body.trim();
+    const heading = /^#\s/.test(trimmed) ? '' : `# ${title || hPath?.split('/').pop() || id}\n\n`;
+    const marker = `<!-- siyuan-document id=${id}${hPath ? ` hPath=${hPath.replace(/--/g, '- -')}` : ''} -->`;
+    return `${marker}\n\n${heading}${trimmed}`;
+}
 
 function suffixSnapshotPathWithID(relativePath: string, documentID: string): string {
     const suffix = ` [${documentID}].md`;
@@ -549,7 +625,7 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
         // whole page to an aggregate Promise rejection.
         const rootResults = await Promise.all(roots.map(async (root) => {
             try {
-                return { root, tree: await documentApi.listDocTree(client, parsed.notebookID, root) };
+                return { root, tree: await listSnapshotRootTree(client, parsed.notebookID, root) };
             } catch (error) {
                 return {
                     root,
@@ -566,6 +642,10 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
             if ('error' in result) {
                 errors.push(result.error);
             } else {
+                // A document root (/.../<id>.sy) exports itself plus its
+                // descendants; "/" stays the notebook's top-level documents.
+                const rootID = /([^/]+)\.sy$/.exec(result.root)?.[1];
+                if (rootID) candidates.push({ id: rootID, path: result.root });
                 candidates.push(...flattenDocumentTree(result.tree));
             }
         }

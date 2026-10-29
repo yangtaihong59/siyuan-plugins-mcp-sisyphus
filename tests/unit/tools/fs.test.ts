@@ -25,7 +25,7 @@ function fsConfig() {
     return buildDefaultToolConfig().fs;
 }
 
-function createFsClient(options: { ambiguous?: boolean; missingPaths?: string[]; agentMemory?: string; agentMemoryUpdatedAt?: string; userRulesText?: string } = {}) {
+function createFsClient(options: { ambiguous?: boolean; emptyTree?: boolean; missingPaths?: string[]; agentMemory?: string; agentMemoryUpdatedAt?: string; userRulesText?: string } = {}) {
     const missing = new Set(options.missingPaths ?? []);
     let storedConfig = {
         ...buildDefaultToolConfig(),
@@ -60,6 +60,7 @@ function createFsClient(options: { ambiguous?: boolean; missingPaths?: string[];
             }
             if (endpoint === '/api/filetree/listDocsByPath') {
                 const path = String(body?.path ?? '/');
+                if (options.emptyTree && path === '/doc-1.sy') return { box: body?.notebook ?? 'nb-1', files: [] };
                 if (path === '/child.sy') {
                     return {
                         box: body?.notebook ?? 'nb-1',
@@ -207,6 +208,14 @@ describe('fs tool', () => {
         expect(JSON.stringify(parsed)).not.toContain('/grand.sy');
         expect(JSON.stringify(parsed)).not.toContain('Child.sy');
         expect(JSON.stringify(parsed)).not.toContain('Grand.sy');
+    });
+
+    it('notes that tree lists child documents only when a document has none', async () => {
+        const parsed = parseResult(await callFsTool(createFsClient({ emptyTree: true }), { action: 'tree', path: '/Notebook/Doc 1' }, fsConfig(), createPermMgr()));
+        expect(parsed.tree).toEqual([]);
+        expect(parsed.note).toContain('tree lists child documents only');
+        const withChildren = parseResult(await callFsTool(createFsClient(), { action: 'tree', path: '/Notebook/Doc 1' }, fsConfig(), createPermMgr()));
+        expect(withChildren.note).toBeUndefined();
     });
 
     it('filters root tree to readable notebooks', async () => {
@@ -983,6 +992,7 @@ describe('fs tool', () => {
 
         expect(parsed.content).toContain('NodeAttributeView');
         expect(parsed.attributeViews).toEqual([{ blockID: 'av-block-1', avID: 'av-1' }]);
+        expect(parsed.databaseNote).toContain('leave the line unchanged');
         expect(parsed.readInfo.limitations).toContain('database_contents_not_included');
         expect(parsed.nextSteps).toEqual([{ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: 'av-1', blockID: 'av-block-1' } }]);
     });
@@ -1123,6 +1133,27 @@ describe('fs tool', () => {
         ]);
         expect(client.request).toHaveBeenCalledWith('/api/ui/reloadProtyle', { id: 'doc-1' });
         expect(client.request).toHaveBeenCalledWith('/api/ui/reloadFiletree', {});
+    });
+
+    it('restores user attributes when a tag edit reparses the block from Markdown', async () => {
+        const client = createFsClient();
+        const inner = client.request;
+        let attrs: Record<string, string> = { id: 'block-2', 'custom-status': 'done', memo: 'm' };
+        client.request = vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+            if (endpoint === '/api/attr/getBlockAttrs') return { ...attrs };
+            if (endpoint === '/api/attr/setBlockAttrs') { attrs = { ...attrs, ...(body?.attrs as Record<string, string>) }; return null; }
+            if (endpoint === '/api/block/updateBlock') { attrs = { id: 'block-2' }; return null; }
+            return inner(endpoint, body);
+        });
+        const parsed = parseResult(await callFsTool(client, {
+            action: 'replace',
+            path: '/Notebook/Doc 1',
+            edit: { old: 'budget', new: 'budget #tag#' },
+        }, fsConfig(), createPermMgr()));
+
+        expect(client.request).toHaveBeenCalledWith('/api/block/updateBlock', expect.objectContaining({ id: 'block-2', dataType: 'markdown' }));
+        expect(client.request).toHaveBeenCalledWith('/api/attr/setBlockAttrs', { id: 'block-2', attrs: { 'custom-status': 'done', memo: 'm' } });
+        expect(parsed.restoredAttrs).toEqual({ 'block-2': ['custom-status', 'memo'] });
     });
 
     it('replaces agent memory through the virtual root file', async () => {
@@ -1738,6 +1769,23 @@ describe('fs tool', () => {
 
         expect(parsed.data).toEqual([{ path: '/Notebook/Doc 1', line: 2, text: 'budget line' }]);
         expect(parsed.total).toBe(1);
+        // Anchor-text refs only, so referenced blocks are never reported as this document's lines.
+        expect(client.request).toHaveBeenCalledWith('/api/export/exportMdContent', expect.objectContaining({ refMode: 3 }));
+    });
+
+    it('skips front matter and reports body-relative line numbers', async () => {
+        const client = createFsClient();
+        const base = client.request.getMockImplementation()!;
+        client.request.mockImplementation(async (endpoint: string, body?: Record<string, unknown>) => endpoint === '/api/export/exportMdContent'
+            ? { hPath: '/Doc 1', content: '---\ntitle: Doc 1\ndate: 2026\n---\n\n# Doc 1\n\nfirst Doc 1 body\nsecond' }
+            : base(endpoint, body));
+        const parsed = parseResult(await callFsTool(client, { action: 'search', path: '/Notebook/Doc 1', query: 'doc 1' }, fsConfig(), createPermMgr()));
+
+        expect(parsed.data).toEqual([
+            { path: '/Notebook/Doc 1', line: 0, text: '# Doc 1' },
+            { path: '/Notebook/Doc 1', line: 1, text: 'first Doc 1 body' },
+        ]);
+        expect(parsed.lineBase).toContain('front matter');
     });
 
     it('searches only agent memory when scoped to the virtual root file', async () => {

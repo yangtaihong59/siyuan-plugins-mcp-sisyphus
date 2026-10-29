@@ -1,285 +1,218 @@
-# SiYuan Sisyphus MCP & CLI
-
-<p align="left">
-  <a href="https://www.npmjs.com/package/siyuan-sisyphus">
-    <img src="https://img.shields.io/npm/v/siyuan-sisyphus?style=flat-square&color=%23cb3837" alt="npm version">
-  </a>
-  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/yangtaihong59/siyuan-plugins-mcp-sisyphus?style=flat-square&color=%23007ec6" alt="license">
-  </a>
-  <a href="https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/">
-    <img src="https://img.shields.io/badge/docs-VitePress-646cff?style=flat-square&logo=vitepress" alt="Documentation">
-  </a>
-  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/releases">
-    <img src="https://img.shields.io/github/v/release/yangtaihong59/siyuan-plugins-mcp-sisyphus?style=flat-square&color=%23007ec6" alt="GitHub release">
-  </a>
+<p align="center">
+  <img src="./icon.png" width="88" height="88" alt="">
 </p>
 
-<p align="left">
-  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README.md">English</a> |
-  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md">中文</a> |
-  <a href="https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/">Documentation</a>
+<h1 align="center">SiYuan Sisyphus</h1>
+
+<p align="center">
+  <strong>Let AI agents work in your SiYuan notes, only where you allow and with every change reviewable.</strong>
 </p>
 
-> Connect external AI agents, the existing Sisyphus toolset, and SiYuan's official MCP plugin ecosystem.
+<p align="center">
+  An MCP server and CLI for SiYuan: 14 aggregate tools, notebook-level permissions,<br>
+  strict safe writes, a Git-like document timeline and interactive MCP Apps.
+</p>
 
-> **Latest:** `v0.6.13` — Fixes DSH compatibility: clients without form confirmation support no longer trigger elicitation errors, while permissions and safe-write preflight remain enforced. MCP settings now provide DSH Cordis YAML configuration.
+<p align="center">
+  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/releases"><img src="https://img.shields.io/github/v/release/yangtaihong59/siyuan-plugins-mcp-sisyphus?style=flat-square&color=%23cc1938&label=plugin" alt="Plugin release"></a>
+  <a href="https://www.npmjs.com/package/siyuan-sisyphus"><img src="https://img.shields.io/npm/v/siyuan-sisyphus?style=flat-square&color=%23cb3837&label=cli" alt="CLI on npm"></a>
+  <a href="https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/"><img src="https://img.shields.io/badge/docs-VitePress-646cff?style=flat-square&logo=vitepress&logoColor=white" alt="Documentation"></a>
+  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/LICENSE"><img src="https://img.shields.io/github/license/yangtaihong59/siyuan-plugins-mcp-sisyphus?style=flat-square&color=%23007ec6" alt="MIT license"></a>
+</p>
 
-> **v0.6.12：** — Fixes database filter defaults, validation, and carrier identification for reliable preflight, commits, and no-change detection; fixes same-path document creation across notebooks, template readback, and scoped reference queries; preserves complete link-target mappings and clarifies SQL permissions and bilingual help. CLI is now `v0.2.13`.
+<p align="center">
+  <strong>English</strong> ·
+  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/README_zh_CN.md">简体中文</a> ·
+  <a href="https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/">Documentation</a> ·
+  <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/CHANGELOG.md">Changelog</a>
+</p>
 
-> **v0.6.11：** — Introduces AV v2 structure reads, paginated queries, explicit database creation, and combined view updates, with durable creation receipts and configuration checks. Legacy AV actions and the top-level `id` alias are removed; see the [migration guide](./docs/reference/tools/av.md#configuration-migration). CLI is now `v0.2.12`.
+<p align="center">
+  <img src="./assets/readme/hero.webp" width="900" alt="SiYuan with Sisyphus: permission badges on each notebook in the file tree, a weekly review the agent has just edited, and the Document Diff dock listing the agent's changes">
+</p>
+<p align="center"><sub>An agent has just tidied up a weekly review. The file tree shows what it may touch, the Document Diff dock shows what it changed, and the mascot reports the last tool call.</sub></p>
 
-> **v0.6.4:** `v0.6.4` — Expands guarded AV configuration, adds auditable Markdown snapshots, image-reference auditing, permission-scoped visual image delivery, extension diagnostics, and clearer path semantics. Thanks to [@LoneFireBlossom](https://github.com/LoneFireBlossom) for [PR #48](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/48) and PRs #50–#56, [@ray24777](https://github.com/ray24777) for [PR #57](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/57), and [@adminclaw](https://github.com/adminclaw) for [PR #58](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/pull/58). CLI is now `v0.2.6`.
+> **Latest: v0.7.0.** Safe-write preflight now shows a write-impact preview; `query_sql` runs in a restricted, notebook-scoped mode when some notebooks are unreadable; reads return `ifMatch`, with an optional low-risk one-step write mode (off by default); `document create` supports batch `docs`. Includes many fixes from multi-round AI usability testing. CLI is now `v0.3.0`. See the [changelog](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/CHANGELOG.md) for earlier releases.
 
-## Project Direction Update
+## Highlights
 
-I originally built SiYuan Sisyphus simply because I wanted my own SiYuan notes to connect more naturally with external AI agents. Now that SiYuan provides an official MCP implementation, I am glad to see a broader shared ecosystem taking shape. As one plugin developer within that ecosystem, I want Sisyphus to preserve its existing workflows while embracing official MCP and working alongside other plugins to make the connection between SiYuan and external agents smoother and more reliable.
+- **Notebook-level permissions.** Every notebook is `none`, `r`, `rw` or `rwd`, and risky actions such as delete, move and replace have their own switches.
+- **Strict safe writes.** A write is checked against the target's current-state hash, committed once and read back. Nothing is retried blindly.
+- **A document timeline for AI edits.** Take a node before the agent starts, compare it with the current document, and roll back the whole document or a single block.
+- **Small context, broad coverage.** More than 100 SiYuan capabilities sit behind 14 action-routed tools. Detailed help and Skills load only when needed.
+- **Human-readable paths.** `fs` works with paths like `/Notebook/Project/Note`, so agents do not need to know block IDs or the document tree.
+- **MCP Apps.** Flashcard review, the document timeline and the mascot shop open inside the conversation, and the user makes the final click.
+- **The official MCP ecosystem.** `extension` bridges SiYuan's official `/mcp`, so tools registered by other plugins appear in the same session.
+- **MCP and CLI share one core.** A tool behaves the same whether an agent calls it over MCP or a script runs it from the terminal.
 
-This does not replace the existing project:
+## Quick start
 
-- the 14 Sisyphus aggregate tools and notebook permissions remain available; AV v2 changes database actions as described in the migration guide;
-- Sisyphus now connects to SiYuan's official MCP endpoint and discovers tools registered by other plugins;
-- native SiYuan MCP tools can also be included explicitly, but remain disabled by default because they have a different security boundary;
-- permission management, the document timeline, and multiple connection options continue to be maintained.
+1. Install **SiYuan Sisyphus** from the SiYuan marketplace. The plugin runs on SiYuan 2.9.0+; the official MCP bridge and the kernel endpoint need SiYuan 3.7.0+.
+2. Open the plugin settings, go to **Connection Config → MCP Connection**, pick your client and transport, then copy the generated config. Presets cover Claude Code, Codex CLI, Cursor, Cherry Studio, Kimi Code, OpenCode, CC Switch and DSH.
+3. Start with a read-only request such as *"List my SiYuan notebooks"*.
 
-![SiYuan Sisyphus architecture](./assets/architecture.svg)
+<p align="center">
+  <img src="./assets/readme/connect.webp" width="820" alt="Connection settings: choose a client and a transport, then copy the generated MCP configuration">
+</p>
 
-> Architecture summary: external AI agents connect to Sisyphus. Its aggregate tools access the SiYuan workspace through `/api/*`, while `extension` uses the official `/mcp` endpoint to bridge tools registered by other plugins. Native SiYuan MCP tools are optional and disabled by default.
-
-The boundary is deliberate: Sisyphus-owned capabilities—including `fs`, the document timeline, permission management, CLI, document tools, and the other aggregate workflows—always use SiYuan's `/api/*` endpoints and never depend on official MCP. `/mcp` belongs exclusively to `extension`, where it discovers and forwards tools registered by other plugins and native SiYuan tools explicitly enabled by the user.
-
-## One Connection, Two Compatible Tool Ecosystems
-
-| Tool source | Default | Best suited for | Compatibility and security boundary |
-|---|---|---|---|
-| **Sisyphus aggregate tools** | Enabled | Stable read, search, edit, database, permission, and automation workflows | Pass through Sisyphus permissions and dangerous-action controls; database calls follow AV v2 |
-| **Official plugin MCP tools** | Enabled | New capabilities registered by other SiYuan plugins through official MCP | Dynamically discovered by `extension`; the official tool name becomes the action |
-| **Native SiYuan MCP tools** | Disabled | Testing and comparison in trusted local environments | Execute with the administrator session or API Token and bypass Sisyphus notebook permissions and dangerous-action confirmation |
-
-Existing users do not need to rewrite Sisyphus calls as official tools. Database scripts must adopt AV v2; official plugin tools add a new ecosystem entry point over the same connection.
-
-Plugin developers only need to register a tool with SiYuan's official MCP registry. Sisyphus can discover it there without requiring a separate Sisyphus-specific adapter.
-
-## What It Is
-
-SiYuan Sisyphus connects external AI agents to SiYuan so they can safely read, search, edit, and organize the workspace.
-
-It provides two entry points:
-
-- **MCP plugin**: connect SiYuan to Claude Desktop, Claude Code, Codex, Cursor, Cherry Studio, Cline, and other MCP-capable clients while bridging the official MCP plugin ecosystem.
-- **CLI `siyuan-sisyphus`**: let agents, terminals, and scripts operate SiYuan through short commands for one-shot tasks and automation.
-
-Both entry points share the same underlying SiYuan operations. Sisyphus-owned tools share one permission model; official tools forwarded through `extension` retain their own permission semantics.
-
-## Quick Start
-
-1. Install the plugin from the SiYuan marketplace, or build it from source using the development guide.
-2. Open `Plugin -> SiYuan Sisyphus MCP & CLI -> Settings`.
-3. Choose MCP or CLI on the connection page.
-4. Copy the generated client configuration, or initialize the CLI with `siyuan-sisyphus init`.
-5. Verify the connection with a read-only task such as listing notebooks or reading the SiYuan version.
-6. To use official MCP tools registered by other plugins, expand “Extension Tools” in tool settings and inspect the discovery status.
+Prefer the terminal? The CLI runs the same tools directly and keeps their schemas out of the model's context:
 
 ```bash
 npm i -g siyuan-sisyphus
-siyuan-sisyphus init
-sisyphus notebook list
+siyuan-sisyphus init                       # SiYuan API URL and token
+siyuan-sisyphus notebook list
+siyuan-sisyphus document list-tree --notebook <id> --json
 ```
 
-For complete installation and connection instructions, see [Getting Started](./docs/getting-started/index.md).
+Local, remote, Docker, HTTPS and mobile setups are covered in [Getting Started](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/getting-started/) and [Deployment](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/getting-started/deployment.html).
 
-## Core Capabilities
+## You stay in control
 
-- **Official MCP plugin ecosystem integration**: discover tools registered by other plugins through SiYuan's official MCP and expose them to external agents.
-- **Shared agent workflows**: retain Sisyphus aggregate tools, CLI, and notebook permission configuration; database workflows use AV v2.
-- **AI-friendly note access**: use human-readable `fs` paths such as `/Notebook/Project/Note` without requiring agents to understand block IDs or document-tree internals.
-- **MCP and CLI entry points**: use MCP for multi-step agent workflows and CLI for scripts, automation, and small one-shot tasks.
-- **Notebook-level safety**: assign each notebook `none`, `r`, `rw`, or `rwd` access.
-- **Low-context tool design**: group 100+ SiYuan capabilities into 14 action-routed tools and load detailed guidance only when needed.
-- **Scenario Skills for agents**: provide guidance for browsing, editing, search, databases, exports, tags, flashcards, document timelines, system safety, and SiYuan markup.
-- **MCP Apps views**: dedicated launch tools open flashcard review, document timeline, and mascot shop exactly once; ordinary aggregate tools never render duplicate Apps, and human actions are managed on a separate MCP Apps settings page.
-- **Git-like document timeline**: create named timeline nodes, compare snapshots, and roll back a document when needed.
-- **Practical connection setup**: generate connection snippets for common AI clients and local, remote, and Docker deployments.
+### Notebook permissions
 
-## MCP Apps: Interactive Workflows Inside The Conversation
+| Level | Read | Write | Delete |
+|---|:---:|:---:|:---:|
+| `rwd` | ✓ | ✓ | ✓ |
+| `rw` | ✓ | ✓ | |
+| `r` | ✓ | | |
+| `none` | | | |
 
-Version 0.6.0 adds three inline MCP Apps for clients that negotiate `io.modelcontextprotocol/ui`. Instead of turning an interactive task into a long sequence of chat messages, the agent prepares the required context once and opens a focused interface where the user finishes the workflow directly.
-
-| App | Dedicated launcher | What happens in the App |
-|-----|--------------------|-------------------------|
-| Flashcard review | `flashcard_review_session` | The agent selects 1–20 due cards from a fixed, permission-checked candidate snapshot. The user reveals each answer and rates it Again / Hard / Good / Easy without exposing the remaining cards in chat. After the round, the user can ask the agent to explain the reviewed material. |
-| Document timeline | `timeline_app` | Browse and create named nodes, compare a snapshot with the current document, inspect a compact block-level diff, and restore the whole document or one supported block. Pass `documentId` for a document timeline; omitting it intentionally opens a global-only view that can show only global nodes. Rollback uses an in-place second-click confirmation, so the target button does not move under the pointer. |
-| Mascot shop | `mascot_shop_app` | Browse the pixel-art vending machine, queue items in the pickup slot, and complete a purchase only when the item is collected. A successful pickup also triggers the desktop mascot's item and heart animation. |
+Documents inherit their notebook's level. Notebooks without an entry are read-only, and notebooks created after installation start at `rwd`. The badge beside each notebook in the file tree shows its level; click it to cycle through the levels.
 
 <p align="center">
-  <img src="./assets/mcp-apps/flashcard-review.jpg" alt="MCP App flashcard review with a prompt, reference answer, and four ratings" width="880">
+  <img src="./assets/readme/permissions.webp" width="820" alt="Permissions settings: an overview of access levels and one level per notebook">
 </p>
-<p align="center"><em>Flashcard review: the agent selects the cards; the user reveals each answer and rates their recall.</em></p>
+
+### Strict safe writes
+
+Strict safe writes are on by default (**Settings & Debug → Strict safe writes**).
+
+- A mutation first runs with `validateOnly=true` to get the target's current-state hash. The commit then carries the server-issued `requestId` and the matching `expected*Hash`.
+- A write is sent once. A timeout or a dropped connection returns `outcome_unknown` instead of risking a duplicate, and a committed `requestId` replays from the ledger.
+- No SiYuan data snapshots are created. Side effects that cannot be read back, such as sync, exports, notifications and third-party tools, are marked as not strictly guaranteed.
+- The CLI and stdio forward strict writes to a single coordinator: the plugin's HTTP server, or the kernel endpoint when it is enabled (the option for Docker and browser setups).
+
+Dangerous actions such as deletes, moves, replacements and asset uploads need explicit confirmation. Clients that support MCP elicitation confirm them in a form before anything is sent; other clients keep the `confirm=true` convention. See [Strict Safe Writes](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/write-safety.html) and [Permissions](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/permissions.html).
+
+## Review and roll back with the document timeline
 
 <p align="center">
-  <img src="./assets/mcp-apps/document-timeline.jpg" alt="MCP App document timeline showing block-level changes between a node and the current document" width="880">
+  <img src="./assets/readme/timeline.webp" width="860" alt="Document Snapshots dock with timeline nodes, and the Document Diff dock comparing the selected node with the current document">
 </p>
-<p align="center"><em>Document timeline: inspect additions, deletions, and edits in one compact diff, then restore only when needed.</em></p>
+
+- Create a **document node** before handing a document to an agent, or a **global node** that every document can see.
+- Select a node to open **Document Diff**, with unified and split views, word-level highlights, folded unchanged blocks and a change minimap.
+- Roll back the whole document or restore a single block.
+- Deleting a node removes only its protective tag. The underlying SiYuan snapshot stays.
+
+Agents get the same workflow through the [`timeline` tool](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/tools/timeline.html). Deleting nodes and rolling back are high-risk and disabled for AI by default. The timeline is built on SiYuan's workspace snapshots, so it is a safety net rather than a full Git replacement.
+
+## MCP Apps in the conversation
+
+Clients that negotiate `io.modelcontextprotocol/ui` get three launcher tools, each opening an inline App.
 
 <p align="center">
-  <img src="./assets/mcp-apps/mascot-shop.jpg" alt="MCP App mascot shop with a pixel-art vending machine, balance, and pickup slot" width="880">
+  <img src="./assets/readme/mcp-apps.webp" width="720" alt="Three MCP Apps: flashcard review with four ratings, a block-level document diff, and the pixel-art mascot shop">
 </p>
-<p align="center"><em>Mascot shop: choose an item and collect it from the pickup slot to complete the purchase.</em></p>
 
-The Apps follow a deliberately separated interaction model:
+| App | Launcher | What happens |
+|---|---|---|
+| [Flashcard review](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/tools/flashcard.html) | `flashcard_review_session` | The agent picks 1–20 due cards. You reveal each answer and rate it Again, Hard, Good or Easy. |
+| [Document timeline](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/tools/timeline.html) | `timeline_app` | Browse and create nodes, inspect the block diff, and restore the document or one block. |
+| [Mascot shop](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/tools/mascot.html) | `mascot_shop_app` | Spend the coins the mascot earns from tool calls. Picking up an item feeds the desktop mascot. |
 
-- **One launcher, one App:** only the dedicated launcher carries the UI resource. Ordinary `flashcard`, `timeline`, and `mascot` calls remain data tools and never produce duplicate App panels.
-- **The agent prepares; the user decides:** once an App opens, it becomes the sole interaction surface for that round. The model does not answer flashcards, choose ratings, roll back notes, or purchase items on the user's behalf.
-- **Independent human-action permissions:** App actions are hidden from the model with `visibility: ["app"]` and can be enabled individually under Settings → MCP → MCP Apps. Notebook permissions, action switches, and server-side confirmation for high-risk operations still apply.
-- **Graceful compatibility:** clients that do not advertise MCP Apps support do not receive the launchers or App-only actions. Existing aggregate-tool responses, `structuredContent`, and standalone CLI behavior remain unchanged.
+- Only the launcher opens an App. Ordinary `flashcard`, `timeline` and `mascot` calls remain data tools.
+- The agent prepares the round and you make the decisions. The model never answers cards, picks ratings, rolls back notes or buys items for you.
+- App actions are hidden from the model with `visibility: ["app"]` and are enabled one by one under **Settings → MCP Apps**.
+- Clients without MCP Apps support see none of this. Aggregate tools and the CLI work as before.
 
-See the detailed guides for [flashcard review](./docs/reference/tools/flashcard.md), the [timeline App](./docs/reference/tools/timeline.md), and the [mascot shop](./docs/reference/tools/mascot.md).
+## Works with SiYuan's official MCP
 
-## Official MCP Ecosystem Integration
-
-On SiYuan 3.7.0+, `extension` reads the official `/mcp` registry and turns allowed official tools into dynamic actions:
+On SiYuan 3.7.0+, `extension` reads the official `/mcp` registry and turns each allowed tool into an action. Downstream arguments stay inside `arguments`, so a tool's own `action` field never collides with Sisyphus routing:
 
 ```json
-{
-  "action": "plugin__example__search",
-  "arguments": {
-    "action": "query",
-    "keyword": "MCP"
-  }
-}
+{ "action": "plugin__example__search", "arguments": { "action": "query", "keyword": "MCP" } }
 ```
 
-All downstream parameters stay inside `arguments`, so a downstream tool can use its own `action` field without colliding with Sisyphus routing.
+| Tool source | Default | Security boundary |
+|---|---|---|
+| Sisyphus aggregate tools | On | Notebook permissions, action switches and strict safe writes |
+| Tools registered by other plugins | On | Discovered by `extension`; each tool keeps its own permission semantics |
+| Native SiYuan MCP tools | Off | Run with the administrator session or API token |
 
-The tool settings page reports plugin/native tool counts, exposed count, schema size, source, and risk information. Individual tools can also be disabled.
+Discovery is lazy and version-gated: below SiYuan 3.7.0, `/mcp` is never requested, and when it is unavailable only the dynamic actions disappear. The tool settings page lists every discovered tool with its source, schema size and risk, and any of them can be turned off. Plugin developers only need to register a tool with SiYuan's official MCP; Sisyphus finds it there without a separate adapter. Details are in the [`extension` reference](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/tools/extension.html).
 
-Connections are version-gated and lazy. Sisyphus first reads the SiYuan version through `/api/system/version`; versions below 3.7.0 never receive a `/mcp` request. The official endpoint is contacted only when `extension` is enabled or when the user inspects or refreshes extension tools in settings. The outer MCP Server does not wait for initial discovery when listing tools: successful results are cached, a tool-list-changed notification is sent, and later `tools/list` calls reuse the cache instead of forcing a refresh.
+> **Security note:** tools from other plugins and native SiYuan tools do not pass through Sisyphus notebook permissions or dangerous-action controls. Enable native tools only for local, fully trusted clients.
 
-If `/mcp` is unavailable, only dynamic extension actions are hidden. The remaining aggregate tools continue to work and outer MCP Server startup is unaffected. Official MCP integration does not raise the installation floor for the plugin; `minAppVersion` remains 2.9.0.
-
-> **Security note:** official plugin tools and optional native SiYuan tools do not pass through the notebook permissions or action-level dangerous-operation controls applied to Sisyphus-owned tools. Native tools in particular should only be enabled for local or fully trusted clients.
-
-See the [`extension` tool documentation](./docs/reference/tools/extension.md) for full calling conventions.
-
-## Git-Like Document Timeline
+## How it works
 
 <p align="center">
-  <img src="docs/archive/timeline-split.svg" alt="Separate Document Snapshots and Diff docks" width="900">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/readme/architecture-dark.svg">
+    <img src="./assets/readme/architecture-light.svg" width="900" alt="Architecture: AI agents and the CLI reach Sisyphus; its aggregate tools pass notebook permissions and strict safe writes before calling SiYuan's /api/*, while extension bridges the official /mcp registry">
+  </picture>
 </p>
-<p align="center"><em>The left snapshots dock manages nodes; the right diff dock compares and restores on demand.</em></p>
 
-The timeline gives ordinary SiYuan documents a source-control-style safety layer:
+Everything Sisyphus owns, including `fs`, document tools, the timeline, permissions and the CLI, talks to SiYuan only through `/api/*`, so it works the same on desktop, Docker and remote setups. `/mcp` is used only by `extension`.
 
-- create document-only nodes or global nodes visible in every document;
-- manage nodes in a compact, collapsible left dock inspired by VSCode Source Control;
-- open the right Document Diff dock automatically when selecting a node, while node creation only refreshes and highlights the new entry;
-- distinguish scopes with colored dots and Document / Global badges in one chronological list;
-- delete document or global nodes by removing only their protective tags while retaining the underlying snapshots;
-- compare a historical snapshot with the current document;
-- switch between unified and split diff;
-- use a minimap-style change navigator and collapse unchanged blocks;
-- preserve older timeline nodes in a legacy archive, link one legacy node to multiple documents, or safely convert it into a new global node;
-- roll back the whole document, or restore supported parsed blocks individually.
+- **MCP** over HTTP, stdio or the kernel endpoint suits agents that discover tools and chain multi-step work.
+- **The CLI** suits scripts and one-shot tasks.
 
-The snapshots dock reads only attribute and tag metadata. A current-state snapshot and diff are created only after a node is selected, and only for that node. The foundation is still SiYuan's workspace-wide snapshots: document ownership is recorded in document attributes, while global nodes are recovered from tags. It is intentionally not a complete Git replacement or source-control workflow.
+The server speaks MCP 2026-07-28 (stateless HTTP with per-request metadata) and keeps session-based support for 2025-era clients; see [protocol compatibility](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/getting-started/#mcp-2026-07-28-and-legacy-clients).
 
-The same workflow is available to MCP clients and the standalone CLI through the [`timeline` aggregate tool](./docs/reference/tools/timeline.md). Direct AI access to node deletion and both rollback actions is high-risk and disabled by default; MCP App writes use independent permissions so a user can click rollback without exposing that Tool to the model.
+## Skills for agents
 
-## MCP And CLI Entry Points
-
-Use **MCP** when an AI client should discover tools, compose multi-step operations, and verify results. It fits agent workflows involving search, reading, editing, database inspection, and official plugin tools.
-
-Use **CLI** when one terminal command is enough. It avoids placing long tool schemas in the model context and works well for scripts, automation, and small one-shot tasks.
-
-MCP and CLI share the same Sisyphus core call path, preventing one capability from developing different semantics across two entry points.
-
-### MCP 2026-07-28 compatibility
-
-The server uses MCP TypeScript SDK v2. `stdio` automatically serves both protocol eras. HTTP uses the SDK classifier: MCP 2026-07-28 requests are stateless and carry per-request metadata, while 2025-era clients retain the existing isolated `mcp-session-id` sessions. The built-in official-SiYuan MCP bridge negotiates the newest mutually supported era and falls back to legacy automatically.
-
-Modern dangerous calls use MCP multi-round-trip input: the operation is not dispatched until an elicitation-capable client returns explicit approval. Legacy clients keep the existing instruction/help confirmation contract for compatibility. Browser requests are Origin-validated; configure extra allowed hostnames with `SIYUAN_MCP_ALLOWED_ORIGINS`.
-
-## Scenario Skills For Agents
-
-The MCP server includes scenario-oriented guidance for browsing, editing, search, databases, exports, tags, flashcards, document timelines, system safety, and SiYuan markup. A regular MCP client does not need to install anything: it can read `siyuan://skills/index`, then load the matching `siyuan://skills/{name}` resource. For timeline work, load `siyuan://skills/siyuan-mcp-timeline` or invoke the `siyuan_timeline` prompt. The matching MCP prompts are user-invoked workflow starters; they are not applied automatically.
-
-Agents that support installable `SKILL.md` packages can install the same guidance locally:
+Sisyphus ships scenario guides for browsing, editing, search, databases, exports, tags, flashcards, the timeline, system safety and SiYuan markup. MCP clients read `siyuan://skills/index` and load `siyuan://skills/{name}` on demand. The same guides are published through the draft SEP-2640 Skills over MCP extension. Agents that install `SKILL.md` packages can copy them locally:
 
 ```bash
-siyuan-sisyphus skill install --bundle mcp # MCP calling conventions
-siyuan-sisyphus skill install --bundle all # MCP and CLI bundles
+siyuan-sisyphus skill install --bundle mcp   # MCP calling conventions
+siyuan-sisyphus skill install --bundle all   # MCP and CLI bundles
 ```
 
-Plain `siyuan-sisyphus skill install` remains the CLI bundle for backward compatibility. Skills describe workflows and safety decisions; the current parameter source of truth remains `siyuan://help/action/{tool}/{action}` or the corresponding `action="help"` response.
+A Codex agent plugin wrapper lives in [`agent-plugin/siyuan-sisyphus`](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/tree/main/agent-plugin/siyuan-sisyphus). More in [Scenario Skills and MCP Prompts](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/getting-started/#scenario-skills-and-mcp-prompts).
 
-Draft SEP-2640 Skills-over-MCP support is enabled by default for both HTTP and stdio transports and publishes all bundled workflow skills. For the plugin's built-in HTTP server, it can be toggled under Connection Config → HTTP/HTTPS Connection → Skills over MCP; saving restarts the server. Standalone servers can disable it with `SIYUAN_MCP_SKILLS_EXTENSION=false`. The extension advertises `io.modelcontextprotocol/skills`, implements `skills/list` and `skills/get`, and serves digest-addressed `skill://.../SKILL.md` resources. Because SEP-2640 is still a draft, the existing `siyuan://skills/*` resources and prompts remain the stable fallback.
+## Project direction
 
-A standalone Codex Agent Plugin wrapper is available in [`agent-plugin/siyuan-sisyphus`](./agent-plugin/siyuan-sisyphus). It connects to the default local HTTP endpoint and packages the same five entry skills; configure HTTP authentication separately when the endpoint requires a bearer token.
+I built Sisyphus because I wanted my own SiYuan notes to connect naturally with external AI agents. Now that SiYuan provides an official MCP implementation, I am glad to see a shared ecosystem taking shape. As one plugin developer in that ecosystem, I want Sisyphus to keep its existing workflows, embrace official MCP and work alongside other plugins to make the connection between SiYuan and external agents smoother and more reliable.
 
-## Safety Model
+Next, the project focuses on connection setup and compatibility across popular agents; HTTP, stdio, local, remote and Docker deployments; discovery and schema size of official MCP tools; clearer call status, errors and recovery; and task-oriented Skills, help and real-world validation.
 
-Sisyphus-owned tools are designed around explicit user control:
+## Feedback
 
-- each notebook can be read-only, writable, deletable, or hidden from AI;
-- dangerous actions such as delete, move, replace, and asset upload are treated separately;
-- Strict Safe Writes is enabled by default under Settings → MCP → Settings & Debug. A mutation first uses `validateOnly=true` to obtain the current-state hash, then submits the server-issued `requestId` with the matching `expected*Hash`;
-- write transport is attempted once. A timeout or disconnect returns `outcome_unknown` instead of risking a duplicate through a blind retry; a committed `requestId` is replayed from the metadata ledger;
-- strict mode creates no SiYuan data snapshots. It relies on target-state hashes, serial coordination, post-write readback, and a hash/ID-only idempotency ledger; notifications, sync, exports, and third-party tools that cannot be read back are explicitly marked as not strictly guaranteed;
-- MCP and CLI share the same core behavior, so switching entry points does not create a second permission model;
-- remote and Docker use cases go through the SiYuan HTTP API instead of assuming direct access to local workspace files.
+Bug reports, experience notes and design ideas are all welcome:
 
-See [Strict Safe Writes](./docs/reference/write-safety.md) for the call protocol, error semantics, and current boundaries. Strict writes from the standalone CLI and stdio server are forwarded to the plugin-hosted HTTP server's single coordinator, so that HTTP service must remain enabled. Disabling the setting restores the legacy argument and direct-call behavior, while mutation responses explicitly state that the strict guarantee is absent.
+- [GitHub Issues](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/issues) for public discussion.
+- The built-in `feedback` tool: an agent can call `feedback(action="submit", description="...")`.
 
-The official MCP bridge is a separate tool source. Forwarded calls execute with the current SiYuan administrator session or API Token and do not automatically inherit the notebook permissions or dangerous-action controls above. Before enabling or invoking them, ensure that the external agent, network environment, and downstream tool are trusted.
+Please leave out API tokens, secrets, private note content and local paths.
 
-## Future Direction And Feedback
+## Documentation
 
-The project will focus on improving the complete experience of connecting external agents to SiYuan, including:
-
-- connection configuration and compatibility across popular agent products;
-- HTTP, stdio, local, remote, and Docker deployments;
-- discovery, synchronization, filtering, and schema footprint of official MCP tools;
-- clearer call status, actionable errors, and connection recovery;
-- task-oriented Skills, help, and progressive disclosure;
-- real-world validation and experience comparisons across agent products.
-
-Bug reports, experience notes, and design suggestions are welcome:
-
-- [GitHub Issues](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/issues) for public discussion of problems, requests, and design ideas;
-- the built-in `feedback` tool, which agents can call as `feedback(action="submit", description="...")`.
-
-Do not include API tokens, secrets, private note content, or sensitive local paths in feedback.
-
-## Read The Docs
-
-- [Getting Started](./docs/getting-started/index.md)
-- [Common Tasks](./docs/reference/common-tasks.md)
-- [Tool Reference](./docs/reference/index.md)
-- [Permissions](./docs/reference/permissions.md)
-- [Strict Safe Writes](./docs/reference/write-safety.md)
-- [Development Guide](./docs/development/index.md)
-- [中文 README](./README_zh_CN.md)
+[Getting Started](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/getting-started/) ·
+[Common Tasks](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/common-tasks.html) ·
+[Tool Reference](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/) ·
+[Permissions](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/permissions.html) ·
+[Strict Safe Writes](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/reference/write-safety.html) ·
+[Development](https://yangtaihong59.github.io/siyuan-plugins-mcp-sisyphus/development/)
 
 ## ❤️ Contributors
 
 <a href="https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=yangtaihong59/siyuan-plugins-mcp-sisyphus" alt="Project contributors" />
+  <img src="https://contrib.rocks/image?repo=yangtaihong59/siyuan-plugins-mcp-sisyphus" alt="Project contributors">
 </a>
 
 Made with [contrib.rocks](https://contrib.rocks/).
 
 ## Support
 
-If you find this project helpful, please consider supporting it. Your support helps sustain maintenance and future Agent integration work.
+If Sisyphus helps you, please consider supporting it. Sponsorship keeps maintenance and agent integration work going.
 
-### Sponsor Thanks
-
-Thanks to **undefined**, **Fngd Z**, **ou**, **米建**, **锋🌀☁️**, **wooh**, **芝士柴犬** and all other kind supporters for sponsoring this project.
+Thanks to **undefined**, **Fngd Z**, **ou**, **米建**, **锋🌀☁️**, **wooh**, **芝士柴犬** and every other supporter.
 
 <p align="left">
-  <img src="docs/archive/thank.jpeg" alt="Support QR code" width="280">
+  <img src="docs/archive/thank.jpeg" alt="Support QR code" width="240">
 </p>
 
 ## License
 
-MIT
+[MIT](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/blob/main/LICENSE)

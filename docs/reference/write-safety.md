@@ -1,5 +1,7 @@
 # Strict Safe Writes
 
+Strict preflight and the state check before commit reload notebook permissions. An existing lease cannot bypass a later permission revocation, and granting permission does not require restarting the server.
+
 Strict Safe Writes addresses three concrete risks: the target changing after it was read, a transport retry duplicating a mutation, and a repeated request being mistaken for a new one. It is enabled by default and does not create SiYuan data snapshots.
 
 ## Call flow
@@ -26,9 +28,54 @@ The preflight reads without mutating, computes a complete SHA-256 digest, and cr
   "preconditionField": "expectedStateHash",
   "expectedStateHash": "8ac2",
   "hashPrefixLength": 4,
-  "leaseExpiresAt": 1786543200000
+  "expiresAt": 1786543200000
 }
 ```
+
+The same response also contains a normalized `preflight` object (`version: 2`). It is the preferred client contract:
+
+```json
+{
+  "preflight": {
+    "version": 2,
+    "requestId": "b72f",
+    "expiresAt": 1786543200000,
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "targetCount": 1 },
+    "commitArgs": {
+      "action": "set_cells",
+      "avID": "20260812120000-abcdefg",
+      "cells": [],
+      "validateOnly": false,
+      "requestId": "b72f",
+      "expectedManifestHash": "8ac2"
+    }
+  }
+}
+```
+
+Copy `preflight.commitArgs` unchanged as the next call arguments. Do not reconstruct `requestId`, hash fields, or business arguments by hand. `counts` is action-specific: `operationCount` is always present; `rowCount`, `cellCount`, and `targetCount` (distinct objects whose state the commit re-checks) appear only when they can be computed, and equal values are never deduplicated into a smaller cell count. `expiresAt` (top level and `preflight.expiresAt`) is the single deadline: the earlier of the requestId and hash-lease expiry, ten minutes after preflight. Since 0.7.0 the overlapping `requestIdExpiresAt`, `leaseExpiresAt`, `ttlMs` and top-level `targetCount` are no longer returned. Top-level `requestId` and hash fields remain during the migration window for 0.6.13 clients; both describe one execution path, not a second retry mechanism. If a batch is too large to return executable arguments within the response limit, it is rejected explicitly rather than truncated.
+
+### Impact preview
+
+Every successful preflight also returns a top-level `preview` describing what the commit will change. Read it and compare it with the intent before committing:
+
+```json
+{
+  "preview": {
+    "detail": "summary",
+    "targets": [{ "id": "20260812120000-abcdefg", "kind": "document", "title": "Meeting", "hPath": "/Meeting",
+                  "notebook": { "id": "20260101000000-nbaaaaa", "name": "Work", "permission": "rw" } }],
+    "changes": [{ "kind": "heading_to_doc", "summary": "Moves heading «Action items» and the 2 block(s) under it (3 blocks) out of «Meeting» into a new document «Action items» at Work:/Action items (at the notebook root). The source keeps 0 of 3 top-level block(s). The source document becomes EMPTY.", "movedBlockCount": 3 }],
+    "risk": ["empties_source"]
+  }
+}
+```
+
+- `targets`: affected documents, blocks, databases, notebooks or tags, with hPath, notebook name and this client's permission.
+- `changes`: one human-readable `summary` per change plus structured detail. Specific summaries exist for block update/replace/delete/move, fs write (overwrite)/replace/rm/mv/reorder, document remove/move/reorder/heading_to_doc/doc_to_heading, search find_replace, tag rename/remove and av remove_rows/remove_column/set_cells; other writes get a generic line with the key arguments.
+- `risk`: any of `deletes`, `empties_source`, `cross_notebook`, `irreversible`, `large_batch` (more than 20 items), `workspace_wide`, `overwrites_content`.
+
+The default detail truncates excerpts to about 200 characters and lists at most 5 entries per list. Pass `preview: "full"` (CLI `--preview full`) with `validateOnly=true` for complete before/after text. `preview` is response-only: it is excluded from the argument digest and `commitArgs`, and never changes the hash. The preview is built read-only; if it cannot be built, the preflight still succeeds with `preview: { "error": "..." }`.
 
 The credential field name matches the write parameter, so copy that field and value directly. Remove `validateOnly` (or set it to `false`) and copy the returned `requestId`:
 
@@ -43,7 +90,7 @@ The credential field name matches the write parameter, so copy that field and va
 }
 ```
 
-Preflight issues `requestId` starting at four hex digits, extending it when an already-issued ID collides. Copy the complete value; never generate or truncate it, and reuse it unchanged for retries. First execution expires after 10 minutes (`requestIdExpiresAt`); executed results remain for up to seven days. Persistent ID reservations prevent reuse after expiry, contain no note bodies, and grow with issuance count. Additive operations also require preflight to obtain an ID.
+Preflight issues `requestId` starting at four hex digits, extending it when an already-issued ID collides. Copy the complete value; never generate or truncate it, and reuse it unchanged for retries. First execution expires after 10 minutes (`expiresAt`); executed results remain for up to seven days. Persistent ID reservations prevent reuse after expiry, contain no note bodies, and grow with issuance count. Additive operations also require preflight to obtain an ID.
 
 Actions may use `expectedStateHash`, `expectedStructureHash`, `expectedManifestHash`, or `expectedSourceHash`. Read `preconditionField` instead of guessing. Additive actions have no state hash but still require the preflight-issued request ID for execution.
 
@@ -53,7 +100,52 @@ Preflight and receipts share a short-hash pool in the coordinator runtime. Befor
 
 The pool stores no note content. Aliases remain reserved for the process lifetime, even after leases expire or are consumed, and are never reassigned. Restart clears the pool and active leases; aliases are not permanent identifiers across restarts. Leases retain their operation scope, expiry, and capacity limits. Knowing an alias alone does not authorize a write.
 
-`block.update` reports the number of distinct targets from either `id` or `items[].id` in `targetCount`. A batch of 11 different blocks reports 11; repeated IDs count once. Block state includes Kramdown, block attributes, and DOM, so inline changes such as block-reference `data-subtype`, `strong`, or `em` change the hash. DOM attribute order and creation/update timestamps do not count as content changes. Attribute drift after preflight returns `state_changed`; a successful attribute edit returns `committed`, while an unchanged readback returns `no_change`.
+`block.update` reports the number of distinct targets from either `id` or `items[].id` in `preflight.counts.targetCount`. A batch of 11 different blocks reports 11; repeated IDs count once. Block state includes Kramdown, block attributes, and DOM, so inline changes such as block-reference `data-subtype`, `strong`, or `em` change the hash. DOM attribute order and creation/update timestamps do not count as content changes. Attribute drift after preflight returns `state_changed`; a successful attribute edit returns `committed`, while an unchanged readback returns `no_change`.
+
+## Read hashes and one-step writes (opt-in)
+
+`writeSafety.oneStep` is `off` by default (plugin settings → Safety settings → "One-step Low-risk Writes", stored as `"writeSafety": { "oneStep": "low_risk" }` in `mcpToolsConfig`). While it is off, reads, schemas, server instructions and the two-step flow above are unchanged, and a commit without `requestId` returns `precondition_required` exactly as before. Changing it restarts the plugin's HTTP server; reconnect clients to load the new schema. The setting is read by the selected coordinator (kernel or Node HTTP), so the CLI follows the same switch.
+
+### Read hashes (`ifMatch`)
+
+With one-step on, reads of a writable target add a top-level `ifMatch`: the first 16 hex digits of the same sha256:v1 state hash the strict preflight probe computes. The state is hashed **before** the read runs, so if the target changes in between, the caller holds an older hash than the content it saw and a later write fails closed. Targets the client cannot write (notebook permission `r`/`none`, missing targets) get no `ifMatch`. Next to it, `ifMatchTarget` names the id or path the hash covers: for `block.get_children` that is the parent that was read, never one of its children. A mismatch says which target the value must come from and the read that returns it; when the value was issued by this process for a different target, the error names both (`ifMatchIssuedFor`).
+
+| Read | Canonical probe (the hash equals this write's preflight credential) | Writes that accept the same `ifMatch` |
+| --- | --- | --- |
+| `block.get_kramdown` / `get_attrs` / `get_children` `{id}`, `document.get_doc {id}` | `block.update {id}` (`expectedStateHash`) | block `update`, `replace`, `set_attrs`, `set_fold_state`, `delete`; document `rename`, `set_attr`, `remove` (single `id`) |
+| `fs.read {path}` | `fs.write {path}` with `overwrite=true` (`expectedStateHash`) | fs `write`, `replace`, `rm` |
+| `av.get` / `av.query {avID}` | `av.set_cells {avID}` (`expectedManifestHash`) | av `add_rows`, `add_column`, `add_view`, `set_cells`, `remove_rows`, `remove_column`, `rename` |
+| `file.read_template {path}` | `file.update_template {path}` with the path normalized to its `data/templates`-relative form | file `update_template`, `delete_template` |
+
+Reads and writes of one target are both hashed through that single canonical probe call, so "read hash = preflight hash" holds by construction; sibling writes compare against the same canonical hash. A path must be spelled the same way in the read and the write (templates are normalized; fs paths are not). A batch shape (`items`) has no single target and rejects `ifMatch`.
+
+`ifMatch` is accepted on any strict write (CLI `--if-match`), including a `validateOnly` preflight — there it closes the gap between the agent's read and the preflight. The server recomputes the canonical hash; a mismatch returns `state_changed` with `expectedField: "ifMatch"` and the hint to read the target again. `ifMatch` is stripped from the argument digest and from `commitArgs`; malformed values (fewer than 16 hex digits) return `invalid_arguments`. Only when one-step is on do the mounted schemas advertise `ifMatch` (a few hundred characters).
+
+### One-step tiers
+
+A commit without `requestId` may run in one step only when the setting is on and the tier allows it (`ONE_STEP_TIERS` in `src/core/write-safety-policy.ts`):
+
+| Tier | Actions | One-step rule |
+| --- | --- | --- |
+| 1 — additive / low impact | document `create`, `rename`, `set_attr`; fs `write` (new document); block `insert`, `prepend`, `append`, `set_attrs`; av `create` (optionally named with `name`), `rename`, `add_rows`, `add_column`, `add_view`; flashcard `create_card`, `review_card` | Allowed without preflight; `ifMatch` optional (checked when present) |
+| 2 — overwrites | block `update`, `replace`; fs `write` with `overwrite=true`; fs `replace` without `replace_all`; av `set_cells`; file `update_template` | Allowed only with a matching `ifMatch` for a single target |
+| 3 — always two-step | every `dangerous` action, tag `rename`, document `heading_to_doc` / `doc_to_heading` / `reorder` / `move`, fs `reorder` / `mv`, block `transfer_references`, av `remove_rows` / `remove_column`, notebook `set_open_state` / `set_conf` / `rename`, fs `replace` with any `replace_all`, and every action not listed above (default deny) | Never |
+
+Any write whose largest item list (`items`, `blocks`, `rows`, `blockIDs`, `primaryKeyTexts`, `cells`, `rowIDs`, `ids`, `edit`) exceeds 20 entries falls back to two-step. Action help mentions the limit only for actions that take such a list.
+
+A one-step commit skips only the round trip. It still reloads permissions, runs the same state probe and reference checks, verifies `ifMatch`, serializes through the coordinator, reads back, and writes the ledger. It receives a server-issued `requestId` (returned in `safety.requestId`; replaying the same arguments with it does not execute again) and the receipt carries `oneStep: { tier, meaning }` plus the same `preview` a preflight would have returned, so the agent can check the change after the fact. That preview was computed before the write, so its target excerpts are named `excerptBefore`. Because the ID is issued during the call, a transport loss before the response cannot be deduplicated by resending without it: on `outcome_unknown`, inspect the target instead of resending.
+
+A refused one-step commit returns `precondition_required` with `error.oneStep: { allowed: false, tier, reason }`, where `reason` is `setting_off` (only when `ifMatch` was sent), `tier3`, `missing_if_match`, `if_match_unsupported` or `batch_too_large`, and the message names the two-step path (CLI: rerun with `--validate-only`). With one-step on, `action="help"` for a tier-1/2 topic adds `oneStep: { tier, rule }`.
+
+### Risk of one-step overwrites
+
+Tier 2 lets an overwrite commit in one step with a fresh `ifMatch`. `ifMatch` proves the target has not changed since it was read; it cannot catch the model reading and targeting the wrong block. In two-step mode the preflight preview can stop that before anything is written; in one-step mode the same preview only appears in the receipt, after the write. Mitigations:
+
+- One-step is off by default.
+- A tier-2 write needs a fresh read of that exact target (its `ifMatch`); a batch cannot use one step.
+- Dangerous and structural writes, and batches over 20 items, always stay two-step.
+- A model can still choose two steps (`validateOnly`; CLI `--validate-only`) whenever it is unsure of the target.
+- Recovery differs: a removed document is copied into SiYuan file history and can be restored there, but overwritten block content is not saved at write time; an older version may exist only in SiYuan's periodic file history snapshots of changed documents (`editor.generateHistoryInterval`). Neither can be undone through this tool.
 
 ## Correctness properties
 
@@ -70,13 +162,15 @@ The pool stores no note content. Aliases remain reserved for the process lifetim
 
 | Code | Meaning | Caller action |
 | --- | --- | --- |
-| `precondition_required` | A request ID or required hash is absent | Run preflight again; never invent a hash |
+| `precondition_required` | A request ID or required hash is absent, or a one-step commit was refused (`error.oneStep.reason`) | Run preflight again; never invent a hash |
 | `preflight_lease_invalid` | The lease is missing, expired, evicted, or belonged to a previous process | Run the same `validateOnly` call again |
-| `state_changed` | The target changed after preflight | Stop and reread before deciding to write |
-| `outcome_unknown` | The connection failed after execution began | Do not retry with a new ID; inspect the target |
+| `state_changed` | The target changed after preflight, or since the read that produced `ifMatch` | Stop and reread before deciding to write |
+| `not_applied` | SiYuan explicitly rejected the commit's write (an API error code or a 4xx answer) and no other write was sent: nothing changed. `safety.transactionState` is `not_applied`; a replay of that request ID returns the same code | Fix the arguments and send a new call (new preflight in two-step mode) |
+| `outcome_unknown` | The connection failed after execution began, or a handler failed after a write may have landed | Do not retry with a new ID; inspect the target |
 | `readback_mismatch` | The returned mutation could not be verified | Treat the outcome as unknown |
 | `idempotency_conflict` | The request ID was reused with different arguments | Generate a new ID |
 | `write_coordinator_unavailable` | The selected coordinator cannot be discovered or reached | Check kernel/Node HTTP settings and preflight again |
+| `kernel_endpoint_unsupported` | The Kernel endpoint is enabled but this SiYuan is older than 3.7.0 | Disable the Kernel endpoint and use the HTTP server, or upgrade SiYuan |
 | `preflight_unavailable` | The action is an external side effect that cannot be read back | Preflight does not execute; a real call carries no strict guarantee |
 
 ## Boundaries

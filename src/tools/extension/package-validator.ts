@@ -1,3 +1,4 @@
+import { isRecord } from '../../shared/record';
 export type ExtensionPackageType = 'plugin' | 'theme' | 'widget';
 
 export interface ExtensionPackageIssue {
@@ -69,10 +70,6 @@ const RUNTIME_DERIVED_MANIFEST_FIELDS = new Set([
     'bazaarIncompatible',
     'updateRequiredMinAppVer',
 ]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 function isSafeRelativePackageFile(path: string): boolean {
     if (!path || path.startsWith('/') || path.includes('\\') || path.includes('\0')) return false;

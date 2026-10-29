@@ -5,6 +5,7 @@ import { callBlockTool } from '@/tools/block';
 import { callDocumentTool } from '@/tools/document';
 import { callFileTool } from '@/tools/file';
 import { callSearchTool } from '@/tools/search';
+import { withRequestSemantics } from '../../helpers/mock-client';
 
 vi.mock('@/tools/internal/context', () => ({
     escapeSqlString: (value: string) => value.replace(/\0/g, '').replace(/'/g, "''"),
@@ -25,6 +26,7 @@ vi.mock('@/api/file', () => ({
 
 vi.mock('@/api/template', () => ({
     renderTemplate: vi.fn(),
+    resolveTemplateRenderPath: vi.fn(async (_client: unknown, path: string) => path),
     renderSprig: vi.fn(),
 }));
 
@@ -56,6 +58,12 @@ vi.mock('@/api/search', () => ({
     querySQL: vi.fn(),
     searchTag: vi.fn(),
 }));
+
+/** Write results carry a uiRefresh report; strip it to compare the slim business payload. */
+function withoutUiRefresh(result: { content: Array<{ text?: string }> }): Record<string, unknown> {
+    const { uiRefresh: _uiRefresh, ...payload } = JSON.parse(result.content[0].text!);
+    return payload;
+}
 
 describe('tool result normalization', () => {
     const enabledActions = <T extends string>(...actions: T[]) => ({
@@ -200,6 +208,8 @@ describe('tool result normalization', () => {
 
         expect(result.isError).toBeUndefined();
         expect(vi.mocked(blockApi.getBlocksWordCount)).toHaveBeenCalledWith(client, ['block-1']);
+        // blockCount counts the requested IDs; say so next to the stats.
+        expect(JSON.parse((result.content[0] as { text: string }).text).blockCountNote).toBe('blockCount counts the 1 ID(s) passed, not their child blocks; the other counts cover all content under them.');
     });
 
     it('normalizes fs.replace old/new shorthand before validation', () => {
@@ -327,7 +337,7 @@ describe('tool result normalization', () => {
             data: '# Title\n\n| A | B |\n| - | - |',
         }, enabledActions('update'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(withoutUiRefresh(result)).toEqual({
             success: true,
             id: 'block-1',
             dataType: 'markdown',
@@ -347,7 +357,7 @@ describe('tool result normalization', () => {
             data: 'hello',
         }, enabledActions('update'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(withoutUiRefresh(result)).toEqual({
             success: true,
             id: 'block-1',
             dataType: 'markdown',
@@ -472,7 +482,7 @@ describe('tool result normalization', () => {
             data: 'updated\u200B text',
         }, enabledActions('update'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toEqual({
+        expect(withoutUiRefresh(result)).toEqual({
             success: true,
             id: 'block-1',
             dataType: 'markdown',
@@ -507,7 +517,7 @@ describe('tool result normalization', () => {
 
     it('normalizes document cover sources into title-img attributes', async () => {
         const transactionApi = await import('@/api/transaction');
-        const refreshClient = { request: vi.fn().mockResolvedValue(null) } as any;
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
 
         const result = await callDocumentTool(refreshClient, {
             action: 'set_attr',
@@ -542,7 +552,7 @@ describe('tool result normalization', () => {
 
     it('clears document cover attributes', async () => {
         const transactionApi = await import('@/api/transaction');
-        const refreshClient = { request: vi.fn().mockResolvedValue(null) } as any;
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
 
         const result = await callDocumentTool(refreshClient, {
             action: 'set_attr',
@@ -574,9 +584,34 @@ describe('tool result normalization', () => {
         expect(refreshClient.request).toHaveBeenCalledWith('/api/ui/reloadFiletree', {});
     });
 
+    it('writes custom-* document attributes on the document root block', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
+
+        const result = await callDocumentTool(refreshClient, {
+            action: 'set_attr',
+            id: 'doc-1',
+            attrs: { 'custom-type': 'meeting', 'custom-old': '' },
+        }, enabledActions('set_attr'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledWith(refreshClient, [{
+            doOperations: [{
+                action: 'setAttrs',
+                id: 'doc-1',
+                data: JSON.stringify({ 'custom-type': 'meeting', 'custom-old': '' }),
+            }],
+            undoOperations: [],
+        }]);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            id: 'doc-1',
+            attrs: { 'custom-type': 'meeting', 'custom-old': '' },
+        });
+    });
+
     it('refreshes icon cache and file tree for document icon changes', async () => {
         const transactionApi = await import('@/api/transaction');
-        const refreshClient = { request: vi.fn().mockResolvedValue(null) } as any;
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
 
         const result = await callDocumentTool(refreshClient, {
             action: 'set_attr',
@@ -673,5 +708,29 @@ describe('tool result normalization', () => {
             hasNextPage: true,
             hint: 'Use page/pageSize to paginate. For focused reads, use block(action="get_kramdown") or search(action="query_sql") with a parent_id filter.',
         });
+    });
+    it('maps named flashcard ratings to FSRS numbers', () => {
+        expect(normalizeToolArguments('flashcard', { action: 'review_card', deckID: 'd', cardID: 'c', rating: 'Good' }))
+            .toMatchObject({ rating: 3 });
+        expect(normalizeToolArguments('flashcard', { action: 'review_card', deckID: 'd', cardID: 'c', rating: 'meh' }))
+            .toMatchObject({ rating: 'meh' });
+    });
+
+    it('accepts the column-type spelling mSelect as a multi_select cell valueType without mutating input', () => {
+        const cell = { rowID: 'r', columnID: 'c', valueType: 'mSelect', options: ['a'] };
+        const input = { action: 'add_rows', avID: 'av', rows: [{ clientKey: 'k', cells: [cell] }] };
+        const out = normalizeToolArguments('av', input) as any;
+        expect(out.rows[0].cells[0].valueType).toBe('multi_select');
+        expect(cell.valueType).toBe('mSelect');
+        expect((normalizeToolArguments('av', { action: 'set_cells', avID: 'av', ...cell }) as any).valueType).toBe('multi_select');
+    });
+    it('accepts any letter case for av update_view sort order', () => {
+        const out = normalizeToolArguments('av', { action: 'update_view', avID: 'av', viewID: 'v', sorts: [{ column: 'c1', order: 'desc' }, { column: 'c2', order: ' Asc ' }, { column: 'c3', order: 'down' }] }) as any;
+        expect(out.sorts).toEqual([{ column: 'c1', order: 'DESC' }, { column: 'c2', order: 'ASC' }, { column: 'c3', order: 'down' }]);
+    });
+    it('accepts notebook as a single-notebook alias for document.query notebooks', () => {
+        expect(normalizeToolArguments('document', { action: 'query', notebook: 'nb-1' })).toMatchObject({ notebooks: ['nb-1'] });
+        expect(normalizeToolArguments('document', { action: 'query', notebook: 'nb-1' })).not.toHaveProperty('notebook');
+        expect(normalizeToolArguments('document', { action: 'query', notebooks: ['a'], notebook: 'b' })).toMatchObject({ notebooks: ['a'] });
     });
 });

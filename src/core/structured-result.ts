@@ -1,5 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
-import type { ToolResult } from '../tools/internal/shared';
+import type { ToolResult } from './tool-result';
 
 export function withStructuredContent(result: ToolResult): CallToolResult {
     if (result.structuredContent) return result as CallToolResult;

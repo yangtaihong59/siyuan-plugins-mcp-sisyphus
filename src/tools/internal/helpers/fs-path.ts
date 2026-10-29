@@ -3,7 +3,8 @@ import * as documentApi from '../../../api/document';
 import * as notebookApi from '../../../api/notebook';
 import * as searchApi from '../../../api/search';
 import type { PermissionManager } from '../../../core/permissions';
-import { escapeSqlString } from '../context';
+import { normalizeFsPath as normalizeHumanPath, stripSySuffix } from '../../../shared/siyuan-path';
+import { escapeSqlString } from '../../../shared/sql';
 
 type PermissionRequirement = 'read' | 'write' | 'delete';
 
@@ -49,18 +50,6 @@ export interface FsCreateTarget {
     parentId?: string;
     hPath: string;
     canonicalPath: string;
-}
-
-function normalizeHumanPath(path: string): string {
-    const trimmed = path.trim();
-    if (!trimmed) throw new Error('fs path must not be empty.');
-    const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-    const collapsed = withLeadingSlash.replace(/\/+/g, '/');
-    return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed;
-}
-
-function stripSySuffix(name: string | undefined): string | undefined {
-    return typeof name === 'string' ? name.replace(/\.sy$/, '') : undefined;
 }
 
 function lastPathSegment(path: string): string {
@@ -143,13 +132,9 @@ async function getDocByHPath(
 }
 
 function formatCandidates(candidates: FsDocumentPath[]): string {
-    return candidates.map((candidate) => candidate.canonicalPath).join(', ');
-}
-
-export function getFsPathErrorCode(error: unknown): string | undefined {
-    return error && typeof error === 'object' && 'code' in error
-        ? String((error as { code?: unknown }).code)
-        : undefined;
+    // Same-title siblings share a canonical path; the ID is the only way to pick one.
+    const list = candidates.map((candidate) => `${candidate.canonicalPath} (id ${candidate.id})`).join(', ');
+    return `${list}. Same-named documents cannot be told apart by path; use an ID-based action (e.g. document get_doc or rename with id)`;
 }
 
 function createFsError(code: string, message: string): Error {
@@ -184,6 +169,14 @@ export async function resolveFsScopePath(
                 storagePath: '/',
                 canonicalPath: canonicalPath(canonicalNotebook.name, '/'),
             };
+        }
+        // Report the permission rather than "not found": the notebook name is
+        // already visible, its contents are not.
+        if (!permMgr.canRead(canonicalNotebook.id)) {
+            throw Object.assign(
+                createFsError('permission_denied', `Notebook "${canonicalNotebook.name}" (${canonicalNotebook.id}) has permission "${permMgr.get(canonicalNotebook.id)}"; read access is required to resolve "${path}".`),
+                { notebook: canonicalNotebook.id, current_permission: permMgr.get(canonicalNotebook.id), required_permission: 'read' },
+            );
         }
         const docs = await getDocByHPath(client, canonicalNotebook, hPath);
         if (docs.length === 0) {

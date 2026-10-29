@@ -42,7 +42,7 @@ describe('cli/flag-mapper', () => {
         const result = mapFlagsToArgs(['--topic', 'ai-layout-guide'], {
             properties: { action: { type: 'string' }, topic: { type: 'string' } },
         }, { category: 'fs', action: 'help' });
-        expect(result).toEqual({ args: { topic: 'ai-layout-guide' }, warnings: [] });
+        expect(result).toMatchObject({ args: { topic: 'ai-layout-guide' }, warnings: [], unknownFlags: [] });
     });
 
     it.each(['--block-start', '--block_start', '--blockStart'])(
@@ -248,6 +248,13 @@ describe('cli/flag-mapper', () => {
         expect(warnings).toEqual([]);
     });
 
+    it('accepts --old/--new for tag rename as CLI-only aliases', () => {
+        const tagSchema = { type: 'object', properties: { action: { type: 'string' }, oldLabel: { type: 'string' }, newLabel: { type: 'string' } } };
+        const { args, unknownFlags } = mapFlagsToArgs(['--old', 'a', '--new', 'b'], tagSchema, { category: 'tag', action: 'rename' });
+        expect(unknownFlags).toEqual([]);
+        expect(args).toEqual({ oldLabel: 'a', newLabel: 'b' });
+    });
+
     it('maps avID and single block id aliases to canonical fields', () => {
         const avSchema = {
             type: 'object',
@@ -285,5 +292,51 @@ describe('cli/flag-mapper', () => {
             schema,
             { category: 'document', action: 'ensure_link_targets' },
         ).args).toEqual({ parentId: 'doc-1' });
+    });
+    it('accepts a JSON array on a plain array flag and still splits comma lists', () => {
+        const schema = { type: 'object', properties: { action: { type: 'string' }, include: { type: 'array', items: { type: 'string' } } } };
+        expect(mapFlagsToArgs(['--include', '["id","path","hpath"]'], schema).args).toEqual({ include: ['id', 'path', 'hpath'] });
+        expect(mapFlagsToArgs(['--include', 'id,path'], schema).args).toEqual({ include: ['id', 'path'] });
+    });
+
+    it('reports flags the selected action does not accept instead of dropping them', () => {
+        const schema = {
+            type: 'object',
+            properties: { action: { type: 'string' }, notebooks: { type: 'array' }, title: { type: 'string' } },
+            'x-sisyphus-actionSchemas': [
+                { properties: { action: { const: 'query' }, notebooks: { type: 'array' } } },
+                { properties: { action: { const: 'search_docs' }, title: { type: 'string' } } },
+            ],
+        };
+        const result = mapFlagsToArgs(['--title-contains', 'x', '--title', 'y'], schema, { category: 'document', action: 'query' });
+        expect(result.unknownFlags).toEqual(['--title-contains', '--title']);
+        expect(result.acceptedArgs).toContain('notebooks');
+        expect(result.acceptedArgs).toContain('requestId');
+    });
+});
+
+describe('mapFlagsToArgs JSON for object/array unions', () => {
+    const editSchema = {
+        type: 'object',
+        properties: {
+            action: { type: 'string' },
+            id: { type: 'string' },
+            edit: { anyOf: [{ type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } } }, { type: 'array', items: { type: 'object' } }] },
+            value: { anyOf: [{ type: 'string' }, { type: 'object' }] },
+        },
+    };
+
+    it('parses JSON passed to the plain flag of an object|array union', () => {
+        expect(mapFlagsToArgs(['--id', 'b', '--edit', '{"old":"a","new":"b"}'], editSchema).args.edit).toEqual({ old: 'a', new: 'b' });
+        expect(mapFlagsToArgs(['--edit', '[{"old":"a","new":"b"}]'], editSchema).args.edit).toEqual([{ old: 'a', new: 'b' }]);
+    });
+
+    it('names the -json form when the value is not JSON', () => {
+        expect(() => mapFlagsToArgs(['--edit', 'oops'], editSchema)).toThrow(`--edit-json '{"old":"…","new":"…"}'`);
+        expect(() => mapFlagsToArgs(['--edit', '{bad'], editSchema)).toThrow(/looks like JSON but does not parse/);
+    });
+
+    it('keeps plain strings for unions that accept a string', () => {
+        expect(mapFlagsToArgs(['--value', 'plain'], editSchema).args.value).toBe('plain');
     });
 });

@@ -18,6 +18,7 @@ vi.mock('@/api/file', () => ({
 
 vi.mock('@/api/document', () => ({
     listDocTree: vi.fn(),
+    listDocsByPath: vi.fn(),
     getHPathByID: vi.fn(),
 }));
 
@@ -41,6 +42,7 @@ vi.mock('@/api/template', () => ({
     deleteTemplate: vi.fn(),
     saveDocAsTemplate: vi.fn(),
     renderTemplate: vi.fn(),
+    resolveTemplateRenderPath: vi.fn(async (_client: unknown, path: string) => path),
     renderSprig: vi.fn(),
 }));
 
@@ -224,6 +226,35 @@ describe('file tool asset actions', () => {
             'Same [same-1].md',
             'Same [same-2].md',
         ]);
+    });
+
+    it('includes a document root itself in a roots snapshot', async () => {
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockResolvedValueOnce({ tree: [{ id: 'doc-2', children: [] }] });
+        const payload = parseResult(await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/doc-1.sy'],
+        }, config.file, {} as never)) as any;
+        expect(payload.page.total).toBe(2);
+        expect(payload.documents.map((item: any) => item.id).sort()).toEqual(['doc-1', 'doc-2']);
+    });
+
+    it('falls back to listDocsByPath when the kernel rejects listDocTree', async () => {
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockRejectedValueOnce(new Error('SiYuan API error: -1 - path escapes notebook directory'));
+        vi.mocked(documentApi.listDocsByPath).mockReset().mockImplementation(async (_client, _notebook, path) => ({
+            files: path === '/'
+                ? [{ id: 'doc-1', path: '/doc-1.sy', name: 'My Document', subFileCount: 1 }]
+                : path === '/doc-1.sy' ? [{ id: 'doc-2', path: '/doc-1/doc-2.sy', name: 'Doc 2', subFileCount: 0 }] : [],
+        }) as never);
+        const payload = parseResult(await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/'],
+        }, config.file, {} as never)) as any;
+        expect(payload.errors ?? []).toEqual([]);
+        expect(payload.documents.map((item: any) => item.id).sort()).toEqual(['doc-1', 'doc-2']);
     });
 
     it('exposes asset management actions in the grouped schema', () => {
@@ -504,6 +535,37 @@ describe('file tool asset actions', () => {
                 },
             },
         });
+    });
+
+    it('strips block IALs from saved-document templates for document create', async () => {
+        const { stripTemplateIals } = await import('@/tools/file/handlers');
+        const source = [
+            '# 议题',
+            '{: id="20261029014256-aaaaaaa" fold="1"}',
+            '',
+            '段一 {: custom-x="a}b"}',
+            '{: id="20261029014256-bbbbbbb" custom-priority="high"}',
+            '',
+            '1. {: id="20261029014256-ccccccc"}甲',
+            '2. {: id="20261029014256-ddddddd"}乙',
+            '{: id="20261029014256-eeeeeee"}',
+            '',
+            '',
+            '{: id="20261029014256-fffffff" title="LAB" type="doc"}',
+        ].join('\n');
+
+        expect(stripTemplateIals(source)).toBe('# 议题\n\n段一 \n\n1. 甲\n2. 乙');
+    });
+
+    it('renders a relative template path through the resolved workspace path', async () => {
+        const templateApi = await import('@/api/template');
+        vi.mocked(templateApi.resolveTemplateRenderPath).mockResolvedValueOnce('/workspace/data/templates/demo.md');
+        vi.mocked(templateApi.renderTemplate).mockResolvedValueOnce({ path: '/workspace/data/templates/demo.md', content: '<div/>' });
+
+        await callFileTool(client, { action: 'render', engine: 'template', id: 'doc-1', path: 'demo.md' }, config.file, {} as never);
+
+        expect(templateApi.resolveTemplateRenderPath).toHaveBeenCalledWith(client, 'demo.md');
+        expect(templateApi.renderTemplate).toHaveBeenCalledWith(client, 'doc-1', '/workspace/data/templates/demo.md', undefined);
     });
 
     it('passes preview through while rendering workspace templates', async () => {
@@ -905,6 +967,79 @@ describe('file tool asset actions', () => {
         expect(parsed.extractedAssetCount).toBe(1);
         expect(parsed.skippedAssetCount).toBe(0);
         expect(readFileBinary).toHaveBeenCalledWith('data/assets/cover.png');
+    });
+
+    it('export_md includeChildren appends descendants in tree order', async () => {
+        const documentApi = await import('@/api/document');
+        const fileApi = await import('@/api/file');
+        const listings: Record<string, unknown[]> = {
+            '/doc-1.sy': [
+                { id: 'child-a', path: '/doc-1/child-a.sy', subFileCount: 1 },
+                { id: 'child-b', path: '/doc-1/child-b.sy', subFileCount: 0 },
+            ],
+            // No id field: the id is taken from the storage path.
+            '/doc-1/child-a.sy': [{ path: '/doc-1/child-a/child-a1.sy', subFileCount: 0 }],
+        };
+        vi.mocked(documentApi.listDocsByPath).mockReset().mockImplementation(async (_client, notebook, path) => {
+            expect(notebook).toBe('nb-1');
+            return { files: listings[path] ?? [] } as never;
+        });
+
+        const single = parseResult(await callFileTool(client, { action: 'export_md', id: 'doc-1' }, config.file, {} as never));
+        expect(single).toEqual({ hPath: '/My Document', content: '# doc-1\n' });
+        expect(documentApi.listDocsByPath).not.toHaveBeenCalled();
+
+        const parsed = parseResult(await callFileTool(client, {
+            action: 'export_md',
+            id: 'doc-1',
+            includeChildren: true,
+        }, config.file, {} as never));
+
+        expect(parsed.documents.map((doc: { id: string }) => doc.id)).toEqual(['doc-1', 'child-a', 'child-a1', 'child-b']);
+        expect(parsed.documentCount).toBe(4);
+        const marker = (id: string) => `<!-- siyuan-document id=${id} hPath=/My Document -->`;
+        expect(parsed.content).toBe(`# doc-1\n\n---\n\n${marker('child-a')}\n\n# child-a\n\n---\n\n${marker('child-a1')}\n\n# child-a1\n\n---\n\n${marker('child-b')}\n\n# child-b`);
+        expect(parsed.truncated).toBeUndefined();
+        expect(documentApi.listDocsByPath).not.toHaveBeenCalledWith(expect.anything(), 'nb-1', '/doc-1/child-b.sy', expect.anything());
+        expect(fileApi.exportMdContent).toHaveBeenCalledTimes(5);
+    });
+
+    it('export_md includeChildren keeps only the root front matter', async () => {
+        const documentApi = await import('@/api/document');
+        const fileApi = await import('@/api/file');
+        vi.mocked(documentApi.listDocsByPath).mockReset().mockImplementation(async (_client, _notebook, path) => ({
+            files: path === '/doc-1.sy' ? [{ id: 'kid', path: '/doc-1/kid.sy', subFileCount: 0 }] : [],
+        }) as never);
+        const original = vi.mocked(fileApi.exportMdContent).getMockImplementation();
+        vi.mocked(fileApi.exportMdContent).mockImplementation(async (_client, id) => (id === 'doc-1'
+            ? { hPath: '/Root', content: '---\ntitle: Root\n---\n\n# Root\n\nroot body\n' }
+            : { hPath: '/Root/Kid', content: '---\ntitle: "Kid"\ndate: 2026\n---\n\nkid body\n' }) as never);
+        try {
+            const parsed = parseResult(await callFileTool(client, { action: 'export_md', id: 'doc-1', includeChildren: true }, config.file, {} as never));
+            expect(parsed.content).toBe('---\ntitle: Root\n---\n\n# Root\n\nroot body\n\n---\n\n<!-- siyuan-document id=kid hPath=/Root/Kid -->\n\n# Kid\n\nkid body');
+            expect(parsed.content.match(/^---$/gm)).toHaveLength(3);
+        } finally {
+            if (original) vi.mocked(fileApi.exportMdContent).mockImplementation(original);
+        }
+    });
+
+    it('export_md includeChildren stops after 100 descendants and says so', async () => {
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocsByPath).mockReset().mockImplementation(async (_client, _notebook, path) => ({
+            files: path === '/doc-1.sy'
+                ? Array.from({ length: 105 }, (_, i) => ({ id: `kid-${i}`, path: `/doc-1/kid-${i}.sy`, subFileCount: 0 }))
+                : [],
+        }) as never);
+
+        const parsed = parseResult(await callFileTool(client, {
+            action: 'export_md',
+            id: 'doc-1',
+            includeChildren: true,
+        }, config.file, {} as never));
+
+        expect(parsed.documentCount).toBe(101);
+        expect(parsed.truncated).toBe(true);
+        expect(parsed.hint).toContain('export_markdown_snapshot');
     });
 
     describe('kernel transport', () => {

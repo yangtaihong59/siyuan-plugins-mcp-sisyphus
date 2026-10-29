@@ -2,19 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import * as notebookApi from '../../api/notebook';
 import type { NotebookAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    NotebookCreateSchema,
-    NotebookGetConfSchema,
-    NotebookGetChildDocsSchema,
-    NotebookGetPermissionsSchema,
-    NotebookListSchema,
-    NotebookSetOpenStateSchema,
-    NotebookRemoveSchema,
-    NotebookRenameSchema,
-    NotebookSetConfSchema,
-    NotebookSetIconSchema,
-    NotebookSetPermissionSchema,
-} from '../../core/types';
+import { NotebookCreateSchema, NotebookGetConfSchema, NotebookGetChildDocsSchema, NotebookGetPermissionsSchema, NotebookListSchema, NotebookSetOpenStateSchema, NotebookRemoveSchema, NotebookRenameSchema, NotebookSetConfSchema, NotebookSetIconSchema, NotebookSetPermissionSchema } from './schemas';
 import { ensurePermissionForNotebook, listChildDocumentsByPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createErrorResult, createJsonResult, createPaginatedResult, createSetIconReminder, paginate, type ToolResult } from '../internal/shared';
@@ -95,21 +83,35 @@ function createNotebookChildDocsStateErrorResult(notebookId: string, message: st
     };
 }
 
-const handleList: NotebookActionHandler = async ({ client, rawArgs }) => {
+const handleList: NotebookActionHandler = async ({ client, permMgr, rawArgs }) => {
     NotebookListSchema.parse(rawArgs);
     const result = await notebookApi.listNotebooks(client);
-    return createJsonResult(result.notebooks);
+    // Show what this client may do with each notebook, so callers need not
+    // follow up with get_permissions before choosing where to write.
+    await permMgr.reload();
+    return createJsonResult(result.notebooks.map((notebook) => ({ ...notebook, permission: permMgr.get(notebook.id) })));
 };
 
-const handleCreate: NotebookActionHandler = async ({ client, rawArgs }) => {
+const handleCreate: NotebookActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = NotebookCreateSchema.parse(rawArgs);
     const result = await notebookApi.createNotebook(client, parsed.name);
+    // The notebook exists now; a failed permission write must not hide that.
+    let permission: string;
+    let permissionWarning: string | undefined;
+    try {
+        permission = await permMgr.grantNewNotebook(result.notebook.id);
+    } catch (error) {
+        permission = permMgr.get(result.notebook.id);
+        permissionWarning = `Notebook was created, but its permission could not be saved: ${error instanceof Error ? error.message : String(error)}`;
+    }
     if (parsed.icon) {
         await notebookApi.setNotebookIcon(client, result.notebook.id, parsed.icon);
         result.notebook.icon = parsed.icon;
     }
     return applyUiRefresh(client, createJsonResult({
         ...result.notebook,
+        permission,
+        ...(permissionWarning ? { permissionWarning } : {}),
         iconHint: createSetIconReminder('notebook', Boolean(parsed.icon)),
     }), parsed.icon ? [{ type: 'reloadIcon' }] : [{ type: 'reloadFiletree' }]);
 };

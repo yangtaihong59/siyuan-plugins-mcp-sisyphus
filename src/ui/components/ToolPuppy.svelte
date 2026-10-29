@@ -458,6 +458,7 @@
         }
         prevVisible = visible;
     }
+    let eyeState: 'blink' | 'happy' | 'sad' | 'danger' | 'flat' | 'normal';
     $: eyeState = pointerState === 'pointer-pet' ? 'happy' :
         isSleeping || isYawning ? 'blink' :
         blinking ? 'blink' :
@@ -548,7 +549,9 @@
 <style>
     .sy-puppy {
         position: fixed;
-        z-index: 9999;
+        /* Above the workspace layout (toolbars reach 7), below SiYuan's dialogs and
+           menus, which take ++window.siyuan.zIndex starting from 10. */
+        z-index: 9;
         cursor: grab;
         user-select: none;
         touch-action: none;

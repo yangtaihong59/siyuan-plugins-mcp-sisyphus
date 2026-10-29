@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as api from '@/api/search';
 import { getBacklinksWithFallback } from '@/tools/search/sql-builder';
 import { callSearchTool } from '@/tools/search';
@@ -100,5 +100,58 @@ describe('backlink query scope', () => {
         expect(out.backmentions).toEqual([]);
         expect(out).toMatchObject({ partial: true, filteredOutCount: 3, reason: 'permission_filtered' });
         expect(out.linkRefsCount).toBeUndefined();
+    });
+});
+
+describe('get_backlinks refBlocks', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    const config = { enabled: true, actions: { get_backlinks: true } } as any;
+    const permMgr = { canRead: (box: string) => box === 'readable' } as any;
+
+    const stubBacklinks = (refs: () => Promise<unknown[]>) => {
+        vi.spyOn(context, 'ensurePermissionForDocumentId').mockResolvedValue({ context: {} as any, denied: null });
+        vi.spyOn(api, 'getBacklink2').mockResolvedValue({
+            backlinks: [{ id: 'doc-a', box: 'readable' }],
+            backmentions: [{ id: 'mention', box: 'readable' }],
+        } as any);
+        return vi.spyOn(api, 'querySQL').mockImplementation(async (_client, stmt) => {
+            if (stmt.includes('FROM refs')) return refs() as any;
+            return [];
+        });
+    };
+
+    it('adds permission-filtered referencing blocks unless mode is mentions', async () => {
+        const sql = stubBacklinks(async () => [
+            { id: 'ref-visible', root_id: 'doc-a', box: 'readable', path: '/doc-a.sy', hpath: '/A', type: 'p', content: 'see ((target))' },
+            { id: 'ref-hidden', root_id: 'doc-b', box: 'restricted', path: '/doc-b.sy', hpath: '/B', type: 'p', content: 'secret ((target))' },
+        ]);
+
+        const links = parseResult(await callSearchTool({} as any, { action: 'get_backlinks', id: 'target', mode: 'links' }, config, permMgr));
+        expect(links.refBlocks.map((block: { id: string }) => block.id)).toEqual(['ref-visible']);
+        expect(JSON.stringify(links.refBlocks)).not.toContain('secret');
+
+        const both = parseResult(await callSearchTool({} as any, { action: 'get_backlinks', id: 'target' }, config, permMgr));
+        expect(both.refBlocks).toHaveLength(1);
+
+        sql.mockClear();
+        const mentions = parseResult(await callSearchTool({} as any, { action: 'get_backlinks', id: 'target', mode: 'mentions' }, config, permMgr));
+        expect(mentions.refBlocks).toBeUndefined();
+        expect(sql.mock.calls.some(([, stmt]) => stmt.includes('FROM refs'))).toBe(false);
+    });
+
+    it('leaves refBlocks out when the refs query fails', async () => {
+        stubBacklinks(async () => {
+            throw new Error('sql unavailable');
+        });
+
+        const result = await callSearchTool({} as any, { action: 'get_backlinks', id: 'target', mode: 'links' }, config, permMgr);
+        const parsed = parseResult(result);
+
+        expect(result.isError).toBeUndefined();
+        expect(parsed.refBlocks).toBeUndefined();
+        expect(parsed.backlinks).toHaveLength(1);
     });
 });

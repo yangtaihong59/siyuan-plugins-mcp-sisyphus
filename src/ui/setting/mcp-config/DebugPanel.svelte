@@ -1,6 +1,6 @@
 <script lang="ts">
     import SettingPanel from "../../shared/setting-panel.svelte";
-    import type { ToolConfig } from "../tool-config";
+    import type { ToolConfig } from "@/core/config";
     import type { PuppySettings, VersionControlSettings } from "../tool-config-storage";
 
     export let group: string;
@@ -28,6 +28,16 @@
                 description: label(
                     "write_safety_strict_desc",
                     "Require requestId and a current-state preflight credential for protected mutations, then serialize and read back each write. Turn this off only for legacy write clients.",
+                ),
+            },
+            {
+                type: "checkbox",
+                key: "writeSafety__oneStep",
+                value: currentConfig.writeSafety.strictMode && currentConfig.writeSafety.oneStep === "low_risk",
+                title: label("write_safety_one_step_title", "One-step Low-risk Writes"),
+                description: label(
+                    "write_safety_one_step_desc",
+                    "Off by default. When on, low-risk writes may commit without a preflight, and overwrites may commit with the ifMatch hash returned by a read. Dangerous, structural and large batch writes always keep the two-step preflight. Risk: ifMatch only proves the target is unchanged since it was read; it cannot catch a wrong target, and the preview arrives only after the write. When unsure, use the two-step preflight; overwritten block content may only be recoverable from SiYuan's periodic file history snapshots.",
                 ),
             },
             {
@@ -76,8 +86,8 @@
     }
 
     $: debugItems = buildDebugItems(config, puppySettings, versionControlSettings, getLabel);
-    $: runtimeItems = debugItems.slice(0, 4);
-    $: testItems = debugItems.slice(4);
+    $: runtimeItems = debugItems.slice(0, 5);
+    $: testItems = debugItems.slice(5);
 </script>
 
 <div class="debug-settings" class:fn__none={!display}>

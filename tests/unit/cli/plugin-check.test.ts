@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ensureRequiredPluginInstalled, REQUIRED_PLUGIN_MANIFEST_PATH } from '@/cli/plugin-check';
 import { PERMISSIONS_API_PATH } from '@/core/permissions';
+import { requestError } from '../../helpers/request-error';
 
 describe('cli/plugin-check', () => {
     it('passes when plugin manifest exists and permissions storage is readable', async () => {
@@ -40,7 +41,7 @@ describe('cli/plugin-check', () => {
                     return JSON.stringify({ name: 'siyuan-plugins-mcp-sisyphus' });
                 }
                 if (path === PERMISSIONS_API_PATH) {
-                    throw new Error('HTTP error: 500 Internal Server Error');
+                    throw requestError('HTTP error: 500 Internal Server Error');
                 }
                 throw new Error(`Unexpected path: ${path}`);
             }),

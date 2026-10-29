@@ -6,17 +6,14 @@
  * circular-dependency cycles between shared.ts and help-render.ts.
  */
 
-export interface ToolResult {
-    content: Array<{ type: 'text'; text: string }>;
-    isError?: boolean;
-    structuredContent?: Record<string, unknown>;
-}
+export type { ToolTextContent, ToolImageContent, ToolContent, ToolResult } from '../../core/tool-result';
 
-export type JsonSchema = Record<string, unknown>;
+export type JsonSchema = Record<string, any>;
 
 export interface ActionVariant<Action extends string> {
     action: Action;
     schema: JsonSchema;
+    validate?: (args: Record<string, unknown>) => void;
 }
 
 export interface AggregatedToolOptions<Action extends string> {

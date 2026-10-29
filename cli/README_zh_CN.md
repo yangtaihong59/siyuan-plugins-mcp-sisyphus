@@ -6,7 +6,9 @@
 
 这是一个用于直接通过命令行操作 [SiYuan Note](https://b3log.org/siyuan) 的 CLI。你可以把它理解成思源版的 `obsidian-cli`：每个 MCP 工具（`fs`、`block`、`document`、`notebook`、`av`、`search`、`tag`、`file`、`timeline`、`system`、`flashcard`、`extension`、`mascot`、`feedback`）都会暴露成可在 shell 中直接调用的子命令。
 
-> **最新版本：** `v0.2.13` — 修复数据库筛选默认值、参数校验与载体识别，稳定预检提交和无变更判断；修复跨笔记本同路径创建、模板读回与引用范围查询，保留链接目标完整映射；完善 SQL 权限说明与双语帮助。 与插件 `v0.6.12` 同步共享修复。
+> **最新版本：** `v0.3.0` — 预检先显示写入影响预览再给提交命令（`--preview full` 查看完整前后文本）；受限、按笔记本限定的 `query_sql`；可选“低风险一步写入”（默认关闭）支持 `--if-match`；`document create --docs-json` 批量新建；修复多轮 AI 体验测试发现的一批问题。不兼容：`search_refs` 改为返回引用块并移除 `beforeLen`/`isSquareBrackets`/`isDatabase`/`reqId`。与插件 `v0.7.0` 同步。
+
+> **v0.2.13：** 修复数据库筛选默认值、参数校验与载体识别，稳定预检提交和无变更判断；修复跨笔记本同路径创建、模板读回与引用范围查询，保留链接目标完整映射；完善 SQL 权限说明与双语帮助。 与插件 `v0.6.12` 同步共享修复。
 
 > **v0.2.12：** 升级为 AV v2，提供结构读取、分页 `query`、显式 `create` 和组合 `update_view`，与插件 `v0.6.11` 共用创建回执与配置校验。旧 AV action 和顶层 `id` 别名已移除，迁移方式见[数据库文档](../docs/zh/reference/tools/av.md)。
 

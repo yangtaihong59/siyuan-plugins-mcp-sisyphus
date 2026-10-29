@@ -25,11 +25,16 @@ Keep these identifiers distinct: AV ID identifies the database; view ID identifi
 siyuan-sisyphus av add-column --av-id '<av-id>' --key-name 'Status' --key-type 'select' --json
 ```
 ```bash
+siyuan-sisyphus av add-rows --av-id '<av-id>' --rows-json '[{"clientKey":"e1","primaryKeyText":"Standup","cells":[{"columnID":"<date-column-id>","valueType":"date","date":"2026-11-05T09:30"}]}]' --json
+```
+```bash
 siyuan-sisyphus av add-rows --av-id '<av-id>' --view-id '<view-id>' --block-ids-json '["<block-id>"]' --json
 ```
 ```bash
 siyuan-sisyphus av set-cells --av-id '<av-id>' --cells-json '[{"rowID":"<row-id>","columnID":"<column-id>","valueType":"text","text":"Done"}]' --json
 ```
+
+To create rows together with their values (dates included), pass `rows` with `cells` in one add_rows call (up to 200 rows) instead of adding rows and then calling set_cells per row; set_cells takes many `cells` in one call too.
 
 Before writing cells, query the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Query again after mutation. Read `siyuan-sisyphus help av set-cells` for the current cell schema.
 

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { ACTIONS_BY_CATEGORY, TOOL_CATEGORIES } from '@/core/config';
-import { TOOL_REGISTRY } from '@/core/tool-registry';
+import { TOOL_REGISTRY } from '@/mcp/tool-registry';
 
 describe('action inventory documentation contract', () => {
     it('derives every static category and action count from the source registry', () => {

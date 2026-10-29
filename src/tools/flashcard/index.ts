@@ -1,14 +1,6 @@
 import type { FlashcardAction } from '../../core/config';
 import { FLASHCARD_ACTION_HINTS, FLASHCARD_GUIDANCE } from '../../core/help';
-import {
-    FlashcardActionSchema,
-    FlashcardCreateCardSchema,
-    FlashcardGetCardsSchema,
-    FlashcardGetDecksSchema,
-    FlashcardListCardsSchema,
-    FlashcardRemoveCardSchema,
-    FlashcardReviewCardSchema,
-} from '../../core/types';
+import { FlashcardActionSchema, FlashcardCreateCardSchema, FlashcardGetCardsSchema, FlashcardGetDecksSchema, FlashcardListCardsSchema, FlashcardRemoveCardSchema, FlashcardReviewCardSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant } from '../internal/shared';
 import { FLASHCARD_ACTION_HANDLERS } from './handlers';

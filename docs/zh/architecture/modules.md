@@ -39,14 +39,12 @@ src/
 │   │   ├── define-tool.ts    # 工具工厂
 │   │   ├── shared.ts         # 共享基础设施
 │   │   ├── schema-analyzer.ts# schema 分析与描述裁剪
-│   │   ├── result-factory.ts # 标准结果工厂
 │   │   ├── pagination.ts     # 分页工具
 │   │   ├── context.ts        # 权限上下文解析
 │   │   ├── errorTranslation.ts # 思源错误码 → 用户友好文案
 │   │   ├── validation.ts     # 参数校验辅助
 │   │   ├── ui-refresh.ts     # 触发思源 UI 刷新
 │   │   ├── help-render.ts    # help action 输出渲染
-│   │   ├── help-router.ts    # help 路由分发
 │   │   └── helpers/          # 跨工具 helper，如 notebookName 补全
 │   ├── notebook/             # notebook 工具
 │   │   ├── index.ts          # variants + list/call 导出
@@ -150,11 +148,11 @@ src/
 | `startHttpServer()` | 读取 `window.siyuan.config.api.token`，调用 `httpLauncher.start()` |
 | `updateHttpServerSettings(next)` | 运行时热更新：先 stop → 持久化 → 按需 restart |
 
-**依赖**：`ui/setting/tool-config-storage`、`ui/components/ToolPuppy`、`ui/setting/mcp-config.svelte`、`server-launcher`（HttpServerLauncher）
+**依赖**：`ui/setting/tool-config-storage`、`ui/components/ToolPuppy`、`ui/setting/mcp-config.svelte`、`ui/plugin/server-launcher`（HttpServerLauncher）
 
 ---
 
-## 2. MCP Server：`src/core/server.ts`
+## 2. MCP Server：`src/mcp/server.ts`
 
 **职责**：创建 MCP `Server` 实例，注册 7 个 handler，管理 transport 模式（stdio / HTTP），加载配置与权限。启用 Skills 扩展时，还会额外注册 2 个条件 handler。
 
@@ -184,7 +182,7 @@ src/
 
 ---
 
-## 3. 工具注册表：`src/core/tool-registry.ts`
+## 3. 工具注册表：`src/mcp/tool-registry.ts`
 
 **职责**：维护 `TOOL_REGISTRY` 映射表，将 `TOOL_CATEGORIES` 声明的 category 统一收敛为 `ToolModule` 接口。category 模块在编译期注册，`extension` 在可选的 prepare 阶段动态发现 action 集合。
 
@@ -347,7 +345,7 @@ type ToolConfig = {
 
 ---
 
-## 8. HTTP 传输层：`src/core/http-transport.ts`
+## 8. HTTP 传输层：`src/mcp/http-transport.ts`
 
 **职责**：基于 SDK v2 实现 HTTP MCP 传输，逐请求分类并路由到 MCP 2026-07-28 无状态 handler 或 legacy 有会话 handler。
 

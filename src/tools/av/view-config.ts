@@ -1,5 +1,5 @@
 import type { TransactionOperation } from '../../api/transaction';
-import { AvUpdateViewSchema } from '../../core/types';
+import { AvUpdateViewSchema } from './schemas';
 
 export function viewFields(view: any): Array<Record<string, any>> {
     const fields = view.type === 'table' ? view.table?.columns : view.type === 'gallery' ? view.gallery?.fields : view.type === 'kanban' ? view.kanban?.fields : undefined;

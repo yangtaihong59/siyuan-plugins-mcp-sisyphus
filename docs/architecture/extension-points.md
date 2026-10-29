@@ -40,7 +40,7 @@ If you want to expose a new set of SiYuan API capabilities to MCP clients, follo
    - Each variant contains: `action` (name), `description`, `schema` (Zod), `handler` (business logic)
    - For permission checks in handlers, use `tools/internal/context.ts`: `ensurePermissionForDocumentId` / `ensurePermissionForNotebook`
 
-4. **Registry Registration** (`src/core/tool-registry.ts`)
+4. **Registry Registration** (`src/mcp/tool-registry.ts`)
    - Add entry to `TOOL_REGISTRY`:
      ```typescript
      xxx: { category: 'xxx', listTools: listXxxTools, callTool: callXxxTool }
@@ -50,7 +50,7 @@ If you want to expose a new set of SiYuan API capabilities to MCP clients, follo
    - Add guidance text for the category
    - Add hints for each action
 
-6. **Resource Registration** (`src/core/resources.ts`, optional)
+6. **Resource Registration** (`src/mcp/resources.ts`, optional)
    - If dynamic help resources are needed, add routing in `readHelpResource()`
 
 7. **Settings Panel** (`src/ui/setting/mcp-config.svelte` and sub-panels)
@@ -101,7 +101,7 @@ MCP Resources are static or dynamic help documents that AI clients can fetch via
 
 #### Adding Static Resources
 
-In `src/core/resources.ts`:
+In `src/mcp/resources.ts`:
 1. Add resource metadata in `listHelpResources()`
 2. Add URI matching branch in `readHelpResource()`
 3. Define resource content text in `src/core/help.ts`
@@ -132,7 +132,7 @@ The settings panel uses Svelte components integrated with SiYuan native UI (`b3-
 
 #### Adding New Config Fields
 
-1. Define new field in `src/ui/setting/tool-config.ts` or related schema file
+1. Define new field in `src/core/config.ts` (`ToolConfig`, defaults and `normalizeToolConfig`)
 2. Add `loadXxx()` / `saveXxx()` in `src/ui/setting/tool-config-storage.ts`
 3. Add key prefix routing in `src/ui/setting/mcp-config.svelte`'s `onChanged` dispatcher
 4. Add UI control in corresponding sub-panel component
@@ -152,7 +152,7 @@ Currently supports stdio and HTTP/S. To add new transports:
 
 1. Create transport implementation file under `src/core/` (e.g. `websocket-transport.ts`)
 2. Implement the Transport interface from MCP SDK
-3. Add new transport mode branch in `src/core/server.ts` `startMcpServer()`
+3. Add new transport mode branch in `src/mcp/server.ts` `startMcpServer()`
 4. Add configuration UI in settings panel `HttpServerPanel` (or create new panel)
 5. Update documentation for new transport usage
 
@@ -175,7 +175,7 @@ Currently supports stdio and HTTP/S. To add new transports:
 | Constraint | Description |
 |-----------|-------------|
 | **Do not modify TOOL_REGISTRY static structure** | Keep `Record<ToolCategory, ToolModule>` compile-time deterministic; do not introduce dynamic scanning or reflection |
-| **Do not break Zod Schema consistency** | Schemas in `src/core/types.ts` must align with action lists in `config.ts` and variant schemas in `tools/{category}/index.ts` |
+| **Do not break Zod Schema consistency** | Schemas in `src/tools/{category}/schemas.ts` must align with action lists in `config.ts` and variant schemas in `tools/{category}/index.ts` |
 | **Do not introduce global state** | `SiYuanClient`, `PermissionManager` etc. should be passed as parameters; do not store in module-level variables (CLI and plugin may have multiple instances) |
 | **Maintain CJS output format** | All artifacts in Vite config are CommonJS; do not introduce ESM-only dependencies |
 | **Keep Node built-ins external** | Preserve Node built-in modules in server/cli Rollup external; do not bundle them |

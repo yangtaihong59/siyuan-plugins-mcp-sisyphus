@@ -95,6 +95,77 @@ function normalizeFileUploadAssetArgs(args: Record<string, unknown>): void {
     }
 }
 
+const FLASHCARD_RATINGS: Record<string, number> = { again: 1, hard: 2, good: 3, easy: 4 };
+
+// SiYuan's review buttons are named; the kernel takes their FSRS numbers.
+function normalizeFlashcardRating(args: Record<string, unknown>): void {
+    if (typeof args.rating !== 'string') return;
+    const named = FLASHCARD_RATINGS[args.rating.trim().toLowerCase()];
+    if (named !== undefined) args.rating = named;
+}
+
+// Columns report their type as "mSelect"; cells call the same type "multi_select".
+function normalizeAvCellValueTypes(args: Record<string, unknown>): void {
+    const fix = (cell: unknown): unknown => cell && typeof cell === 'object' && (cell as Record<string, unknown>).valueType === 'mSelect'
+        ? { ...(cell as Record<string, unknown>), valueType: 'multi_select' }
+        : cell;
+    if (args.valueType === 'mSelect') args.valueType = 'multi_select';
+    if (Array.isArray(args.cells)) args.cells = args.cells.map(fix);
+    if (Array.isArray(args.rows)) {
+        args.rows = args.rows.map((row) => row && typeof row === 'object' && Array.isArray((row as Record<string, unknown>).cells)
+            ? { ...(row as Record<string, unknown>), cells: ((row as Record<string, unknown>).cells as unknown[]).map(fix) }
+            : row);
+    }
+}
+
+/*
+ * AV columns are "keys" in SiYuan: column actions take keyID, cell and read
+ * actions say columnID. Both name the same value, so each spelling is
+ * accepted where the other is canonical (only when the canonical one is absent).
+ */
+const AV_KEY_ID_ACTIONS = new Set(['rename', 'set_column_options', 'configure_two_way_relation', 'configure_rollup', 'set_relation']);
+
+function renameKey(record: Record<string, unknown>, from: string, to: string): Record<string, unknown> {
+    if (!hasOwn(record, from) || hasOwn(record, to)) return record;
+    const { [from]: value, ...rest } = record;
+    return { ...rest, [to]: value };
+}
+
+function normalizeAvIdAliases(action: string, args: Record<string, unknown>): void {
+    if (AV_KEY_ID_ACTIONS.has(action)) {
+        Object.assign(args, renameKey(args, 'columnID', 'keyID'));
+        if (hasOwn(args, 'keyID')) delete args.columnID;
+        return;
+    }
+    if (action !== 'set_cells' && action !== 'add_rows') return;
+    const fixCell = (cell: unknown): unknown => cell && typeof cell === 'object' && !Array.isArray(cell)
+        ? renameKey(cell as Record<string, unknown>, 'keyID', 'columnID')
+        : cell;
+    if (action === 'set_cells') {
+        const fixed = renameKey(args, 'keyID', 'columnID');
+        delete args.keyID;
+        Object.assign(args, fixed);
+        for (const list of ['cells', 'items']) if (Array.isArray(args[list])) args[list] = (args[list] as unknown[]).map(fixCell);
+    }
+    if (Array.isArray(args.rows)) {
+        args.rows = args.rows.map((row) => row && typeof row === 'object' && Array.isArray((row as Record<string, unknown>).cells)
+            ? { ...(row as Record<string, unknown>), cells: ((row as Record<string, unknown>).cells as unknown[]).map(fixCell) }
+            : row);
+    }
+}
+
+// SiYuan stores sort order as "ASC"/"DESC"; accept any letter case.
+function normalizeAvSortOrder(args: Record<string, unknown>): void {
+    if (!Array.isArray(args.sorts)) return;
+    args.sorts = args.sorts.map((sort) => {
+        if (!sort || typeof sort !== 'object' || Array.isArray(sort)) return sort;
+        const order = (sort as Record<string, unknown>).order;
+        if (typeof order !== 'string') return sort;
+        const upper = order.trim().toUpperCase();
+        return upper === 'ASC' || upper === 'DESC' ? { ...(sort as Record<string, unknown>), order: upper } : sort;
+    });
+}
+
 function normalizeSearchRefsArgs(args: Record<string, unknown>): void {
     if (!hasOwn(args, 'k')) {
         if (typeof args.keyword === 'string') args.k = args.keyword;
@@ -114,8 +185,20 @@ export function normalizeToolArguments(category: ToolCategory, rawArgs: Record<s
     if (category === 'fs' && action === 'replace') normalizeFsReplaceArgs(args);
     if (category === 'block' && action === 'word_count') normalizeBlockWordCountArgs(args);
     if (category === 'flashcard' && (action === 'create_card' || action === 'remove_card')) normalizeFlashcardBlockIdsArgs(args);
+    if (category === 'flashcard' && action === 'review_card') normalizeFlashcardRating(args);
     if (category === 'file' && action === 'upload_asset') normalizeFileUploadAssetArgs(args);
     if (category === 'search' && action === 'search_refs') normalizeSearchRefsArgs(args);
+    if (category === 'av' && (action === 'set_cells' || action === 'add_rows')) normalizeAvCellValueTypes(args);
+    if (category === 'av' && action === 'update_view') normalizeAvSortOrder(args);
+    if (category === 'av' && action) normalizeAvIdAliases(action, args);
+    if (category === 'document' && action === 'query' && !hasOwn(args, 'notebooks') && nonEmptyString(args.notebook)) {
+        args.notebooks = [args.notebook];
+        delete args.notebook;
+    }
+    if (category === 'av' && action === 'search' && !hasOwn(args, 'keyword') && typeof args.query === 'string') {
+        args.keyword = args.query;
+        delete args.query;
+    }
 
     return args;
 }
@@ -165,6 +248,45 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
     if (context.category === 'file' && action === 'upload_asset') {
         return [
             { canonical: 'localFilePath', aliases: ['file'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    if (context.category === 'document' && action === 'query') {
+        return [
+            { canonical: 'notebooks', aliases: ['notebook'], schema: { type: 'array', items: STRING_SCHEMA } },
+        ];
+    }
+
+    // AV column IDs: keyID and columnID name the same value (see normalizeAvIdAliases).
+    if (context.category === 'av' && action === 'set_cells') {
+        return [
+            { canonical: 'columnID', aliases: ['key-id', 'key_id', 'keyID'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    if (context.category === 'av' && ['rename', 'set_column_options', 'configure_two_way_relation', 'configure_rollup', 'set_relation'].includes(action)) {
+        return [
+            { canonical: 'keyID', aliases: ['column-id', 'column_id', 'columnID'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    if (context.category === 'av' && action === 'search') {
+        return [
+            { canonical: 'keyword', aliases: ['query'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    // CLI-only (never in the mounted schema): testers guessed --old/--new.
+    if (context.category === 'tag' && action === 'rename') {
+        return [
+            { canonical: 'oldLabel', aliases: ['old'], schema: STRING_SCHEMA },
+            { canonical: 'newLabel', aliases: ['new'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    if (context.category === 'search' && action === 'search_refs') {
+        return [
+            { canonical: 'k', aliases: ['keyword', 'query'], schema: STRING_SCHEMA },
         ];
     }
 

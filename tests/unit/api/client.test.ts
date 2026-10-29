@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SiYuanClient, ResponseSizeLimitError } from '@/api/client';
+import { HttpSiYuanClient, ResponseSizeLimitError } from '@/api/client';
 
-describe('SiYuanClient', () => {
-    let client: SiYuanClient;
+describe('HttpSiYuanClient', () => {
+    let client: HttpSiYuanClient;
     let mockFetch: any;
 
     beforeEach(() => {
         mockFetch = vi.fn();
         global.fetch = mockFetch as typeof fetch;
-        client = new SiYuanClient({
+        client = new HttpSiYuanClient({
             baseUrl: 'http://127.0.0.1:6806',
             timeout: 5000,
         });
@@ -16,12 +16,12 @@ describe('SiYuanClient', () => {
 
     describe('constructor', () => {
         it('should use default config when no config provided', () => {
-            const defaultClient = new SiYuanClient();
+            const defaultClient = new HttpSiYuanClient();
             expect(defaultClient).toBeDefined();
         });
 
         it('should use custom config when provided', () => {
-            const customClient = new SiYuanClient({
+            const customClient = new HttpSiYuanClient({
                 baseUrl: 'http://custom:8080',
                 timeout: 10000,
             });
@@ -84,7 +84,7 @@ describe('SiYuanClient', () => {
         it('times out and cancels a stalled response body', async () => {
             const cancel = vi.fn();
             mockFetch.mockResolvedValue(new Response(new ReadableStream({ cancel })));
-            const timedClient = new SiYuanClient({ timeout: 20 });
+            const timedClient = new HttpSiYuanClient({ timeout: 20 });
             await expect(timedClient.requestRead('/api/test', {}, 100)).rejects.toThrow('timeout');
             expect(cancel).toHaveBeenCalledOnce();
         });
@@ -98,7 +98,7 @@ describe('SiYuanClient', () => {
                 text: async () => JSON.stringify({ code: 0, msg: 'success', data: mockData }),
             } as Response);
 
-            const result = await client.request('/api/notebook/lsNotebooks');
+            const result = await client.requestWrite('/api/notebook/lsNotebooks');
             expect(result).toEqual(mockData);
         });
 
@@ -110,7 +110,7 @@ describe('SiYuanClient', () => {
                 text: async () => '',
             } as Response);
 
-            await expect(client.request('/api/asset/deleteAsset')).resolves.toBeNull();
+            await expect(client.requestWrite('/api/asset/deleteAsset')).resolves.toBeNull();
         });
 
         it('should report invalid JSON responses with endpoint context', async () => {
@@ -121,7 +121,7 @@ describe('SiYuanClient', () => {
                 text: async () => '<html>not json</html>',
             } as Response);
 
-            await expect(client.request('/api/test')).rejects.toThrow(
+            await expect(client.requestWrite('/api/test')).rejects.toThrow(
                 'Invalid SiYuan API response from http://127.0.0.1:6806/api/test (HTTP 200 OK): <html>not json</html>',
             );
         });
@@ -132,7 +132,7 @@ describe('SiYuanClient', () => {
                 text: async () => JSON.stringify({ code: 1, msg: 'Invalid parameter', data: null }),
             } as Response);
 
-            await expect(client.request('/api/test')).rejects.toThrow('SiYuan API error: 1');
+            await expect(client.requestWrite('/api/test')).rejects.toThrow('SiYuan API error: 1');
         });
 
         it('should handle HTTP error', async () => {
@@ -143,12 +143,12 @@ describe('SiYuanClient', () => {
                 arrayBuffer: async () => new ArrayBuffer(0),
             } as Response);
 
-            await expect(client.request('/api/test')).rejects.toThrow('HTTP error: 500');
+            await expect(client.requestWrite('/api/test')).rejects.toThrow('HTTP error: 500');
         });
 
         it('should handle network error', async () => {
             mockFetch.mockRejectedValue(new Error('Network error'));
-            await expect(client.request('/api/test')).rejects.toThrow('Network error');
+            await expect(client.requestWrite('/api/test')).rejects.toThrow('Network error');
         });
 
         it('should handle timeout error', async () => {
@@ -162,8 +162,8 @@ describe('SiYuanClient', () => {
                 });
             });
 
-            const timeoutClient = new SiYuanClient({ timeout: 5 });
-            await expect(timeoutClient.request('/api/test')).rejects.toThrow('timeout');
+            const timeoutClient = new HttpSiYuanClient({ timeout: 5 });
+            await expect(timeoutClient.requestWrite('/api/test')).rejects.toThrow('timeout');
         });
 
         it('should include authorization header when token is set', async () => {
@@ -173,7 +173,7 @@ describe('SiYuanClient', () => {
             } as Response);
 
             client.setToken('test-token');
-            await client.request('/api/test');
+            await client.requestWrite('/api/test');
 
             expect(mockFetch).toHaveBeenCalledWith(
                 'http://127.0.0.1:6806/api/test',
@@ -193,7 +193,7 @@ describe('SiYuanClient', () => {
             } as Response);
 
             const requestData = { notebook: 'test', path: '/test' };
-            await client.request('/api/test', requestData);
+            await client.requestWrite('/api/test', requestData);
 
             expect(mockFetch).toHaveBeenCalledWith(
                 expect.any(String),
@@ -331,7 +331,7 @@ describe('SiYuanClient', () => {
                 });
             });
 
-            const timeoutClient = new SiYuanClient({ timeout: 5 });
+            const timeoutClient = new HttpSiYuanClient({ timeout: 5 });
             await expect(timeoutClient.writeFile('/data/test.txt', 'content')).rejects.toThrow('timeout');
         });
     });
@@ -348,7 +348,7 @@ describe('SiYuanClient', () => {
             formData.append('assetsDirPath', '/assets/');
             client.setToken('upload-token');
 
-            const result = await client.requestFormData('/api/asset/upload', formData);
+            const result = await client.requestFormDataWrite('/api/asset/upload', formData);
 
             expect(result).toEqual(mockData);
             const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -362,7 +362,7 @@ describe('SiYuanClient', () => {
                 text: async () => JSON.stringify({ code: 1, msg: 'Upload failed', data: null }),
             } as Response);
 
-            await expect(client.requestFormData('/api/asset/upload', new FormData())).rejects.toThrow('SiYuan API error: 1');
+            await expect(client.requestFormDataWrite('/api/asset/upload', new FormData())).rejects.toThrow('SiYuan API error: 1');
         });
     });
 });

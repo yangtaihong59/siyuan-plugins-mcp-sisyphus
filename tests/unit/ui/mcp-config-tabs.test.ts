@@ -11,7 +11,7 @@ import {
     ANALYTICS_GROUP_KEY,
     USER_RULES_GROUP_KEY,
 } from '@/ui/setting/mcp-config-tabs';
-import { TOOL_CATEGORIES } from '@/ui/setting/tool-config';
+import { TOOL_CATEGORIES } from '@/core/config';
 
 describe('mcp-config-tabs icon system', () => {
     it('has all required icon keys', () => {
@@ -73,6 +73,11 @@ describe('mcp-config-tabs icon system', () => {
     it('keeps mascot tool and mascot display tabs distinct', () => {
         expect(CATEGORY_TAB_DEFS.find((d) => d.category === 'mascot')?.groupKey).toBe('Mascot Tool');
         expect(PUPPY_GROUP_KEY).toBe('Mascot Display');
+    });
+
+    it('gives every tool category its own icon', () => {
+        const iconKeys = CATEGORY_TAB_DEFS.map((def) => def.iconKey);
+        expect(new Set(iconKeys).size).toBe(iconKeys.length);
     });
 
     it('keeps filesystem and files tool icons distinct', () => {

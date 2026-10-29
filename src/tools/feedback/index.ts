@@ -2,10 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { CategoryToolConfig, FeedbackAction } from '../../core/config';
 import { FEEDBACK_ACTION_HINTS, FEEDBACK_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    FeedbackActionSchema,
-    FeedbackSubmitSchema,
-} from '../../core/types';
+import { FeedbackActionSchema, FeedbackSubmitSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { FEEDBACK_ACTION_HANDLERS } from './handlers';

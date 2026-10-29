@@ -8,5 +8,5 @@ When to read this page: you are implementing a change and want to stay aligned w
 
 - Keep plugin-facing and CLI-facing behavior aligned when they reuse the same tool
 - Use the existing grouped-tool model instead of inventing one tool per action
-- Keep doc facts aligned with `src/core/config.ts`, `src/core/tool-registry.ts`, and current build targets
+- Keep doc facts aligned with `src/core/config.ts`, `src/mcp/tool-registry.ts`, and current build targets
 - Prefer SiYuan API access over direct filesystem behavior for remote-safe operations

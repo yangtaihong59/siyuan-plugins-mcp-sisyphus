@@ -37,16 +37,14 @@ src/
 │   ├── internal/             # Shared infrastructure for the tool layer
 │   │   ├── types.ts          # Shared types for the tool layer
 │   │   ├── define-tool.ts    # Tool factory
-│   │   ├── shared.ts         # Shared infrastructure
+│   │   ├── shared.ts         # Shared infrastructure, result and error builders
 │   │   ├── schema-analyzer.ts# Schema analysis & description trimming
-│   │   ├── result-factory.ts # Standard result factory (JSON / paginated / error)
 │   │   ├── pagination.ts     # Pagination utilities
 │   │   ├── context.ts        # Permission context resolution
 │   │   ├── errorTranslation.ts # SiYuan error code → user-friendly text
 │   │   ├── validation.ts     # Parameter validation helpers
 │   │   ├── ui-refresh.ts     # Trigger SiYuan UI refresh
 │   │   ├── help-render.ts    # Help action output rendering
-│   │   ├── help-router.ts    # Help routing dispatcher
 │   │   └── helpers/          # Cross-tool helpers such as notebookName enrichment
 │   ├── notebook/             # notebook tool
 │   │   ├── index.ts          # variants + list/call exports
@@ -150,11 +148,11 @@ src/
 | `startHttpServer()` | Read `window.siyuan.config.api.token`, call `httpLauncher.start()` |
 | `updateHttpServerSettings(next)` | Runtime hot-update: stop → persist → restart as needed |
 
-**Dependencies**: `ui/setting/tool-config-storage`, `ui/components/ToolPuppy`, `ui/setting/mcp-config.svelte`, `server-launcher`
+**Dependencies**: `ui/setting/tool-config-storage`, `ui/components/ToolPuppy`, `ui/setting/mcp-config.svelte`, `ui/plugin/server-launcher`
 
 ---
 
-## 2. MCP Server: `src/core/server.ts`
+## 2. MCP Server: `src/mcp/server.ts`
 
 **Responsibility**: Create MCP `Server` instance, register 7 handlers, manage transport modes (stdio / HTTP), load config & permissions. When the Skills extension is enabled, two additional conditional handlers are registered.
 
@@ -184,7 +182,7 @@ With `SIYUAN_MCP_SKILLS_EXTENSION` enabled (the default), `skills/list` and `ski
 
 ---
 
-## 3. Tool Registry: `src/core/tool-registry.ts`
+## 3. Tool Registry: `src/mcp/tool-registry.ts`
 
 **Responsibility**: Maintain the `TOOL_REGISTRY` mapping table, converging the categories declared by `TOOL_CATEGORIES` into the `ToolModule` interface. Category modules are registered at compile time; `extension` discovers its action set during the optional prepare phase.
 
@@ -347,7 +345,7 @@ Converges `variants + handlers + actionSchema` into standard `{ listTools, callT
 
 ---
 
-## 8. HTTP Transport: `src/core/http-transport.ts`
+## 8. HTTP Transport: `src/mcp/http-transport.ts`
 
 **Responsibility**: SDK v2 HTTP MCP transport that classifies each request and routes it to the MCP 2026-07-28 stateless handler or the legacy sessionful handler.
 

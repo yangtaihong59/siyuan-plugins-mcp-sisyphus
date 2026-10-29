@@ -1,6 +1,5 @@
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
-import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
 import type { SearchAction } from '../../core/config';
 import {
@@ -14,17 +13,7 @@ import {
     resolveSortAlias,
     resolveTypeRecord,
 } from '../../core/normalize';
-import {
-    SearchAssetsSchema,
-    SearchFindReplaceSchema,
-    SearchFulltextAssetContentSchema,
-    SearchFulltextSchema,
-    SearchGetBacklinksSchema,
-    SearchListInvalidRefsSchema,
-    SearchQuerySqlSchema,
-    SearchRefsSchema,
-    SearchSemanticSchema,
-} from '../../core/types';
+import { SearchAssetsSchema, SearchFindReplaceSchema, SearchFulltextAssetContentSchema, SearchFulltextSchema, SearchGetBacklinksSchema, SearchListInvalidRefsSchema, SearchQuerySqlSchema, SearchRefsSchema, SearchSemanticSchema } from './schemas';
 import { isSiYuanVersionAtLeast } from '../../shared/siyuan-version';
 import { ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveNotebookForPath } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
@@ -37,9 +26,23 @@ import {
     filterBacklinkResultByPermission,
     filterFullTextSearchResultByPermission,
     filterItemsByPermission,
+    filterSqlRowsByPermission,
     isPermissionRelatedApiError,
-} from './permission-filter';
-import { assertReadOnlySql, getBacklinksWithFallback } from './sql-builder';
+} from '../internal/permission-filter';
+import { countFindReplaceMatches, findReplacePattern } from './find-replace-count';
+import { RestrictedSqlError, restrictedTablesHint, rewriteRestrictedSql } from './restricted-sql';
+import { assertRestrictedSqlCanary, RestrictedSqlCanaryError } from './restricted-sql-canary';
+import {
+    assertReadOnlySql,
+    ensureRawSqlReadAccess,
+    SqlStatementRejectedError,
+    getBacklinksWithFallback,
+    listIndexTableNames,
+    loadRawSqlScope,
+    queryReferencingBlocks,
+    REFERENCING_BLOCKS_LIMIT,
+    type RawSqlScope,
+} from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';
 
@@ -204,21 +207,69 @@ async function createFulltextPaginatedResult(
     });
 }
 
-function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArgs?: Record<string, unknown>): ToolResult {
+const RESTRICTED_SQL_HINT = `Some notebooks are unreadable, so query_sql runs in restricted mode. ${restrictedTablesHint()} Use one SELECT/WITH; put tables only after FROM/JOIN (aliases OK); no sqlite_*/pragma_*/schema-qualified names; CTE names must not reuse table names.`;
+
+function restrictedScopeHint(scope: RawSqlScope): string {
+    const names = (list: Array<{ name: string; id: string }>) => list.map((notebook) => notebook.name || notebook.id).join(', ');
+    const closed = scope.closed ?? [];
+    const excluded = scope.excluded ?? [];
+    return `Results and counts cover only the readable notebooks${excluded.length > 0 ? `; ${excluded.length} unreadable notebook(s) (${names(excluded)}) are excluded` : ''}${closed.length > 0 ? `; closed notebook(s) (${names(closed)}) are not indexed and return no rows (listed in closed, not readable; readableNotebooks keeps every permitted ID)` : ''}. ${RESTRICTED_SQL_HINT}`;
+}
+
+/** A restricted-mode rejection that opens with why the mode is on at all. */
+function restrictedModeMessage(scope: RawSqlScope, message: string): string {
+    // "Table …" -> "table …", but keep acronyms such as "SQL …" / "NUL …".
+    const joined = /^[A-Z][a-z]/.test(message) ? message.charAt(0).toLowerCase() + message.slice(1) : message;
+    return `${restrictedModeReason(scope)} ${joined}`;
+}
+
+function restrictedModeReason(scope: RawSqlScope): string {
+    const excluded = (scope.excluded ?? []).map((notebook) => notebook.name || notebook.id);
+    const shown = excluded.slice(0, 5).join(', ') + (excluded.length > 5 ? `, +${excluded.length - 5} more` : '');
+    return excluded.length
+        ? `Restricted mode is active because notebook(s) ${shown} ${excluded.length === 1 ? 'is' : 'are'} unreadable;`
+        : `Restricted mode is active because ${scope.excludedNotebooks} notebook(s) are unreadable;`;
+}
+
+/** Flush queued writes into the SQL index; reports whether that worked. */
+async function flushSqlIndex(client: Parameters<typeof searchApi.querySQL>[0]): Promise<boolean> {
+    try {
+        await searchApi.flushTransaction(client);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function emptySqlHint(flushed: boolean): string {
+    return flushed
+        ? 'No rows. Pending writes were flushed to the index first; if a block written moments ago is still missing, retry in a few seconds. Closed notebooks are not indexed.'
+        : 'No rows. The SQL index can lag a write by a few seconds; if you just wrote the content, retry shortly. Closed notebooks are not indexed.';
+}
+
+function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArgs: Record<string, unknown> | undefined, scope: RawSqlScope, flushed = true): ToolResult {
     const truncated = applyTruncation(rows, 50, 'Add LIMIT and OFFSET to your SQL for pagination.');
     const total = rows.length;
+    const restricted = scope.mode === 'restricted';
     return createJsonResult({
         data: truncated.items,
         total,
         totalRows: total,
+        scope: restricted ? { ...scope, hint: restrictedScopeHint(scope) } : scope,
         readInfo: {
             scope: 'sql_query', representation: 'sql_rows',
-            coverage: truncated.meta?.truncated || removedCount > 0 ? 'partial' : 'unknown',
-            limitations: ['selected_columns_only', 'kernel_limit_unknown', ...(truncated.meta?.truncated ? ['response_truncated'] : []), ...(removedCount > 0 ? ['permission_filtered'] : [])],
+            coverage: truncated.meta?.truncated || removedCount > 0 || restricted ? 'partial' : 'unknown',
+            limitations: [
+                'selected_columns_only', 'kernel_limit_unknown',
+                ...(truncated.meta?.truncated ? ['response_truncated'] : []),
+                ...(removedCount > 0 ? ['permission_filtered'] : []),
+                ...(restricted ? ['notebook_scoped'] : []),
+            ],
         },
         ...buildTruncationSummary(total, truncated.meta),
         ...createPartialMetadata(removedCount),
         ...(resolvedArgs ? { resolvedArgs } : {}),
+        ...(total === 0 && removedCount === 0 ? { hint: emptySqlHint(flushed) } : {}),
     });
 }
 
@@ -271,12 +322,16 @@ async function resolveFindReplaceTargetIDs(
 export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     fulltext: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchFulltextSchema.parse(rawArgs);
+        const resolvedMethod = resolveSearchMethodMeta(parsed);
+        if (resolvedMethod.method === 2) {
+            const denied = await ensureRawSqlReadAccess(client, permMgr, parsed.query);
+            if (denied) return denied;
+        }
         if (parsed.parentId) {
             const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentId, 'read');
             if (denied) return denied;
         }
 
-        const resolvedMethod = resolveSearchMethodMeta(parsed);
         const resolvedOrderBy = resolveSortAlias(parsed.sortBy, parsed.orderBy);
         const result = await searchApi.fullTextSearchBlock(client, {
             query: parsed.query,
@@ -364,26 +419,55 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         try {
             assertReadOnlySql(stmt ?? '');
         } catch (error) {
-            return createErrorResult(
-                error,
-                { tool: SEARCH_TOOL_NAME, action: 'query_sql', rawArgs },
-            );
-        }
-        await permMgr.reload();
-        const notebookList = await notebookApi.listNotebooks(client);
-        const restrictedNotebookCount = notebookList.notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).length;
-        if (restrictedNotebookCount > 0) {
+            if (!(error instanceof SqlStatementRejectedError)) throw error;
             return {
                 content: [{
                     type: 'text',
                     text: JSON.stringify({
                         error: {
                             type: 'permission_denied',
-                            code: 'raw_sql_unavailable_with_restricted_notebooks',
+                            code: 'sql_statement_not_allowed',
+                            message: error.message,
+                            hint: error.hint ?? 'Rewrite it as one SELECT (or WITH … SELECT) statement.',
+                        },
+                    }, null, 2),
+                }],
+                isError: true,
+            };
+        }
+        const scope = await loadRawSqlScope(client, permMgr);
+        // SQL reads the asynchronous index; a write moments ago may not be in it yet.
+        const flushed = await flushSqlIndex(client);
+        const resolvedArgs = parsed.sql !== undefined
+            ? buildResolvedArgs({ stmt }).resolvedArgs
+            : undefined;
+
+        if (scope.mode === 'full') {
+            // Every notebook is readable: run the caller's SQL unchanged.
+            const result = await searchApi.querySQL(client, stmt ?? '');
+            const rows = Array.isArray(result) ? result : [];
+            return createSqlQueryResult(rows, 0, resolvedArgs, scope, flushed);
+        }
+
+        let rewritten: string;
+        try {
+            rewritten = rewriteRestrictedSql(stmt ?? '', {
+                readableNotebookIds: scope.readableNotebooks,
+                existingTables: await listIndexTableNames(client),
+            }).sql;
+        } catch (error) {
+            if (!(error instanceof RestrictedSqlError)) throw error;
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: {
+                            type: 'permission_denied',
+                            code: 'restricted_sql_rejected',
                             reason: 'permission_scope_not_enforceable',
-                            restrictedNotebookCount,
-                            message: 'Raw SQL is unavailable while one or more notebooks are unreadable because aggregate, join, CTE, and subquery results cannot be safely post-filtered by notebook.',
-                            hint: 'Grant read access to every notebook before using query_sql, or use permission-aware search and document actions instead.',
+                            excludedNotebooks: scope.excludedNotebooks,
+                            message: restrictedModeMessage(scope, error.message),
+                            hint: `${RESTRICTED_SQL_HINT} Or use document(action="query").`,
                         },
                     }, null, 2),
                 }],
@@ -391,12 +475,33 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
             };
         }
 
-        const result = await searchApi.querySQL(client, stmt ?? '');
+        try {
+            // Fail closed unless this kernel provably runs the guarded text verbatim.
+            await assertRestrictedSqlCanary(client);
+        } catch (error) {
+            if (!(error instanceof RestrictedSqlCanaryError)) throw error;
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: {
+                            type: 'permission_denied',
+                            code: 'restricted_sql_unavailable',
+                            reason: error.reason,
+                            excludedNotebooks: scope.excludedNotebooks,
+                            message: restrictedModeMessage(scope, error.message),
+                            hint: 'Use document(action="query") or search(action="fulltext"), or make every notebook readable.',
+                        },
+                    }, null, 2),
+                }],
+                isError: true,
+            };
+        }
+
+        const result = await searchApi.querySQL(client, rewritten);
         const rows = Array.isArray(result) ? result : [];
-        const resolvedArgs = parsed.sql !== undefined
-            ? buildResolvedArgs({ stmt }).resolvedArgs
-            : undefined;
-        return createSqlQueryResult(rows, 0, resolvedArgs);
+        const filtered = await filterSqlRowsByPermission(client, rows, permMgr);
+        return createSqlQueryResult(filtered.items, filtered.removedCount, resolvedArgs, scope, flushed);
     },
     get_backlinks: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchGetBacklinksSchema.parse(rawArgs);
@@ -425,9 +530,21 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
                 filtered = filterBacklinkResultByPermission({ ...result, backlinks, backmentions }, permMgr);
                 filtered = { ...filtered, ...createPartialMetadata(unattributedCount + (filtered.filteredOutCount ?? 0)) };
             }
+            // backlinks group by referencing document; callers usually want the
+            // exact referencing blocks too, which search_refs reads from refs.
+            let refBlocks: unknown[] | undefined;
+            if (mode !== 'mentions') {
+                try {
+                    const rows = await queryReferencingBlocks(client, parsed.id, scopeRootId, parsed.keyword);
+                    refBlocks = normalizeReferencedBlocks((await filterItemsByPermission(client, rows.slice(0, REFERENCING_BLOCKS_LIMIT), permMgr)).items);
+                } catch {
+                    refBlocks = undefined;
+                }
+            }
             return createJsonResult({
                 ...filtered,
                 mode,
+                ...(refBlocks ? { refBlocks } : {}),
                 backlinks: mode !== 'mentions' ? normalizeReferencedBlocks(Array.isArray(filtered.backlinks) ? filtered.backlinks : []) : [],
                 backmentions: mode !== 'links' ? normalizeReferencedBlocks(Array.isArray(filtered.backmentions) ? filtered.backmentions : []) : [],
                 ...(result.sourcePayloadMissing ? { sourcePayloadMissing: true } : {}),
@@ -454,18 +571,17 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         const parsed = SearchRefsSchema.parse(rawArgs);
         const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
         if (denied) return denied;
-        const result = await searchApi.searchRefBlock(client, parsed);
-        const typed = result && typeof result === 'object' ? result as Record<string, unknown> : {};
-        const blocks = Array.isArray(typed.blocks) ? typed.blocks : [];
-        const filtered = await filterItemsByPermission(client, blocks, permMgr);
+        const rows = await queryReferencingBlocks(client, parsed.id, parsed.rootID, parsed.k);
+        const truncated = rows.length > REFERENCING_BLOCKS_LIMIT;
+        const filtered = await filterItemsByPermission(client, rows.slice(0, REFERENCING_BLOCKS_LIMIT), permMgr);
         const normalizedBlocks = normalizeReferencedBlocks(filtered.items);
         return createJsonResult({
-            ...typed,
             blocks: normalizedBlocks,
             data: normalizedBlocks,
             total: normalizedBlocks.length,
             showing: normalizedBlocks.length,
-            truncated: false,
+            truncated,
+            ...(truncated ? { hint: `Only the ${REFERENCING_BLOCKS_LIMIT} most recently updated referencing blocks are returned; narrow with rootID or k.` } : {}),
             ...createPartialMetadata(filtered.removedCount),
         });
     },
@@ -491,6 +607,10 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         // code, tags, and other node kinds explicitly.
         const resolvedReplaceTypes = parsed.replaceTypes ?? { text: true };
         const resolvedTargetIDs = await resolveFindReplaceTargetIDs(client, parsed.ids, resolvedReplaceTypes);
+        // A replacement that itself matches would make the after-count meaningless.
+        const pattern = findReplacePattern(parsed.k, resolvedMethod.method);
+        const countable = !parsed.paths && !!pattern && !(parsed.r ?? '').match(pattern);
+        const before = countable ? await countFindReplaceMatches(client, parsed.ids, parsed.k, resolvedMethod.method) : undefined;
         await searchApi.findReplace(client, {
             k: parsed.k,
             r: parsed.r,
@@ -502,10 +622,17 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
             ...(parsed.groupBy !== undefined ? { groupBy: parsed.groupBy } : {}),
             replaceTypes: resolvedReplaceTypes,
         });
+        const after = before !== undefined ? await countFindReplaceMatches(client, parsed.ids, parsed.k, resolvedMethod.method) : undefined;
         const shouldExposeResolvedArgs = parsed.methodName !== undefined || parsed.sortBy !== undefined;
         return createJsonResult({
             success: true,
             replaced: true,
+            ...(before !== undefined && after !== undefined ? {
+                count: Math.max(0, before - after),
+                matchesBefore: before,
+                matchesRemaining: after,
+                ...(after > 0 ? { warning: `${after} match(es) remain, e.g. inside tags, links or code that replaceTypes excluded.` } : {}),
+            } : {}),
             ids: parsed.ids,
             targetIDs: resolvedTargetIDs,
             k: parsed.k,

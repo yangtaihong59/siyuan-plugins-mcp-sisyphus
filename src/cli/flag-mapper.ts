@@ -7,6 +7,10 @@ type JsonSchema = Record<string, any>;
 export interface FlagMapResult {
     args: Record<string, unknown>;
     warnings: string[];
+    /** Flags the selected action does not accept; dispatch rejects these instead of dropping them. */
+    unknownFlags: string[];
+    /** Canonical argument names the selected action accepts (for error messages). */
+    acceptedArgs: string[];
 }
 
 /**
@@ -19,7 +23,7 @@ export interface FlagMapResult {
  * - Object / nested flags: use --<key>-json '<json-fragment>'.
  */
 export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?: Partial<ArgumentAliasContext>): FlagMapResult {
-    const props = collectInputProperties(inputSchema);
+    const props = collectInputProperties(inputSchema, context?.action);
 
     const canonicalByLower = new Map<string, string>();
     const booleanKeys = new Set<string>();
@@ -71,6 +75,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
 
     const result: Record<string, unknown> = {};
     const warnings: string[] = [];
+    const unknownFlags: string[] = [];
     const jsonOverrides: Record<string, unknown> = {};
 
     for (const [rawKey, rawVal] of Object.entries(parsed)) {
@@ -81,7 +86,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
             const baseKey = rawKey.slice(0, -'-json'.length);
             const canonical = canonicalByLower.get(baseKey.toLowerCase());
             if (!canonical) {
-                warnings.push(`Unknown flag --${rawKey}.`);
+                unknownFlags.push(`--${rawKey}`);
                 continue;
             }
             if (typeof rawVal !== 'string' || rawVal.length === 0) continue;
@@ -98,7 +103,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
 
         const canonical = canonicalByLower.get(rawKey.toLowerCase());
         if (!canonical) {
-            warnings.push(`Unknown flag --${rawKey}; ignored.`);
+            unknownFlags.push(`--${rawKey}`);
             continue;
         }
 
@@ -115,11 +120,25 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
         warnings.push(`Extra positional arguments ignored: ${parsed._.join(' ')}`);
     }
 
-    return { args: { ...result, ...jsonOverrides }, warnings };
+    const acceptedArgs = Object.keys(props).filter((name) => name !== 'action');
+    return { args: { ...result, ...jsonOverrides }, warnings, unknownFlags, acceptedArgs };
 }
 
-function collectInputProperties(inputSchema: JsonSchema): Record<string, JsonSchema> {
-    const props: Record<string, JsonSchema> = { ...((inputSchema.properties ?? {}) as Record<string, JsonSchema>) };
+const WRITE_SAFETY_FLAG_SCHEMAS: Record<string, JsonSchema> = {
+    requestId: { type: 'string' },
+    validateOnly: { type: 'boolean' },
+    preview: { type: 'string', enum: ['summary', 'full'] },
+    expectedStateHash: { type: 'string' },
+    expectedStructureHash: { type: 'string' },
+    expectedValueHash: { type: 'string' },
+    expectedManifestHash: { type: 'string' },
+    expectedSourceHash: { type: 'string' },
+    // Read-derived precondition (writeSafety.oneStep); the server rejects it
+    // with a reason when one-step writes are off or the write cannot use it.
+    ifMatch: { type: 'string' },
+};
+
+function collectInputProperties(inputSchema: JsonSchema, action?: string): Record<string, JsonSchema> {
     const internalBranches = inputSchema['x-sisyphus-actionSchemas'];
     const branches = Array.isArray(internalBranches)
         ? internalBranches
@@ -128,6 +147,19 @@ function collectInputProperties(inputSchema: JsonSchema): Record<string, JsonSch
         : Array.isArray(inputSchema.anyOf)
             ? inputSchema.anyOf
             : [];
+
+    // Prefer the selected action's own branch so flags of sibling actions are
+    // reported as unknown instead of being silently stripped by validation.
+    const own = action
+        ? branches.find((branch: JsonSchema) => branch?.properties?.action?.const === action)
+        : undefined;
+    if (own && own.properties && typeof own.properties === 'object' && !Array.isArray(own.properties)) {
+        // Write-safety fields are accepted by every action regardless of how the
+        // branch was published (some writes are always coordinated).
+        return { ...WRITE_SAFETY_FLAG_SCHEMAS, ...(own.properties as Record<string, JsonSchema>) };
+    }
+
+    const props: Record<string, JsonSchema> = { ...((inputSchema.properties ?? {}) as Record<string, JsonSchema>) };
 
     for (const branch of branches) {
         if (!branch || typeof branch !== 'object') continue;
@@ -147,6 +179,14 @@ function coerce(key: string, value: unknown, schema: JsonSchema): unknown {
     if (type === 'array') {
         if (Array.isArray(value)) return value.map((v) => coerceItem(v, schema.items));
         if (typeof value === 'string') {
+            // Users naturally pass JSON arrays to plain flags (--include '["id","path"]').
+            const trimmed = value.trim();
+            if (trimmed.startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (Array.isArray(parsed)) return parsed.map((v) => coerceItem(v, schema.items));
+                } catch { /* not JSON: fall through to comma splitting */ }
+            }
             return value.split(',').map((s) => coerceItem(s.trim(), schema.items));
         }
         return [value];
@@ -156,9 +196,9 @@ function coerce(key: string, value: unknown, schema: JsonSchema): unknown {
         if (typeof value === 'number') return value;
         if (typeof value === 'string') {
             const n = type === 'integer' ? parseInt(value, 10) : parseFloat(value);
-            if (Number.isNaN(n)) {
-                throw new Error(`--${toKebab(key)} expected a number but got "${value}".`);
-            }
+            // Non-numeric words go through unchanged: argument aliases map named
+            // values (e.g. --rating good), and the tool validator reports the rest.
+            if (Number.isNaN(n)) return value;
             return n;
         }
         return value;
@@ -174,14 +214,40 @@ function coerce(key: string, value: unknown, schema: JsonSchema): unknown {
         if (typeof value === 'object' && value !== null) return value;
         if (typeof value === 'string') {
             try { return JSON.parse(value); } catch {
-                throw new Error(`--${toKebab(key)} expects JSON for an object field. Use --${toKebab(key)}-json '{"..."}'.`);
+                throw new Error(`--${toKebab(key)} expects JSON for an object field. Use --${toKebab(key)}-json '${structuredExample(key)}'.`);
             }
         }
         return value;
     }
 
+    // Unions such as block.replace's edit (object | object[]): parse JSON the
+    // user passed to the plain flag instead of requiring the -json sidecar.
+    const structured = structuredMemberTypes(schema);
+    if (structured.size > 0 && typeof value === 'string') {
+        const trimmed = value.trim();
+        if (/^[[{]/.test(trimmed)) {
+            try { return JSON.parse(trimmed); } catch (error) {
+                throw new Error(`--${toKebab(key)} looks like JSON but does not parse (${error instanceof Error ? error.message : String(error)}). Example: --${toKebab(key)}-json '${structuredExample(key)}'.`);
+            }
+        }
+        if (!structured.has('string')) {
+            throw new Error(`--${toKebab(key)} expects JSON. Example: --${toKebab(key)}-json '${structuredExample(key)}'.`);
+        }
+    }
+
     // string fallback
     return typeof value === 'string' ? value : String(value);
+}
+
+/** Member types of an anyOf/oneOf union, when any member is an object or array. */
+function structuredMemberTypes(schema: JsonSchema | undefined): Set<string> {
+    const members = Array.isArray(schema?.anyOf) ? schema.anyOf : Array.isArray(schema?.oneOf) ? schema.oneOf : [];
+    const types = new Set<string>(members.map((member: JsonSchema) => inferType(member)));
+    return types.has('object') || types.has('array') ? types : new Set();
+}
+
+function structuredExample(key: string): string {
+    return key === 'edit' ? '{"old":"…","new":"…"}' : '{"…":"…"}';
 }
 
 function coerceItem(item: unknown, itemSchema?: JsonSchema): unknown {
@@ -291,4 +357,78 @@ function collectProvidedFlagKeys(rest: string[]): Set<string> {
         if (key) keys.add(key.toLowerCase());
     }
     return keys;
+}
+
+function flagTokens(name: string): string[] {
+    return name.replace(/^-+/, '').replace(/-json$/, '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase().split(/[-_]+/).filter(Boolean);
+}
+
+function editDistance(a: string, b: string): number {
+    const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i += 1) {
+        let previous = row[0];
+        row[0] = i;
+        for (let j = 1; j <= b.length; j += 1) {
+            const current = row[j];
+            row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+            previous = current;
+        }
+    }
+    return row[b.length];
+}
+
+/**
+ * Nearest accepted argument for a mistyped flag: a prefix (--old → oldLabel),
+ * per-word prefixes (--doc-id → documentId), or a small typo. Undefined when
+ * nothing is close enough to be a useful guess.
+ */
+export function suggestFlag(unknownFlag: string, acceptedArgs: string[]): string | undefined {
+    const input = flagTokens(unknownFlag);
+    const joined = input.join('');
+    if (!joined) return undefined;
+    let best: { name: string; score: number } | undefined;
+    for (const name of acceptedArgs) {
+        const tokens = flagTokens(name);
+        const candidate = tokens.join('');
+        let score: number | undefined;
+        if (candidate.startsWith(joined) && joined.length >= 3) score = 1;
+        else if (joined.length >= 2 && input.length <= tokens.length && input.every((token, index) => tokens[index].startsWith(token))) score = 2;
+        else {
+            const distance = editDistance(joined, candidate);
+            if (distance <= Math.max(1, Math.floor(candidate.length / 4))) score = 3 + distance;
+        }
+        if (score !== undefined && (!best || score < best.score || (score === best.score && candidate.length < flagTokens(best.name).join('').length))) {
+            best = { name, score };
+        }
+    }
+    return best?.name;
+}
+
+/**
+ * Up to `max` actions close to a mistyped one, best first: the input as a
+ * prefix (get → get_kramdown), a whole word of the name (attrs → get_attrs),
+ * a substring, then small typos.
+ */
+export function suggestActions(unknownAction: string, actions: string[], max = 5): string[] {
+    const joined = flagTokens(unknownAction).join('');
+    if (!joined) return [];
+    const scored: Array<{ name: string; score: number }> = [];
+    for (const name of actions) {
+        const tokens = flagTokens(name);
+        const candidate = tokens.join('');
+        if (candidate === joined) continue;
+        let score: number | undefined;
+        if (candidate.startsWith(joined) && joined.length >= 2) score = 1;
+        else if (tokens.some((token) => token === joined || (joined.length >= 3 && token.startsWith(joined)))) score = 2;
+        else if (joined.length >= 3 && candidate.includes(joined)) score = 3;
+        else {
+            const distance = editDistance(joined, candidate);
+            if (distance <= Math.max(1, Math.floor(candidate.length / 3))) score = 4 + distance;
+        }
+        if (score !== undefined) scored.push({ name, score });
+    }
+    return scored
+        .sort((a, b) => a.score - b.score || a.name.length - b.name.length)
+        .slice(0, max)
+        .map((item) => item.name);
 }

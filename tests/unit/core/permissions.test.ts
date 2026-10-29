@@ -254,4 +254,27 @@ describe('PermissionManager', () => {
             expect(manager.get('nb1')).toBe('rwd');
         });
     });
+
+    describe('grantNewNotebook', () => {
+        it('grants rwd to an unconfigured notebook and keeps entries written by others', async () => {
+            vi.mocked(mockClient.writeFile).mockResolvedValue();
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ other: 'r' }));
+
+            await expect(manager.grantNewNotebook('nb-new')).resolves.toBe('rwd');
+
+            expect(JSON.parse(vi.mocked(mockClient.writeFile).mock.calls[0][1] as string)).toEqual({ other: 'r', 'nb-new': 'rwd' });
+        });
+
+        it('never overrides an explicit permission', async () => {
+            vi.mocked(mockClient.readFile).mockResolvedValue(JSON.stringify({ 'nb-new': 'r' }));
+
+            await expect(manager.grantNewNotebook('nb-new')).resolves.toBe('r');
+            expect(mockClient.writeFile).not.toHaveBeenCalled();
+        });
+
+        it('leaves the default for existing unconfigured notebooks at r', async () => {
+            await manager.load();
+            expect(manager.get('existing-notebook')).toBe('r');
+        });
+    });
 });

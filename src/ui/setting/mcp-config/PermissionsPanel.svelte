@@ -180,6 +180,12 @@
         font-weight: 650;
     }
 
+    /* Same hues as the R / RW / RWD / NONE badges in the file tree. */
+    .permission-overview__stats [data-permission="rw"] {
+        background: color-mix(in srgb, var(--b3-theme-secondary, #f57c00) 10%, transparent);
+        border-color: color-mix(in srgb, var(--b3-theme-secondary, #f57c00) 24%, transparent);
+    }
+
     .permission-overview__stats [data-permission="none"] {
         background: color-mix(in srgb, var(--b3-theme-error) 8%, transparent);
         border-color: color-mix(in srgb, var(--b3-theme-error) 20%, transparent);
@@ -199,20 +205,42 @@
     }
 
     .closed-notebooks > summary {
+        align-items: center;
         box-sizing: border-box;
         color: var(--b3-theme-on-surface);
         cursor: pointer;
+        display: flex;
         font-size: 13px;
         font-weight: 500;
-        line-height: 36px;
-        list-style: revert;
-        min-height: 32px;
-        padding: 6px 16px;
+        gap: 8px;
+        list-style: none;
+        padding: var(--mcp-config-card-padding, 16px);
         user-select: none;
+    }
+
+    .closed-notebooks > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    /* The same chevron as the collapsible sections on the connection page. */
+    .closed-notebooks > summary::after {
+        border-bottom: 2px solid currentColor;
+        border-right: 2px solid currentColor;
+        color: var(--mcp-config-caption-color, var(--b3-theme-on-surface-light));
+        content: "";
+        height: 6px;
+        margin-left: auto;
+        transform: rotate(45deg);
+        transition: transform 0.16s ease;
+        width: 6px;
     }
 
     .closed-notebooks[open] > summary {
         border-bottom: 1px solid var(--mcp-config-border, var(--b3-border-color));
+    }
+
+    .closed-notebooks[open] > summary::after {
+        transform: rotate(225deg);
     }
 
     .closed-notebooks :global(.config__settings-card) {

@@ -1,3 +1,14 @@
+import {
+    apiCodeError,
+    httpStatusError,
+    isAmbiguousWriteFailure,
+    ResponseSizeLimitError,
+    SiYuanRequestError,
+    WriteOutcomeUnknownError,
+} from './errors';
+
+export { ResponseSizeLimitError, SiYuanRequestError, WriteOutcomeUnknownError } from './errors';
+
 import type { SiYuanResponse } from '../types/shared';
 
 export interface SiYuanClientConfig {
@@ -9,28 +20,69 @@ export type { SiYuanResponse } from '../types/shared';
 
 export type RequestSemantics = 'read' | 'write';
 
-export class ResponseSizeLimitError extends Error {
-    readonly code = 'response_too_large';
-    constructor(readonly maxBytes: number) {
-        super(`SiYuan response exceeds the ${maxBytes}-byte read limit. Narrow the requested content.`);
-    }
+/**
+ * Transport contract every tool, API wrapper and coordinator depends on.
+ * Implemented by HttpSiYuanClient (Node / CLI / renderer) and
+ * KernelSiYuanClient (goja kernel sandbox).
+ */
+export interface SiYuanClient {
+    setToken(token: string): void;
+    getBaseUrl(): string;
+    getAuthHeaders(): Record<string, string>;
+    requestResource(path: string): Promise<Pick<Response, 'ok' | 'status' | 'statusText' | 'text'>>;
+    requestRead<T>(endpoint: string, data?: object, maxResponseBytes?: number): Promise<T>;
+    requestWrite<T>(endpoint: string, data?: object): Promise<T>;
+    requestFormDataRead<T>(endpoint: string, formData: FormData): Promise<T>;
+    requestFormDataWrite<T>(endpoint: string, formData: FormData): Promise<T>;
+    readFile(path: string): Promise<string>;
+    readFileBinary(path: string): Promise<Uint8Array>;
+    writeFile(path: string, content: string): Promise<void>;
+    /** HTTP-only streaming download; absent inside the kernel sandbox. */
+    streamFile?(path: string, consume: (chunk: Uint8Array) => Promise<void>, options?: {
+        signal?: AbortSignal; maxBytes?: number; timeoutMs?: number;
+    }): Promise<number>;
+    /** Kernel-only: upload raw bytes (the goja sandbox has no FormData). */
+    uploadAssetBytes?<T>(assetsDirPath: string, bytes: Uint8Array, fileName: string): Promise<T>;
+    /** Kernel-only: outbound HTTP through the host proxy; the sandbox has no global fetch. */
+    fetchExternal?(url: string, init: ExternalRequestInit, timeoutMs: number): Promise<ExternalResponse>;
+    /** Kernel-only: bytes staged at the authenticated transfer endpoint. */
+    getUploadSource?(id: string): StagedUploadSource;
+    /** Kernel-only: task-scoped clients sharing one storage instance expose the same identity. */
+    readonly storageIdentity?: object;
 }
 
-/** A write may already have reached SiYuan when transport acknowledgement fails. */
-export class WriteOutcomeUnknownError extends Error {
-    readonly code = 'outcome_unknown';
-    readonly endpoint: string;
+export interface ExternalRequestInit { method?: string; headers?: Record<string, string>; body?: string }
+export interface ExternalResponse { ok: boolean; status: number; text(): Promise<string> }
+export interface StagedUploadSource { fileName: string; bytes: Uint8Array; hash: string }
 
-    constructor(endpoint: string, cause: unknown) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        super(`Write outcome is unknown for ${endpoint}: ${message}`);
-        this.name = 'WriteOutcomeUnknownError';
-        this.endpoint = endpoint;
-        (this as Error & { cause?: unknown }).cause = cause;
-    }
-}
+/**
+ * Every SiYuanClient member that performs host I/O. The kernel task proxy
+ * checkpoints and budgets exactly these; the Record type makes adding an
+ * interface member without classifying it here a compile error.
+ */
+const CLIENT_MEMBER_IO: Record<keyof SiYuanClient, boolean> = {
+    setToken: false,
+    getBaseUrl: false,
+    getAuthHeaders: false,
+    getUploadSource: false,
+    storageIdentity: false,
+    requestResource: true,
+    requestRead: true,
+    requestWrite: true,
+    requestFormDataRead: true,
+    requestFormDataWrite: true,
+    readFile: true,
+    readFileBinary: true,
+    writeFile: true,
+    streamFile: true,
+    uploadAssetBytes: true,
+    fetchExternal: true,
+};
+export const SIYUAN_CLIENT_IO_METHODS: ReadonlySet<string> = new Set(
+    Object.entries(CLIENT_MEMBER_IO).filter(([, io]) => io).map(([name]) => name),
+);
 
-export class SiYuanClient {
+export class HttpSiYuanClient implements SiYuanClient {
     private baseUrl: string;
     private timeout: number;
     private token: string = '';
@@ -94,24 +146,21 @@ export class SiYuanClient {
                     // Do not retry 4xx (except 429).
                     if (response.status >= 400 && response.status < 500 && response.status !== 429) {
                         await response.body?.cancel().catch(() => {});
-                        throw Object.assign(
-                            new Error(`HTTP error: ${response.status} ${response.statusText}`),
-                            { retryable: false },
-                        );
+                        throw httpStatusError(response.status, `HTTP error: ${response.status} ${response.statusText}`);
                     }
                     // Cancel instead of buffering an arbitrarily large error response.
                     await response.body?.cancel().catch(() => {});
-                    lastError = new Error(`HTTP error: ${response.status} ${response.statusText}`);
+                    lastError = httpStatusError(response.status, `HTTP error: ${response.status} ${response.statusText}`);
                     throw lastError;
                 }
                 return response;
             } catch (error) {
                 clearTimeout(timeoutId);
-                if (error && typeof error === 'object' && (error as { retryable?: unknown }).retryable === false) {
+                if (error instanceof SiYuanRequestError && !error.retryable) {
                     throw error;
                 }
                 if (error instanceof Error && error.name === 'AbortError') {
-                    lastError = new Error(`Request timeout after ${this.timeout}ms`);
+                    lastError = new SiYuanRequestError('timeout', `Request timeout after ${this.timeout}ms`, { retryable: true });
                 } else {
                     lastError = error instanceof Error ? error : new Error(String(error));
                 }
@@ -147,12 +196,18 @@ export class SiYuanClient {
             const decoder = new TextDecoder();
             let bytes = 0;
             rawText = '';
-            const timer = setTimeout(() => { void reader?.cancel().catch(() => {}); }, this.timeout);
+            // The timer's own flag decides the timeout: a cancelled body reads as
+            // done, which must never pass for an empty successful response.
+            let timedOut = false;
+            const timer = setTimeout(() => {
+                timedOut = true;
+                void reader?.cancel().catch(() => {});
+            }, this.timeout);
             const deadline = Date.now() + this.timeout;
             try {
                 while (reader) {
                     const { done, value } = await reader.read();
-                    if (Date.now() >= deadline) throw new Error(`Request timeout after ${this.timeout}ms`);
+                    if (timedOut || Date.now() >= deadline) throw new SiYuanRequestError('timeout', `Request timeout after ${this.timeout}ms`);
                     if (done) break;
                     bytes += value.byteLength;
                     if (bytes > maxResponseBytes) throw new ResponseSizeLimitError(maxResponseBytes);
@@ -177,11 +232,11 @@ export class SiYuanClient {
         } catch {
             const snippet = rawText.length > 200 ? `${rawText.slice(0, 200)}...` : rawText;
             const status = [response.status, response.statusText].filter(Boolean).join(' ');
-            throw new Error(`Invalid SiYuan API response from ${url}${status ? ` (HTTP ${status})` : ''}: ${snippet}`);
+            throw new SiYuanRequestError('invalid_response', `Invalid SiYuan API response from ${url}${status ? ` (HTTP ${status})` : ''}: ${snippet}`, { status: response.status });
         }
 
         if (result.code !== 0) {
-            throw new Error(`SiYuan API error: ${result.code} - ${result.msg}`);
+            throw apiCodeError(result.code, result.msg, response.status);
         }
 
         return result.data;
@@ -259,11 +314,6 @@ export class SiYuanClient {
         await this.requestFormDataWrite<null>('/api/file/putFile', formData);
     }
 
-    /** @deprecated Prefer requestFormDataRead/requestFormDataWrite. Defaults to write-safe semantics. */
-    async requestFormData<T>(endpoint: string, formData: FormData): Promise<T> {
-        return this.requestFormDataWrite(endpoint, formData);
-    }
-
     async requestFormDataRead<T>(endpoint: string, formData: FormData): Promise<T> {
         return this.requestFormDataWithSemantics(endpoint, formData, 'read');
     }
@@ -272,7 +322,7 @@ export class SiYuanClient {
         try {
             return await this.requestFormDataWithSemantics(endpoint, formData, 'write');
         } catch (error) {
-            if (isAmbiguousTransportFailure(error)) throw new WriteOutcomeUnknownError(endpoint, error);
+            if (isAmbiguousWriteFailure(error)) throw new WriteOutcomeUnknownError(endpoint, error);
             throw error;
         }
     }
@@ -284,11 +334,6 @@ export class SiYuanClient {
             headers: this.getAuthHeaders(),
             body: formData,
         }, semantics);
-    }
-
-    /** @deprecated Prefer requestRead/requestWrite. Defaults to write-safe semantics. */
-    async request<T>(endpoint: string, data?: object): Promise<T> {
-        return this.requestWrite(endpoint, data);
     }
 
     async requestRead<T>(endpoint: string, data?: object, maxResponseBytes?: number): Promise<T> {
@@ -307,15 +352,8 @@ export class SiYuanClient {
                 body: JSON.stringify(data ?? {}),
             }, 'write');
         } catch (error) {
-            if (isAmbiguousTransportFailure(error)) throw new WriteOutcomeUnknownError(endpoint, error);
+            if (isAmbiguousWriteFailure(error)) throw new WriteOutcomeUnknownError(endpoint, error);
             throw error;
         }
     }
-}
-
-function isAmbiguousTransportFailure(error: unknown): boolean {
-    if (!(error instanceof Error)) return true;
-    return error.message.startsWith('Request timeout')
-        || !error.message.startsWith('SiYuan API error:')
-            && !error.message.startsWith('HTTP error: 4');
 }

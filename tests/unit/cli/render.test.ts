@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ToolResult } from '@/tools/internal/shared';
-import { extractPaginationInfo, renderCliError, renderToolResult } from '@/cli/render';
+import { extractPaginationInfo, renderCliError, renderToolResult, summarizeSqlScope } from '@/cli/render';
 
 it('allows continuing a filtered page with an unknown total', () => {
     const result: ToolResult = { content: [{ type: 'text', text: JSON.stringify({ data: [], total: null, page: 1, pageCount: 3, hasNextPage: true }) }] };
@@ -191,7 +191,7 @@ describe('cli/render', () => {
                     shapes: ['notebook + path + markdown'],
                     requiredFields: ['notebook', 'path', 'markdown'],
                     example: { action: 'create', notebook: 'nb', path: '/Inbox/Test', markdown: 'Hello' },
-                    guidance: ['Parent paths must already exist. Use document(action="resolve", notebook="nb", hpath="/Inbox/Test", include=["ids"]) to resolve IDs.'],
+                    guidance: ['Auto-creates missing parents. Use document(action="resolve", notebook="nb", hpath="/Inbox/Test", include=["ids"]) to resolve IDs.'],
                     requiresConfirmation: false,
                     fullDocResource: 'siyuan://help/action/document/create',
                 }),
@@ -202,15 +202,39 @@ describe('cli/render', () => {
 
         expect(io.stdout).toContain('document create');
         expect(io.stdout).toContain('Use --notebook + --path + --markdown');
-        expect(io.stdout).toContain('siyuan-sisyphus document resolve --id ... --include "[\\"path\\"]"');
+        expect(io.stdout).toContain(`siyuan-sisyphus document resolve --id ... --include-json '["path"]'`);
         expect(io.stdout).toContain('Accepted Shapes');
         expect(io.stdout).toContain('--notebook + --path + --markdown');
         expect(io.stdout).toContain('Required Fields');
         expect(io.stdout).toContain('--notebook, --path, --markdown');
         expect(io.stdout).toContain('siyuan-sisyphus document create --notebook nb --path /Inbox/Test --markdown Hello');
-        expect(io.stdout).toContain('siyuan-sisyphus document resolve --notebook nb --hpath /Inbox/Test --include "[\\"ids\\"]"');
+        expect(io.stdout).toContain(`siyuan-sisyphus document resolve --notebook nb --hpath /Inbox/Test --include-json '["ids"]'`);
         expect(io.stdout).toContain('Resource: siyuan-sisyphus help document create');
         io.restore();
+    });
+
+    it('renders alternative required shapes once, as "one of"', () => {
+        const io = captureStdIO();
+        try {
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({
+                tool: 'document', action: 'remove', shapes: ['id', 'notebook + path'], requiredFields: [['id'], ['notebook', 'path']],
+                example: { action: 'remove', id: 'd1' }, requiresConfirmation: true, fullDocResource: 'siyuan://help/action/document/remove',
+                oneStep: { tier: 3, rule: 'Enabled, but this write always uses the two steps (not on the one-step list).' },
+            }) }] }, { json: false, debug: false });
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({
+                tool: 'block', action: 'update', shapes: ['id + dataType + data'], requiredFields: [['id', 'dataType', 'data'], ['items']],
+                example: { action: 'update', id: 'b1' }, fullDocResource: 'siyuan://help/action/block/update',
+                oneStep: { tier: 2, rule: 'Enabled: may commit without validateOnly only with ifMatch from a fresh read of the target; otherwise use the two steps.', ifMatchReads: ['block get-kramdown --id'] },
+            }) }] }, { json: false, debug: false });
+        } finally {
+            io.restore();
+        }
+        expect(io.stdout).toContain('one of: --id | --notebook + --path');
+        expect(io.stdout).toContain('one of: --id + --data-type + --data | --items');
+        expect(io.stdout).not.toContain('Accepted Shapes');
+        expect(io.stdout).not.toContain('none fixed by the schema');
+        expect(io.stdout).toContain('always uses the two steps');
+        expect(io.stdout).toContain('If Match (from a read of this exact target id/path) is printed by: siyuan-sisyphus block get-kramdown --id');
     });
 
     it('formats curated help examples for terminal reading', () => {
@@ -337,5 +361,109 @@ describe('cli/render', () => {
 
         expect(io.stderr).toContain('✗ Unknown action "oops".');
         io.restore();
+    });
+});
+
+describe('flattenAvRowCells', () => {
+    it('labels AV query cells with column names for human output', async () => {
+        const { flattenAvRowCells } = await import('@/cli/render');
+        const payload = {
+            rows: [{ rowID: 'r1', cells: {
+                c1: { type: 'block', value: '原则', formatted: '原则' },
+                c2: { type: 'select', value: ['读完'], formatted: '读完' },
+                c3: { type: 'number', value: 9, formatted: '9' },
+                c4: { type: 'select', value: [], formatted: '' },
+            } }],
+            columns: [{ name: '书名', columnID: 'c1' }, { name: '状态', columnID: 'c2' }, { name: '评分', columnID: 'c3' }, { name: '单选', columnID: 'c4' }],
+        };
+        expect((flattenAvRowCells(payload) as any).rows).toEqual(['Row ID: r1 · 书名: 原则 · 状态: 读完 · 评分: 9']);
+    });
+
+    it('leaves payloads without AV rows untouched', async () => {
+        const { flattenAvRowCells } = await import('@/cli/render');
+        const payload = { rows: [{ id: 1 }] };
+        expect(flattenAvRowCells(payload)).toBe(payload);
+    });
+});
+
+describe('cli/render read metadata and guidance', () => {
+    const scope = {
+        mode: 'restricted', readableNotebooks: ['a', 'b'], excludedNotebooks: 2,
+        readable: [{ id: 'a', name: 'Research', closed: true }, { id: 'b', name: 'Lab' }],
+        excluded: [{ id: 'c', name: 'Private' }, { id: 'd', name: '私密' }],
+        hint: 'long hint '.repeat(40),
+    };
+    const run = (payload: unknown, isError = false, json = false) => {
+        const io = captureStdIO();
+        try {
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify(payload) }], ...(isError ? { isError: true } : {}) }, { json, debug: false });
+        } finally {
+            io.restore();
+        }
+        return io;
+    };
+
+    it('collapses a restricted SQL scope and readInfo to one line each in human output', () => {
+        const io = run({ data: [{ id: 'x' }], total: 1, scope, readInfo: { scope: 'sql_query', representation: 'sql_rows', coverage: 'partial', limitations: ['notebook_scoped'] } });
+        expect(io.stdout).toContain('Restricted: covers 1 readable open notebook(s): Lab; unreadable, excluded: 2 (Private, 私密); closed, not indexed: 1 (Research)');
+        expect(io.stdout).toContain('sql_query as sql_rows · coverage partial · limits: notebook_scoped');
+        expect(io.stdout).not.toContain('readableNotebooks');
+        expect(io.stdout).not.toContain('long hint');
+        // The data comes before the metadata.
+        expect(io.stdout.indexOf('ID: x')).toBeLessThan(io.stdout.indexOf('Restricted:'));
+    });
+
+    it('reads closed notebooks from the separate closed list', () => {
+        const current = { mode: 'restricted', readableNotebooks: ['a', 'b'], excludedNotebooks: 1,
+            readable: [{ id: 'b', name: 'Lab' }], closed: [{ id: 'a', name: 'Research' }], excluded: [{ id: 'c', name: 'Private' }] };
+        expect(summarizeSqlScope(current)).toContain('covers 1 readable open notebook(s): Lab; unreadable, excluded: 1 (Private); closed, not indexed: 1 (Research)');
+    });
+
+    it('caps covered notebook names and separates unreadable from closed', () => {
+        const many = { mode: 'restricted', readableNotebooks: [], excludedNotebooks: 0,
+            readable: Array.from({ length: 7 }, (_, i) => ({ id: `n${i}`, name: `N${i}` })), excluded: [] };
+        expect(summarizeSqlScope(many)).toBe('Restricted: covers 7 readable open notebook(s): N0, N1, N2, N3, N4, +2 more; unreadable, excluded: 0; tables: blocks, spans, attributes, assets, refs, file_annotation_refs (--json for the full scope).');
+    });
+
+    it('prints get_attrs keys verbatim and drops uiRefresh from human output', () => {
+        const io = captureStdIO();
+        try {
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({ id: 'b1', 'custom-status': 'done', updated: '20261029' }) }] }, { json: false, debug: false, rawKeys: true });
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({ success: true, avID: 'a1', uiRefresh: { attempted: true } }) }] }, { json: false, debug: false });
+        } finally {
+            io.restore();
+        }
+        expect(io.stdout).toContain('custom-status: done');
+        expect(io.stdout).not.toContain('Custom Status');
+        expect(io.stdout).not.toContain('Ui Refresh');
+    });
+
+    it('keeps the full scope in --json output', () => {
+        expect(JSON.parse(run({ data: [], total: 0, scope }, false, true).stdout).scope).toEqual(scope);
+    });
+
+    it('prints warnings and hints untruncated', () => {
+        const warning = `Closed notebooks are skipped by SiYuan (${'X, '.repeat(60)}); open them with notebook set_open_state`;
+        expect(run({ success: true, warning }).stdout).toContain('notebook set_open_state');
+    });
+
+    it('turns a state_changed error into a CLI rerun instruction', () => {
+        const io = run({ success: false, error: { code: 'state_changed', message: 'The target changed after it was read. No write was attempted.', revalidateRequired: true, hint: 'Rerun the validateOnly preflight' } }, true);
+        expect(io.stderr).toContain('Rerun the command with --validate-only');
+        expect(io.stderr).not.toContain('validateOnly preflight');
+    });
+
+    it('turns a stale ifMatch into a re-read instruction', () => {
+        const io = run({ success: false, error: { code: 'state_changed', message: 'The target changed since the read that produced ifMatch. No write was attempted.', expectedField: 'ifMatch', revalidateRequired: true } }, true);
+        expect(io.stderr).toContain('Read the target again');
+        expect(io.stderr).toContain('--if-match');
+        expect(io.stderr).not.toContain('--validate-only');
+    });
+
+    it('prints the one-step rule in action help only when the server sent it', () => {
+        const help = { tool: 'block', action: 'update', writeWorkflow: ['x'], example: { action: 'update' } };
+        expect(run(help).stdout).not.toContain('One-step');
+        const io = run({ ...help, oneStep: { tier: 2, rule: 'Enabled: may commit without validateOnly only with ifMatch from a fresh read of the target; otherwise use the two steps.' } });
+        expect(io.stdout).toContain('without --validate-only only with --if-match');
     });
 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { FlashcardListCardsSchema } from '@/core/types';
+import { FlashcardListCardsSchema } from '@/tools/flashcard/schemas';
 import { callFlashcardTool } from '@/tools/flashcard';
 import { createFlashcardReviewSessionData } from '@/tools/flashcard/handlers';
 
@@ -23,6 +23,11 @@ vi.mock('@/api/block', () => ({
     getChildBlocks: vi.fn(),
     getBlockKramdowns: vi.fn(),
     setBlockAttrs: vi.fn(),
+}));
+
+vi.mock('@/tools/internal/context', async (importOriginal) => ({
+    ...await importOriginal<typeof import('@/tools/internal/context')>(),
+    ensurePermissionForDocumentId: vi.fn(),
 }));
 
 describe('flashcard tool', () => {
@@ -56,6 +61,42 @@ describe('flashcard tool', () => {
         vi.mocked(attributeApi.getChildBlocks).mockReset();
         vi.mocked(attributeApi.getBlockKramdowns).mockReset();
         vi.mocked(attributeApi.setBlockAttrs).mockReset();
+        const context = await import('@/tools/internal/context');
+        vi.mocked(context.ensurePermissionForDocumentId).mockReset();
+        vi.mocked(context.ensurePermissionForDocumentId).mockResolvedValue({
+            context: { documentId: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy' },
+            denied: null,
+        });
+    });
+
+    it('denies create_card and remove_card when the block notebook is not writable', async () => {
+        const api = await import('@/api/flashcard');
+        const context = await import('@/tools/internal/context');
+        const denied = { isError: true, content: [{ type: 'text' as const, text: '{"error":{"type":"permission_denied"}}' }] };
+        vi.mocked(context.ensurePermissionForDocumentId).mockResolvedValue({
+            context: { documentId: 'doc-1', notebook: 'nb-1', path: '/doc-1.sy' },
+            denied,
+        });
+
+        for (const action of ['create_card', 'remove_card'] as const) {
+            const result = await callFlashcardTool({} as any, { action, deckID: 'deck-b', blockIDs: ['block-1'] }, enabledActions as any, {} as any);
+            expect(result).toBe(denied);
+        }
+        expect(vi.mocked(context.ensurePermissionForDocumentId)).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'block-1', 'write');
+        expect(vi.mocked(api.addRiffCards)).not.toHaveBeenCalled();
+        expect(vi.mocked(api.removeRiffCards)).not.toHaveBeenCalled();
+    });
+
+    it('lets remove_card clear an orphaned card whose block no longer resolves', async () => {
+        const api = await import('@/api/flashcard');
+        const context = await import('@/tools/internal/context');
+        vi.mocked(context.ensurePermissionForDocumentId).mockRejectedValue(new Error('block not found'));
+        vi.mocked(api.removeRiffCards).mockResolvedValue(null as never);
+
+        const result = await callFlashcardTool({} as any, { action: 'remove_card', deckID: '20230218211946-2kw8jgx', blockIDs: ['gone'] }, enabledActions as any, {} as any);
+
+        expect(result.isError).toBeFalsy();
+        expect(vi.mocked(api.removeRiffCards)).toHaveBeenCalled();
     });
 
     it('routes list_cards(scope="all") to getRiffDueCards without deck id', async () => {
@@ -80,6 +121,12 @@ describe('flashcard tool', () => {
             filter: 'due',
             unreviewedCount: 2,
         });
+    });
+
+    it('defaults list_cards to due without changing its scope validation', () => {
+        expect(FlashcardListCardsSchema.parse({ action: 'list_cards', scope: 'all' }).filter).toBe('due');
+        expect(FlashcardListCardsSchema.safeParse({ action: 'list_cards', scope: 'deck' }).success).toBe(false);
+        expect(FlashcardListCardsSchema.safeParse({ action: 'list_cards', scope: 'all', filter: 'invalid' }).success).toBe(false);
     });
 
     it('revalidates, deduplicates, and preserves AI-selected review order', async () => {
@@ -308,6 +355,37 @@ describe('flashcard tool', () => {
         expect(vi.mocked(blockApi.getBlockKramdowns)).not.toHaveBeenCalled();
     });
 
+    it.each(['denied', 'reload-failed', 'lookup-failed'])('strips native card content when read permission is %s', async (failure) => {
+        const api = await import('@/api/flashcard');
+        const blockApi = await import('@/api/block');
+        vi.mocked(api.getRiffCards).mockResolvedValue({
+            blocks: [{
+                id: 'private-block', riffCardID: 'private-card', type: 'p',
+                content: 'private answer', markdown: 'private answer', hPath: '/private title',
+                front: 'private question', back: 'private answer',
+                riffCard: { reps: 2, state: 1, due: '2026-10-21' },
+            }],
+        });
+        vi.mocked(blockApi.getBlockInfo).mockImplementation(async () => {
+            if (failure === 'lookup-failed') throw new Error('unavailable');
+            return { box: 'private-notebook' };
+        });
+        const permMgr = {
+            reload: vi.fn().mockImplementation(async () => {
+                if (failure === 'reload-failed') throw new Error('unavailable');
+            }),
+            canRead: vi.fn().mockReturnValue(false),
+        };
+        const result = await callFlashcardTool({} as any, {
+            action: 'get_cards', deckID: 'deck-1',
+        }, enabledActions as any, permMgr as any);
+        const cards = JSON.parse(result.content[0].text).cards;
+        expect(cards).toEqual([{
+            cardID: 'private-card', blockID: 'private-block', reps: 2, state: 1, due: '2026-10-21',
+        }]);
+        expect(blockApi.getBlockKramdowns).not.toHaveBeenCalled();
+    });
+
     it('fails closed when notebook permission context cannot be resolved', async () => {
         const api = await import('@/api/flashcard');
         const blockApi = await import('@/api/block');
@@ -328,6 +406,27 @@ describe('flashcard tool', () => {
 
         expect(JSON.parse(result.content[0].text).cards[0]).not.toHaveProperty('front');
         expect(vi.mocked(blockApi.getBlockKramdowns)).not.toHaveBeenCalled();
+    });
+
+    it('keeps unreadable native records sanitized when hydration of readable cards fails', async () => {
+        const api = await import('@/api/flashcard');
+        const blockApi = await import('@/api/block');
+        vi.mocked(api.getRiffCards).mockResolvedValue({
+            blocks: [
+                { id: 'public-block', riffCardID: 'public-card', content: 'public text', riffCard: { state: 0 } },
+                { id: 'private-block', riffCardID: 'private-card', content: 'secret text', riffCard: { state: 0 } },
+            ],
+        });
+        vi.mocked(blockApi.getBlockInfo).mockImplementation(async (_client, id) => ({ box: id === 'public-block' ? 'public' : 'private' }));
+        vi.mocked(blockApi.getChildBlocks).mockResolvedValue([]);
+        vi.mocked(blockApi.getBlockKramdowns).mockRejectedValue(new Error('unavailable'));
+        const result = await callFlashcardTool({} as any, {
+            action: 'get_cards', deckID: 'deck-1',
+        }, enabledActions as any, { reload: async () => {}, canRead: (box: string) => box === 'public' } as any);
+        const cards = JSON.parse(result.content[0].text).cards;
+        expect(cards[0].content).toBe('public text');
+        expect(cards[1]).toEqual({ cardID: 'private-card', blockID: 'private-block', state: 0 });
+        expect(blockApi.getBlockKramdowns).toHaveBeenCalledWith(expect.anything(), ['public-block'], 'md');
     });
 
     it('treats empty list_cards deckID as omitted for scope="all"', async () => {
@@ -444,8 +543,17 @@ describe('flashcard tool', () => {
         expect(payload.unreviewedOldCardCount).toBe(3);
     });
 
+    it('exposes separate cardID and blockID plus actual scheduling state in get_cards', async () => {
+        const api = await import('@/api/flashcard');
+        vi.mocked(api.getRiffCards).mockResolvedValue({ blocks: [{ id: 'block-1', riffCardID: 'card-1', riffCard: { reps: 2, state: 1 } }], total: 1 });
+        const result = await callFlashcardTool({} as any, { action: 'get_cards', deckID: 'deck-1' }, enabledActions as any, {} as any);
+        expect(JSON.parse(result.content[0].text).cards[0]).toMatchObject({ blockID: 'block-1', cardID: 'card-1', reps: 2, state: 1 });
+    });
+
     it('maps get_cards requests to id and blocks -> cards', async () => {
         const api = await import('@/api/flashcard');
+        const blockApi = await import('@/api/block');
+        vi.mocked(blockApi.getBlockInfo).mockResolvedValue({ box: 'notebook-1' });
         vi.mocked(api.getRiffCards).mockResolvedValue({
             blocks: [{ id: 'block-1' }, { id: 'block-2' }],
             total: 2,
@@ -457,7 +565,7 @@ describe('flashcard tool', () => {
             deckID: '',
             page: 1,
             pageSize: 10,
-        }, enabledActions as any, {} as any);
+        }, enabledActions as any, { reload: async () => {}, canRead: () => true } as any);
 
         expect(vi.mocked(api.getRiffCards)).toHaveBeenCalledWith(expect.anything(), '', 1, 10);
         expect(JSON.parse(result.content[0].text)).toEqual({
@@ -473,6 +581,8 @@ describe('flashcard tool', () => {
 
     it('retries get_cards when the kernel returns unresolved placeholder blocks', async () => {
         const api = await import('@/api/flashcard');
+        const blockApi = await import('@/api/block');
+        vi.mocked(blockApi.getBlockInfo).mockResolvedValue({ box: 'notebook-1' });
         vi.mocked(api.getRiffCards)
             .mockResolvedValueOnce({
                 blocks: [{ id: 'block-1', type: '', content: '不存在符合条件的内容块' }],
@@ -490,7 +600,7 @@ describe('flashcard tool', () => {
             deckID: '',
             page: 1,
             pageSize: 10,
-        }, enabledActions as any, {} as any);
+        }, enabledActions as any, { reload: async () => {}, canRead: () => true } as any);
 
         expect(vi.mocked(api.getRiffCards)).toHaveBeenCalledTimes(2);
         expect(JSON.parse(result.content[0].text)).toMatchObject({
@@ -776,15 +886,22 @@ describe('flashcard tool', () => {
         const api = await import('@/api/flashcard');
         vi.mocked(api.reviewRiffCard).mockResolvedValue(null);
 
-        const result = await callFlashcardTool({} as any, {
+        const client = { requestRead: vi.fn(async (endpoint: string) => endpoint === '/api/block/getBlockInfo'
+            ? { box: 'nb-1' } : { blocks: [{ id: 'block-2', riffCardID: 'card-2', riffCard: { reps: 0, state: 0 } }], pageCount: 1 }) };
+        const result = await callFlashcardTool(client as any, {
             action: 'review_card',
             deckID: 'deck-1',
             cardID: 'card-2',
             rating: 3,
             reviewedCards: [{ cardID: 'card-1', rating: 2 }],
-        }, enabledActions as any, {} as any);
+        }, enabledActions as any, { reload: vi.fn(), canWrite: () => true } as any);
 
         expect(result.isError).toBeUndefined();
+        const payload = JSON.parse(result.content[0].text);
+        expect(payload).not.toHaveProperty('result');
+        expect(payload.nextSteps[0]).toMatchObject({
+            tool: 'flashcard', args: { action: 'get_cards', deckID: 'deck-1' },
+        });
         expect(vi.mocked(api.reviewRiffCard)).toHaveBeenCalledWith(
             expect.anything(),
             'deck-1',
@@ -794,10 +911,23 @@ describe('flashcard tool', () => {
         );
     });
 
+    it('returns executable continuation when skipping without claiming a reschedule', async () => {
+        const api = await import('@/api/flashcard'); vi.mocked(api.skipReviewRiffCard).mockResolvedValue(null);
+        const client = { requestRead: vi.fn(async (ep: string) => ep === '/api/block/getBlockInfo' ? { box: 'nb-1' }
+            : { blocks: [{ id: 'block-1', riffCardID: 'card-1', riffCard: { state: 0, reps: 0 } }], pageCount: 1 }) };
+        const result = await callFlashcardTool(client as any, { action: 'review_card', deckID: 'deck-1', cardID: 'card-1', skip: true,
+            reviewedCards: [{ cardID: 'other' }, { cardID: 'card-1' }] }, enabledActions as any, { reload: vi.fn(), canWrite: () => true } as any);
+        expect(JSON.parse(result.content[0].text).reviewSession).toMatchObject({ persistedScheduleChanged: false,
+            nextListArgs: { action: 'list_cards', scope: 'deck', filter: 'due', deckID: 'deck-1', reviewedCards: [{ cardID: 'other' }, { cardID: 'card-1' }] } });
+        expect(api.skipReviewRiffCard).toHaveBeenCalledTimes(1); expect(api.reviewRiffCard).not.toHaveBeenCalled();
+    });
+
     it('rejects reviewedCards entries without cardID before calling the kernel', async () => {
         const api = await import('@/api/flashcard');
 
-        const result = await callFlashcardTool({} as any, {
+        const client = { requestRead: vi.fn(async (endpoint: string) => endpoint === '/api/block/getBlockInfo'
+            ? { box: 'nb-1' } : { blocks: [{ id: 'block-2', riffCardID: 'card-2', riffCard: { reps: 0, state: 0 } }], pageCount: 1 }) };
+        const result = await callFlashcardTool(client as any, {
             action: 'review_card',
             deckID: 'deck-1',
             cardID: 'card-2',

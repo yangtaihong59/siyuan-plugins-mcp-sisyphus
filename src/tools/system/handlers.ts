@@ -3,16 +3,7 @@ import * as notificationApi from '../../api/notification';
 import * as systemApi from '../../api/system';
 import { buildChangelogResponse } from '../../core/changelog';
 import type { SystemAction } from '../../core/config';
-import {
-    SystemChangelogSchema,
-    SystemConfSchema,
-    SystemGetCurrentTimeSchema,
-    SystemGetVersionSchema,
-    SystemNetworkSchema,
-    SystemNotifySchema,
-    SystemPerformSyncSchema,
-    SystemWorkspaceInfoSchema,
-} from '../../core/types';
+import { SystemChangelogSchema, SystemConfSchema, SystemGetCurrentTimeSchema, SystemGetVersionSchema, SystemNetworkSchema, SystemNotifySchema, SystemPerformSyncSchema, SystemWorkspaceInfoSchema } from './schemas';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { createJsonResult, type ToolResult } from '../internal/shared';
 

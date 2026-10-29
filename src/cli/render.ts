@@ -1,11 +1,14 @@
 import type { ToolResult } from '../tools/internal/shared';
 import { isActionHelpPayload, isHelpIndexPayload } from '../shared/help-payload';
 import { translatePresentationPayload, translatePresentationText } from '../shared/invocation-format';
-
+import { isRecord as isObject } from '../shared/record';
+import { PRIMARY_CLI_COMMAND } from '../shared/constants';
 
 export interface RenderOptions {
     json: boolean;
     debug: boolean;
+    /** The payload is an attribute map (get_attrs): print every key verbatim. */
+    rawKeys?: boolean;
 }
 
 export interface PaginationInfo {
@@ -29,7 +32,13 @@ const ANSI = {
 
 const SUMMARY_KEY_PRIORITY = [
     'id',
+    // Flashcards: review/remove take cardID, not the block's id.
+    'cardID',
     'name',
+    // Timeline nodes: compare/rollback take the tag.
+    'tag',
+    // Notebook lists: what this client may do there matters more than paths.
+    'permission',
     'title',
     'path',
     'hpath',
@@ -40,7 +49,6 @@ const SUMMARY_KEY_PRIORITY = [
     'docID',
     'avID',
     'deckID',
-    'cardID',
     'status',
     'version',
     'count',
@@ -119,7 +127,7 @@ export function writeKeyValueRows(
 
     for (let i = 0; i < entries.length; i++) {
         const label = labels[i].padEnd(width);
-        writeLine(stream, `  ${paint(stream, ANSI.bold, `${label}:`)} ${formatScalar(entries[i].value)}`);
+        writeLine(stream, `  ${paint(stream, ANSI.bold, `${label}:`)} ${formatField(entries[i].key, entries[i].value, true)}`);
     }
 }
 
@@ -175,8 +183,134 @@ export function renderToolResult(result: ToolResult, options: RenderOptions): nu
         return 1;
     }
 
-    renderSuccessPayload(payload);
+    // Plugin-UI refresh bookkeeping means nothing in a terminal; --json keeps it.
+    if (isObject(payload) && 'uiRefresh' in payload) {
+        const { uiRefresh: _uiRefresh, ...rest } = payload;
+        payload = rest;
+    }
+    if (options.rawKeys && isObject(payload) && Object.values(payload).every(isScalar)) {
+        renderAttributeMap(payload, process.stdout);
+        return 0;
+    }
+    renderSuccessPayload(compactReadMetadata(flattenAvRowCells(payload)));
     return 0;
+}
+
+/**
+ * Attribute keys are what set-attrs and SQL take (`custom-status`), so print
+ * them as-is, all of them, instead of humanized and capped like field names.
+ */
+function renderAttributeMap(attrs: Record<string, unknown>, out: OutputStream): void {
+    const entries = Object.entries(attrs);
+    if (entries.length === 0) {
+        writeMuted('No attributes.', out);
+        return;
+    }
+    const width = Math.max(...entries.map(([key]) => key.length));
+    for (const [key, value] of entries) {
+        writeLine(out, `  ${paint(out, ANSI.bold, `${key.padEnd(width)}:`)} ${formatField(key, value, true)}`);
+    }
+}
+
+function names(list: unknown): string[] {
+    return Array.isArray(list)
+        ? list.filter(isObject).map((item) => String(item.name || item.id || '')).filter(Boolean)
+        : [];
+}
+
+/** Up to `max` names, then "+N more". */
+function capNames(list: string[], max = 5): string {
+    return list.length > max ? `${list.slice(0, max).join(', ')}, +${list.length - max} more` : list.join(', ');
+}
+
+/** One-line summary of a query_sql scope; --json keeps the full object. */
+export function summarizeSqlScope(scope: Record<string, unknown>): string {
+    if (scope.mode !== 'restricted') return 'Full: every notebook is readable; the SQL ran unchanged.';
+    const excluded = names(scope.excluded);
+    const excludedCount = typeof scope.excludedNotebooks === 'number' ? scope.excludedNotebooks : excluded.length;
+    const readable = Array.isArray(scope.readable) ? scope.readable.filter(isObject) : [];
+    // `closed` is its own list; older servers marked closed entries inside `readable`.
+    const closed = [...names(scope.closed), ...names(readable.filter((item) => item.closed === true))];
+    const covered = names(readable.filter((item) => item.closed !== true));
+    // What IS searched first, then the two different reasons a notebook is not:
+    // unreadable (permission) vs closed (not in the index at all).
+    return [
+        `Restricted: covers ${covered.length} readable open notebook(s)${covered.length ? `: ${capNames(covered)}` : ''}`,
+        `unreadable, excluded: ${excludedCount}${excluded.length ? ` (${capNames(excluded)})` : ''}`,
+        ...(closed.length ? [`closed, not indexed: ${closed.length} (${capNames(closed)})`] : []),
+        'tables: blocks, spans, attributes, assets, refs, file_annotation_refs (--json for the full scope)',
+    ].join('; ') + '.';
+}
+
+/** readInfo as one line: what was read, how completely, and the named limitations. */
+export function summarizeReadInfo(info: Record<string, unknown>): string {
+    const limitations = toStringArray(info.limitations);
+    const extra = Object.entries(info)
+        .filter(([key, value]) => !['scope', 'representation', 'coverage', 'limitations'].includes(key) && isScalar(value))
+        .map(([key, value]) => `${key}=${String(value)}`);
+    return [
+        [info.scope, info.representation].filter((value) => typeof value === 'string').join(' as '),
+        typeof info.coverage === 'string' ? `coverage ${info.coverage}` : '',
+        ...extra,
+        limitations.length ? `limits: ${limitations.join(', ')}` : '',
+    ].filter(Boolean).join(' · ');
+}
+
+/**
+ * Human output only: restricted-SQL scope and readInfo repeat on every read
+ * and dwarfed the rows. Collapse them to one line each.
+ */
+export function compactReadMetadata(payload: unknown): unknown {
+    if (!isObject(payload)) return payload;
+    const next: Record<string, unknown> = { ...payload };
+    if (isObject(next.scope) && (next.scope.mode === 'restricted' || next.scope.mode === 'full') && Array.isArray(next.scope.readableNotebooks)) {
+        next.scope = summarizeSqlScope(next.scope);
+    }
+    if (isObject(next.readInfo) && Object.values(next.readInfo).every((value) => isScalar(value) || Array.isArray(value))) {
+        next.readInfo = summarizeReadInfo(next.readInfo);
+    }
+    return next;
+}
+
+/**
+ * AV query rows carry cells keyed by column ID, which the generic renderer
+ * cannot show. For human output, label each cell with its column name.
+ */
+export function flattenAvRowCells(payload: unknown): unknown {
+    if (!isObject(payload) || !Array.isArray(payload.rows) || !Array.isArray(payload.columns)) return payload;
+    const names = new Map<string, string>();
+    for (const column of payload.columns) {
+        if (!isObject(column)) continue;
+        const id = typeof column.columnID === 'string' ? column.columnID : typeof column.id === 'string' ? column.id : '';
+        if (id) names.set(id, typeof column.name === 'string' && column.name ? column.name : id);
+    }
+    if (names.size === 0) return payload;
+    // One line per row, every non-empty cell in column order (the generic
+    // list renderer would keep only four alphabetically sorted fields).
+    const rows = payload.rows.map((row) => {
+        if (!isObject(row) || !isObject(row.cells)) return row;
+        const cells = row.cells as Record<string, unknown>;
+        const parts = typeof row.rowID === 'string' ? [`Row ID: ${row.rowID}`] : [];
+        for (const [columnID, name] of names) {
+            const text = displayCellValue(cells[columnID]);
+            if (text) parts.push(`${name}: ${text}`);
+        }
+        return parts.join(' · ');
+    });
+    return { ...payload, rows };
+}
+
+function displayCellValue(cell: unknown): string {
+    if (!isObject(cell)) return '';
+    if (typeof cell.formatted === 'string' && cell.formatted) return cell.formatted;
+    const value = cell.value;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) {
+        return value.map((item) => isObject(item) && typeof item.content === 'string' ? item.content : typeof item === 'string' ? item : '')
+            .filter(Boolean).join(', ');
+    }
+    if (isObject(value) && typeof value.content === 'string') return value.content;
+    return '';
 }
 
 export function extractPaginationInfo(result: ToolResult): PaginationInfo | null {
@@ -221,7 +355,7 @@ function renderErrorPayload(payload: unknown): void {
 
     if (isObject(payload) && isObject(payload.error)) {
         const err = payload.error as Record<string, unknown>;
-        const type = typeof err.type === 'string' ? err.type : 'error';
+        const type = typeof err.type === 'string' ? err.type : typeof err.code === 'string' ? err.code : 'error';
         const message = typeof err.message === 'string' ? err.message : 'Unknown error';
 
         writeStatus('error', `[${type}] ${message}`, out);
@@ -241,9 +375,15 @@ function renderErrorPayload(payload: unknown): void {
             }
         }
 
-        if (typeof err.hint === 'string' && err.hint) {
+        // Coordinator hints speak MCP ("validateOnly preflight"); say it as a command.
+        const hint = err.revalidateRequired === true && err.expectedField === 'ifMatch'
+            ? `${typeof err.hint === 'string' && err.hint ? err.hint : 'Read the target again (the read prints a fresh ifMatch), re-check the content, then rebuild the write.'} Pass the new value as --if-match.`
+            : err.revalidateRequired === true
+            ? `Rerun the command with --validate-only to get a fresh preflight and hashes, then run the new commit command.${err.code === 'state_changed' ? ' Any write to the same target (for a database: any change to it) invalidates other pending preflights.' : ''}`
+            : err.hint;
+        if (typeof hint === 'string' && hint) {
             writeSection('Hint', out);
-            writeLine(out, `  ${err.hint}`);
+            writeLine(out, `  ${hint}`);
         }
 
         if (typeof err.details === 'string' && err.details) {
@@ -337,7 +477,8 @@ function renderGenericObject(obj: Record<string, unknown>, out: OutputStream): v
         writeStatus('info', message, out);
     }
 
-    const summaryEntries = pickSummaryEntries(entries, new Set(message ? ['message'] : []));
+    // Read metadata goes after the data, not above it.
+    const summaryEntries = pickSummaryEntries(entries, new Set(['scope', 'readInfo', ...(message ? ['message'] : [])]));
     if (summaryEntries.length > 0) {
         writeKeyValueRows(summaryEntries, out);
     }
@@ -379,7 +520,20 @@ function renderNamedValue(key: string, value: unknown, out: OutputStream): void 
         return;
     }
 
-    writeLine(out, `  ${formatScalar(value)}`);
+    writeLine(out, `  ${formatField(key, value)}`);
+}
+
+function renderTreeItems(values: unknown[], depth: number, out: OutputStream): void {
+    const pad = '  '.repeat(depth);
+    for (const value of values) {
+        if (!isObject(value)) continue;
+        const label = [value.name ?? value.title ?? value.hPath ?? value.path, value.id ? `(${String(value.id)})` : '']
+            .filter(Boolean).join(' ');
+        const children = Array.isArray(value.children) ? value.children : [];
+        const hidden = typeof value.childCount === 'number' && value.childrenTruncated ? ` · ${value.childCount} more below (raise maxDepth)` : '';
+        writeLine(out, `${pad}• ${String(label)}${hidden}`);
+        renderTreeItems(children, depth + 1, out);
+    }
 }
 
 function renderArrayBlock(
@@ -395,6 +549,12 @@ function renderArrayBlock(
     }
 
     writeSection(title, out);
+
+    // Document trees nest `children`; flat summaries hid every level below the first.
+    if (values.some((value) => isObject(value) && Array.isArray(value.children))) {
+        renderTreeItems(values, 1, out);
+        return;
+    }
 
     const maxItems = options.maxItems ?? 10;
     const visible = values.slice(0, maxItems);
@@ -426,10 +586,16 @@ function renderHelpIndex(obj: Record<string, unknown>, out: OutputStream): void 
     renderActionGroup('Common Actions', toStringArray(obj.commonActions), obj.actionSummaries, out);
     renderActionGroup('Advanced Actions', toStringArray(obj.advancedActions), obj.actionSummaries, out);
 
+    const oneStep = toStringArray(obj.oneStepSummary);
+    if (oneStep.length > 0) {
+        writeSection('One-step writes (enabled)', out);
+        writeBulletList(oneStep, out);
+    }
+
     const confirmation = toStringArray(obj.requiresConfirmation);
     if (confirmation.length > 0) {
         writeSection('Confirmation', out);
-        writeBulletList(confirmation.map((action) => `${action} requires explicit confirmation.`), out, 'warning');
+        writeBulletList(confirmation.map((action) => `${action} is destructive: double-check the preflight before running its commit command (the CLI asks no further question).`), out, 'warning');
     }
 
     if (typeof obj.detailsHint === 'string' && obj.detailsHint) {
@@ -447,13 +613,36 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
         writeStatus('info', obj.hint, out);
     }
 
-    const shapes = toStringArray(obj.shapes);
+    if (Array.isArray(obj.writeWorkflow)) {
+        const oneStepTier = isObject(obj.oneStep) ? obj.oneStep.tier : undefined;
+        writeSection(oneStepTier === 1
+            ? 'Write Flow (two steps; optional here: one-step is on, so this write may also commit without --validate-only)'
+            : oneStepTier === 2
+                ? 'Write Flow (two steps; or one step with --if-match from a fresh read)'
+                : 'Write Flow (two steps)', out);
+        writeBulletList([
+            '1. Run the command with --validate-only. Nothing is written; it checks permissions, prints a preview of the targets, changes and risk flags, and the exact commit command.',
+            '2. Read the preview and check it matches your intent (add --preview full for complete before/after text). If it does not, do not commit.',
+            '3. Run the printed commit command unchanged (it carries --request-id and any --expected-*-hash).',
+            '4. Read the target back to confirm. A preflight expires after 10 minutes or when the target changes; then preflight again.',
+        ], out);
+    }
+
+    if (isObject(obj.oneStep) && typeof obj.oneStep.rule === 'string') {
+        writeSection('One-step write', out);
+        writeLine(out, `  ${obj.oneStep.rule.replace(/\bvalidateOnly\b/g, '--validate-only').replace(/\bifMatch\b/g, '--if-match')}`);
+        const reads = toStringArray(obj.oneStep.ifMatchReads);
+        if (reads.length > 0) writeLine(out, `  If Match (from a read of this exact target id/path) is printed by: ${reads.map((read) => `${PRIMARY_CLI_COMMAND} ${read}`).join(', ')}`);
+    }
+
+    const required = normalizeRequiredFields(obj.requiredFields);
+    // Several alternatives print once, as "one of: …", under Required Fields.
+    const shapes = isAlternativeList(obj.requiredFields) ? [] : toStringArray(obj.shapes);
     if (shapes.length > 0) {
         writeSection('Accepted Shapes', out);
         writeBulletList(shapes, out);
     }
 
-    const required = normalizeRequiredFields(obj.requiredFields);
     if (required.length > 0) {
         writeSection('Required Fields', out);
         writeBulletList(required, out);
@@ -476,7 +665,7 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
 
     if (obj.requiresConfirmation === true) {
         writeSection('Safety', out);
-        writeBulletList(['This action requires explicit confirmation.'], out, 'warning');
+        writeBulletList(['Destructive: AI agents should get the user\'s go-ahead first. The CLI asks no further question; running the commit command is the confirmation.'], out, 'warning');
     }
 
     if (typeof obj.fullDocResource === 'string' && obj.fullDocResource) {
@@ -544,7 +733,8 @@ function pickSummaryEntries(
     exclude: Set<string> = new Set(),
 ): Array<{ key: string; value: unknown }> {
     const scalarEntries = entries
-        .filter(([key, value]) => !exclude.has(key) && isScalar(value))
+        // Empty strings (unset name/alias/icon) would crowd out real fields.
+        .filter(([key, value]) => !exclude.has(key) && isScalar(value) && value !== '')
         .map(([key, value]) => ({ key, value }));
 
     return scalarEntries
@@ -574,22 +764,28 @@ function summarizeItem(value: unknown): string | null {
 
     return scalarEntries
         .slice(0, 4)
-        .map((entry) => `${humanizeKey(entry.key)}: ${formatScalar(entry.value)}`)
+        .map((entry) => `${humanizeKey(entry.key)}: ${formatField(entry.key, entry.value)}`)
         .join(' · ');
 }
 
 function normalizeRequiredFields(value: unknown): string[] {
     if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
-        return [value.join(', ')];
+        // An empty list means the schema has no unconditional field (multi-mode action).
+        return value.length > 0 ? [value.join(', ')] : ['none fixed by the schema; see Examples for each mode'];
     }
 
     if (Array.isArray(value)) {
-        return value
-            .filter((item): item is string[] => Array.isArray(item) && item.every((part) => typeof part === 'string'))
-            .map((parts) => parts.join(', '));
+        const alternatives = value
+            .filter((item): item is string[] => Array.isArray(item) && item.every((part) => typeof part === 'string'));
+        if (alternatives.length > 1) return [`one of: ${alternatives.map((parts) => parts.join(' + ')).join(' | ')}`];
+        return alternatives.map((parts) => parts.join(', '));
     }
 
     return [];
+}
+
+function isAlternativeList(value: unknown): boolean {
+    return Array.isArray(value) && value.filter((item) => Array.isArray(item)).length > 1;
 }
 
 function toStringArray(value: unknown): string[] {
@@ -601,6 +797,12 @@ function prettyJson(value: unknown): string {
 }
 
 function humanizeKey(key: string): string {
+    // Data keys (file names, paths, tags) are values, not field names; so are
+    // hyphenated block attributes (custom-status, title-img), which callers
+    // must copy exactly. Payload field names are camelCase or snake_case.
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(key)) return key;
+    // SiYuan search endpoints echo the keyword as `k`.
+    if (key === 'k') return 'Query';
     return key
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/[_-]+/g, ' ')
@@ -608,12 +810,34 @@ function humanizeKey(key: string): string {
         .split(/\s+/)
         .map((part) => {
             const lower = part.toLowerCase();
-            if (['id', 'ids', 'url', 'api', 'sql', 'json', 'ocr', 'html'].includes(lower)) {
+            if (lower === 'ids') return 'IDs';
+            if (['id', 'url', 'api', 'sql', 'json', 'ocr', 'html'].includes(lower)) {
                 return lower.toUpperCase();
             }
             return lower.charAt(0).toUpperCase() + lower.slice(1);
         })
         .join(' ');
+}
+
+const EPOCH_MS_KEYS = /^(created|updated|lastReview|due|expiresAt|requestIdExpiresAt|time)$/;
+
+// Body text the caller asked to read; truncating it made readbacks look wrong.
+const FULL_TEXT_KEYS = new Set(['markdown', 'documentMarkdown', 'kramdown', 'content']);
+// Guidance the reader must act on; a cut-off command is useless.
+const UNTRUNCATED_KEYS = /^(warning|warnings|hint|note|notice|tip|message|reason|scope|readInfo|nextStep|nextStepHint|nextWindowHint|recovery|recoveryHint)$|Hint$|Warning$|Note$/;
+
+/** Epoch-millisecond timestamps read as dates; body text in full; other scalars as-is. */
+function formatField(key: string, value: unknown, fullText = false): string {
+    if (fullText && typeof value === 'string' && FULL_TEXT_KEYS.has(key)) {
+        return value.includes('\n') ? `\n${indentBlock(value, 4)}` : value;
+    }
+    if (typeof value === 'string' && UNTRUNCATED_KEYS.test(key)) return value;
+    if (typeof value === 'number' && EPOCH_MS_KEYS.test(key) && value > 1e12 && value < 1e14) {
+        const d = new Date(value);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    return formatScalar(value);
 }
 
 function formatScalar(value: unknown): string {
@@ -643,6 +867,3 @@ function isScalar(value: unknown): value is string | number | boolean | null {
         || value === null;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}

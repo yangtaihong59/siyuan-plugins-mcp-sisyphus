@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { SiYuanClient } from '@/api/client';
+import { HttpSiYuanClient } from '@/api/client';
 import { OfficialMcpBridge } from '@/core/official-mcp-bridge';
 
 describe('official MCP bridge transport', () => {
@@ -97,7 +97,7 @@ describe('official MCP bridge transport', () => {
             return new Response(null, { status: 404 });
         };
 
-        const siyuanClient = new SiYuanClient({ baseUrl: 'http://127.0.0.1:6806' });
+        const siyuanClient = new HttpSiYuanClient({ baseUrl: 'http://127.0.0.1:6806' });
         siyuanClient.setToken('secret');
         const bridge = new OfficialMcpBridge(siyuanClient, {
             fetch: fakeFetch,

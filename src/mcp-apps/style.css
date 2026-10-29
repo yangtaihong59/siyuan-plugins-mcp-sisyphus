@@ -172,7 +172,8 @@ pre { overflow: auto; white-space: pre-wrap; word-break: break-word; }
 .block-restore:hover:not(:disabled) { background: var(--surface-strong); color: var(--accent); transform: translateY(-50%); }
 .diff-reason { display: block; padding: 4px 10px; color: var(--muted); font-size: 11px; }
 
-.vending-shop-app { border: 3px solid #242833; border-radius: 5px; background: #171a22; box-shadow: 8px 8px 0 rgb(8 10 15 / 32%); }
+/* The vending machine is dark in every host theme, so its text and buttons use the dark palette too. */
+.vending-shop-app { --text: #f2efe7; --muted: #aab1bf; --surface: #3a4050; --surface-strong: #454c5e; --border: #222733; color-scheme: dark; color: var(--text); border: 3px solid #242833; border-radius: 5px; background: #171a22; box-shadow: 8px 8px 0 rgb(8 10 15 / 32%); }
 .vending-shop-app > .app-header { border-bottom: 3px solid #242833; background: #303542; }
 .vending-shop-app .app-icon, .vending-shop-app button { border: 2px solid #222733; border-radius: 3px; box-shadow: 2px 2px 0 #151821; }
 .vending-shop-app .view-content { background: #10131a; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }

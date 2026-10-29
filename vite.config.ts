@@ -103,8 +103,9 @@ function createRendererConfig() {
                 targets: [
                     { src: "./README.md", dest: "./" },
                     { src: "./README_zh_CN.md", dest: "./" },
-                    { src: "./assets/architecture.svg", dest: "./assets" },
-                    { src: "./assets/architecture_zh_CN.svg", dest: "./assets" },
+                    // Images the READMEs reference, so the marketplace view renders them too.
+                    { src: "./assets/readme/*.{webp,svg}", dest: "./assets/readme" },
+                    { src: "./docs/archive/thank.jpeg", dest: "./docs/archive" },
                     { src: "./plugin.json", dest: "./" },
                     { src: "./preview.png", dest: "./" },
                     { src: "./icon.png", dest: "./" },
@@ -138,8 +139,7 @@ function createRendererConfig() {
                                         "public/i18n/**",
                                         "./README.md",
                                         "./README_zh_CN.md",
-                                        "./assets/architecture.svg",
-                                        "./assets/architecture_zh_CN.svg",
+                                        "./assets/readme/*.{webp,svg}",
                                         "./plugin.json",
                                     ]);
                                     for (const file of files) {
@@ -210,7 +210,7 @@ function createServerConfig() {
             minify: true,
             sourcemap: isSrcmap ? "inline" : false,
             lib: {
-                entry: resolve(__dirname, "src/core/server.ts"),
+                entry: resolve(__dirname, "src/mcp/server.ts"),
                 fileName: () => "mcp-server",
                 formats: ["cjs"],
             },

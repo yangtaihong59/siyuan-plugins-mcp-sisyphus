@@ -2,6 +2,7 @@ import { ZodError, type ZodIssue } from 'zod';
 
 import { getActionHint } from '../../core/help';
 import type { ToolErrorContext, ToolFieldError } from './types';
+import { isSiYuanRequestError } from '../../api/errors';
 
 export function formatIssuePath(path: PropertyKey[]): string {
     return path
@@ -33,7 +34,16 @@ export function formatIssueMessage(issue: ZodIssue, rawArgs?: Record<string, unk
         if (valueAtPath === undefined && path) {
             return `${path} is required.`;
         }
-        return path ? `${path} has an invalid type.` : 'Invalid input type.';
+        const expected = 'expected' in issue && typeof issue.expected === 'string' ? ` Expected ${issue.expected}.` : '';
+        return path ? `${path} has an invalid type.${expected}` : `Invalid input type.${expected}`;
+    }
+
+    // Enum mismatches: name the allowed values instead of a bare "invalid value".
+    const allowed = (issue as { values?: unknown }).values;
+    if (Array.isArray(allowed) && allowed.length > 0 && allowed.length <= 30) {
+        const list = allowed.map((value) => JSON.stringify(value)).join(', ');
+        if (path && valueAtPath === undefined) return `${path} is required; use one of: ${list}.`;
+        return path ? `${path} must be one of: ${list}.` : `Must be one of: ${list}.`;
     }
 
     if (issue.code === 'unrecognized_keys' && 'keys' in issue && Array.isArray(issue.keys)) {
@@ -65,10 +75,7 @@ export function resolveHint(context?: ToolErrorContext): string | undefined {
 }
 
 export function isApiError(error: Error): boolean {
-    return error.name === 'SiYuanError'
-        || error.message.startsWith('SiYuan API error:')
-        || error.message.startsWith('HTTP error:')
-        || error.message.startsWith('Request timeout');
+    return isSiYuanRequestError(error);
 }
 
 export function includeDebugDetails(): boolean {

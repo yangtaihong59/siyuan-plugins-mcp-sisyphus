@@ -398,10 +398,3 @@ export async function readDocumentEditableMarkdown(
     return joinEditableMarkdownBlocks(kramdownBlocks);
 }
 
-export async function readDocumentKramdownMarkdown(
-    client: SiYuanClient,
-    documentId: string,
-    knownBlocks?: OrderedDocumentBlock[],
-): Promise<string> {
-    return readDocumentEditableMarkdown(client, documentId, knownBlocks);
-}

@@ -11,7 +11,7 @@
 
 import { buildDefaultToolConfig, TOOL_CATEGORIES, ACTIONS_BY_CATEGORY, isDangerousAction } from '../core/config';
 export { getRegisteredActionSchemas } from '../tools/internal/define-tool';
-import { TOOL_REGISTRY, GENERIC_TOOL_OUTPUT_SCHEMA } from '../core/tool-registry';
+import { TOOL_REGISTRY, GENERIC_TOOL_OUTPUT_SCHEMA } from '../mcp/tool-registry';
 
 export interface KernelToolDescriptor {
     name: string;

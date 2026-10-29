@@ -17,19 +17,24 @@ siyuan-sisyphus search semantic --query 'concept or meaning' --type-shortcodes-j
 siyuan-sisyphus search fulltext --query 'keyword' --parent-id '<doc-id>' --type-shortcodes-json '["h","p"]' --json
 ```
 ```bash
+siyuan-sisyphus document query --fields-json '["id","notebook","title","hpath","blockCount","contentChars","sameTitleCount"]' --sort-by 'blockCount' --page '1' --page-size '50' --json
+```
+```bash
 siyuan-sisyphus search query-sql --stmt 'SELECT id, hpath, content FROM blocks WHERE type = '"'"'p'"'"' ORDER BY updated DESC LIMIT 10' --json
 ```
 ```bash
 siyuan-sisyphus search get-backlinks --id '<block-or-doc-id>' --mode 'both' --json
 ```
 ```bash
-siyuan-sisyphus search search-refs --id '<block-id>' --before-len '512' --json
+siyuan-sisyphus search search-refs --id '<block-id>' --json
 ```
 ```bash
 siyuan-sisyphus search search-assets --query 'diagram' --exts-json '["png","jpg","webp"]' --json
 ```
 
-SQL must be read-only and must include `LIMIT`. Useful tables include `blocks`, `blocks_fts`, `attributes`, `refs`, `spans`, and `assets`.
+Use `document.query` for document inventories, indexed block/character statistics, title-only skeleton candidates (`maxBlocks: 0`), or same-title candidates (`duplicatesOnly: true`). It queries readable, open notebooks by default; explicit unknown, unreadable, or closed notebooks are rejected. Continue with `page` while `hasNextPage` is true. `blockCount` counts non-document index rows including containers; `contentChars` sums their indexed content lengths, not native word counts or deduplicated body characters. `sameTitleCount` is scoped before statistic bounds; matching titles or sizes do not prove duplicate content. The index may lag writes and pages are not a frozen snapshot.
+
+Raw SQL must be read-only and must include `LIMIT`. Both `query_sql` and fulltext SQL mode require every notebook to be readable; do not bypass that gate. Useful tables include `blocks`, `blocks_fts`, `attributes`, `refs`, `spans`, and `assets`.
 
 ## Find and replace
 

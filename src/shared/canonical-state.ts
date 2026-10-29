@@ -1,3 +1,5 @@
+import { sha256V1 } from './sha256-v1';
+
 /**
  * Browser-safe canonical serialization shared by strict server hashes and
  * renderer-reachable tool handlers. Object-key ordering and explicit
@@ -9,15 +11,8 @@ export function canonicalizeState(value: unknown): string {
     return JSON.stringify(normalizeCanonicalValue(value));
 }
 
-export async function hashCanonicalState(value: unknown): Promise<string> {
-    const subtle = globalThis.crypto?.subtle;
-    if (!subtle) {
-        throw new Error('Web Crypto SHA-256 is unavailable; cannot verify the AV canonical postimage.');
-    }
-    const bytes = new TextEncoder().encode(canonicalizeState(value));
-    const digest = await subtle.digest('SHA-256', bytes);
-    const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-    return `sha256:v1:${hex}`;
+export function hashCanonicalState(value: unknown): Promise<string> {
+    return sha256V1(new TextEncoder().encode(canonicalizeState(value)));
 }
 
 function normalizeCanonicalValue(value: unknown): unknown {

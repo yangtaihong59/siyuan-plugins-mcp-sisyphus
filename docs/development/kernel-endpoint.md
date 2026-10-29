@@ -42,10 +42,10 @@
 |---|---|---|
 | 内核托管与构建 | `kernel.js`、插件声明、Goja 运行时适配；schema 在构建阶段生成 | `vite.config.ts`、`plugin.json`、`src/kernel/{index,client,polyfill,node-shims,schema-manifest}.ts` |
 | 工具与协议 | 复用注册表、handler、权限、参数校验、help／resources／prompts；支持现代无会话 MCP 与 legacy 会话 | `src/kernel/{index,modern-protocol,resources}.ts`、`src/tools/internal/define-tool.ts` |
-| 唯一写入协调器 | CLI／stdio／Node HTTP 的严格写入委托同一 owner，共享预检租约、幂等账本与提交边界 | `src/core/write-coordinator-settings.ts`、`src/core/write-safety-coordinator.ts`、`src/cli/write-coordinator.ts` |
+| 唯一写入协调器 | CLI／stdio／Node HTTP 的严格写入委托同一 owner，共享预检租约、幂等账本与提交边界 | `src/core/write-coordinator-settings.ts`、`src/mcp/write-safety-coordinator.ts`、`src/core/write-coordinator-client.ts` |
 | 并发、取消与恢复 | 读取并发 4、修改／external／extension／App 串行，在途上限 128；协作取消、短期终态缓存与只读结果查询 | `src/kernel/{scheduler,task-client,task-results}.ts` |
 | 读取预算与通知 | 调用次数、解码字节及协作期限预算；明确只读重试；legacy SSE 工具清单失效通知 | `src/kernel/{client,read-budget,events}.ts`、`src/core/kernel-options.ts` |
-| 文件桥接 | 10 MiB 暂存上传；导出清单、客户端流式保存、SHA-256 校验和失败清理；模板 multipart 适配 | `src/core/{upload-source,export-download}.ts`、`src/cli/kernel-file-transfer.ts`、`src/tools/file/handlers.ts`、`src/api/template.ts` |
+| 文件桥接 | 10 MiB 暂存上传；导出清单、客户端流式保存、SHA-256 校验和失败清理；模板 multipart 适配 | `src/core/{upload-source,export-download}.ts`、`src/core/kernel-file-transfer.ts`、`src/tools/file/handlers.ts`、`src/api/template.ts` |
 | Skills、Apps 与官方扩展 | 共享 Skills 开关／资源、App HTML／能力协商；通过官方 MCP 会话发现和转发 extension | `src/kernel/{resources,official-mcp}.ts`、`src/core/official-mcp-tools.ts` |
 | 统计、网络及诊断 | 同运行时存储组串行更新；反馈与可选遥测走宿主代理；health 提供脱敏状态 | `src/core/{storage-queue,external-fetch,analytics,telemetry}.ts`、`src/kernel/index.ts` |
 
@@ -103,7 +103,7 @@ ZIP／文档提取的验收是传输、保存和清理验证，不算严格 muta
 
 可复用脚本：`scripts/kernel-goja-smoke.go`、`tests/smoke/kernel-remaining-live.cjs`、`tests/smoke/kernel-remaining-faults.cjs`、`tests/smoke/kernel-telemetry-failure-live.cjs`。容器脚本需要隔离测试实例、对应构建产物和权限为 0600 的连接文件；不得针对个人工作空间执行。正向传输另有本机验收脚本，未将其描述为仓库可直接复现的命令。
 
-本机日志为 `/tmp/kernel-scope-final-{build,tests,install,live,entrypoints,telemetry,transfer}.log`，基线超时探测为 `/tmp/kernel-scope-timeout-baseline.log`；临时日志仅供该机器回查，不作为文档构建或产品运行依赖。实现清单及附录由 `src/core/config.ts`、`src/core/tool-registry.ts`、`src/core/write-safety-policy.ts` 核对。
+本机日志为 `/tmp/kernel-scope-final-{build,tests,install,live,entrypoints,telemetry,transfer}.log`，基线超时探测为 `/tmp/kernel-scope-timeout-baseline.log`；临时日志仅供该机器回查，不作为文档构建或产品运行依赖。实现清单及附录由 `src/core/config.ts`、`src/mcp/tool-registry.ts`、`src/core/write-safety-policy.ts` 核对。
 
 ## 逐项对照与覆盖附录
 

@@ -3,8 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isDangerousAction } from '@/core/config';
 import { callAvTool, listAvTools } from '@/tools/av';
-import { projectAvStateWithoutColumnOptions } from '@/tools/av/handlers';
+import { projectAvStateWithoutColumnOptions } from '@/tools/av/column-handlers';
+import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
+import { BATCH_HINTS } from '@/tools/internal/batch-hints';
 import type { ToolResult } from '@/tools/internal/shared';
+import { withRequestSemantics } from '../../helpers/mock-client';
+import { requestError } from '../../helpers/request-error';
+
+// UI refresh is covered by ui-refresh.test.ts; AV assertions compare the bare tool payload.
+vi.mock('@/tools/internal/ui-refresh', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/tools/internal/ui-refresh')>()),
+    applyUiRefresh: vi.fn(async (_client: unknown, result: unknown) => result),
+}));
 
 vi.mock('@/tools/internal/context', () => ({
     ensurePermissionForDocumentId: vi.fn(async () => ({
@@ -67,13 +77,34 @@ vi.mock('@/api/transaction', () => ({
     performTransactions: vi.fn(),
 }));
 
+/**
+ * Real SiYuan returns a NodeAttributeView opening tag for every registered
+ * mirror carrier. Mirror registration alone is not carrier proof, so fixtures
+ * that register carriers must also expose their DOM.
+ */
+async function syncCarrierDomWithMirrors(avIDs: string[]): Promise<void> {
+    const avApi = await import('@/api/av');
+    const blockApi = await import('@/api/block');
+    const carriers = new Map<string, string>();
+    for (const avID of avIDs) {
+        const mirrors = await avApi.getMirrorDatabaseBlocks({} as never, avID);
+        for (const ref of mirrors?.refDefs ?? []) if (ref.refID) carriers.set(ref.refID, avID);
+    }
+    const fallback = vi.mocked(blockApi.getBlockDOM).getMockImplementation();
+    vi.mocked(blockApi.getBlockDOM).mockImplementation(async (clientArg, id) => {
+        const avID = carriers.get(id as string);
+        if (avID) return { id, dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>` } as never;
+        return fallback ? fallback(clientArg, id) : { id, dom: '' } as never;
+    });
+}
+
 describe('av tool', () => {
     const enabledActions = <T extends string>(...actions: T[]) => ({
         enabled: true,
         actions: Object.fromEntries(actions.map((action) => [action, true])) as Record<T, boolean>,
     });
 
-    const client = {} as any;
+    const client = withRequestSemantics({} as any);
     const permMgr = {
         reload: vi.fn(async () => undefined),
         canRead: vi.fn(() => true),
@@ -134,9 +165,9 @@ describe('av tool', () => {
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
             dom: typeof id === 'string' && id.startsWith('db-block')
-                ? '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>'
+                ? `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`
                 : typeof id === 'string' && id === 'av-block-new'
-                    ? '<div data-type="NodeAttributeView" data-av-id="av-new" class="av"></div>'
+                    ? `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="av-new" class="av"></div>`
                     : '<div class="p"></div>',
         }));
         vi.mocked(transactionApi.performTransactions).mockResolvedValue([{
@@ -183,8 +214,8 @@ describe('av tool', () => {
             sorts: [{ field: 'updated' }],
         });
 
-        // Reset client.request so applyUiRefresh is skipped by default in AV tests
-        client.request = undefined;
+        // Default kernel stub: readDir lists no AV files for the primary-key fallback.
+        client.request = vi.fn(async () => null);
     });
 
     it('exports set_cells cells with nested array item schemas intact', () => {
@@ -240,7 +271,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: alreadyApplied });
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'fixture-db-block' }] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: 'fixture-db-block', dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: 'fixture-db-block', dom: `<div data-node-id="fixture-db-block" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -304,7 +335,7 @@ describe('av tool', () => {
         ((observedPostimage.keyValues[1] as any).key.options) = [{ name: 'New', color: '2', desc: '' }];
         vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: observedPostimage });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: 'db-block-options', dom: '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>',
+            id: 'db-block-options', dom: `<div data-node-id="db-block-options" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`,
         });
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('transport response lost'));
 
@@ -471,7 +502,7 @@ describe('av tool', () => {
         expect(JSON.stringify(protectedBefore)).not.toBe(JSON.stringify(protectedAfter));
         vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: before }).mockResolvedValueOnce({ av: after });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: carrierID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: carrierID, dom: `<div data-node-id="${carrierID}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -711,6 +742,7 @@ describe('av tool', () => {
         };
         const after = { ...source, newItemTemplates: [persistedTemplate], defaultTemplateID: templateID };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -772,6 +804,7 @@ describe('av tool', () => {
         };
         const after = { ...source, newItemTemplates: [requestedTemplate], defaultTemplateID: templateID };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -810,7 +843,7 @@ describe('av tool', () => {
             },
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: databaseBlockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: databaseBlockID, dom: `<div data-node-id="${databaseBlockID}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -843,7 +876,7 @@ describe('av tool', () => {
         const observedPostimage = { ...preimage, newItemTemplates: [{ id: templateID, name: 'Inbox', targetType: 'detached' }], defaultTemplateID: templateID };
         vi.mocked(avApi.getAttributeView).mockResolvedValueOnce({ av: preimage }).mockResolvedValueOnce({ av: observedPostimage });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
-            id: databaseBlockID, dom: `<div data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
+            id: databaseBlockID, dom: `<div data-node-id="${databaseBlockID}" data-type="NodeAttributeView" data-av-id="${avID}" class="av"></div>`,
         });
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('template response lost'));
 
@@ -867,6 +900,7 @@ describe('av tool', () => {
         const databaseBlockID = '20260813000010-jjjjjjj';
         const templateID = '20260813000000-aaaaaaa';
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView).mockResolvedValue({
             av: {
                 id: avID,
@@ -950,6 +984,7 @@ describe('av tool', () => {
             ],
         };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -1004,6 +1039,7 @@ describe('av tool', () => {
             }],
         };
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: databaseBlockID }] });
+        await syncCarrierDomWithMirrors([avID]);
         vi.mocked(avApi.getAttributeView)
             .mockResolvedValueOnce({ av: source })
             .mockResolvedValueOnce({ av: after });
@@ -1074,6 +1110,7 @@ describe('av tool', () => {
                 : id === sourceAvID ? { refDefs: [{ refID: sourceBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, '20260813000005-fffffff']);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockResolvedValue({ value: {} });
 
         const result = await callAvTool(client, {
@@ -1150,6 +1187,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: '20260813001013-kkkkkkk' }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockResolvedValue({ value: {} });
 
         const result = await callAvTool(client, {
@@ -1205,6 +1243,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: '20260813001213-kkkkkkk' }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockImplementation(async (_clientArg, payload) => {
             const blockIDs = ((payload.value.relation as Record<string, unknown>).blockIDs as string[]);
             source = {
@@ -1269,7 +1308,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: sourceBlockID,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${sourceAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${sourceBlockID}" data-type="NodeAttributeView" data-av-id="${sourceAvID}" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -1318,6 +1357,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
             id === destinationAvID ? { refDefs: [{ refID: '20260813000111-kkkkkkk' }] } : { refDefs: [{ refID: sourceBlockID }] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'set_relation', avID: sourceAvID, blockID: sourceBlockID,
@@ -1371,6 +1411,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockImplementation(async (_clientArg, id) => (
             id === destinationAvID ? { refDefs: [{ refID: '20260813000211-kkkkkkk' }] } : { refDefs: [{ refID: sourceBlockID }] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
         vi.mocked(avApi.setAttributeViewBlockAttr).mockRejectedValue(new Error('relation response lost'));
 
         const result = await callAvTool(client, {
@@ -1430,6 +1471,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'configure_two_way_relation',
@@ -1486,7 +1528,7 @@ describe('av tool', () => {
         ));
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
 
         const result = await callAvTool(client, {
@@ -1524,7 +1566,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('two-way response lost'));
 
@@ -1586,6 +1628,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'configure_rollup',
@@ -1635,7 +1678,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
 
         const result = await callAvTool(client, {
@@ -1692,6 +1735,7 @@ describe('av tool', () => {
                 : id === destinationAvID ? { refDefs: [{ refID: destinationBlockID }] }
                     : { refDefs: [] }
         ));
+        await syncCarrierDomWithMirrors([sourceAvID, destinationAvID]);
 
         const result = await callAvTool(client, {
             action: 'configure_rollup', avID: sourceAvID, blockID: sourceBlockID, keyID: rollupKeyID,
@@ -1733,7 +1777,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: destinationBlockID }] });
         vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
             id,
-            dom: `<div data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
+            dom: `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${id === sourceBlockID ? sourceAvID : destinationAvID}" class="av"></div>`,
         }));
         vi.mocked(transactionApi.performTransactions).mockRejectedValue(new Error('rollup response lost'));
 
@@ -1793,6 +1837,7 @@ describe('av tool', () => {
         });
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -1800,6 +1845,50 @@ describe('av tool', () => {
             columnID: 'col-1',
             valueType: 'number',
         });
+    });
+
+    it('writes a detached primary key as a block value and rejects a bound row primary key', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: 'av-1',
+                keyValues: [{
+                    key: { id: 'pk', type: 'block' },
+                    values: [
+                        { id: 'v-1', blockID: 'row-1', isDetached: true, block: { content: 'Dentist' } },
+                        { id: 'v-2', blockID: 'row-2', block: { id: 'block-2', content: 'Bound' } },
+                    ],
+                }],
+            },
+        });
+        const detached = await callAvTool(client, { action: 'set_cells', avID: 'av-1', rowID: 'row-1', columnID: 'pk', valueType: 'text', text: 'Dentist (moved)' }, enabledActions('set_cells'), permMgr);
+        expect(detached.isError).toBeUndefined();
+        expect(vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations[0].data).toEqual({
+            keyID: 'pk', blockID: 'row-1', type: 'block', isDetached: true, block: { content: 'Dentist (moved)' },
+        });
+        const bound = await callAvTool(client, { action: 'set_cells', avID: 'av-1', rowID: 'row-2', columnID: 'pk', valueType: 'text', text: 'x' }, enabledActions('set_cells'), permMgr);
+        expect(bound.isError).toBe(true);
+        expect(JSON.parse(bound.content[0].text).error).toMatchObject({ type: 'validation_error', reason: 'primary_key_cell' });
+        expect(JSON.parse(bound.content[0].text).error.message).toContain('bound to block block-2');
+    });
+
+    it('adds batchHint to single-cell set_cells only', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: { id: 'av-1', keyValues: [
+                { key: { id: 'pk', type: 'block' }, values: [{ id: 'p1', blockID: 'row-1', block: { id: 'block-1' } }, { id: 'p2', blockID: 'row-2', block: { id: 'block-2' } }] },
+                { key: { id: 'col-1', type: 'number' }, values: [] },
+            ] },
+        });
+        const single = JSON.parse((await callAvTool(client, { action: 'set_cells', avID: 'av-1', rowID: 'row-1', columnID: 'col-1', valueType: 'number', number: 1 }, enabledActions('set_cells'), permMgr)).content[0].text);
+        expect(single.batchHint, JSON.stringify(single)).toBe(BATCH_HINTS.avSetCells);
+        const batch = JSON.parse((await callAvTool(client, { action: 'set_cells', avID: 'av-1', cells: [
+            { rowID: 'row-1', columnID: 'col-1', valueType: 'number', number: 1 },
+            { rowID: 'row-2', columnID: 'col-1', valueType: 'number', number: 2 },
+        ] }, enabledActions('set_cells'), permMgr)).content[0].text);
+        expect(batch.updated).toBe(2);
+        expect(batch.batchHint).toBeUndefined();
     });
 
     it('maps mAsset set_cells input into the kernel value payload', async () => {
@@ -1848,6 +1937,7 @@ describe('av tool', () => {
         });
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -1898,6 +1988,7 @@ describe('av tool', () => {
         });
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -2037,6 +2128,7 @@ describe('av tool', () => {
             },
         });
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -2079,7 +2171,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'set_cells',
@@ -2105,6 +2197,7 @@ describe('av tool', () => {
             },
         });
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -2129,6 +2222,25 @@ describe('av tool', () => {
         });
     });
 
+    it('rejects a parent document even when SiYuan registered it as a mirror block', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: { id: 'av-empty', keyValues: [] } });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'doc-parent' }, { refID: 'db-block-empty' }] });
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id,
+            dom: id === 'doc-parent'
+                ? '<div data-node-id="db-block-empty" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>'
+                : `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
+        }) as never);
+
+        const result = await callAvTool(client, { action: 'get', avID: 'av-empty', blockID: 'doc-parent' }, enabledActions('get'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text).error).toMatchObject({ type: 'validation_error' });
+    });
+
     it('uses explicit blockID to resolve get permissions for an empty AV', async () => {
         const avApi = await import('@/api/av');
         const blockApi = await import('@/api/block');
@@ -2142,7 +2254,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-empty',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-empty" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2476,6 +2588,64 @@ describe('av tool', () => {
         });
     });
 
+    it('renames the database and a column, resending the current column type', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        const before = {
+            id: 'av-books',
+            name: '',
+            keyValues: [
+                { key: { id: 'pk', name: '主键', type: 'block' }, values: [] },
+                { key: { id: 'st', name: '单选', type: 'select' }, values: [] },
+            ],
+        };
+        const after = {
+            ...before,
+            name: '阅读清单',
+            keyValues: [
+                { key: { id: 'pk', name: '书名', type: 'block' }, values: [] },
+                before.keyValues[1],
+            ],
+        };
+        vi.mocked(avApi.getAttributeView)
+            .mockResolvedValueOnce({ av: before })
+            .mockResolvedValue({ av: after });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'db-block-1' }] });
+
+        const result = await callAvTool(client, {
+            action: 'rename',
+            avID: 'av-books',
+            name: '阅读清单',
+            keyID: 'pk',
+            keyName: '书名',
+        }, enabledActions('rename'), permMgr);
+
+        const ops = vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations;
+        expect(ops.filter((op: { action: string }) => op.action !== 'doUpdateUpdated')).toEqual([
+            { action: 'setAttrViewName', id: 'av-books', avID: 'av-books', data: '阅读清单' },
+            { action: 'updateAttrViewCol', avID: 'av-books', id: 'pk', name: '书名', type: 'block' },
+        ]);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'rename',
+            name: '阅读清单',
+            renamedColumns: [{ keyID: 'pk', from: '主键', to: '书名' }],
+        });
+    });
+
+    it('rejects an unknown column key without writing', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: { id: 'av-books', keyValues: [{ key: { id: 'pk', name: '主键', type: 'block' }, values: [] }] } });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'db-block-1' }] });
+
+        const result = await callAvTool(client, { action: 'rename', avID: 'av-books', keyID: 'missing', keyName: 'x' }, enabledActions('rename'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain('does not exist');
+        expect(transactionApi.performTransactions).not.toHaveBeenCalled();
+    });
+
     it('falls back to database block refs when an AV has no rows yet', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
@@ -2497,6 +2667,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);
@@ -2513,6 +2684,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         });
@@ -2537,13 +2709,14 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'add_column',
             avID: 'av-empty',
             blockID: 'db-block-explicit',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);
@@ -2561,6 +2734,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         });
@@ -2585,6 +2759,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);
@@ -2622,6 +2797,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: expect.stringMatching(/^\d{14}-[a-z0-9]{7}$/),
+            columnID: expect.stringMatching(/^\d{14}-[a-z0-9]{7}$/),
             keyName: '日期',
             keyType: 'date',
         });
@@ -2634,6 +2810,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-asset-1',
+            columnID: 'col-asset-1',
             keyName: '封面',
             keyType: 'mAsset',
         }, enabledActions('add_column'), permMgr);
@@ -2650,6 +2827,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-asset-1',
+            columnID: 'col-asset-1',
             keyName: '封面',
             keyType: 'mAsset',
         });
@@ -2662,6 +2840,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-line-1',
+            columnID: 'col-line-1',
             keyName: '行号',
             keyType: 'lineNumber',
         }, enabledActions('add_column'), permMgr);
@@ -2678,6 +2857,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-line-1',
+            columnID: 'col-line-1',
             keyName: '行号',
             keyType: 'lineNumber',
         });
@@ -2726,7 +2906,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'remove_column',
@@ -2762,7 +2942,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2794,7 +2974,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2802,6 +2982,7 @@ describe('av tool', () => {
             avID: 'av-empty',
             blockID: 'db-block-explicit',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);
@@ -2824,7 +3005,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -2854,7 +3035,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-other" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -3016,12 +3197,208 @@ describe('av tool', () => {
             ],
         });
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'add_rows',
             avID: 'av-1',
             primaryKeyTexts: ['saaa'],
             rows: [{ primaryKeyText: 'saaa', rowID: (addOperation?.srcs[0] as { itemID: string }).itemID }],
             added: 1,
+        });
+    });
+
+    it('creates composite rows and writes their initial cells in two native phases', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        let insertOperation: any;
+        let cellOperations: any[] = [];
+        vi.mocked(transactionApi.performTransactions).mockImplementation(async (_clientArg, transactions) => {
+            const operation = transactions[0].doOperations[0];
+            if (operation.action === 'insertAttrViewBlock') insertOperation = operation;
+            if (operation.action === 'updateAttrViewCell') cellOperations = transactions[0].doOperations;
+            return null;
+        });
+        vi.mocked(avApi.getAttributeView).mockImplementation(async () => {
+            const srcs = insertOperation?.srcs ?? [];
+            return {
+                av: {
+                    id: 'av-1',
+                    keyValues: [
+                        {
+                            key: { id: 'key-title', type: 'block' },
+                            values: srcs.map((src: any) => ({
+                                id: `value-${src.itemID}`,
+                                blockID: src.itemID,
+                                isDetached: true,
+                                block: { content: src.content },
+                            })),
+                        },
+                        {
+                            key: { id: 'key-status', type: 'select' },
+                            values: cellOperations.length > 0
+                                ? srcs.map((src: any) => ({ blockID: src.itemID, mSelect: [{ content: 'Done' }] }))
+                                : [],
+                        },
+                    ],
+                    views: [{ id: 'view-1', type: 'table', groups: [{ id: 'group-1' }] }],
+                },
+            };
+        });
+
+        const plan = {
+            rows: [{
+                index: 0,
+                clientKey: 'event-1',
+                primaryKeyText: '会议',
+                rowID: '20260101000000-event01',
+                srcID: '20260101000000-event02',
+                cells: [{ columnID: 'key-status', valueType: 'select', option: 'Done' }],
+            }],
+        };
+        const checkpoints: any[] = [];
+        const context = { plan, checkpoint: vi.fn(async (progress: any) => { checkpoints.push(progress); }) };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            blockID: 'db-block-1',
+            viewID: 'view-1',
+            groupID: 'group-1',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议', cells: [{ columnID: 'key-status', valueType: 'select', option: 'Done' }] }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBeUndefined();
+        expect(insertOperation).toMatchObject({
+            action: 'insertAttrViewBlock',
+            avID: 'av-1',
+            viewID: 'view-1',
+            groupID: 'group-1',
+            srcs: [{ itemID: '20260101000000-event01', id: '20260101000000-event02', isDetached: true, content: '会议' }],
+        });
+        expect(cellOperations.filter((operation) => operation.action === 'updateAttrViewCell')).toEqual([{
+            action: 'updateAttrViewCell',
+            avID: 'av-1',
+            keyID: 'key-status',
+            rowID: '20260101000000-event01',
+            data: expect.objectContaining({ keyID: 'key-status', blockID: '20260101000000-event01' }),
+        }]);
+        expect(checkpoints.map((item) => item.stage)).toEqual(['rows_created', 'rows_created', 'cells_written', 'verified']);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{
+                index: 0,
+                clientKey: 'event-1',
+                rowID: '20260101000000-event01',
+                primaryKeyText: '会议',
+                cellCount: 1,
+            }],
+            added: 1,
+            cellsWritten: 1,
+            stage: 'verified',
+        });
+    });
+
+    it('rejects composite add_rows with an unknown column before any write', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const context = {
+            plan: { rows: [{ index: 0, clientKey: 'event-1', primaryKeyText: '会议', rowID: '20260101000000-event01', srcID: '20260101000000-event02', cells: [] }] },
+            checkpoint: vi.fn(async () => undefined),
+        };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议', cells: [{ columnID: 'missing-column', valueType: 'text', text: 'x' }] }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'add_rows', reason: 'batch_validation_failed' },
+        });
+    });
+
+    it('rejects relation initial cells before any insert because the destination AV is not preflighted', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: 'av-1',
+                keyValues: [
+                    { key: { id: 'key-title', type: 'block' }, values: [] },
+                    { key: { id: 'key-related', type: 'relation' }, values: [] },
+                ],
+                views: [{ id: 'view-1', type: 'table', groups: [] }],
+            },
+        });
+        const context = {
+            plan: { rows: [{ index: 0, clientKey: 'event-1', primaryKeyText: '会议', rowID: '20260101000000-event01', srcID: '20260101000000-event02', cells: [] }] },
+            checkpoint: vi.fn(async () => undefined),
+        };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            blockID: 'db-block-1',
+            rows: [{
+                clientKey: 'event-1',
+                primaryKeyText: '会议',
+                cells: [{ columnID: 'key-related', valueType: 'relation', relationBlockIDs: ['row-destination'] }],
+            }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'add_rows', reason: 'batch_validation_failed' },
+        });
+        expect(JSON.parse(result.content[0].text).error.message).toContain('relation');
+    });
+
+    it('rejects duplicate columns in one composite row before any insert', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const context = {
+            plan: { rows: [{ index: 0, clientKey: 'event-1', primaryKeyText: '会议', rowID: '20260101000000-event01', srcID: '20260101000000-event02', cells: [] }] },
+            checkpoint: vi.fn(async () => undefined),
+        };
+
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{
+                clientKey: 'event-1',
+                primaryKeyText: '会议',
+                cells: [
+                    { columnID: 'key-status', valueType: 'select', option: 'Done' },
+                    { columnID: 'key-status', valueType: 'select', option: 'Todo' },
+                ],
+            }],
+            [AV_ADD_ROWS_CONTEXT]: context,
+        } as any, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text).error.message).toContain('more than once');
+    });
+
+    it('rejects mixing composite rows with legacy row inputs before any write', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const result = await callAvTool(client, {
+            action: 'add_rows',
+            avID: 'av-1',
+            rows: [{ clientKey: 'event-1', primaryKeyText: '会议' }],
+            primaryKeyTexts: ['会议'],
+        }, enabledActions('add_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'add_rows' },
         });
     });
 
@@ -3218,6 +3595,69 @@ describe('av tool', () => {
         });
     });
 
+    it('maps canonical rowIDs to native removal IDs after validation', async () => {
+        const transactionApi = await import('@/api/transaction');
+
+        const result = await callAvTool(client, {
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['row-1'],
+        }, enabledActions('remove_rows'), permMgr);
+
+        expect(result.isError).toBeUndefined();
+        expect(vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations[0]).toMatchObject({
+            action: 'removeAttrViewBlock',
+            avID: 'av-1',
+            srcIDs: ['row-1'],
+        });
+        expect(JSON.parse(result.content[0].text)).toEqual({
+            success: true,
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['row-1'],
+            srcIDs: ['row-1'],
+            removed: 1,
+        });
+    });
+
+    it('rejects remove_rows rowIDs that are not canonical AV row items without writing', async () => {
+        const transactionApi = await import('@/api/transaction');
+
+        const result = await callAvTool(client, {
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['not-a-row'],
+        }, enabledActions('remove_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: {
+                type: 'validation_error',
+                action: 'remove_rows',
+                reason: 'row_id_not_canonical',
+                rowIDs: ['not-a-row'],
+            },
+        });
+    });
+
+    it('rejects mixing remove_rows rowIDs and srcIDs before any write', async () => {
+        const transactionApi = await import('@/api/transaction');
+
+        const result = await callAvTool(client, {
+            action: 'remove_rows',
+            avID: 'av-1',
+            rowIDs: ['row-1'],
+            srcIDs: ['row-1'],
+        }, enabledActions('remove_rows'), permMgr);
+
+        expect(result.isError).toBe(true);
+        expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: { type: 'validation_error', action: 'remove_rows' },
+        });
+    });
+
     it('uses explicit blockID permission context for remove_rows on an empty AV', async () => {
         const avApi = await import('@/api/av');
         const blockApi = await import('@/api/block');
@@ -3237,7 +3677,7 @@ describe('av tool', () => {
         vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [] });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'remove_rows',
@@ -3344,7 +3784,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-explicit',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>',
+            dom: `<div data-node-id="db-block-explicit" data-type="NodeAttributeView" data-av-id="av-1" class="av"></div>`,
         });
         const result = await callAvTool(client, {
             action: 'set_cells',
@@ -3568,7 +4008,7 @@ describe('av tool', () => {
         });
         vi.mocked(blockApi.getBlockDOM).mockResolvedValue({
             id: 'db-block-empty',
-            dom: '<div data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>',
+            dom: `<div data-node-id="db-block-empty" data-type="NodeAttributeView" data-av-id="av-empty" class="av"></div>`,
         });
 
         const result = await callAvTool(client, {
@@ -3834,16 +4274,18 @@ describe('av tool', () => {
             avID: 'av-1',
         }, enabledActions('query'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toMatchObject({
+        const parsedPk = JSON.parse(result.content[0].text);
+        expect(parsedPk.resolvedRows).toBeUndefined();
+        expect(parsedPk).toMatchObject({
             avID: 'av-1',
             name: '记账',
             blockIDs: ['block-a'],
-            rows: { key: { id: 'primary', type: 'block' }, values: [
-                { id: 'cell-a', blockID: 'row-a', block: { id: 'block-a' } },
-                { id: 'cell-c', blockID: 'row-c', isDetached: true, block: { content: 'Independent' } },
-            ] },
+            rows: [
+                { rowID: 'row-a', sourceBlockID: 'block-a', cells: { primary: { type: 'block', value: '', formatted: '' } } },
+                { rowID: 'row-c', isDetached: true, cells: { primary: { type: 'block', value: 'Independent', formatted: 'Independent' } } },
+            ],
+            columns: [{ columnID: 'primary', type: 'block' }],
             readInfo: { coverage: 'partial', limitations: ['primary_key_only', 'permission_filtered'] },
-            resolvedRows: [{ rowID: 'row-a', sourceBlockID: 'block-a' }, { rowID: 'row-c', isDetached: true }],
             filteredOutCount: 1,
             partial: true,
             reason: 'permission_filtered',
@@ -3858,8 +4300,11 @@ describe('av tool', () => {
             page: 2,
         }, enabledActions('query'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toMatchObject({
-            data: [],
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).toMatchObject({
+            structureVersion: 3,
+            rows: [],
+            columns: [],
             total: 0,
             page: 2,
             pageSize: 50,
@@ -3869,14 +4314,13 @@ describe('av tool', () => {
             id: 'av-1',
             viewID: 'view-1',
             viewType: 'table',
-            view: {
-                id: 'view-1',
-                pageSize: 50,
-                columns: [],
-                rows: [],
-                rowCount: 0,
-            },
+            readInfo: { representation: 'database_rows' },
         });
+        // The previous duplicate projections must not return alongside rows.
+        expect(parsed.data).toBeUndefined();
+        expect(parsed.table).toBeUndefined();
+        expect(parsed.view).toBeUndefined();
+        expect(parsed.resolvedRows).toBeUndefined();
     });
 
     it('accepts avID alias and reads rows/columns from the kernel nested view structure', async () => {
@@ -3917,31 +4361,198 @@ describe('av tool', () => {
         expect(parsed).toMatchObject({
             avID: 'av-1',
             id: 'av-1',
-            data: [{ id: 'row-1', cells: { 'col-title': 'Paper A', 'col-done': true } }],
+            structureVersion: 3,
+            rows: [{
+                rowID: 'row-1',
+                cells: {
+                    'col-title': { type: 'text', value: 'Paper A', formatted: 'Paper A' },
+                    'col-done': { type: 'checkbox', value: true, formatted: 'true' },
+                },
+            }],
+            columns: [
+                { columnID: 'col-title', name: 'Title', type: 'text' },
+                { columnID: 'col-done', name: '完成', type: 'checkbox' },
+            ],
             total: 1,
             pageSize: 50,
-            table: {
+            pageCount: 1,
+            hasNextPage: false,
+            readInfo: {
+                representation: 'database_rows',
+                limitations: expect.arrayContaining(['cells_projected_by_columnID', 'complete_native_payload_requires_get_scope_raw']),
+            },
+        });
+        expect(parsed.migration).toBeUndefined();
+        expect(parsed.data).toBeUndefined();
+        expect(parsed.table).toBeUndefined();
+        expect(parsed.view).toBeUndefined();
+    });
+
+    it('reads real nested date formattedContent and keeps valid rows without projected cells', async () => {
+        const avApi = await import('@/api/av');
+        const epoch = 1767225600000;
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [{ id: 'col-date', name: 'Event date', type: 'date' }, { id: 'col-label', name: 'Label', type: 'text' }],
+                rows: [
+                    {
+                        id: 'row-date',
+                        cells: [{
+                            id: 'val-date',
+                            value: {
+                                keyID: 'col-date',
+                                blockID: 'row-date',
+                                date: { content: epoch, isNotEmpty: true, formattedContent: '2026年1月1日' },
+                            },
+                            valueType: 1,
+                        }],
+                    },
+                    {
+                        id: 'row-wrapper-formatted',
+                        cells: [{
+                            id: 'val-wrapper',
+                            value: { keyID: 'col-label', blockID: 'row-wrapper-formatted', text: { content: 'fallback' } },
+                            formattedContent: 'wrapper display text',
+                        }],
+                    },
+                    { id: 'row-empty-projection' },
+                ],
+                rowCount: 3,
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+        }, enabledActions('query'), permMgr);
+        const parsed = JSON.parse(result.content[0].text);
+
+        expect(parsed.rows).toHaveLength(3);
+        expect(parsed.rows[0].cells['col-date']).toEqual({ type: 'date', value: epoch, formatted: '2026年1月1日' });
+        expect(parsed.rows[1].cells['col-label']).toEqual({ type: 'text', value: 'fallback', formatted: 'wrapper display text' });
+        expect(parsed.rows[2]).toEqual({ rowID: 'row-empty-projection', cells: {} });
+        expect(parsed.total).toBe(3);
+    });
+
+    it('reports an unset number cell as empty, not 0', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1', viewID: 'view-1', viewType: 'table',
+            view: {
+                id: 'view-1', pageSize: 50,
+                columns: [{ id: 'col-n', name: 'Hours', type: 'number' }],
+                rows: [
+                    { id: 'row-unset', cells: [{ id: 'v1', value: { keyID: 'col-n', blockID: 'row-unset', number: { content: 0, isNotEmpty: false } }, valueType: 2 }] },
+                    { id: 'row-zero', cells: [{ id: 'v2', value: { keyID: 'col-n', blockID: 'row-zero', number: { content: 0, isNotEmpty: true, formattedContent: '0' } }, valueType: 2 }] },
+                ],
+                rowCount: 2,
+            },
+        });
+        const parsed = JSON.parse((await callAvTool(client, { action: 'query', avID: 'av-1' }, enabledActions('query'), permMgr)).content[0].text);
+        expect(parsed.rows[0].cells['col-n']).toEqual({ type: 'number', value: null, formatted: '' });
+        expect(parsed.rows[1].cells['col-n']).toEqual({ type: 'number', value: 0, formatted: '0' });
+    });
+
+    it('projects requested fields on the callTool path while always keeping rowID', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
                 columns: [
                     { id: 'col-title', name: 'Title', type: 'text' },
                     { id: 'col-done', name: '完成', type: 'checkbox' },
+                    { id: 'col-note', name: 'Note', type: 'text' },
                 ],
-                rows: [{ id: 'row-1', cells: { 'col-title': 'Paper A', 'col-done': true } }],
-                rowCount: 1,
-            },
-            view: {
-                id: 'view-1',
-                name: '表格',
-                pageSize: 50,
                 rows: [{
                     id: 'row-1',
                     cells: [
-                        { id: 'val-1', value: { keyID: 'col-title', blockID: 'row-1', text: { content: 'Paper A' } } },
-                        { id: 'val-2', value: { keyID: 'col-done', blockID: 'row-1', checkbox: { checked: true } } },
+                        { id: 'val-1', value: { keyID: 'col-title', blockID: 'row-1', text: { content: 'Paper A' } }, valueType: 0 },
+                        { id: 'val-2', value: { keyID: 'col-done', blockID: 'row-1', checkbox: { checked: true } }, valueType: 10 },
+                        { id: 'val-3', value: { keyID: 'col-note', blockID: 'row-1', text: { content: 'private note' } }, valueType: 0 },
                     ],
                 }],
                 rowCount: 1,
             },
         });
+
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+            viewID: 'view-1',
+            fields: ['col-done'],
+        }, enabledActions('query'), permMgr);
+
+        const parsed = JSON.parse(result.content[0].text);
+        expect(result.isError).toBeUndefined();
+        expect(parsed.rows).toEqual([
+            { rowID: 'row-1', cells: { 'col-done': { type: 'checkbox', value: true, formatted: 'true' } } },
+        ]);
+        expect(parsed.rows[0].cells['col-title']).toBeUndefined();
+        expect(parsed.rows[0].cells['col-note']).toBeUndefined();
+        expect(parsed.columns).toEqual([{ columnID: 'col-done', name: '完成', type: 'checkbox' }]);
+        expect(parsed.total).toBe(1);
+    });
+
+    it('rejects unknown fields through the callTool validation path', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1',
+            viewID: 'view-1',
+            viewType: 'table',
+            view: {
+                id: 'view-1',
+                pageSize: 50,
+                columns: [{ id: 'col-title', name: 'Title', type: 'text' }],
+                rows: [{ id: 'row-1', cells: [] }],
+                rowCount: 1,
+            },
+        });
+
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+            fields: ['col-missing'],
+        }, enabledActions('query'), permMgr);
+        const parsed = JSON.parse(result.content[0].text);
+
+        expect(result.isError).toBe(true);
+        expect(parsed).toMatchObject({
+            error: {
+                type: 'validation_error',
+                tool: 'av',
+                action: 'query',
+                fields: [expect.objectContaining({ path: 'fields', message: expect.stringContaining('col-missing') })],
+            },
+        });
+        expect(parsed.rows).toBeUndefined();
+    });
+
+    it('rejects fields in primary-key mode', async () => {
+        const avApi = await import('@/api/av');
+        const result = await callAvTool(client, {
+            action: 'query',
+            avID: 'av-1',
+            mode: 'primary_keys',
+            fields: ['col-title'],
+        }, enabledActions('query'), permMgr);
+
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            error: {
+                type: 'validation_error',
+                fields: [expect.objectContaining({ path: 'fields', message: expect.stringContaining('primary_keys') })],
+            },
+        });
+        expect(vi.mocked(avApi.getAttributeViewPrimaryKeyValues)).not.toHaveBeenCalled();
+        expect(vi.mocked(avApi.renderAttributeView)).not.toHaveBeenCalled();
     });
 
     it('computes pagination from kernel rowCount and the effective page size', async () => {
@@ -3965,9 +4576,9 @@ describe('av tool', () => {
         }, enabledActions('query'), permMgr);
 
         const parsed = JSON.parse(result.content[0].text);
-        expect(parsed.data).toHaveLength(20);
-        expect(parsed.data[0]).toMatchObject({ id: 'row-1', cells: { 'col-title': 'Item 1' } });
-        expect(parsed.data[19]).toMatchObject({ id: 'row-20', cells: { 'col-title': 'Item 20' } });
+        expect(parsed.rows).toHaveLength(20);
+        expect(parsed.rows[0]).toMatchObject({ rowID: 'row-1', cells: { 'col-title': { value: 'Item 1' } } });
+        expect(parsed.rows[19]).toMatchObject({ rowID: 'row-20', cells: { 'col-title': { value: 'Item 20' } } });
         expect(parsed).toMatchObject({
             total: 120,
             page: 3,
@@ -4000,7 +4611,7 @@ describe('av tool', () => {
 
         const parsed = JSON.parse(result.content[0].text);
         expect(parsed).toMatchObject({
-            data: [],
+            rows: [],
             total: 120,
             page: 1,
             pageSize: 50,
@@ -4052,23 +4663,20 @@ describe('av tool', () => {
         }, enabledActions('query'), permMgr);
 
         const parsed = JSON.parse(result.content[0].text);
-        expect(parsed.data).toHaveLength(3);
-        expect(parsed.data[0]).toMatchObject({ id: 'grow-1', cells: { 'col-title': 'Alpha' } });
-        expect(parsed.data[2]).toMatchObject({ id: 'grow-3', cells: { 'col-title': 'Gamma' } });
+        expect(parsed.rows).toHaveLength(3);
+        expect(parsed.rows[0]).toMatchObject({ rowID: 'grow-1', groupID: 'grp-1', cells: { 'col-title': { value: 'Alpha' } } });
+        expect(parsed.rows[2]).toMatchObject({ rowID: 'grow-3', groupID: 'grp-2', cells: { 'col-title': { value: 'Gamma' } } });
         expect(parsed).toMatchObject({
             total: 3,
             pageSize: 50,
             pageCount: 1,
             hasNextPage: false,
-            table: {
-                rows: [
-                    { id: 'grow-1', cells: { 'col-title': 'Alpha' } },
-                    { id: 'grow-2', cells: { 'col-title': 'Beta' } },
-                    { id: 'grow-3', cells: { 'col-title': 'Gamma' } },
-                ],
-                rowCount: 3,
-            },
+            groups: [
+                { groupID: 'grp-1', name: 'A 组', rowCount: 2 },
+                { groupID: 'grp-2', name: 'B 组', rowCount: 1 },
+            ],
         });
+        expect(parsed.table).toBeUndefined();
     });
 
     it('computes grouped pagination from the largest group instead of summed rowCount', async () => {
@@ -4198,6 +4806,36 @@ describe('av tool', () => {
         });
     });
 
+    it('lists verified readable carrier blocks in get and query databaseContext', async () => {
+        const avApi = await import('@/api/av');
+        // The parent document is registered as a mirror too; only the NodeAttributeView carrier counts.
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'doc-parent' }, { refID: 'db-block-1' }] });
+        const got = JSON.parse((await callAvTool(client, { action: 'get', avID: 'av-1' }, enabledActions('get'), permMgr)).content[0].text);
+        expect(got.databaseContext.carrierBlockIDs).toEqual(['db-block-1']);
+        const queried = JSON.parse((await callAvTool(client, { action: 'query', avID: 'av-1' }, enabledActions('query'), permMgr)).content[0].text);
+        expect(queried.databaseContext.carrierBlockIDs).toEqual(['db-block-1']);
+    });
+
+    it('fills add_view/update_view blockID only when the AV has exactly one carrier', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const { fillImplicitAvViewCarrier } = await import('@/tools/av/carrier');
+        const args = { action: 'add_view', avID: '20260101120000-avabcde', viewID: 'v2', layout: 'table', name: 'V2' };
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: { id: args.avID, keyValues: [], views: [] } });
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id, dom: String(id).startsWith('db-block') ? `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${args.avID}"></div>` : '<div></div>',
+        }));
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'doc-parent' }, { refID: 'db-block-1' }] });
+        expect(await fillImplicitAvViewCarrier(client, args)).toEqual({ ...args, blockID: 'db-block-1' });
+        expect(await fillImplicitAvViewCarrier(client, { ...args, blockID: 'db-block-x' })).toEqual({ ...args, blockID: 'db-block-x' });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'db-block-1' }, { refID: 'db-block-2' }] });
+        expect(await fillImplicitAvViewCarrier(client, args)).toEqual(args);
+
+        const result = await callAvTool(client, args, enabledActions('add_view'), permMgr);
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text).error).toMatchObject({ type: 'validation_error', carrierBlockIDs: ['db-block-1', 'db-block-2'] });
+    });
+
     it('refuses kanban creation that would synthesize a schema field in existing views', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
@@ -4213,7 +4851,7 @@ describe('av tool', () => {
         }, enabledActions('add_view'), permMgr);
 
         expect(result.isError).toBe(true);
-        expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { message: expect.stringContaining('requires an existing select column') } });
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { type: 'validation_error', message: expect.stringContaining('requires an existing single-select') } });
         expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
     });
 
@@ -4298,7 +4936,7 @@ describe('av tool', () => {
             refDefs: [{ refID: 'missing-block' }, { refID: 'good-block' }],
         });
         vi.mocked(context.ensurePermissionForDocumentId)
-            .mockRejectedValueOnce(new Error('SiYuan API error: -1 - 未找到 ID 为 [missing-block] 的内容块'))
+            .mockRejectedValueOnce(requestError('SiYuan API error: -1 - 未找到 ID 为 [missing-block] 的内容块'))
             .mockResolvedValueOnce({
                 context: { documentId: 'doc-good', notebook: 'nb-1', path: '/doc-good.sy' },
                 denied: null,
@@ -4332,7 +4970,7 @@ describe('av tool', () => {
             refDefs: [{ refID: 'good-block' }],
         });
         vi.mocked(context.ensurePermissionForDocumentId)
-            .mockRejectedValueOnce(new Error('SiYuan API error: -1 - 未找到 ID 为 [missing-row-block] 的内容块'))
+            .mockRejectedValueOnce(requestError('SiYuan API error: -1 - 未找到 ID 为 [missing-row-block] 的内容块'))
             .mockResolvedValueOnce({
                 context: { documentId: 'doc-good', notebook: 'nb-1', path: '/doc-good.sy' },
                 denied: null,

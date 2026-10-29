@@ -17,19 +17,24 @@ search(action="semantic", query="concept or meaning", typeShortcodes=["h","p"], 
 search(action="fulltext", query="keyword", parentId="<doc-id>", typeShortcodes=["h","p"])
 ```
 ```text
+document(action="query", fields=["id","notebook","title","hpath","blockCount","contentChars","sameTitleCount"], sortBy="blockCount", page=1, pageSize=50)
+```
+```text
 search(action="query_sql", stmt="SELECT id, hpath, content FROM blocks WHERE type = 'p' ORDER BY updated DESC LIMIT 10")
 ```
 ```text
 search(action="get_backlinks", id="<block-or-doc-id>", mode="both")
 ```
 ```text
-search(action="search_refs", id="<block-id>", beforeLen=512)
+search(action="search_refs", id="<block-id>")
 ```
 ```text
 search(action="search_assets", query="diagram", exts=["png","jpg","webp"])
 ```
 
-SQL must be read-only and must include `LIMIT`. Useful tables include `blocks`, `blocks_fts`, `attributes`, `refs`, `spans`, and `assets`.
+Use `document.query` for document inventories, indexed block/character statistics, title-only skeleton candidates (`maxBlocks: 0`), or same-title candidates (`duplicatesOnly: true`). It queries readable, open notebooks by default; explicit unknown, unreadable, or closed notebooks are rejected. Continue with `page` while `hasNextPage` is true. `blockCount` counts non-document index rows including containers; `contentChars` sums their indexed content lengths, not native word counts or deduplicated body characters. `sameTitleCount` is scoped before statistic bounds; matching titles or sizes do not prove duplicate content. The index may lag writes and pages are not a frozen snapshot.
+
+Raw SQL must be read-only and must include `LIMIT`. Both `query_sql` and fulltext SQL mode require every notebook to be readable; do not bypass that gate. Useful tables include `blocks`, `blocks_fts`, `attributes`, `refs`, `spans`, and `assets`.
 
 ## Find and replace
 

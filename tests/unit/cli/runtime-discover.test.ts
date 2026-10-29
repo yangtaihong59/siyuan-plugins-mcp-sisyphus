@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SiYuanClient } from '@/api/client';
+import { HttpSiYuanClient } from '@/api/client';
 import type { ParsedArgs } from '@/cli/args';
 import * as discover from '@/cli/discover-instances';
 import * as pluginCheck from '@/cli/plugin-check';
@@ -58,7 +58,7 @@ describe('cli runtime kernel discovery', () => {
             return true;
         }) as typeof process.stderr.write);
         vi.spyOn(pluginCheck, 'ensureRequiredPluginInstalled').mockResolvedValue(undefined);
-        vi.spyOn(SiYuanClient.prototype, 'readFile').mockResolvedValue('');
+        vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue('');
     });
 
     afterEach(() => {

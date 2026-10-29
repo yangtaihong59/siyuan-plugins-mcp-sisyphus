@@ -3,18 +3,13 @@ import * as attributeApi from '../../api/block';
 import * as flashcardApi from '../../api/flashcard';
 import type { FlashcardAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    FlashcardCreateCardSchema,
-    FlashcardGetCardsSchema,
-    FlashcardGetDecksSchema,
-    FlashcardListCardsSchema,
-    FlashcardRemoveCardSchema,
-    FlashcardReviewCardSchema,
-} from '../../core/types';
+import { FlashcardCreateCardSchema, FlashcardGetCardsSchema, FlashcardGetDecksSchema, FlashcardListCardsSchema, FlashcardRemoveCardSchema, FlashcardReviewCardSchema } from './schemas';
 import type { ToolActionHandler } from '../internal/define-tool';
 import { extractKramdownContentForEditing } from '../internal/kramdown-safe';
-import { createJsonResult } from '../internal/shared';
+import { ensurePermissionForDocumentId } from '../internal/context';
+import { createJsonResult, createWriteSuccessResult, type ToolResult } from '../internal/shared';
 import { sleep } from '../../shared/async';
+import { readFlashcardReviewState } from './review-state';
 
 type FlashcardActionHandler = ToolActionHandler;
 
@@ -94,6 +89,14 @@ function createReviewMaterial(
     };
 }
 
+function flashcardSchedulingMetadata(card: flashcardApi.Flashcard): flashcardApi.Flashcard {
+    // Native getRiffCards records already contain note text. When permission
+    // cannot be established, retain only explicitly known scheduling fields.
+    const keys = ['deckID', 'cardID', 'blockID', 'due', 'stability', 'difficulty',
+        'elapsedDays', 'scheduledDays', 'reps', 'lapses', 'state', 'lastReview', 'nextDues'];
+    return Object.fromEntries(keys.filter(key => card[key] !== undefined).map(key => [key, card[key]]));
+}
+
 async function hydrateFlashcardContent(
     client: SiYuanClient,
     permMgr: PermissionManager,
@@ -102,21 +105,21 @@ async function hydrateFlashcardContent(
     try {
         await permMgr.reload();
     } catch {
-        return cards;
+        return cards.map(flashcardSchedulingMetadata);
     }
 
     const cardBlocks = await Promise.all(cards.map(async (card) => {
         const blockID = flashcardBlockID(card);
-        if (!blockID) return { card, blockID, children: [] as Array<{ id: string; type?: string }> };
+        if (!blockID) return { card: flashcardSchedulingMetadata(card), blockID, children: [] as Array<{ id: string; type?: string }> };
         let notebook = '';
         try {
             const info = await attributeApi.getBlockInfo(client, blockID) as Record<string, unknown> | null;
             notebook = typeof info?.box === 'string' ? info.box : '';
         } catch {
-            return { card, blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
+            return { card: flashcardSchedulingMetadata(card), blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
         }
         if (!notebook || !permMgr.canRead(notebook)) {
-            return { card, blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
+            return { card: flashcardSchedulingMetadata(card), blockID: undefined, children: [] as Array<{ id: string; type?: string }> };
         }
         try {
             const children = await attributeApi.getChildBlocks(client, blockID);
@@ -136,13 +139,13 @@ async function hydrateFlashcardContent(
         ...(blockID ? [blockID] : []),
         ...children.map((child) => child.id),
     ]))];
-    if (ids.length === 0) return cards;
+    if (ids.length === 0) return cardBlocks.map(({ card }) => card);
 
     let kramdowns: Record<string, string> = {};
     try {
         kramdowns = await attributeApi.getBlockKramdowns(client, ids, 'md') ?? {};
     } catch {
-        return cards;
+        return cardBlocks.map(({ card }) => card);
     }
 
     return cardBlocks.map(({ card, blockID, children }) => {
@@ -330,6 +333,30 @@ async function ensureFlashcardTargetsWritable(client: SiYuanClient, blockIDs: st
     }
 }
 
+/**
+ * Binding or unbinding a card writes block attributes, so each target block's
+ * notebook must allow writes. Removal tolerates blocks that no longer resolve:
+ * an orphaned card has no notebook content left to protect.
+ */
+async function ensureFlashcardBlocksPermitted(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    blockIDs: string[],
+    action: 'create_card' | 'remove_card',
+): Promise<ToolResult | null> {
+    for (const blockID of blockIDs) {
+        let check: Awaited<ReturnType<typeof ensurePermissionForDocumentId>>;
+        try {
+            check = await ensurePermissionForDocumentId(client, permMgr, blockID, 'write');
+        } catch (error) {
+            if (action === 'remove_card') continue;
+            throw error;
+        }
+        if (check.denied) return check.denied;
+    }
+    return null;
+}
+
 async function ensureDeckAvailable(client: SiYuanClient, deckID: string, action: 'create_card' | 'remove_card'): Promise<void> {
     if (deckID === BUILTIN_DECK_ID) return;
     const result = await flashcardApi.getRiffDecks(client);
@@ -400,9 +427,15 @@ async function verifyFlashcardDeckRecords(
 }
 
 function normalizeGetCardsResult(result: flashcardApi.FlashcardGetCardsResult | null | undefined): flashcardApi.Flashcard[] {
-    if (Array.isArray(result?.blocks)) return result.blocks;
-    if (Array.isArray(result?.cards)) return result.cards;
-    return [];
+    const cards = Array.isArray(result?.blocks) ? result.blocks : Array.isArray(result?.cards) ? result.cards : [];
+    return cards.map(card => {
+        if (typeof card.riffCardID !== 'string' || !card.riffCardID) return card;
+        // Drop the block's own `id`: callers (and CLI summaries) took it for the
+        // card ID, but review_card/remove need cardID and blockID respectively.
+        const { riffCardID, riffCard, id: _blockID, ...block } = card;
+        return { cardID: riffCardID, blockID: card.id as string, ...block,
+            ...(riffCard && typeof riffCard === 'object' ? riffCard : {}) };
+    });
 }
 
 function isUnresolvedFlashcardBlock(card: flashcardApi.Flashcard): boolean {
@@ -495,35 +528,53 @@ const handleGetCards: FlashcardActionHandler = async ({ client, permMgr, rawArgs
     });
 };
 
-const handleReviewCard: FlashcardActionHandler = async ({ client, rawArgs }) => {
+const handleReviewCard: FlashcardActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FlashcardReviewCardSchema.parse(rawArgs);
     if (parsed.deckID === '') {
         throw new Error('flashcard/review_card requires a concrete deckID. Use flashcard/get_cards first to resolve the card deck, then retry.');
     }
+    await readFlashcardReviewState(client, permMgr, parsed.deckID, parsed.cardID);
     if (parsed.skip === true) {
         const result = await flashcardApi.skipReviewRiffCard(client, parsed.deckID, parsed.cardID);
-        return createJsonResult({
+        const reviewedCards = [
+            ...(parsed.reviewedCards ?? []).filter(card => card.cardID !== parsed.cardID),
+            { cardID: parsed.cardID },
+        ];
+        return createWriteSuccessResult({
             action: 'review_card',
             skip: true,
             deckID: parsed.deckID,
             cardID: parsed.cardID,
-            result,
+            ...(result != null ? { result } : {}),
+            reviewSession: {
+                effect: 'skip_for_current_session',
+                persistedScheduleChanged: false,
+                nextListArgs: { action: 'list_cards', scope: 'deck', filter: 'due', deckID: parsed.deckID, reviewedCards },
+                hint: 'Skipping does not rate or reschedule the card. Continue with nextListArgs; omitting reviewedCards starts a new kernel review session and clears skips. A strict no_change receipt refers to the persisted schedule.',
+            },
         });
     }
     const result = await flashcardApi.reviewRiffCard(client, parsed.deckID, parsed.cardID, parsed.rating!, parsed.reviewedCards);
-    return createJsonResult({
+    return createWriteSuccessResult({
         action: 'review_card',
         deckID: parsed.deckID,
         cardID: parsed.cardID,
         rating: parsed.rating!,
         ...(parsed.reviewedCards !== undefined ? { reviewedCards: parsed.reviewedCards } : {}),
-        result,
+        ...(result != null ? { result } : {}),
+        nextSteps: [{
+            tool: 'flashcard',
+            args: { action: 'get_cards', deckID: parsed.deckID },
+            reason: 'Read this cardID to verify reps, state, lastReview and due. Use the strict safety receipt to determine whether the rating committed; an empty native response does not mean failure.',
+        }],
     });
 };
 
-const handleCreateCard: FlashcardActionHandler = async ({ client, rawArgs }) => {
+const handleCreateCard: FlashcardActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FlashcardCreateCardSchema.parse(rawArgs);
     const deckID = normalizeWritableDeckID(parsed.deckID);
+    const denied = await ensureFlashcardBlocksPermitted(client, permMgr, parsed.blockIDs, 'create_card');
+    if (denied) return denied;
     await ensureFlashcardTargetsWritable(client, parsed.blockIDs);
     await ensureDeckAvailable(client, deckID, 'create_card');
     const mode = parsed.mode ?? 'full';
@@ -532,7 +583,7 @@ const handleCreateCard: FlashcardActionHandler = async ({ client, rawArgs }) => 
     if (deckID === BUILTIN_DECK_ID) {
         await verifyFlashcardDeckRecords(client, parsed.blockIDs, 'present', 'create_card');
     }
-    return createJsonResult({
+    return createWriteSuccessResult({
         action: 'create_card',
         mode,
         deckID: parsed.deckID,
@@ -542,15 +593,17 @@ const handleCreateCard: FlashcardActionHandler = async ({ client, rawArgs }) => 
     });
 };
 
-const handleRemoveCard: FlashcardActionHandler = async ({ client, rawArgs }) => {
+const handleRemoveCard: FlashcardActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FlashcardRemoveCardSchema.parse(rawArgs);
     const deckID = normalizeWritableDeckID(parsed.deckID);
+    const denied = await ensureFlashcardBlocksPermitted(client, permMgr, parsed.blockIDs, 'remove_card');
+    if (denied) return denied;
     await ensureDeckAvailable(client, deckID, 'remove_card');
     const result = await flashcardApi.removeRiffCards(client, deckID, parsed.blockIDs);
     if (deckID === BUILTIN_DECK_ID) {
         await verifyFlashcardDeckRecords(client, parsed.blockIDs, 'absent', 'remove_card');
     }
-    return createJsonResult({
+    return createWriteSuccessResult({
         action: 'remove_card',
         deckID: parsed.deckID,
         effectiveDeckID: deckID,

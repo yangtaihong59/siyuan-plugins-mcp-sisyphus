@@ -5,6 +5,8 @@ export default defineConfig({
   title: 'SiYuan Sisyphus MCP & CLI',
   description: 'Documentation for SiYuan Sisyphus MCP & CLI Plugin',
   base: '/siyuan-plugins-mcp-sisyphus/',
+  // Dated acceptance reports are kept for history but not published.
+  srcExclude: ['testing/archive/**'],
 
   // 多语言配置
   locales: {

@@ -1,5 +1,6 @@
 import type { ToolCategory } from './config';
-import type { ToolResult } from '@/tools/internal/shared';
+import type { ToolResult } from './tool-result';
+import { isRecord } from '../shared/record';
 
 interface SlimContext {
     category: ToolCategory;
@@ -16,6 +17,8 @@ const SUCCESS_KEEP_KEYS = new Set([
     'oldLabel',
     'newLabel',
     'path',
+    'hPath',
+    'sourceID',
     'paths',
     'newPath',
     'from',
@@ -40,6 +43,8 @@ const SUCCESS_KEEP_KEYS = new Set([
     'changed',
     'editsApplied',
     'replacements',
+    'matchesBefore',
+    'matchesRemaining',
     'replaced',
     'created',
     'updated',
@@ -50,10 +55,36 @@ const SUCCESS_KEEP_KEYS = new Set([
     'reason',
     'warning',
     'skippedComplexBlocks',
+    'restoredAttrs',
     'recommendedTools',
+    // flashcard and timeline write identities.
+    'deckID',
+    'effectiveDeckID',
+    'blockIDs',
+    'cardID',
+    'rating',
+    'skip',
+    'reviewSession',
+    'tag',
+    'snapshotId',
+    'scope',
+    'documentId',
+    'node',
+    'partialFailure',
+    // Executable preflight/commit arguments must never be slimmed; the
+    // client submits them verbatim on the next call.
+    'preflight',
     // Never hide whether a successful mutation went through the strict
     // coordinator when response slimming is enabled.
     'safety',
+    // One-step strict commits return their impact preview and tier with the
+    // receipt; reads of writable targets return the ifMatch precondition.
+    'preview',
+    'oneStep',
+    'ifMatch',
+    'ifMatchTarget',
+    // One-line pointer from a single-item write to its batch form.
+    'batchHint',
 ]);
 
 const SAFETY_TOP_LEVEL_KEYS = [
@@ -118,10 +149,6 @@ const ITEM_DROP_KEYS = new Set([
     'flashcardCount',
 ]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function createTextResult(result: ToolResult, value: unknown): ToolResult {
     const first = result.content[0];
     return {
@@ -137,12 +164,26 @@ function shouldBypassSlimming(ctx: SlimContext): boolean {
     // AV arrays contain semantic content (select options, assets and cell values),
     // not generic search-result summaries. Preserve the native payload verbatim.
     return ctx.category === 'av'
+        // Cards can also look like search blocks (rootID/path). Projecting
+        // them to search summaries destroys cardID, scheduling and review
+        // material. Session continuation arguments are executable data.
+        || ctx.category === 'flashcard'
         || ctx.category === 'extension'
         || ctx.category === 'timeline'
         // Link maps, dispositions and counts are the result, including when
         // resolve/reuse perform no write. Generic success slimming loses them.
         || (ctx.category === 'document' && ctx.action === 'ensure_link_targets')
+        // Per-item rename receipts and their counts are the recovery contract,
+        // including partial and unknown batches. Generic success/error
+        // slimming would drop items[] and make a partial batch unrecoverable.
+        || (ctx.category === 'document' && ctx.action === 'rename')
+        // Batch mv receipts (moved / failed / notApplied) are the recovery contract too.
+        || (ctx.category === 'fs' && ctx.action === 'mv')
+        // Explicit projections and indexed statistics are the query contract.
+        || (ctx.category === 'document' && ctx.action === 'query')
         || (ctx.category === 'file' && ctx.action === 'read_image')
+        // The export page IS the documents' Markdown; item slimming dropped content.
+        || (ctx.category === 'file' && ctx.action === 'export_markdown_snapshot')
         || (ctx.category === 'search' && ctx.action === 'query_sql')
         || ctx.action === 'help'
         || (ctx.category === 'system' && ctx.action === 'conf');
@@ -171,6 +212,8 @@ function slimError(error: Record<string, unknown>): Record<string, unknown> {
         'ledgerState',
         'resultHash',
         'cause',
+        'field',
+        'oneStep',
     ]);
     return Object.fromEntries(Object.entries(error).filter(([key]) => allowed.has(key)));
 }
@@ -244,6 +287,10 @@ function slimObject(payload: Record<string, unknown>, ctx: SlimContext): Record<
     if (isRecord(payload.error)) {
         const next: Record<string, unknown> = { error: slimError(payload.error) };
         if (isRecord(payload.safety)) next.safety = payload.safety;
+        // Keep the executable preflight envelope byte-for-byte. Generic
+        // recursive slimming would drop commitArgs.action and can break the
+        // next call.
+        if (isRecord(payload.preflight)) next.preflight = payload.preflight;
         for (const key of SAFETY_TOP_LEVEL_KEYS) {
             if (payload[key] !== undefined) next[key] = payload[key];
         }
@@ -256,6 +303,12 @@ function slimObject(payload: Record<string, unknown>, ctx: SlimContext): Record<
 
     const next: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(payload)) {
+        // The write-impact preview is already bounded by its own detail
+        // level; generic item slimming would drop its content excerpts.
+        if (key === 'preflight' || key === 'preview') {
+            next[key] = value;
+            continue;
+        }
         if (key === 'uiRefresh') {
             const uiRefresh = slimUiRefresh(value);
             if (uiRefresh !== undefined) next.uiRefresh = uiRefresh;

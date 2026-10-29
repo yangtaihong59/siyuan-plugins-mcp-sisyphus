@@ -1,27 +1,39 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { load, Type, DEFAULT_SCHEMA } from 'js-yaml';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { generatePresetSnippet, MCP_SERVER_NAME, replacePromptTokens } from '@/ui/setting/mcp-config/http-server-panel-logic';
+
+// Generators come from the panel logic module; only the state-bound prompt
+// builder is still read from the component source.
 const source = readFileSync('src/ui/setting/mcp-config/HttpServerPanel.svelte', 'utf8');
-const functions = ['getHttpMcpUrl', 'getStdioServerConfig', 'generateDshConfig', 'generatePresetSnippet', 'replacePromptTokens', 'generateMcpAiSetupPrompt'].map(name => {
-    const start = source.indexOf(`    function ${name}(`);
-    return source.slice(start, source.indexOf('\n    }', start) + 6);
-}).join('\n');
-const create = new Function('getWorkspaceScriptPath', 'getSiYuanApiToken', 'getLabel', 'httpSettings', `
-const MCP_SERVER_NAME = 'siyuan-sisyphus';
+const promptStart = source.indexOf('    function generateMcpAiSetupPrompt(');
+const promptSource = source.slice(promptStart, source.indexOf('\n    }', promptStart) + 6);
+function create(workspaceDir: string, token: string, getLabel: (key: string, fallback: string) => string, httpSettings: Record<string, unknown>) {
+    const withWindow = <T>(fn: () => T): T => {
+        vi.stubGlobal('window', { siyuan: { config: { system: { workspaceDir }, api: { token } } } });
+        try { return fn(); } finally { vi.unstubAllGlobals(); }
+    };
+    const buildPrompt = new Function('generatePresetSnippet', 'replacePromptTokens', 'getLabel', 'httpSettings', 'MCP_SERVER_NAME', `
 const selectedMcpClientPreset = 'dsh';
 const selectedMcpTransport = 'http';
 const dshSetupGuide = 'Desktop: ~/.dsh/profiles/desktop/cordis.patch.yml';
 const getSelectedMcpClientTitle = () => 'DSH';
 const getSelectedMcpTransportTitle = () => 'HTTP/HTTPS';
-${ts.transpileModule(functions, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText}
-return { generate: (settings, transport) => generatePresetSnippet(settings, 'dsh', transport), prompt: generateMcpAiSetupPrompt };`);
+${ts.transpileModule(promptSource, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText}
+return generateMcpAiSetupPrompt;`)(generatePresetSnippet, replacePromptTokens, getLabel, httpSettings, MCP_SERVER_NAME);
+    return {
+        generate: (settings: any, transport: any) => withWindow(() => generatePresetSnippet(settings, 'dsh', transport)),
+        prompt: () => withWindow(() => buildPrompt()),
+    };
+}
 // Parse expression tags as inert data; never execute YAML JavaScript in tests.
 const schema = DEFAULT_SCHEMA.extend([new Type('tag:yaml.org,2002:js', { kind: 'scalar', construct: expression => ({ expression }) })]);
 const settings = { host: '127.0.0.1', port: 36808, tlsEnabled: false, authEnabled: false, token: 'MUST_NOT_LEAK' };
-const script = 'C:\\工作目录 "test"\\plugins\\mcp-server.cjs';
-const generator = create(() => script, () => 'KERNEL_SECRET', (_key, fallback) => fallback, settings);
+const workspaceDir = 'C:\\工作目录 "test"';
+const script = `${workspaceDir}/data/plugins/siyuan-plugins-mcp-sisyphus/mcp-server.cjs`;
+const generator = create(workspaceDir, 'KERNEL_SECRET', (_key, fallback) => fallback, settings);
 const parse = (text: string) => (load(text, { schema }) as any)[0].insert[0];
 
 describe('DSH Cordis config copied by settings', () => {
@@ -43,8 +55,11 @@ describe('DSH Cordis config copied by settings', () => {
         expect(parse(text).config).toMatchObject({ transport: 'stdio', command: 'node', args: [script], env: {
             SIYUAN_API_URL: 'http://127.0.0.1:6806', SIYUAN_TOKEN: { expression: 'process.env.SIYUAN_TOKEN' },
         } });
-        const noToken = create(() => '/server.cjs', () => '', (_key, fallback) => fallback, settings);
-        expect(parse(noToken.generate(settings, 'stdio')).config.env.SIYUAN_TOKEN).toBe('');
+        // Without a kernel token the panel still references the environment variable
+        // and never serializes its "xxxxxx" placeholder.
+        const noToken = create('/ws', '', (_key, fallback) => fallback, settings).generate(settings, 'stdio');
+        expect(parse(noToken).config.env.SIYUAN_TOKEN).toEqual({ expression: 'process.env.SIYUAN_TOKEN' });
+        expect(noToken).not.toContain('xxxxxx');
     });
     it('copies a YAML AI setup prompt with the Cordis file location', () => {
         const prompt = generator.prompt();

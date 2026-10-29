@@ -25,4 +25,10 @@ export class Dialog {
     }
 }
 
+export function fetchPost(_url: string, _data?: unknown, _callback?: (response: any) => void, _headers?: unknown): void {}
+
 export function showMessage(_message?: string, _timeout?: number, _type?: string): void {}
+
+export function getAllEditor(): any[] {
+    return [];
+}

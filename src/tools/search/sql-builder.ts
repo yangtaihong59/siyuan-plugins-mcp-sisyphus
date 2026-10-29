@@ -1,6 +1,9 @@
 import type { SiYuanClient } from '../../api/client';
+import * as notebookApi from '../../api/notebook';
 import * as searchApi from '../../api/search';
-import { escapeSqlString } from '../internal/context';
+import type { PermissionManager } from '../../core/permissions';
+import { escapeSqlString } from '../../shared/sql';
+import type { ToolResult } from '../internal/shared';
 
 function escapeSqlLike(value: string): string {
     return value
@@ -12,6 +15,19 @@ function escapeSqlLike(value: string): string {
 }
 
 const READ_ONLY_SQL_ERROR = 'Only SELECT statements and WITH CTEs whose main statement is SELECT are allowed. Mutation queries (INSERT, UPDATE, DELETE, DROP, ALTER, CREATE) are forbidden.';
+
+/**
+ * A statement query_sql never runs (mutation, PRAGMA, EXPLAIN, multiple
+ * statements). Caller-correctable: `code` maps it to permission_denied, the
+ * same family as restricted-mode rejections, never internal_error.
+ */
+export class SqlStatementRejectedError extends Error {
+    readonly code = 'permission_denied';
+    constructor(message: string, readonly hint?: string) {
+        super(message);
+        this.name = 'SqlStatementRejectedError';
+    }
+}
 
 function maskSqlLiteralsAndComments(stmt: string): string {
     let result = '';
@@ -100,13 +116,13 @@ function readKeyword(value: string, index: number): { keyword: string; end: numb
 function skipIdentifier(value: string, index: number): number {
     const start = skipWhitespace(value, index);
     const match = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(value.slice(start));
-    if (!match) throw new Error(READ_ONLY_SQL_ERROR);
+    if (!match) throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
     return start + match[0].length;
 }
 
 function skipBalancedParens(value: string, index: number): number {
     const start = skipWhitespace(value, index);
-    if (value[start] !== '(') throw new Error(READ_ONLY_SQL_ERROR);
+    if (value[start] !== '(') throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
 
     let depth = 0;
     for (let cursor = start; cursor < value.length; cursor += 1) {
@@ -117,14 +133,14 @@ function skipBalancedParens(value: string, index: number): number {
         }
     }
 
-    throw new Error(READ_ONLY_SQL_ERROR);
+    throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
 }
 
 function assertNoAdditionalStatements(masked: string): void {
     const firstSemicolon = masked.indexOf(';');
     if (firstSemicolon < 0) return;
     if (masked.slice(firstSemicolon + 1).trim().length > 0) {
-        throw new Error(READ_ONLY_SQL_ERROR);
+        throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
     }
 }
 
@@ -145,7 +161,7 @@ function assertReadOnlyWithSql(masked: string, withEnd: number): void {
         }
 
         const asKeyword = readKeyword(masked, index);
-        if (asKeyword?.keyword !== 'AS') throw new Error(READ_ONLY_SQL_ERROR);
+        if (asKeyword?.keyword !== 'AS') throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
         index = skipWhitespace(masked, asKeyword.end);
 
         const materializedKeyword = readKeyword(masked, index);
@@ -153,7 +169,7 @@ function assertReadOnlyWithSql(masked: string, withEnd: number): void {
             index = skipWhitespace(masked, materializedKeyword.end);
         } else if (materializedKeyword?.keyword === 'NOT') {
             const nextKeyword = readKeyword(masked, materializedKeyword.end);
-            if (nextKeyword?.keyword !== 'MATERIALIZED') throw new Error(READ_ONLY_SQL_ERROR);
+            if (nextKeyword?.keyword !== 'MATERIALIZED') throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
             index = skipWhitespace(masked, nextKeyword.end);
         }
 
@@ -167,12 +183,12 @@ function assertReadOnlyWithSql(masked: string, withEnd: number): void {
 
         const mainStatement = readKeyword(masked, index);
         if (mainStatement?.keyword !== 'SELECT') {
-            throw new Error(READ_ONLY_SQL_ERROR);
+            throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
         }
         return;
     }
 
-    throw new Error(READ_ONLY_SQL_ERROR);
+    throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
 }
 
 export function assertReadOnlySql(stmt: string): void {
@@ -187,8 +203,87 @@ export function assertReadOnlySql(stmt: string): void {
         assertReadOnlyWithSql(masked, firstWord.end);
         return;
     }
+    if (firstWord?.keyword === 'PRAGMA' || firstWord?.keyword === 'EXPLAIN') {
+        throw new SqlStatementRejectedError(
+            `${firstWord.keyword} statements are not allowed: query_sql runs only SELECT / WITH … SELECT over the index tables, and schema metadata is not exposed.`,
+            'For column names, SELECT * FROM blocks LIMIT 1; for documents, use document(action="query").',
+        );
+    }
 
-    throw new Error(READ_ONLY_SQL_ERROR);
+    throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
+}
+
+export async function ensureRawSqlReadAccess(
+    client: SiYuanClient,
+    permMgr: PermissionManager,
+    stmt: string,
+): Promise<ToolResult | undefined> {
+    assertReadOnlySql(stmt);
+    await permMgr.reload();
+    const notebookList = await notebookApi.listNotebooks(client);
+    const restrictedNotebookCount = notebookList.notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).length;
+    if (restrictedNotebookCount === 0) return undefined;
+
+    return {
+        content: [{
+            type: 'text',
+            text: JSON.stringify({
+                error: {
+                    type: 'permission_denied',
+                    code: 'raw_sql_unavailable_with_restricted_notebooks',
+                    reason: 'permission_scope_not_enforceable',
+                    restrictedNotebookCount,
+                    message: 'Raw SQL is unavailable while one or more notebooks are unreadable because aggregate, join, CTE, and subquery results cannot be safely post-filtered by notebook.',
+                    hint: 'Use document(action="query") to query readable documents without changing permissions, or grant read access to every notebook before using raw SQL.',
+                },
+            }, null, 2),
+        }],
+        isError: true,
+    };
+}
+
+export interface RawSqlScope {
+    mode: 'restricted' | 'full';
+    readableNotebooks: string[];
+    excludedNotebooks: number;
+    /**
+     * Restricted mode only: the readable notebooks the index covers (open ones).
+     * `readableNotebooks` stays every permission-readable ID, closed included.
+     */
+    readable?: Array<{ id: string; name: string }>;
+    /** Restricted mode only: readable but closed, so not indexed and never in results. */
+    closed?: Array<{ id: string; name: string }>;
+    /** Same disclosure as notebook(action="list"), which lists unreadable notebooks by name. */
+    excluded?: Array<{ id: string; name: string }>;
+}
+
+/** Reload permissions and compute which notebooks a raw SQL query may observe. */
+export async function loadRawSqlScope(client: SiYuanClient, permMgr: PermissionManager): Promise<RawSqlScope> {
+    await permMgr.reload();
+    const notebookList = await notebookApi.listNotebooks(client);
+    const notebooks = Array.isArray(notebookList?.notebooks) ? notebookList.notebooks : [];
+    const readable = notebooks.filter((notebook) => permMgr.canRead(notebook.id));
+    const readableNotebooks = readable.map((notebook) => notebook.id);
+    const excludedNotebooks = notebooks.length - readableNotebooks.length;
+    if (excludedNotebooks === 0) return { mode: 'full', readableNotebooks, excludedNotebooks };
+    return {
+        mode: 'restricted',
+        readableNotebooks,
+        excludedNotebooks,
+        readable: readable.filter((notebook) => notebook.closed !== true).map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? '') })),
+        ...(readable.some((notebook) => notebook.closed === true)
+            ? { closed: readable.filter((notebook) => notebook.closed === true).map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? '') })) }
+            : {}),
+        excluded: notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? '') })),
+    };
+}
+
+/** Real table/view names of the index DB, so CTE names can never shadow one. */
+export async function listIndexTableNames(client: SiYuanClient): Promise<string[]> {
+    const rows = await searchApi.querySQL(client, "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') LIMIT 1000");
+    return rows
+        .map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>).name : undefined))
+        .filter((name): name is string => typeof name === 'string');
 }
 
 async function getBlockLabel(client: SiYuanClient, id: string): Promise<string | undefined> {
@@ -280,6 +375,51 @@ async function queryFallbackBackmentionRows(
         WHERE ${filters.join(' AND ')}
         ORDER BY updated DESC
         LIMIT 200
+        `.trim(),
+    );
+}
+
+export const REFERENCING_BLOCKS_LIMIT = 200;
+
+/**
+ * Blocks whose content references `id` (refs.def_block_id). SiYuan's
+ * /api/search/searchRefBlock is the "((" autocomplete picker and returns
+ * candidate targets, not referrers, so it cannot back search_refs.
+ * Fetches one row past the limit so callers can report truncation.
+ */
+export async function queryReferencingBlocks(
+    client: SiYuanClient,
+    id: string,
+    rootID?: string,
+    keyword?: string,
+): Promise<unknown[]> {
+    const filters = [`r.def_block_id = '${escapeSqlString(id)}'`];
+    if (rootID) {
+        filters.push(`r.root_id = '${escapeSqlString(rootID)}'`);
+    }
+    if (keyword && keyword.trim()) {
+        filters.push(`b.content LIKE '%${escapeSqlLike(keyword.trim())}%' ESCAPE '\\'`);
+    }
+
+    return searchApi.querySQL(
+        client,
+        `
+        SELECT
+            b.id,
+            b.root_id,
+            b.box,
+            b.path,
+            b.hpath,
+            b.type,
+            b.content,
+            b.markdown,
+            MAX(r.content) AS ref_text
+        FROM refs r
+        JOIN blocks b ON b.id = r.block_id
+        WHERE ${filters.join(' AND ')}
+        GROUP BY b.id
+        ORDER BY MAX(b.updated) DESC
+        LIMIT ${REFERENCING_BLOCKS_LIMIT + 1}
         `.trim(),
     );
 }

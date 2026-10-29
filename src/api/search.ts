@@ -32,6 +32,15 @@ export async function querySQL(client: SiYuanClient, stmt: string): Promise<unkn
     return Array.isArray(result) ? result : [];
 }
 
+/**
+ * Flush the kernel's pending transaction and SQL index queues so a query
+ * right after a write sees it. Not a content write: it only persists what
+ * earlier writes already queued.
+ */
+export async function flushTransaction(client: SiYuanClient): Promise<void> {
+    await client.requestRead<null>('/api/sqlite/flushTransaction', {});
+}
+
 export async function searchTag(client: SiYuanClient, k: string): Promise<IResSearchTag> {
     const request: IReqSearchTag = { k };
     return client.requestRead<IResSearchTag>('/api/search/searchTag', request);

@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "fs",
-      "description": "📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.\nActions (required fields): ls(path) · tree(path) · read(path) · write(path, markdown) · replace(path, edit) · rm*(path) · mv*(from, to) · reorder(path, orderedPaths) · search(path, query)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.\nActions (required fields): ls(path) · tree(path) · read(path) · write(path, markdown) · replace(path, edit) · rm*(path) · mv*(from, to | items) · reorder(path, orderedPaths) · search(path, query)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -66,12 +66,36 @@
             "description": "One replacement edit or an array of edits to apply sequentially inside editable non-complex Markdown blocks without rebuilding the document Read action=\"help\", topic=\"<action>\" before constructing this nested value."
           },
           "from": {
-            "type": "string",
-            "description": "Source workspace path, e.g. /Notebook/Folder/Old."
+            "description": "Source workspace path, e.g. /Notebook/Folder/Old.",
+            "type": "string"
           },
           "to": {
-            "type": "string",
-            "description": "Destination workspace path, e.g. /Notebook/Folder/New."
+            "description": "Destination workspace path, e.g. /Notebook/Folder/New.",
+            "type": "string"
+          },
+          "items": {
+            "description": "Batch: up to 20 {from,to}, moved in order; excludes from/to",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            }
           },
           "orderedPaths": {
             "minItems": 1,
@@ -239,7 +263,7 @@
     },
     {
       "name": "document",
-      "description": "📝 Document IDs, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown read/write. create uses notebook + notebook-local path (/Folder/Doc, omit notebook name). lookup accepts id, notebook+hpath, or notebook+path (.sy storage path); reuse returned storage paths for rename/move/remove. Read create help for parentPath + title.\nActions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · ensure_link_targets(notebook, parentId, mode, targets) · rename(title) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📝 Documents, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown. query lists readable documents with statistics and same-title candidates. create uses notebook + notebook-local path (/Folder/Doc). lookup accepts id, notebook+hpath, or notebook+path (.sy); reuse storage paths for rename/move/remove. Read create help for parentPath + title.\nActions (required fields): create(notebook, path | notebook, parentPath, title | notebook, docs) · lookup() · query() · ensure_link_targets(notebook, parentId, mode, targets) · rename(id, title | notebook, path, title | items) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -248,6 +272,7 @@
             "enum": [
               "create",
               "lookup",
+              "query",
               "ensure_link_targets",
               "rename",
               "remove",
@@ -283,7 +308,9 @@
           },
           "title": {
             "description": "Required together with parentPath when create omits path; notebook + title alone is invalid",
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           },
           "markdown": {
             "description": "Markdown content, defaults to empty. Do not include a leading # Title; a matching H1 is stripped automatically.",
@@ -292,6 +319,28 @@
           "icon": {
             "description": "Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character.",
             "type": "string"
+          },
+          "docs": {
+            "description": "Batch: up to 20 {path,markdown?}, created in order; excludes path/parentPath/title/markdown/icon",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Notebook-local path, like path"
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            }
           },
           "id": {
             "description": "Document ID to look up",
@@ -302,7 +351,7 @@
             "type": "string"
           },
           "include": {
-            "description": "Fields to include: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\"",
+            "description": "Fields to include, only: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\" (no \"title\"; use docInfo.name)",
             "type": "array",
             "items": {
               "type": "string",
@@ -314,6 +363,101 @@
                 "docInfo"
               ]
             }
+          },
+          "notebooks": {
+            "description": "IDs; default readable open notebooks. Explicit unreadable/closed IDs are rejected.",
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "fields": {
+            "description": "Columns; default all. Statistics describe the SQL index; see query help for definitions.",
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "notebook",
+                "title",
+                "path",
+                "hpath",
+                "created",
+                "updated",
+                "blockCount",
+                "contentChars",
+                "sameTitleCount"
+              ]
+            }
+          },
+          "hpathPrefix": {
+            "description": "Exact notebook-local hpath or descendants, e.g. /Projects.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "minBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "minChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "duplicatesOnly": {
+            "description": "Only repeated titles in scope; not proof of duplicate content.",
+            "type": "boolean"
+          },
+          "sortBy": {
+            "description": "Default updated; ID breaks ties.",
+            "type": "string",
+            "enum": [
+              "id",
+              "title",
+              "created",
+              "updated",
+              "blockCount",
+              "contentChars",
+              "sameTitleCount"
+            ]
+          },
+          "sortOrder": {
+            "description": "Default desc.",
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "page": {
+            "description": "1-based; default 1. Pages are not a snapshot.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "pageSize": {
+            "description": "Default 50, max 100.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
           },
           "parentId": {
             "type": "string",
@@ -342,6 +486,32 @@
             "description": "Plan and inspect the explicit scope without creating documents. For strict creation preflight, use validateOnly=true instead.",
             "type": "boolean"
           },
+          "items": {
+            "description": "Bounded batch of {id,title}. Mutually exclusive with id/notebook/path/title. Maximum 50 items and 256 KiB serialized input.",
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Document ID to rename"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "New document title"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
           "ids": {
             "description": "One or more document IDs to remove",
             "minItems": 1,
@@ -363,7 +533,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Source storage paths returned by document(action=\"lookup\")."
+            "description": "Source storage paths from document(action=\"lookup\"); several in one call."
           },
           "toNotebook": {
             "type": "string"
@@ -376,7 +546,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Document IDs to move; several in one call."
           },
           "toID": {
             "type": "string"
@@ -412,8 +583,10 @@
                 ]
               }
             },
-            "additionalProperties": false,
-            "description": "Document metadata attributes to set"
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "icon, cover and custom-* keys (\"\" removes a custom-* key)"
           },
           "maxDepth": {
             "description": "Max tree depth to return (default 3). Deeper nodes are collapsed to childCount.",
@@ -466,20 +639,20 @@
             "description": "Target notebook ID"
           },
           "targetPath": {
-            "description": "Optional target storage path",
+            "description": "Existing parent document storage path ending in .sy; defaults to / (target notebook root). Not a human-readable path.",
             "type": "string"
           },
           "previousPath": {
-            "description": "Optional previous sibling storage path",
+            "description": "Existing sibling document storage path ending in .sy in targetNotebook; selects sibling placement. Do not combine with a non-root targetPath.",
             "type": "string"
           },
           "srcID": {
             "type": "string",
-            "description": "Source document ID"
+            "description": "Source document root ID, without child documents"
           },
           "targetID": {
             "type": "string",
-            "description": "Target document or heading block ID"
+            "description": "Existing heading block ID in another document, from document.get_outline. Document root IDs are rejected."
           },
           "after": {
             "description": "When true, insert after the target heading instead of before it",
@@ -749,7 +922,7 @@
     },
     {
       "name": "av",
-      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID, srcIDs) · add_column(avID, keyName, keyType) · remove_column(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows (rows with cells in one call) or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · rename(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -764,6 +937,7 @@
               "remove_rows",
               "add_column",
               "remove_column",
+              "rename",
               "set_cells",
               "set_column_options",
               "duplicate_rows",
@@ -788,7 +962,7 @@
           "blockID": {
             "type": "string",
             "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted",
+            "description": "Carrier block ID (av get carrierBlockIDs); auto-filled when the AV has exactly one",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
           "viewID": {
@@ -817,6 +991,20 @@
           "keyword": {
             "type": "string",
             "description": "Keyword to search in attribute view names"
+          },
+          "fields": {
+            "description": "columnIDs to project; rowID is always kept.",
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "includeColumns": {
+            "description": "false omits columns[] (default true).",
+            "type": "boolean"
           },
           "page": {
             "type": "integer",
@@ -855,6 +1043,12 @@
             "minLength": 1,
             "description": "Parent block/document for the new database carrier"
           },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "New database name",
+            "maxLength": 255
+          },
           "filters": {
             "description": "Complete replacement; [] clears filters Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
@@ -863,7 +1057,7 @@
             }
           },
           "sorts": {
-            "description": "Complete replacement; [] clears sorts",
+            "description": "Complete replacement; [] clears sorts. order: ASC|DESC (case-insensitive)",
             "type": "array",
             "items": {
               "type": "object",
@@ -976,14 +1170,21 @@
             }
           },
           "primaryKeyTexts": {
-            "description": "Plain-text primary key values to add as detached rows",
+            "description": "Detached rows without cells; rows also sets cells",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
+          "rows": {
+            "description": "Up to 200 rows WITH initial cells (dates too) in one call: [{clientKey,primaryKeyText,cells:[{columnID,valueType,...}]}]. Excludes blockIDs/primaryKeyTexts. Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
           "groupID": {
-            "description": "Optional target group ID",
+            "description": "Optional target group ID; composite rows require viewID",
             "type": "string",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
@@ -996,13 +1197,21 @@
             "description": "When true, skip view/group default value filling",
             "type": "boolean"
           },
-          "srcIDs": {
+          "rowIDs": {
+            "description": "Canonical AV row item IDs to remove. The server validates them against the current AV definition before dispatching the native removal. Do not mix with srcIDs.",
             "minItems": 1,
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Bound row block/item IDs to remove"
+            }
+          },
+          "srcIDs": {
+            "description": "Native interface removal IDs. This is not an interchangeable alias for rowIDs; use rowIDs unless caller has already resolved native removal identities.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "keyID": {
             "description": "Optional new column key ID; MCP generates one when omitted",
@@ -1011,7 +1220,8 @@
           },
           "keyName": {
             "type": "string",
-            "description": "New column name"
+            "description": "New column name",
+            "minLength": 1
           },
           "keyType": {
             "type": "string",
@@ -1217,12 +1427,6 @@
             ],
             "description": "View layout type"
           },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Name for the new view. Creation and naming are sent in one native transaction and read back together."
-          },
           "templates": {
             "description": "Complete ordered replacement template array Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
@@ -1323,7 +1527,7 @@
     },
     {
       "name": "file",
-      "description": "📁 Assets, templates, and exports: upload/rename/delete assets, read images for vision (read_image), templates, Markdown/ZIP exports, unused-asset cleanup.\nActions (required fields): upload_asset*(assetsDirPath) · list_templates() · read_template(path) · create_template(path, markdown) · update_template(path, markdown) · delete_template*(path) · save_doc_as_template(id, name) · render(engine) · export_md(id) · export_markdown_snapshot(notebookID) · export_resources(paths) · list_unused_assets() · get_doc_assets(id) · audit_image_refs(id, expectedRefs) · read_image(path) · get_image_ocr_text() · remove_unused_assets*() · rename_asset(oldPath, newName) · delete_asset*(path) · extract_doc(id)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📁 Assets, templates, and exports: upload/rename/delete assets, read images for vision (read_image), templates, Markdown/ZIP exports, unused-asset cleanup.\nActions (required fields): upload_asset*() · list_templates() · read_template(path) · create_template(path, markdown) · update_template(path, markdown) · delete_template*(path) · save_doc_as_template(id, name) · render(engine) · export_md(id) · export_markdown_snapshot(notebookID) · export_resources(paths) · list_unused_assets() · get_doc_assets(id) · audit_image_refs(id, expectedRefs) · read_image(path) · get_image_ocr_text() · remove_unused_assets*() · rename_asset(oldPath, newName) · delete_asset*(path) · extract_doc(id)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1355,11 +1559,11 @@
             "description": "Operation."
           },
           "assetsDirPath": {
-            "type": "string",
-            "description": "Asset directory path (e.g., /assets/)"
+            "description": "Asset directory path; defaults to /assets/",
+            "type": "string"
           },
           "localFilePath": {
-            "description": "Local file path. CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
+            "description": "Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
             "type": "string"
           },
           "uploadSource": {
@@ -1435,6 +1639,10 @@
           },
           "preview": {
             "description": "When engine=\"template\", ask SiYuan to render preview DOM instead of insertion DOM.",
+            "type": "boolean"
+          },
+          "includeChildren": {
+            "description": "Also export every descendant document, in tree order (max 100)",
             "type": "boolean"
           },
           "notebookID": {
@@ -1645,7 +1853,7 @@
             }
           },
           "stmt": {
-            "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
+            "description": "Read-only SELECT or WITH query. With unreadable notebooks, only scoped tables are allowed and rows are filtered. Keeps every selected column.",
             "type": "string"
           },
           "sql": {
@@ -1678,29 +1886,11 @@
             ]
           },
           "rootID": {
-            "description": "Optional current root document ID",
+            "description": "Only return referencing blocks inside this document ID",
             "type": "string"
           },
           "k": {
-            "description": "Keyword filter",
-            "type": "string"
-          },
-          "beforeLen": {
-            "description": "Context length before the reference, default 512",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "isSquareBrackets": {
-            "description": "Search in square-bracket reference mode",
-            "type": "boolean"
-          },
-          "isDatabase": {
-            "description": "Whether the reference target is a database",
-            "type": "boolean"
-          },
-          "reqId": {
-            "description": "Optional passthrough request ID",
+            "description": "Keyword filter on the referencing block content",
             "type": "string"
           },
           "r": {
@@ -2033,13 +2223,14 @@
             "description": "Query scope: \"all\", \"deck\", \"notebook\", or \"tree\""
           },
           "filter": {
+            "default": "due",
+            "description": "Filter returned cards: \"due\" (default), \"new\", or \"old\"",
             "type": "string",
             "enum": [
               "due",
               "new",
               "old"
-            ],
-            "description": "Filter returned cards: \"due\", \"new\", or \"old\""
+            ]
           },
           "deckID": {
             "description": "Deck ID, required when scope=deck. For scope=\"all\", omit deckID; an empty string is treated as omitted.",
@@ -2087,7 +2278,7 @@
             "description": "Card ID"
           },
           "rating": {
-            "description": "Review rating passed through to the kernel",
+            "description": "FSRS rating: 1=Again, 2=Hard, 3=Good, 4=Easy",
             "type": "number"
           },
           "skip": {
@@ -2291,6 +2482,20 @@
           "keyword": {
             "type": "string"
           },
+          "fields": {
+            "description": "columnIDs to project; rowID is always kept.",
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "includeColumns": {
+            "description": "false omits columns[] (default true).",
+            "type": "boolean"
+          },
           "page": {
             "type": "integer",
             "minimum": 1,
@@ -2329,7 +2534,7 @@
           "avID"
         ],
         "additionalProperties": false,
-        "description": "Query paginated database rows or lightweight primary keys; never creates a database."
+        "description": "Query paginated database rows (one canonical rows[] with columnID cells and kernel formatted text) or lightweight primary keys; never creates a database. Use get(scope=\"raw\") for the complete native payload."
       },
       "create": {
         "type": "object",
@@ -2347,6 +2552,10 @@
             "description": "Optional new AV ID; an existing AV is rejected for a new request",
             "type": "string",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -2354,7 +2563,7 @@
           "parentID"
         ],
         "additionalProperties": false,
-        "description": "Create a new database and carrier under parentID; replay preserves IDs and creation progress."
+        "description": "Create a new database as parentID's last child; replay preserves IDs and creation progress."
       },
       "update_view": {
         "type": "object",
@@ -2368,9 +2577,9 @@
             "minLength": 1
           },
           "blockID": {
+            "description": "Carrier block ID (av get carrierBlockIDs); auto-filled when the AV has exactly one",
             "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
+            "minLength": 1
           },
           "viewID": {
             "type": "string",
@@ -3996,7 +4205,7 @@
             }
           },
           "sorts": {
-            "description": "Complete replacement; [] clears sorts",
+            "description": "Complete replacement; [] clears sorts. order: ASC|DESC (case-insensitive)",
             "type": "array",
             "items": {
               "type": "object",
@@ -4101,7 +4310,6 @@
         "required": [
           "action",
           "avID",
-          "blockID",
           "viewID"
         ],
         "additionalProperties": false,
@@ -4152,10 +4360,175 @@
             }
           },
           "primaryKeyTexts": {
-            "description": "Plain-text primary key values to add as detached rows",
+            "description": "Detached rows without cells; rows also sets cells",
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "rows": {
+            "description": "Up to 200 rows WITH initial cells (dates too) in one call: [{clientKey,primaryKeyText,cells:[{columnID,valueType,...}]}]. Excludes blockIDs/primaryKeyTexts.",
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "clientKey": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "description": "Batch-local unique key used only to map the returned rowID"
+                },
+                "primaryKeyText": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Detached row primary-key text"
+                },
+                "cells": {
+                  "description": "Initial non-primary-key cell values written after the rows are created",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "columnID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Existing writable column key ID"
+                      },
+                      "valueType": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "number",
+                          "date",
+                          "checkbox",
+                          "select",
+                          "multi_select",
+                          "relation",
+                          "url",
+                          "email",
+                          "phone",
+                          "mAsset"
+                        ],
+                        "description": "Cell value type"
+                      },
+                      "text": {
+                        "description": "Text value for valueType=text",
+                        "type": "string"
+                      },
+                      "number": {
+                        "description": "Number value for valueType=number",
+                        "type": "number"
+                      },
+                      "numberFormat": {
+                        "description": "Optional number format such as commas, percent, USD, or CNY",
+                        "type": "string"
+                      },
+                      "date": {
+                        "description": "Date/time value as ISO text or epoch milliseconds for valueType=date",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "endDate": {
+                        "description": "Optional end date as ISO text or epoch milliseconds for ranged dates",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "includeTime": {
+                        "description": "When false, store the date without a time component",
+                        "type": "boolean"
+                      },
+                      "checked": {
+                        "description": "Checkbox state for valueType=checkbox",
+                        "type": "boolean"
+                      },
+                      "option": {
+                        "description": "Selected option label for valueType=select",
+                        "type": "string"
+                      },
+                      "options": {
+                        "description": "Selected option labels for valueType=multi_select",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "relationBlockIDs": {
+                        "description": "Related block IDs for valueType=relation",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "url": {
+                        "description": "URL value for valueType=url",
+                        "type": "string"
+                      },
+                      "email": {
+                        "description": "Email value for valueType=email",
+                        "type": "string"
+                      },
+                      "phone": {
+                        "description": "Phone value for valueType=phone",
+                        "type": "string"
+                      },
+                      "assets": {
+                        "description": "Asset entries for valueType=mAsset",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "image",
+                                "file"
+                              ],
+                              "description": "Asset entry type"
+                            },
+                            "content": {
+                              "type": "string",
+                              "description": "Asset path stored by SiYuan, e.g. assets/foo.png"
+                            },
+                            "name": {
+                              "description": "Optional display name",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "content"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "columnID",
+                      "valueType"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "clientKey",
+                "primaryKeyText"
+              ],
+              "additionalProperties": false
             }
           },
           "blockID": {
@@ -4167,7 +4540,7 @@
             "type": "string"
           },
           "groupID": {
-            "description": "Optional target group ID",
+            "description": "Optional target group ID; composite rows require viewID",
             "type": "string"
           },
           "previousID": {
@@ -4184,7 +4557,7 @@
           "avID"
         ],
         "additionalProperties": false,
-        "description": "Add bound block rows or detached plain-text primary-key rows to a database."
+        "description": "Add rows. rows:[{clientKey,primaryKeyText,cells}] creates up to 200 rows with their cells (dates included) in one call, with stable rowIDs and a persisted stage ledger; primaryKeyTexts adds text-only rows, blockIDs bound rows."
       },
       "remove_rows": {
         "type": "object",
@@ -4201,22 +4574,29 @@
             "description": "Registered database block ID for explicit database-block context",
             "type": "string"
           },
-          "srcIDs": {
+          "rowIDs": {
+            "description": "Canonical AV row item IDs to remove. The server validates them against the current AV definition before dispatching the native removal. Do not mix with srcIDs.",
             "minItems": 1,
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Bound row block/item IDs to remove"
+            }
+          },
+          "srcIDs": {
+            "description": "Native interface removal IDs. This is not an interchangeable alias for rowIDs; use rowIDs unless caller has already resolved native removal identities.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "action",
-          "avID",
-          "srcIDs"
+          "avID"
         ],
         "additionalProperties": false,
-        "description": "Remove rows from a database."
+        "description": "Remove rows by validated canonical rowIDs, or by srcIDs through the explicitly native interface. Mixing is rejected before any write."
       },
       "add_column": {
         "type": "object",
@@ -4315,6 +4695,43 @@
         ],
         "additionalProperties": false,
         "description": "Remove a column from a database."
+      },
+      "rename": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "rename"
+          },
+          "avID": {
+            "type": "string",
+            "description": "Attribute view ID"
+          },
+          "blockID": {
+            "description": "Registered database block ID for explicit database-block context",
+            "type": "string"
+          },
+          "name": {
+            "description": "New database name",
+            "type": "string",
+            "minLength": 1
+          },
+          "keyID": {
+            "description": "Column to rename (any column, including the primary key)",
+            "type": "string"
+          },
+          "keyName": {
+            "description": "New column name",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "action",
+          "avID"
+        ],
+        "additionalProperties": false,
+        "description": "Rename the database and/or columns (including the primary key column)."
       },
       "set_cells": {
         "type": "object",
@@ -4883,9 +5300,9 @@
             "description": "Attribute view ID"
           },
           "blockID": {
+            "description": "Carrier block ID (av get carrierBlockIDs); auto-filled when the AV has exactly one",
             "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
+            "minLength": 1
           },
           "viewID": {
             "type": "string",
@@ -4911,7 +5328,6 @@
         "required": [
           "action",
           "avID",
-          "blockID",
           "viewID",
           "layout",
           "name"
@@ -5251,491 +5667,6 @@
         ],
         "additionalProperties": false,
         "description": "Set or clear one relation cell by AV item IDs, then verify the two-way reverse cell when configured."
-      }
-    },
-    "search": {
-      "fulltext": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "fulltext"
-          },
-          "query": {
-            "type": "string",
-            "description": "Search query string"
-          },
-          "method": {
-            "description": "Search method: 0=keyword (default), 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "methodName": {
-            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
-            "type": "string",
-            "enum": [
-              "keyword",
-              "query",
-              "query_syntax",
-              "sql",
-              "regex"
-            ]
-          },
-          "types": {
-            "description": "Block type filter. Accepts full names (e.g. {\"heading\": true}) or shortcodes (e.g. {\"h\": true, \"p\": true}). Codes: d=document, h=heading, p=paragraph, l=list, i=listItem, b=blockquote, c=codeBlock, m=mathBlock, t=table, s=superBlock, html=htmlBlock, embed=embedBlock, av=databaseBlock.",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "typeShortcodes": {
-            "description": "Alternative shorthand type filter as array: [\"h\",\"p\"]. Merged with types if both provided.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "paths": {
-            "description": "Restrict search to specific notebook IDs or storage paths",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "groupBy": {
-            "description": "0=no grouping (default), 1=group by document",
-            "type": "number"
-          },
-          "orderBy": {
-            "description": "Legacy numeric sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)",
-            "type": "number"
-          },
-          "sortBy": {
-            "description": "Semantic sort alias: \"relevance\", \"date\", \"updated_desc\", \"updated_asc\", \"created_desc\", \"created_asc\", or \"type\". Overrides orderBy if both provided.",
-            "type": "string",
-            "enum": [
-              "relevance",
-              "date",
-              "updated_desc",
-              "updated_asc",
-              "created_desc",
-              "created_asc",
-              "type"
-            ]
-          },
-          "page": {
-            "description": "Page number (1-based), default 1",
-            "type": "number"
-          },
-          "pageSize": {
-            "description": "Results per page, default 32, max 128",
-            "type": "number"
-          },
-          "parentId": {
-            "description": "Post-filter results to blocks whose root_id or parent_id matches this ID, scoping search within a document subtree.",
-            "type": "string"
-          },
-          "hasTags": {
-            "description": "When true, only return blocks that have tags. When false, only return blocks without tags.",
-            "type": "boolean"
-          },
-          "stripHtml": {
-            "description": "Legacy toggle. plainContent is now returned by default; set this when you want to emphasize plain-text-safe downstream parsing while keeping highlighted HTML content.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "action",
-          "query"
-        ],
-        "additionalProperties": false,
-        "description": "Full-text search across all blocks."
-      },
-      "semantic": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "semantic"
-          },
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Natural-language semantic search query"
-          },
-          "paths": {
-            "description": "Restrict search to notebook IDs or storage paths",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "types": {
-            "description": "Block type filter. Accepts full names or shortcodes.",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "typeShortcodes": {
-            "description": "Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "subTypes": {
-            "description": "Optional SiYuan block subtype filter",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "page": {
-            "description": "Page number (1-based), default 1",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pageSize": {
-            "description": "Results per page, default 32, max 128",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 128
-          }
-        },
-        "required": [
-          "action",
-          "query"
-        ],
-        "additionalProperties": false,
-        "description": "Semantic search across embedded workspace blocks."
-      },
-      "query_sql": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "query_sql"
-          },
-          "stmt": {
-            "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
-            "type": "string"
-          },
-          "sql": {
-            "description": "Semantic alias for stmt. Overrides stmt when both are provided.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Execute a read-only SQL query against the database."
-      },
-      "get_backlinks": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "get_backlinks"
-          },
-          "id": {
-            "type": "string",
-            "description": "Block or document ID to find backlinks for"
-          },
-          "keyword": {
-            "description": "Filter backlinks by keyword",
-            "type": "string"
-          },
-          "refTreeID": {
-            "description": "Optional document tree ID to narrow backlink scope",
-            "type": "string"
-          },
-          "scopeRootId": {
-            "description": "Semantic alias for refTreeID. Overrides refTreeID when both are provided.",
-            "type": "string"
-          },
-          "mode": {
-            "description": "Result mode: \"links\", \"mentions\", or \"both\" (default).",
-            "type": "string",
-            "enum": [
-              "links",
-              "mentions",
-              "both"
-            ]
-          }
-        },
-        "required": [
-          "action",
-          "id"
-        ],
-        "additionalProperties": false,
-        "description": "Find documents/blocks that link to or mention the given block."
-      },
-      "search_refs": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "search_refs"
-          },
-          "id": {
-            "type": "string",
-            "description": "Referenced block or document ID"
-          },
-          "rootID": {
-            "description": "Optional current root document ID",
-            "type": "string"
-          },
-          "k": {
-            "description": "Keyword filter",
-            "type": "string"
-          },
-          "beforeLen": {
-            "description": "Context length before the reference, default 512",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "isSquareBrackets": {
-            "description": "Search in square-bracket reference mode",
-            "type": "boolean"
-          },
-          "isDatabase": {
-            "description": "Whether the reference target is a database",
-            "type": "boolean"
-          },
-          "reqId": {
-            "description": "Optional passthrough request ID",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action",
-          "id"
-        ],
-        "additionalProperties": false,
-        "description": "Search blocks that reference a given block or document."
-      },
-      "find_replace": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "find_replace"
-          },
-          "k": {
-            "type": "string",
-            "description": "Find keyword"
-          },
-          "r": {
-            "type": "string",
-            "description": "Replacement text; use empty string to delete matches"
-          },
-          "ids": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Document or block IDs to mutate"
-          },
-          "paths": {
-            "description": "Optional notebook ID or storage path scope list",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "types": {
-            "description": "Optional block type filter",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "method": {
-            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "methodName": {
-            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
-            "type": "string",
-            "enum": [
-              "keyword",
-              "query",
-              "query_syntax",
-              "sql",
-              "regex"
-            ]
-          },
-          "orderBy": {
-            "description": "Legacy numeric sort order",
-            "type": "number"
-          },
-          "sortBy": {
-            "description": "Semantic sort alias that overrides orderBy when both are provided.",
-            "type": "string",
-            "enum": [
-              "relevance",
-              "date",
-              "updated_desc",
-              "updated_asc",
-              "created_desc",
-              "created_asc",
-              "type"
-            ]
-          },
-          "groupBy": {
-            "description": "Grouping mode",
-            "type": "number"
-          },
-          "replaceTypes": {
-            "description": "Replace target kinds such as text, code, docTitle, blockRef",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          }
-        },
-        "required": [
-          "action",
-          "k",
-          "r",
-          "ids"
-        ],
-        "additionalProperties": false,
-        "description": "Find and replace text in documents or blocks."
-      },
-      "search_assets": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "search_assets"
-          },
-          "k": {
-            "description": "Legacy asset filename keyword field",
-            "type": "string"
-          },
-          "query": {
-            "description": "Semantic alias for k. Overrides k when both are provided.",
-            "type": "string"
-          },
-          "exts": {
-            "description": "Optional extension filters",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Search asset files by filename."
-      },
-      "fulltext_asset_content": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "fulltext_asset_content"
-          },
-          "query": {
-            "description": "Search query string",
-            "type": "string"
-          },
-          "assetId": {
-            "description": "Asset content ID for an exact content lookup",
-            "type": "string"
-          },
-          "queryMethod": {
-            "description": "Query method for assetId lookup: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "types": {
-            "description": "Asset type filter",
-            "type": "object",
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "method": {
-            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
-            "type": "number"
-          },
-          "methodName": {
-            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
-            "type": "string",
-            "enum": [
-              "keyword",
-              "query",
-              "query_syntax",
-              "sql",
-              "regex"
-            ]
-          },
-          "orderBy": {
-            "description": "Legacy numeric sort order: 0=relevance DESC, 1=relevance ASC, 2=updated ASC, 3=updated DESC",
-            "type": "number"
-          },
-          "sortBy": {
-            "description": "Semantic sort alias: \"relevance_desc\", \"relevance_asc\", \"updated_asc\", or \"updated_desc\". The shorthand \"relevance\" maps to relevance_desc. Overrides orderBy if both are provided.",
-            "type": "string",
-            "enum": [
-              "relevance",
-              "relevance_desc",
-              "relevance_asc",
-              "updated_asc",
-              "updated_desc"
-            ]
-          },
-          "page": {
-            "description": "Page number (1-based)",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pageSize": {
-            "description": "Results per page",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 128
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "Full-text search indexed asset contents."
-      },
-      "list_invalid_refs": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "list_invalid_refs"
-          },
-          "page": {
-            "description": "Page number (1-based)",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pageSize": {
-            "description": "Results per page",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 128
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "description": "List invalid block references."
       }
     },
     "block": {
@@ -6450,7 +6381,7 @@
             "description": "Notebook ID"
           },
           "path": {
-            "description": "Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Parent paths must already exist.",
+            "description": "Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Auto-creates missing parents.",
             "type": "string"
           },
           "parentPath": {
@@ -6475,6 +6406,28 @@
           "icon": {
             "description": "Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character.",
             "type": "string"
+          },
+          "docs": {
+            "description": "Batch: up to 20 {path,markdown?}, created in order; excludes path/parentPath/title/markdown/icon",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Notebook-local path, like path"
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -6482,7 +6435,7 @@
           "notebook"
         ],
         "additionalProperties": false,
-        "description": "Create a new document. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.",
+        "description": "Create a new document. notebook is an ID from notebook.list, never a notebook name. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.",
         "oneOf": [
           {
             "required": [
@@ -6511,6 +6464,30 @@
             "not": {
               "required": [
                 "path"
+              ]
+            }
+          },
+          {
+            "required": [
+              "docs"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "path"
+                  ]
+                },
+                {
+                  "required": [
+                    "parentPath"
+                  ]
+                },
+                {
+                  "required": [
+                    "title"
+                  ]
+                }
               ]
             }
           }
@@ -6544,7 +6521,7 @@
             "type": "string"
           },
           "include": {
-            "description": "Fields to include: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\"",
+            "description": "Fields to include, only: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\" (no \"title\"; use docInfo.name)",
             "type": "array",
             "items": {
               "type": "string",
@@ -6563,6 +6540,121 @@
         ],
         "additionalProperties": false,
         "description": "Look up document IDs, storage paths, human-readable paths, and document metadata from one document reference."
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "query"
+          },
+          "notebooks": {
+            "description": "IDs; default readable open notebooks. Explicit unreadable/closed IDs are rejected.",
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "fields": {
+            "description": "Columns; default all. Statistics describe the SQL index; see query help for definitions.",
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "notebook",
+                "title",
+                "path",
+                "hpath",
+                "created",
+                "updated",
+                "blockCount",
+                "contentChars",
+                "sameTitleCount"
+              ]
+            }
+          },
+          "title": {
+            "description": "Literal case-sensitive title substring.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "hpathPrefix": {
+            "description": "Exact notebook-local hpath or descendants, e.g. /Projects.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "minBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxBlocks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "minChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "duplicatesOnly": {
+            "description": "Only repeated titles in scope; not proof of duplicate content.",
+            "type": "boolean"
+          },
+          "sortBy": {
+            "description": "Default updated; ID breaks ties.",
+            "type": "string",
+            "enum": [
+              "id",
+              "title",
+              "created",
+              "updated",
+              "blockCount",
+              "contentChars",
+              "sameTitleCount"
+            ]
+          },
+          "sortOrder": {
+            "description": "Default desc.",
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "page": {
+            "description": "1-based; default 1. Pages are not a snapshot.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "pageSize": {
+            "description": "Default 50, max 100.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Query readable open notebooks with paginated document metadata, indexed body statistics, and same-title candidates. Works while other notebooks are unreadable."
       },
       "ensure_link_targets": {
         "type": "object",
@@ -6644,14 +6736,6 @@
       "rename": {
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "rename"
-          },
-          "title": {
-            "type": "string",
-            "description": "New document title"
-          },
           "id": {
             "type": "string"
           },
@@ -6660,14 +6744,67 @@
           },
           "path": {
             "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "const": "rename"
+          },
+          "title": {
+            "description": "New document title for single-document mode",
+            "type": "string"
+          },
+          "items": {
+            "description": "Bounded batch of {id,title}. Mutually exclusive with id/notebook/path/title. Maximum 50 items and 256 KiB serialized input.",
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Document ID to rename"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "New document title"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
-          "action",
-          "title"
+          "action"
         ],
         "additionalProperties": false,
-        "description": "Rename a document"
+        "description": "Rename one document, or up to 50 documents through one bounded batch preflight with per-item receipts. Batch items are mutually exclusive with single-document arguments.",
+        "oneOf": [
+          {
+            "required": [
+              "id",
+              "title"
+            ]
+          },
+          {
+            "required": [
+              "notebook",
+              "path",
+              "title"
+            ]
+          },
+          {
+            "required": [
+              "items"
+            ]
+          }
+        ]
       },
       "remove": {
         "type": "object",
@@ -6741,7 +6878,7 @@
           "action"
         ],
         "additionalProperties": false,
-        "description": "Move a document to another location"
+        "description": "Move one or more documents to another location"
       },
       "reorder": {
         "type": "object",
@@ -6839,8 +6976,10 @@
                 ]
               }
             },
-            "additionalProperties": false,
-            "description": "Document metadata attributes to set"
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "icon, cover and custom-* keys (\"\" removes a custom-* key)"
           }
         },
         "required": [
@@ -7041,11 +7180,11 @@
             "description": "Target notebook ID"
           },
           "targetPath": {
-            "description": "Optional target storage path",
+            "description": "Existing parent document storage path ending in .sy; defaults to / (target notebook root). Not a human-readable path.",
             "type": "string"
           },
           "previousPath": {
-            "description": "Optional previous sibling storage path",
+            "description": "Existing sibling document storage path ending in .sy in targetNotebook; selects sibling placement. Do not combine with a non-root targetPath.",
             "type": "string"
           }
         },
@@ -7066,11 +7205,11 @@
           },
           "srcID": {
             "type": "string",
-            "description": "Source document ID"
+            "description": "Source document root ID, without child documents"
           },
           "targetID": {
             "type": "string",
-            "description": "Target document or heading block ID"
+            "description": "Existing heading block ID in another document, from document.get_outline. Document root IDs are rejected."
           },
           "after": {
             "description": "When true, insert after the target heading instead of before it",
@@ -7095,11 +7234,11 @@
             "const": "upload_asset"
           },
           "assetsDirPath": {
-            "type": "string",
-            "description": "Asset directory path (e.g., /assets/)"
+            "description": "Asset directory path; defaults to /assets/",
+            "type": "string"
           },
           "localFilePath": {
-            "description": "Local file path. CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
+            "description": "Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
             "type": "string"
           },
           "uploadSource": {
@@ -7113,8 +7252,7 @@
           }
         },
         "required": [
-          "action",
-          "assetsDirPath"
+          "action"
         ],
         "additionalProperties": false,
         "description": "Upload a local file or a kernel-staged uploadSource to the specified assets directory."
@@ -7328,6 +7466,10 @@
           "id": {
             "type": "string",
             "description": "Document ID to export"
+          },
+          "includeChildren": {
+            "description": "Also export every descendant document, in tree order (max 100)",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7694,13 +7836,14 @@
             "description": "Query scope: \"all\", \"deck\", \"notebook\", or \"tree\""
           },
           "filter": {
+            "default": "due",
+            "description": "Filter returned cards: \"due\" (default), \"new\", or \"old\"",
             "type": "string",
             "enum": [
               "due",
               "new",
               "old"
-            ],
-            "description": "Filter returned cards: \"due\", \"new\", or \"old\""
+            ]
           },
           "deckID": {
             "description": "Deck ID, required when scope=deck. For scope=\"all\", omit deckID; an empty string is treated as omitted.",
@@ -7801,7 +7944,7 @@
             "description": "Card ID"
           },
           "rating": {
-            "description": "Review rating passed through to the kernel",
+            "description": "FSRS rating: 1=Again, 2=Hard, 3=Good, 4=Easy",
             "type": "number"
           },
           "skip": {
@@ -8115,21 +8258,75 @@
             "const": "mv"
           },
           "from": {
-            "type": "string",
-            "description": "Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks."
+            "description": "Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks.",
+            "type": "string"
           },
           "to": {
-            "type": "string",
-            "description": "Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title."
+            "description": "Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title.",
+            "type": "string"
+          },
+          "items": {
+            "description": "Batch: up to 20 {from,to}, moved in order; excludes from/to",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
-          "action",
-          "from",
-          "to"
+          "action"
         ],
         "additionalProperties": false,
-        "description": "Move or rename a document by human-readable paths."
+        "description": "Move or rename one document by human-readable paths, or up to 20 with items:[{from,to}].",
+        "oneOf": [
+          {
+            "required": [
+              "from",
+              "to"
+            ],
+            "not": {
+              "required": [
+                "items"
+              ]
+            }
+          },
+          {
+            "required": [
+              "items"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "from"
+                  ]
+                },
+                {
+                  "required": [
+                    "to"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
       },
       "reorder": {
         "type": "object",
@@ -8529,6 +8726,473 @@
         ],
         "additionalProperties": false,
         "description": "Get direct child documents at the notebook root. Returns a paginated { data, total, page, pageSize, pageCount, hasNextPage } payload."
+      }
+    },
+    "search": {
+      "fulltext": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "fulltext"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query string"
+          },
+          "method": {
+            "description": "Search method: 0=keyword (default), 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "methodName": {
+            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
+            "type": "string",
+            "enum": [
+              "keyword",
+              "query",
+              "query_syntax",
+              "sql",
+              "regex"
+            ]
+          },
+          "types": {
+            "description": "Block type filter. Accepts full names (e.g. {\"heading\": true}) or shortcodes (e.g. {\"h\": true, \"p\": true}). Codes: d=document, h=heading, p=paragraph, l=list, i=listItem, b=blockquote, c=codeBlock, m=mathBlock, t=table, s=superBlock, html=htmlBlock, embed=embedBlock, av=databaseBlock.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "typeShortcodes": {
+            "description": "Alternative shorthand type filter as array: [\"h\",\"p\"]. Merged with types if both provided.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paths": {
+            "description": "Restrict search to specific notebook IDs or storage paths",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupBy": {
+            "description": "0=no grouping (default), 1=group by document",
+            "type": "number"
+          },
+          "orderBy": {
+            "description": "Legacy numeric sort order: 0=type, 1=created ASC, 2=created DESC, 3=updated ASC, 4=updated DESC, 5=content ASC, 6=content DESC, 7=relevance (default)",
+            "type": "number"
+          },
+          "sortBy": {
+            "description": "Semantic sort alias: \"relevance\", \"date\", \"updated_desc\", \"updated_asc\", \"created_desc\", \"created_asc\", or \"type\". Overrides orderBy if both provided.",
+            "type": "string",
+            "enum": [
+              "relevance",
+              "date",
+              "updated_desc",
+              "updated_asc",
+              "created_desc",
+              "created_asc",
+              "type"
+            ]
+          },
+          "page": {
+            "description": "Page number (1-based), default 1",
+            "type": "number"
+          },
+          "pageSize": {
+            "description": "Results per page, default 32, max 128",
+            "type": "number"
+          },
+          "parentId": {
+            "description": "Post-filter results to blocks whose root_id or parent_id matches this ID, scoping search within a document subtree.",
+            "type": "string"
+          },
+          "hasTags": {
+            "description": "When true, only return blocks that have tags. When false, only return blocks without tags.",
+            "type": "boolean"
+          },
+          "stripHtml": {
+            "description": "Legacy toggle. plainContent is now returned by default; set this when you want to emphasize plain-text-safe downstream parsing while keeping highlighted HTML content.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "query"
+        ],
+        "additionalProperties": false,
+        "description": "Full-text search across all blocks."
+      },
+      "semantic": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "semantic"
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Natural-language semantic search query"
+          },
+          "paths": {
+            "description": "Restrict search to notebook IDs or storage paths",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "types": {
+            "description": "Block type filter. Accepts full names or shortcodes.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "typeShortcodes": {
+            "description": "Alternative block type filter using shortcodes such as h, p, c, or av. Merged with types.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subTypes": {
+            "description": "Optional SiYuan block subtype filter",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "page": {
+            "description": "Page number (1-based), default 1",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "description": "Results per page, default 32, max 128",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128
+          }
+        },
+        "required": [
+          "action",
+          "query"
+        ],
+        "additionalProperties": false,
+        "description": "Semantic search across embedded workspace blocks."
+      },
+      "query_sql": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "query_sql"
+          },
+          "stmt": {
+            "description": "Read-only SELECT or WITH query. With unreadable notebooks, only scoped tables are allowed and rows are filtered. Keeps every selected column.",
+            "type": "string"
+          },
+          "sql": {
+            "description": "Semantic alias for stmt. Overrides stmt when both are provided.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Execute a read-only SQL query against the database."
+      },
+      "get_backlinks": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "get_backlinks"
+          },
+          "id": {
+            "type": "string",
+            "description": "Block or document ID to find backlinks for"
+          },
+          "keyword": {
+            "description": "Filter backlinks by keyword",
+            "type": "string"
+          },
+          "refTreeID": {
+            "description": "Optional document tree ID to narrow backlink scope",
+            "type": "string"
+          },
+          "scopeRootId": {
+            "description": "Semantic alias for refTreeID. Overrides refTreeID when both are provided.",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Result mode: \"links\", \"mentions\", or \"both\" (default).",
+            "type": "string",
+            "enum": [
+              "links",
+              "mentions",
+              "both"
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "id"
+        ],
+        "additionalProperties": false,
+        "description": "Find documents/blocks that link to or mention the given block."
+      },
+      "search_refs": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "search_refs"
+          },
+          "id": {
+            "type": "string",
+            "description": "Referenced (target) block or document ID"
+          },
+          "rootID": {
+            "description": "Only return referencing blocks inside this document ID",
+            "type": "string"
+          },
+          "k": {
+            "description": "Keyword filter on the referencing block content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "id"
+        ],
+        "additionalProperties": false,
+        "description": "Search blocks that reference a given block or document."
+      },
+      "find_replace": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "find_replace"
+          },
+          "k": {
+            "type": "string",
+            "description": "Find keyword"
+          },
+          "r": {
+            "type": "string",
+            "description": "Replacement text; use empty string to delete matches"
+          },
+          "ids": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Document or block IDs to mutate"
+          },
+          "paths": {
+            "description": "Optional notebook ID or storage path scope list",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "types": {
+            "description": "Optional block type filter",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "method": {
+            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "methodName": {
+            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
+            "type": "string",
+            "enum": [
+              "keyword",
+              "query",
+              "query_syntax",
+              "sql",
+              "regex"
+            ]
+          },
+          "orderBy": {
+            "description": "Legacy numeric sort order",
+            "type": "number"
+          },
+          "sortBy": {
+            "description": "Semantic sort alias that overrides orderBy when both are provided.",
+            "type": "string",
+            "enum": [
+              "relevance",
+              "date",
+              "updated_desc",
+              "updated_asc",
+              "created_desc",
+              "created_asc",
+              "type"
+            ]
+          },
+          "groupBy": {
+            "description": "Grouping mode",
+            "type": "number"
+          },
+          "replaceTypes": {
+            "description": "Replace target kinds such as text, code, docTitle, blockRef",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          }
+        },
+        "required": [
+          "action",
+          "k",
+          "r",
+          "ids"
+        ],
+        "additionalProperties": false,
+        "description": "Find and replace text in documents or blocks."
+      },
+      "search_assets": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "search_assets"
+          },
+          "k": {
+            "description": "Legacy asset filename keyword field",
+            "type": "string"
+          },
+          "query": {
+            "description": "Semantic alias for k. Overrides k when both are provided.",
+            "type": "string"
+          },
+          "exts": {
+            "description": "Optional extension filters",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Search asset files by filename."
+      },
+      "fulltext_asset_content": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "fulltext_asset_content"
+          },
+          "query": {
+            "description": "Search query string",
+            "type": "string"
+          },
+          "assetId": {
+            "description": "Asset content ID for an exact content lookup",
+            "type": "string"
+          },
+          "queryMethod": {
+            "description": "Query method for assetId lookup: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "types": {
+            "description": "Asset type filter",
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "method": {
+            "description": "Search method: 0=keyword, 1=query syntax, 2=SQL, 3=regex",
+            "type": "number"
+          },
+          "methodName": {
+            "description": "Semantic alias for method: \"keyword\" | \"query_syntax\" | \"sql\" | \"regex\". The short alias \"query\" also maps to query syntax and overrides method when both are provided.",
+            "type": "string",
+            "enum": [
+              "keyword",
+              "query",
+              "query_syntax",
+              "sql",
+              "regex"
+            ]
+          },
+          "orderBy": {
+            "description": "Legacy numeric sort order: 0=relevance DESC, 1=relevance ASC, 2=updated ASC, 3=updated DESC",
+            "type": "number"
+          },
+          "sortBy": {
+            "description": "Semantic sort alias: \"relevance_desc\", \"relevance_asc\", \"updated_asc\", or \"updated_desc\". The shorthand \"relevance\" maps to relevance_desc. Overrides orderBy if both are provided.",
+            "type": "string",
+            "enum": [
+              "relevance",
+              "relevance_desc",
+              "relevance_asc",
+              "updated_asc",
+              "updated_desc"
+            ]
+          },
+          "page": {
+            "description": "Page number (1-based)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "description": "Results per page",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "Full-text search indexed asset contents."
+      },
+      "list_invalid_refs": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "list_invalid_refs"
+          },
+          "page": {
+            "description": "Page number (1-based)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "description": "Results per page",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false,
+        "description": "List invalid block references."
       }
     },
     "system": {

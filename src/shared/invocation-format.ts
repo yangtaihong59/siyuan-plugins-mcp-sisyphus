@@ -160,8 +160,12 @@ export function translatePresentationPayload(payload: unknown, target: Presentat
             ...payload,
             error: {
                 ...error,
+                // Messages can name a call too ("…use document(action=\"query\")").
+                ...(typeof error.message === 'string' ? { message: translatePresentationText(error.message, target) } : {}),
                 ...(typeof error.hint === 'string' ? { hint: translatePresentationText(error.hint, target) } : {}),
                 ...(typeof error.details === 'string' ? { details: translatePresentationText(error.details, target) } : {}),
+                // Field messages can name the call to use instead, too.
+                ...(Array.isArray(error.fields) ? { fields: error.fields.map((field) => isObject(field) && typeof field.message === 'string' ? { ...field, message: translatePresentationText(field.message, target) } : field) } : {}),
             },
         };
     }
@@ -171,7 +175,7 @@ export function translatePresentationPayload(payload: unknown, target: Presentat
 
 function translateKnownTextFields(payload: Record<string, unknown>, target: PresentationTarget): Record<string, unknown> {
     const translated: Record<string, unknown> = { ...payload };
-    for (const key of ['hint', 'detailsHint']) {
+    for (const key of ['hint', 'detailsHint', 'databaseNote']) {
         if (typeof translated[key] === 'string') {
             translated[key] = translatePresentationText(translated[key], target);
         }
@@ -242,10 +246,10 @@ function isLikelyFieldName(value: string): boolean {
     return /^[A-Za-z][A-Za-z0-9_]*$/.test(normalized);
 }
 
-function parseActionArgs(rawArgs?: string): Record<string, string> {
+function parseActionArgs(rawArgs?: string): Record<string, unknown> {
     if (!rawArgs) return {};
 
-    const result: Record<string, string> = {};
+    const result: Record<string, unknown> = {};
     for (const chunk of splitTopLevel(rawArgs, ',')) {
         const segment = chunk.trim();
         if (!segment) continue;
@@ -254,9 +258,15 @@ function parseActionArgs(rawArgs?: string): Record<string, string> {
         const key = segment.slice(0, eqIndex).trim();
         const value = segment.slice(eqIndex + 1).trim();
         if (!key) continue;
-        result[key] = stripQuotes(value);
+        result[key] = parseJsonArgument(value) ?? stripQuotes(value);
     }
     return result;
+}
+
+/** A JSON object/array argument (attrs={"k":"v"}) renders as --<key>-json in the CLI. */
+function parseJsonArgument(value: string): unknown {
+    if (!/^[[{]/.test(value)) return undefined;
+    try { return JSON.parse(value); } catch { return undefined; }
 }
 
 function splitTopLevel(text: string, separator: ',' | ' '): string[] {

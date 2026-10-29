@@ -15,3 +15,10 @@ export function isSiYuanVersionAtLeast(version: string, minimumVersion: string):
     }
     return true;
 }
+
+/** First SiYuan release with the kernel plugin system (/plugin/private routes, siyuan.server.private). */
+export const MIN_KERNEL_ENDPOINT_VERSION = '3.7.0';
+
+export function supportsKernelEndpoint(version: string): boolean {
+    return isSiYuanVersionAtLeast(version, MIN_KERNEL_ENDPOINT_VERSION);
+}

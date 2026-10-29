@@ -205,12 +205,15 @@ Before rename, move, delete, or broad replacement, resolve the exact target, sho
 {{call fulltext}}
 {{call semantic}}
 {{call scoped}}
+{{call documents}}
 {{call sql}}
 {{call backlinks}}
 {{call refs}}
 {{call assets}}
 
-SQL must be read-only and must include \`LIMIT\`. Useful tables include \`blocks\`, \`blocks_fts\`, \`attributes\`, \`refs\`, \`spans\`, and \`assets\`.
+Use \`document.query\` for document inventories, indexed block/character statistics, title-only skeleton candidates (\`maxBlocks: 0\`), or same-title candidates (\`duplicatesOnly: true\`). It queries readable, open notebooks by default; explicit unknown, unreadable, or closed notebooks are rejected. Continue with \`page\` while \`hasNextPage\` is true. \`blockCount\` counts non-document index rows including containers; \`contentChars\` sums their indexed content lengths, not native word counts or deduplicated body characters. \`sameTitleCount\` is scoped before statistic bounds; matching titles or sizes do not prove duplicate content. The index may lag writes and pages are not a frozen snapshot.
+
+Raw SQL must be read-only and must include \`LIMIT\`. Both \`query_sql\` and fulltext SQL mode require every notebook to be readable; do not bypass that gate. Useful tables include \`blocks\`, \`blocks_fts\`, \`attributes\`, \`refs\`, \`spans\`, and \`assets\`.
 
 ## Find and replace
 
@@ -224,9 +227,10 @@ Read the changed blocks again. Recent writes can take time to enter the search i
             fulltext: call('search', 'fulltext', { query: 'keyword', page: 1, pageSize: 20 }),
             semantic: call('search', 'semantic', { query: 'concept or meaning', typeShortcodes: ['h', 'p'], page: 1, pageSize: 20 }),
             scoped: call('search', 'fulltext', { query: 'keyword', parentId: '<doc-id>', typeShortcodes: ['h', 'p'] }),
+            documents: call('document', 'query', { fields: ['id', 'notebook', 'title', 'hpath', 'blockCount', 'contentChars', 'sameTitleCount'], sortBy: 'blockCount', page: 1, pageSize: 50 }),
             sql: call('search', 'query_sql', { stmt: "SELECT id, hpath, content FROM blocks WHERE type = 'p' ORDER BY updated DESC LIMIT 10" }),
             backlinks: call('search', 'get_backlinks', { id: '<block-or-doc-id>', mode: 'both' }),
-            refs: call('search', 'search_refs', { id: '<block-id>', beforeLen: 512 }),
+            refs: call('search', 'search_refs', { id: '<block-id>' }),
             assets: call('search', 'search_assets', { query: 'diagram', exts: ['png', 'jpg', 'webp'] }),
             findReplace: call('search', 'find_replace', { k: 'old text', r: 'new text', ids: ['<doc-id>'] }),
         },
@@ -252,8 +256,11 @@ Keep these identifiers distinct: AV ID identifies the database; view ID identifi
 ## Mutations
 
 {{call column}}
+{{call rowsWithCells}}
 {{call rows}}
 {{call cells}}
+
+To create rows together with their values (dates included), pass \`rows\` with \`cells\` in one add_rows call (up to 200 rows) instead of adding rows and then calling set_cells per row; set_cells takes many \`cells\` in one call too.
 
 Before writing cells, query the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Query again after mutation. Read {{help av set_cells}} for the current cell schema.
 
@@ -264,6 +271,7 @@ Treat a successful mutation response as provisional until the same view and affe
             render: call('av', 'query', { avID: '<av-id>', page: 1, pageSize: 50 }),
             search: call('av', 'search', { keyword: 'project' }),
             column: call('av', 'add_column', { avID: '<av-id>', keyName: 'Status', keyType: 'select' }),
+            rowsWithCells: call('av', 'add_rows', { avID: '<av-id>', rows: [{ clientKey: 'e1', primaryKeyText: 'Standup', cells: [{ columnID: '<date-column-id>', valueType: 'date', date: '2026-11-05T09:30' }] }] }),
             rows: call('av', 'add_rows', { avID: '<av-id>', viewID: '<view-id>', blockIDs: ['<block-id>'] }),
             cells: call('av', 'set_cells', { avID: '<av-id>', cells: [{ rowID: '<row-id>', columnID: '<column-id>', valueType: 'text', text: 'Done' }] }),
         },

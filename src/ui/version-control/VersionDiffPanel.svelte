@@ -1,18 +1,18 @@
 <script lang="ts">
     import { onDestroy, onMount, tick } from "svelte";
-    import { fetchPost, showMessage } from "siyuan";
+    import { showMessage } from "siyuan";
+    import * as repoApi from "@/api/repo";
+    import { applyTimelineBlockRestore } from "@/core/timeline-service";
+    import { rendererClient as client } from "@/ui/plugin/renderer-client";
     import {
         buildChangedFiles,
         diffSnapshotBlocks,
         getBlockDiffLineStats,
-        getUpdateBlockPayload,
-        getRestoreBlockPayload,
-        getRestoreInsertPlan,
         getSnapshotFileId,
         type BlockDiffEntry,
         type ChangedSnapshotFile,
         type RepoSnapshotFileChange,
-    } from "./block-diff";
+    } from "@/shared/version-control/block-diff";
     import {
         formatSnapshotTime,
         getDocumentKey,
@@ -20,36 +20,12 @@
         canReuseLiveDocumentBlock,
         shouldUpdateDiffViewportState,
         snapshotLabel,
-        sortSnapshotsNewestFirst,
         type TimelineEntry,
         type TimelineNodeScope,
         type TimelineNodeSelection,
-        type TimelineSnapshot,
-    } from "./timeline";
-
-    type Snapshot = TimelineSnapshot;
+    } from "@/shared/version-control/timeline";
+    import { type DiffEntryDisplayItem, type DiffHiddenDisplayItem, type Snapshot, blockText, buildDiffDisplayItems, buildDiffMinimapItems, createContentFallback, createNoChangeTimelineEntry, escapeCssAttributeValue, findNewestSnapshotForMemo, firstReadableString, getErrorMessage, getReadableDocumentTitle, isVisibleElement, minimapHeight, minimapTop, nextFrame, post, scrollLiveDocumentBlockIntoView, shouldIgnoreDiffClick, snapshotFromSelection } from "./version-diff-logic";
     type CompareMode = "unified" | "split";
-    type DiffEntryDisplayItem = {
-        kind: "entry";
-        key: string;
-        entry: BlockDiffEntry;
-        changeIndex: number;
-        position: number;
-    };
-    type DiffHiddenDisplayItem = {
-        kind: "hidden";
-        key: string;
-        count: number;
-        position: number;
-        entries: DiffEntryDisplayItem[];
-    };
-    type DiffDisplayItem = DiffEntryDisplayItem | DiffHiddenDisplayItem;
-    type DiffMinimapItem = {
-        key: string;
-        entry: BlockDiffEntry;
-        displayIndex: number;
-        total: number;
-    };
 
     type SnapshotFileContent = {
         title?: string;
@@ -58,9 +34,7 @@
         updated?: string | number;
     };
     const CURRENT_SNAPSHOT_MEMO_PREFIX = "[Sisyphus Timeline Current]";
-    const UNCHANGED_CONTEXT_BLOCKS = 1;
     const MINIMAP_UNIT_HEIGHT = 34;
-    const LIVE_DOCUMENT_ANCHOR_OFFSET = 0.14;
 
     export let currentDocumentId = "";
     export let currentDocumentTitle = "";
@@ -106,7 +80,8 @@
         || getReadableDocumentTitle(selectedEntry?.title)
         || t("timeline_current_document_fallback", "这个文档");
     $: diffOpen = Boolean(selectedEntry);
-    $: selectedSnapshotTitle = selectedEntry ? snapshotLabel(selectedEntry.snapshot) : "";
+    // The node name keeps the spaces and punctuation its sanitized tag drops.
+    $: selectedSnapshotTitle = selectedEntry ? (selection?.node.name || snapshotLabel(selectedEntry.snapshot)) : "";
     $: selectedSnapshotTime = selectedEntry ? formatSnapshotTime(selectedEntry.snapshot) : "";
     $: currentSnapshotTime = currentSnapshot ? formatSnapshotTime(currentSnapshot) : "";
     $: currentVersionTime = currentSnapshotTime || newFileContent?.updated || "";
@@ -224,16 +199,6 @@
         diffViewportFrame = 0;
     }
 
-    function nextFrame(): Promise<void> {
-        return new Promise((resolve) => {
-            if (typeof requestAnimationFrame === "function") {
-                requestAnimationFrame(() => resolve());
-            } else {
-                setTimeout(resolve, 0);
-            }
-        });
-    }
-
     function getDiffScrollProgress(): number {
         if (!diffElement) return 0;
         const maxScrollTop = Math.max(0, diffElement.scrollHeight - diffElement.clientHeight);
@@ -331,10 +296,6 @@
         scrollLiveDocumentBlockIntoView(blockElement);
         lastSyncedDocumentBlockId = blockId;
         return true;
-    }
-
-    function shouldIgnoreDiffClick(target: EventTarget | null): boolean {
-        return target instanceof Element && Boolean(target.closest("button, input, textarea, select, a, [role='button']"));
     }
 
     function getClickedDiffBlockId(target: EventTarget | null): string {
@@ -437,168 +398,8 @@
             || Boolean(root.querySelector(`[data-node-id="${escapeCssAttributeValue(currentDocumentId)}"]`));
     }
 
-    function scrollLiveDocumentBlockIntoView(blockElement: HTMLElement) {
-        const container = blockElement.closest<HTMLElement>(".protyle-content") ?? findNearestScrollableAncestor(blockElement);
-        if (!container) {
-            blockElement.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
-            return;
-        }
-        const blockRect = blockElement.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        const targetTop = container.scrollTop + blockRect.top - containerRect.top - containerRect.height * LIVE_DOCUMENT_ANCHOR_OFFSET;
-        container.scrollTo({
-            top: Math.max(0, targetTop),
-            behavior: "auto",
-        });
-    }
-
-    function findNearestScrollableAncestor(element: HTMLElement): HTMLElement | null {
-        let parent = element.parentElement;
-        while (parent && parent !== document.body) {
-            const style = getComputedStyle(parent);
-            if (/(auto|scroll|overlay)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight + 4) {
-                return parent;
-            }
-            parent = parent.parentElement;
-        }
-        return null;
-    }
-
-    function isVisibleElement(element: HTMLElement): boolean {
-        if (!element.getClientRects().length) return false;
-        let current: HTMLElement | null = element;
-        while (current) {
-            if (current.hidden || current.getAttribute("aria-hidden") === "true") return false;
-            const style = getComputedStyle(current);
-            if (style.display === "none" || style.visibility === "hidden") return false;
-            current = current.parentElement;
-        }
-        return true;
-    }
-
-    function escapeCssAttributeValue(value: string): string {
-        return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
-    }
-
-    function buildDiffDisplayItems(entries: BlockDiffEntry[]): DiffDisplayItem[] {
-        const items: DiffDisplayItem[] = [];
-        const changedIndexes = new Set(entries
-            .map((entry, index) => entry.status === "unchanged" ? -1 : index)
-            .filter((index) => index >= 0));
-        let hiddenCount = 0;
-        let hiddenStart = 0;
-        let hiddenEntries: DiffEntryDisplayItem[] = [];
-        let changeIndex = 0;
-
-        entries.forEach((entry, index) => {
-            const shouldShowUnchanged = entry.status === "unchanged" && hasNearbyChange(index, changedIndexes);
-            if (entry.status === "unchanged" && !shouldShowUnchanged) {
-                if (hiddenCount === 0) hiddenStart = index;
-                hiddenCount += 1;
-                hiddenEntries.push({
-                    kind: "entry",
-                    key: entry.key,
-                    entry,
-                    changeIndex: -1,
-                    position: index,
-                });
-                return;
-            }
-
-            if (hiddenCount > 0) {
-                items.push({
-                    kind: "hidden",
-                    key: `hidden:${hiddenStart}:${hiddenCount}`,
-                    count: hiddenCount,
-                    position: hiddenStart,
-                    entries: hiddenEntries,
-                });
-                hiddenCount = 0;
-                hiddenEntries = [];
-            }
-
-            items.push({
-                kind: "entry",
-                key: entry.key,
-                entry,
-                changeIndex: entry.status === "unchanged" ? -1 : changeIndex,
-                position: index,
-            });
-            if (entry.status !== "unchanged") changeIndex += 1;
-        });
-
-        if (hiddenCount > 0) {
-            items.push({
-                kind: "hidden",
-                key: `hidden:${hiddenStart}:${hiddenCount}`,
-                count: hiddenCount,
-                position: hiddenStart,
-                entries: hiddenEntries,
-            });
-        }
-
-        return items;
-    }
-
-    function hasNearbyChange(index: number, changedIndexes: Set<number>): boolean {
-        for (let offset = 1; offset <= UNCHANGED_CONTEXT_BLOCKS; offset += 1) {
-            if (changedIndexes.has(index - offset) || changedIndexes.has(index + offset)) return true;
-        }
-        return false;
-    }
-
     function hiddenBlocksText(count: number): string {
         return t("timeline_hidden_blocks", "${count} 个隐藏的块", { count });
-    }
-
-    function buildDiffMinimapItems(items: DiffDisplayItem[], expandedKeys: Set<string>, capacity: number): DiffMinimapItem[] {
-        const changes: Array<Omit<DiffMinimapItem, "total">> = [];
-        let displayIndex = 0;
-
-        for (const item of items) {
-            if (item.kind === "hidden") {
-                if (expandedKeys.has(item.key)) {
-                    for (const hiddenEntry of item.entries) {
-                        if (hiddenEntry.entry.status !== "unchanged") {
-                            changes.push({ key: hiddenEntry.key, entry: hiddenEntry.entry, displayIndex });
-                        }
-                        displayIndex += 1;
-                    }
-                } else {
-                    displayIndex += 1;
-                }
-                continue;
-            }
-
-            if (item.entry.status !== "unchanged") {
-                changes.push({ key: item.key, entry: item.entry, displayIndex });
-            }
-            displayIndex += 1;
-        }
-
-        const total = Math.max(displayIndex, capacity, 1);
-        return changes.map((item) => ({ ...item, total }));
-    }
-
-    function minimapTop(item: DiffMinimapItem): number {
-        if (item.total <= 1) return 0;
-        return Math.min(98, Math.max(0, (item.displayIndex / item.total) * 100));
-    }
-
-    function minimapHeight(item: DiffMinimapItem): number {
-        return Math.min(18, Math.max(4, 100 / item.total));
-    }
-
-    function post<T>(endpoint: string, data: Record<string, unknown> = {}): Promise<T> {
-        return new Promise((resolve, reject) => {
-            fetchPost(endpoint, data, (response: { code: number; msg?: string; data: T }) => {
-                if (response?.code === 0) {
-                    resolve(response.data);
-                } else {
-                    reject(new Error(response?.msg || `SiYuan API error from ${endpoint}`));
-                }
-            });
-        });
     }
 
     function t(key: string, fallback: string, vars: Record<string, string | number> = {}): string {
@@ -658,40 +459,6 @@
         }
     }
 
-    function snapshotFromSelection(nextSelection: TimelineNodeSelection): Snapshot {
-        const node = nextSelection.node;
-        return {
-            id: node.snapshotId,
-            ...(typeof node.tag === 'string' ? { tag: node.tag } : {}),
-            created: node.created,
-        };
-    }
-
-    function createNoChangeTimelineEntry(nextSelection: TimelineNodeSelection, current: Snapshot): TimelineEntry {
-        const node = nextSelection.node;
-        const nodeKey = encodeURIComponent(node.tag || node.name);
-        return {
-            key: `${node.snapshotId}:${current.id}:${nextSelection.documentId}:nochange:${nodeKey}`,
-            documentKey: nextSelection.documentId,
-            title: nextSelection.documentTitle || node.name || nextSelection.documentId,
-            kind: "modified",
-            snapshot: snapshotFromSelection(nextSelection),
-            previousSnapshot: current,
-            file: {
-                key: `${nextSelection.documentId}:nochange:${node.snapshotId}:${nodeKey}`,
-                kind: "modified",
-                title: nextSelection.documentTitle || node.name || nextSelection.documentId,
-                documentId: nextSelection.documentId,
-            },
-            oldFileId: "",
-            newFileId: "",
-            scope: node.scope,
-            hasDiff: false,
-            noChanges: true,
-            updated: node.created,
-        };
-    }
-
     async function refreshDocumentTitle() {
         resolvedDocumentTitle = "";
         if (!currentDocumentId) return;
@@ -716,7 +483,7 @@
 
     async function createCurrentSnapshot(): Promise<Snapshot> {
         const text = `${CURRENT_SNAPSHOT_MEMO_PREFIX} ${currentDocumentId} ${new Date().toISOString()}`;
-        await post("/api/repo/createSnapshot", { memo: text });
+        await repoApi.createSnapshot(client, text);
         const snapshot = await findNewestSnapshotForMemo(text);
         if (!snapshot?.id) throw new Error(t("timeline_error_current_snapshot_not_found", "当前状态快照已创建，但未能定位"));
         return snapshot;
@@ -749,18 +516,6 @@
             hasDiff: true,
             updated: file.newFile?.updated ?? file.oldFile?.updated ?? snapshot.updated ?? snapshot.created,
         };
-    }
-
-    async function findNewestSnapshotForMemo(text: string): Promise<Snapshot | undefined> {
-        const [snapshotData, tagData] = await Promise.all([
-            post<{ snapshots?: Snapshot[] }>("/api/repo/getRepoSnapshots", { page: 1 }),
-            post<{ snapshots?: Snapshot[] }>("/api/repo/getRepoTagSnapshots", {}),
-        ]);
-        const taggedIds = new Set((tagData.snapshots ?? []).map((snapshot) => snapshot.id));
-        const ordered = sortSnapshotsNewestFirst(snapshotData.snapshots ?? []);
-        return ordered.find((snapshot) => snapshot.memo === text && !taggedIds.has(snapshot.id))
-            ?? ordered.find((snapshot) => snapshot.memo === text)
-            ?? ordered[0];
     }
 
     async function refreshSelectedDiff() {
@@ -812,43 +567,11 @@
 
         applying = true;
         try {
-            if (entry.status === "modified" && entry.newBlock?.id && entry.oldBlock) {
-                const updatePayload = getUpdateBlockPayload(entry);
-                await post("/api/block/updateBlock", {
-                    id: entry.newBlock.id,
-                    dataType: updatePayload.dataType,
-                    data: updatePayload.data,
-                });
-            } else if (entry.status === "added" && entry.newBlock?.id) {
-                await post("/api/block/deleteBlock", { id: entry.newBlock.id });
-            } else if (entry.status === "removed" && entry.oldBlock) {
-                const insertPlan = getRestoreInsertPlan(entry, blockEntries, {
-                    documentId: currentDocumentId,
-                    oldFile: selectedEntry?.file.oldFile,
-                    newFile: selectedEntry?.file.newFile,
-                });
-                const parentIDs = insertPlan.parentIDs;
-                if (parentIDs.length === 0) throw new Error(t("timeline_error_no_restore_position", "无法识别可恢复位置，不能安全恢复删除块"));
-                let restored = false;
-                let lastError: unknown;
-                const restorePayload = getRestoreBlockPayload(entry);
-                for (const parentID of parentIDs) {
-                    try {
-                        await post("/api/block/insertBlock", {
-                            parentID,
-                            ...(insertPlan.nextID ? { nextID: insertPlan.nextID } : {}),
-                            ...(insertPlan.nextID ? {} : insertPlan.previousID ? { previousID: insertPlan.previousID } : {}),
-                            dataType: restorePayload.dataType,
-                            data: restorePayload.data,
-                        });
-                        restored = true;
-                        break;
-                    } catch (err) {
-                        lastError = err;
-                    }
-                }
-                if (!restored) throw lastError ?? new Error(t("timeline_error_restore_removed_block_failed", "无法恢复删除块"));
-            }
+            await applyTimelineBlockRestore(client, entry, blockEntries, {
+                documentId: currentDocumentId,
+                oldFile: selectedEntry?.file.oldFile,
+                newFile: selectedEntry?.file.newFile,
+            });
             showMessage(t("timeline_msg_block_rolled_back", "块已回退"));
             await refreshSelectedDiff();
         } catch (err) {
@@ -868,7 +591,7 @@
         if (!confirmed) return;
         applying = true;
         try {
-            await post("/api/repo/rollbackRepoSnapshotFile", { id });
+            await repoApi.rollbackRepoSnapshotFile(client, id);
             showMessage(t("timeline_msg_document_rolled_back", "文档已回退到历史版本"));
             await refreshSelectedDiff();
         } catch (err) {
@@ -895,36 +618,6 @@
         error = "";
         expandedHiddenKeys = new Set();
         clearDiff();
-    }
-
-    function blockText(block: BlockDiffEntry["oldBlock"]): string {
-        return block?.markdown || block?.text || "";
-    }
-
-    function createContentFallback(content: string, fallback: string): string {
-        const text = content.trim();
-        return text || fallback;
-    }
-
-    function getReadableDocumentTitle(value: string | undefined): string {
-        if (!value) return "";
-        const trimmed = value.trim();
-        if (!trimmed || /^[0-9]{14}-[a-z0-9]{7}$/i.test(trimmed)) return "";
-        const segment = trimmed.split("/").filter(Boolean).at(-1) ?? trimmed;
-        return segment.replace(/\.sy$/i, "");
-    }
-
-    function firstReadableString(values: unknown[]): string {
-        for (const value of values) {
-            if (typeof value !== "string") continue;
-            const readable = getReadableDocumentTitle(value);
-            if (readable) return readable;
-        }
-        return "";
-    }
-
-    function getErrorMessage(err: unknown): string {
-        return err instanceof Error ? err.message : String(err);
     }
 </script>
 
@@ -1016,7 +709,7 @@
                             <div class="vc-diff-head-cell vc-version-line">
                                 <div class="vc-version-card old">
                                     <span class="vc-version-label">{t("timeline_history_version", "历史版本")}</span>
-                                    {#if selectedSnapshotTitle}<strong>{selectedSnapshotTitle}</strong>{/if}
+                                    {#if selectedSnapshotTitle}<strong title={selectedSnapshotTitle}>{selectedSnapshotTitle}</strong>{/if}
                                     {#if selectedSnapshotTime}<time>{selectedSnapshotTime}</time>{/if}
                                 </div>
                                 <span class="vc-version-arrow" aria-hidden="true">→</span>
@@ -1029,7 +722,7 @@
                             <div class="vc-diff-head-cell">
                                 <div class="vc-version-card old">
                                     <span class="vc-version-label">{t("timeline_history_version", "历史版本")}</span>
-                                    {#if selectedSnapshotTitle}<strong>{selectedSnapshotTitle}</strong>{/if}
+                                    {#if selectedSnapshotTitle}<strong title={selectedSnapshotTitle}>{selectedSnapshotTitle}</strong>{/if}
                                     {#if selectedSnapshotTime}<time>{selectedSnapshotTime}</time>{/if}
                                 </div>
                             </div>
@@ -1249,726 +942,6 @@
 
 </div>
 
-<style>
-    .vc-shell {
-        position: relative;
-        isolation: isolate;
-        height: 100%;
-        min-height: 360px;
-        overflow: hidden;
-        color: var(--b3-theme-on-background);
-        background: var(--b3-theme-background);
-    }
-
-    button {
-        min-height: 30px;
-        border: 1px solid var(--b3-border-color);
-        border-radius: 6px;
-        padding: 4px 10px;
-        background: var(--b3-theme-surface);
-        color: var(--b3-theme-on-surface);
-        cursor: pointer;
-    }
-
-    .vc-icon-button {
-        width: 30px;
-        min-width: 30px;
-        padding: 0;
-        text-align: center;
-        font-size: 18px;
-        line-height: 1;
-    }
-
-    .vc-icon-button svg {
-        width: 19px;
-        height: 19px;
-        vertical-align: middle;
-    }
-
-    .vc-icon-button.active {
-        border-color: color-mix(in srgb, var(--b3-theme-primary) 52%, var(--b3-border-color));
-        background: color-mix(in srgb, var(--b3-theme-primary) 12%, var(--b3-theme-surface));
-        color: var(--b3-theme-primary);
-    }
-
-    button:disabled {
-        cursor: not-allowed;
-        opacity: 0.55;
-    }
-
-
-    .vc-scope-badge {
-        width: auto;
-        height: auto;
-        border: 1px solid color-mix(in srgb, var(--b3-theme-primary) 38%, var(--b3-border-color));
-        border-radius: 999px;
-        padding: 1px 6px;
-        color: var(--b3-theme-primary);
-        background: color-mix(in srgb, var(--b3-theme-primary) 8%, transparent);
-        font-size: 10px;
-        line-height: 1.5;
-    }
-
-    .vc-scope-badge.global {
-        border-color: color-mix(in srgb, #7657e8 48%, var(--b3-border-color));
-        color: #7657e8;
-        background: color-mix(in srgb, #7657e8 10%, transparent);
-    }
-
-
-    .vc-main {
-        position: relative;
-        z-index: 20;
-        min-width: 0;
-        min-height: 0;
-        height: 100%;
-        display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
-        overflow: hidden;
-    }
-
-    .vc-toolbar {
-        position: relative;
-        z-index: 10;
-        background: var(--b3-theme-background);
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        border-bottom: 1px solid var(--b3-border-color);
-        padding: 10px 12px;
-    }
-
-    .vc-toolbar__meta {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
-        flex-wrap: wrap;
-        min-width: 0;
-    }
-
-    .vc-toolbar__meta strong,
-    .vc-toolbar__meta > span {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .vc-toolbar__meta strong {
-        display: inline-block;
-        max-width: 100%;
-        vertical-align: bottom;
-    }
-
-    .vc-toolbar__meta > span {
-        max-width: min(38vw, 260px);
-        color: var(--b3-theme-on-surface);
-        font-size: 12px;
-    }
-
-    .vc-toolbar__meta > .vc-change-summary {
-        display: inline-flex;
-        gap: 4px;
-        max-width: none;
-        font-family: var(--b3-font-family-code);
-        font-size: 14px;
-        font-weight: 700;
-    }
-
-    .vc-change-summary .added {
-        color: #00c853;
-    }
-
-    .vc-change-summary .removed {
-        color: #ff624a;
-    }
-
-    .vc-toolbar__actions {
-        position: relative;
-        z-index: 30;
-        display: flex;
-        flex: 0 0 auto;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .vc-error {
-        margin: 10px 12px 0;
-        padding: 8px 10px;
-        border: 1px solid var(--b3-theme-error);
-        border-radius: 6px;
-        color: var(--b3-theme-error);
-    }
-
-    .vc-content {
-        position: relative;
-        z-index: 0;
-        min-height: 0;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    .vc-diff {
-        position: relative;
-        min-width: 0;
-        height: 100%;
-        box-sizing: border-box;
-        overflow: auto;
-        padding-right: 16px;
-        scrollbar-gutter: stable;
-    }
-
-    .vc-diff-head,
-    .vc-diff-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) clamp(22px, 4%, 42px) minmax(0, 1fr);
-    }
-
-    .vc-diff-head {
-        position: sticky;
-        top: 0;
-        z-index: 1;
-        background: color-mix(in srgb, var(--b3-theme-surface) 82%, var(--b3-theme-background));
-        border-bottom: 1px solid var(--b3-border-color);
-        font-size: 12px;
-        color: var(--b3-theme-on-surface);
-    }
-
-    .vc-diff-head-cell {
-        min-width: 0;
-        padding: 6px 12px;
-    }
-
-    .vc-diff-head.unified {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .vc-version-line {
-        display: grid;
-        grid-template-columns: minmax(0, auto) 24px minmax(0, auto);
-        gap: 8px;
-        align-items: center;
-        justify-content: start;
-    }
-
-    .vc-version-card {
-        display: flex;
-        min-width: 0;
-        max-width: 100%;
-        align-items: baseline;
-        gap: 6px;
-        overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--b3-border-color) 78%, transparent);
-        border-radius: 6px;
-        padding: 5px 8px;
-        background: color-mix(in srgb, var(--b3-theme-background) 78%, transparent);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
-    }
-
-    .vc-version-card.old {
-        border-color: color-mix(in srgb, var(--b3-theme-on-surface) 24%, var(--b3-border-color));
-    }
-
-    .vc-version-card.current {
-        border-color: color-mix(in srgb, var(--b3-theme-primary) 38%, var(--b3-border-color));
-        background: color-mix(in srgb, var(--b3-theme-primary) 8%, var(--b3-theme-background));
-    }
-
-    .vc-version-label {
-        flex: none;
-        color: var(--b3-theme-on-surface-light, var(--b3-theme-on-surface));
-        font-size: 11px;
-        font-weight: 600;
-    }
-
-    .vc-version-card strong,
-    .vc-version-card time {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .vc-version-card strong {
-        color: var(--b3-theme-on-background);
-        font-weight: 650;
-    }
-
-    .vc-version-card time {
-        color: var(--b3-theme-on-surface);
-        font-variant-numeric: tabular-nums;
-    }
-
-    .vc-version-arrow,
-    .vc-diff-head-arrow {
-        color: var(--b3-theme-primary);
-        font-size: 15px;
-        font-weight: 700;
-        text-align: center;
-    }
-
-    .vc-diff-head-arrow {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding-inline: 0;
-    }
-
-    .vc-unified-list {
-        display: grid;
-    }
-
-    .vc-hidden-blocks {
-        min-height: 26px;
-        border-top: 1px solid rgba(128, 128, 128, 0.12);
-        border-bottom: 1px solid rgba(128, 128, 128, 0.12);
-        background: color-mix(in srgb, var(--b3-theme-surface) 72%, transparent);
-        color: var(--b3-theme-on-surface);
-        font-size: 12px;
-    }
-
-    .vc-hidden-blocks button {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        gap: 8px;
-        width: 100%;
-        min-height: 26px;
-        border: 0;
-        border-radius: 0;
-        padding: 2px 12px;
-        background: transparent;
-        color: inherit;
-        text-align: left;
-    }
-
-    .vc-hidden-blocks button:hover,
-    .vc-hidden-blocks button:focus-visible {
-        background: var(--b3-list-hover);
-    }
-
-    .vc-hidden-blocks span {
-        color: var(--b3-theme-on-surface-light, var(--b3-theme-on-surface));
-        font-family: var(--b3-font-family-code);
-        font-size: 15px;
-        line-height: 1;
-    }
-
-    .vc-hidden-blocks strong {
-        font-weight: 500;
-    }
-
-    .vc-hidden-blocks.split {
-        grid-column: 1 / -1;
-    }
-
-    .expanded-hidden {
-        opacity: 0.86;
-    }
-
-    .vc-unified-block {
-        position: relative;
-        min-width: 0;
-        border-bottom: 1px solid var(--b3-border-color);
-    }
-
-    .vc-unified-block.modified,
-    .vc-unified-block.added,
-    .vc-unified-block.removed {
-        padding-right: 48px;
-    }
-
-    .vc-unified-row {
-        display: grid;
-        grid-template-columns: 38px minmax(0, 1fr);
-        min-width: 0;
-    }
-
-    .vc-unified-row.removed {
-        background: rgba(248, 81, 73, 0.18);
-    }
-
-    .vc-unified-row.added {
-        background: rgba(46, 160, 67, 0.18);
-    }
-
-    .vc-unified-row.unchanged {
-        background: var(--b3-theme-background);
-    }
-
-    .vc-line-marker {
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-        min-width: 0;
-        padding: 4px 0;
-        border-right: 1px solid var(--b3-border-color);
-        color: var(--b3-theme-on-surface);
-        font-family: var(--b3-font-family-code);
-        font-size: 12px;
-        line-height: 1.4;
-        user-select: none;
-    }
-
-    .vc-unified-row.removed .vc-line-marker {
-        color: #ff624a;
-    }
-
-    .vc-unified-row.added .vc-line-marker {
-        color: #00c853;
-    }
-
-    .vc-line-content {
-        min-width: 0;
-        padding: 1px 10px;
-    }
-
-    .vc-unified-actions {
-        position: absolute;
-        top: 50%;
-        right: 8px;
-        z-index: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 100%;
-        opacity: 0;
-        transform: translateY(-50%);
-        transition: opacity 0.15s ease;
-    }
-
-    .vc-unified-actions::before,
-    .vc-unified-actions::after {
-        content: "";
-        position: absolute;
-        left: 50%;
-        width: 2px;
-        transform: translateX(-50%);
-        border-radius: 999px;
-        background: rgba(128, 128, 128, 0.48);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.15s ease;
-    }
-
-    .vc-unified-actions::before {
-        top: 8px;
-        bottom: calc(50% + 16px);
-    }
-
-    .vc-unified-actions::after {
-        top: calc(50% + 16px);
-        bottom: 8px;
-    }
-
-    .vc-unified-block:hover .vc-unified-actions::before,
-    .vc-unified-block:hover .vc-unified-actions::after,
-    .vc-unified-actions:focus-within::before,
-    .vc-unified-actions:focus-within::after {
-        opacity: 1;
-    }
-
-    .vc-unified-block:hover .vc-unified-actions,
-    .vc-unified-actions:focus-within,
-    .vc-unified-actions.first-change {
-        opacity: 1;
-    }
-
-    .vc-restore-button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        min-width: 24px;
-        min-height: 24px;
-        border: 1px solid transparent;
-        border-radius: 5px;
-        padding: 0;
-        background: transparent;
-        color: var(--b3-theme-on-surface);
-        position: relative;
-        z-index: 1;
-    }
-
-    .vc-restore-button svg {
-        width: 15px;
-        height: 15px;
-    }
-
-    .vc-restore-button:hover:not(:disabled),
-    .vc-restore-button:focus-visible {
-        border-color: var(--b3-border-color);
-        background: var(--b3-list-hover);
-        color: var(--b3-theme-primary);
-    }
-
-    .vc-unified-actions small {
-        max-width: 36px;
-        margin: 0;
-        overflow: hidden;
-        text-align: center;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .vc-block {
-        min-width: 0;
-        border-bottom: 1px solid var(--b3-border-color);
-        padding: 4px 10px;
-    }
-
-    .vc-diff-row {
-        display: contents;
-    }
-
-    .vc-restore-column {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        align-items: center;
-        justify-content: center;
-        min-width: 0;
-        border-bottom: 1px solid var(--b3-border-color);
-        border-left: 1px solid var(--b3-border-color);
-        border-right: 1px solid var(--b3-border-color);
-        padding: 4px 4px;
-        background: var(--b3-theme-background);
-    }
-
-    .vc-restore-column.modified::before,
-    .vc-restore-column.added::before,
-    .vc-restore-column.removed::before,
-    .vc-restore-column.modified::after,
-    .vc-restore-column.added::after,
-    .vc-restore-column.removed::after {
-        content: "";
-        position: absolute;
-        left: 50%;
-        width: 2px;
-        transform: translateX(-50%);
-        border-radius: 999px;
-        background: rgba(128, 128, 128, 0.48);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.15s ease;
-    }
-
-    .vc-restore-column.modified::before,
-    .vc-restore-column.added::before,
-    .vc-restore-column.removed::before {
-        top: 8px;
-        bottom: calc(50% + 16px);
-    }
-
-    .vc-restore-column.modified::after,
-    .vc-restore-column.added::after,
-    .vc-restore-column.removed::after {
-        top: calc(50% + 16px);
-        bottom: 8px;
-    }
-
-    .vc-block:hover + .vc-restore-column::before,
-    .vc-block:hover + .vc-restore-column::after,
-    .vc-restore-column:has(+ .vc-block:hover)::before,
-    .vc-restore-column:has(+ .vc-block:hover)::after,
-    .vc-restore-column:hover::before,
-    .vc-restore-column:hover::after,
-    .vc-restore-column:focus-within::before,
-    .vc-restore-column:focus-within::after {
-        opacity: 1;
-    }
-
-    .vc-restore-column .vc-restore-button {
-        opacity: 0;
-    }
-
-    .vc-block:hover + .vc-restore-column .vc-restore-button,
-    .vc-restore-column:has(+ .vc-block:hover) .vc-restore-button,
-    .vc-restore-column:hover .vc-restore-button,
-    .vc-restore-column:focus-within .vc-restore-button,
-    .vc-restore-column .vc-restore-button.first-change {
-        opacity: 1;
-    }
-
-    .vc-restore-column small {
-        max-width: 32px;
-        margin: 0;
-        overflow: hidden;
-        text-align: center;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .vc-block.old.modified,
-    .vc-block.old.removed {
-        background: rgba(248, 81, 73, 0.14);
-    }
-
-    .vc-block.new.modified,
-    .vc-block.new.added {
-        background: rgba(46, 160, 67, 0.14);
-    }
-
-    .vc-block__meta {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        min-height: 20px;
-        font-size: 11px;
-        color: var(--b3-theme-on-surface);
-    }
-
-    .vc-block__meta code {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    pre,
-    .vc-inline-diff {
-        min-height: 18px;
-        margin: 1px 0;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        font-family: var(--b3-font-family-code);
-        font-size: 12px;
-        line-height: 1.42;
-    }
-
-    .vc-diff-part {
-        border-radius: 3px;
-    }
-
-    .vc-diff-part.removed {
-        background: rgba(248, 81, 73, 0.28);
-        text-decoration: line-through;
-        text-decoration-thickness: 1px;
-    }
-
-    .vc-diff-part.added {
-        background: rgba(46, 160, 67, 0.28);
-    }
-
-    .vc-diff-minimap {
-        position: absolute;
-        right: 0;
-        top: 0;
-        bottom: 0;
-        z-index: 3;
-        width: 16px;
-        min-height: 120px;
-        border-left: 1px solid rgba(128, 128, 128, 0.18);
-        background: color-mix(in srgb, var(--b3-theme-surface) 58%, transparent);
-        pointer-events: none;
-    }
-
-    .vc-diff-minimap span {
-        position: absolute;
-        left: 2px;
-        right: 0;
-        min-height: 4px;
-        opacity: 0.42;
-    }
-
-    .vc-diff-minimap .viewport {
-        left: 1px;
-        right: 1px;
-        z-index: 2;
-        min-height: 22px;
-        border: 1px solid rgba(235, 235, 235, 0.58);
-        border-radius: 4px;
-        background: rgba(135, 142, 152, 0.42);
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.24), 0 0 5px rgba(255, 255, 255, 0.12);
-        box-sizing: border-box;
-        opacity: 1;
-    }
-
-    .vc-diff-minimap .added {
-        background: rgba(46, 160, 67, 0.52);
-    }
-
-    .vc-diff-minimap .removed {
-        background: rgba(248, 81, 73, 0.5);
-    }
-
-    .vc-diff-minimap .modified {
-        background: linear-gradient(90deg, rgba(248, 81, 73, 0.5) 0 45%, rgba(46, 160, 67, 0.52) 55% 100%);
-    }
-
-    small {
-        display: block;
-        margin-top: 6px;
-        color: var(--b3-theme-on-surface);
-    }
-
-    .vc-empty {
-        padding: 16px;
-        color: var(--b3-theme-on-surface);
-        font-size: 13px;
-    }
-
-    .vc-empty-selection {
-        min-height: 180px;
-        display: grid;
-        place-content: center;
-        justify-items: center;
-        gap: 12px;
-        text-align: center;
-    }
-
-    .vc-empty-selection p {
-        max-width: 360px;
-        margin: 0;
-        line-height: 1.6;
-    }
-
-    .vc-open-snapshot {
-        border-color: var(--b3-theme-primary);
-        color: var(--b3-theme-primary);
-        background: color-mix(in srgb, var(--b3-theme-primary) 8%, var(--b3-theme-surface));
-    }
-
-    .vc-empty.compact {
-        padding: 8px 0;
-    }
-
-    @media (max-width: 520px) {
-        .vc-diff-head,
-        .vc-diff-grid {
-            grid-template-columns: minmax(0, 1fr) clamp(22px, 9%, 36px);
-        }
-
-        .vc-diff-head div:nth-child(2) {
-            display: none;
-        }
-
-        .vc-version-line {
-            grid-template-columns: minmax(0, 1fr);
-            gap: 4px;
-        }
-
-        .vc-version-line .vc-version-arrow {
-            display: none;
-        }
-
-        .vc-version-card {
-            align-items: flex-start;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .vc-block.old {
-            grid-column: 1 / -1;
-        }
-
-        .vc-restore-column {
-            grid-column: 2;
-            grid-row: span 1;
-            border-left: 1px solid var(--b3-border-color);
-        }
-    }
+<style lang="scss">
+    @use "./VersionDiffPanel";
 </style>

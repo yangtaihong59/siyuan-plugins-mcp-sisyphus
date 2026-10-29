@@ -2,28 +2,7 @@ import type { SiYuanClient } from '../../api/client';
 import type { AvAction, CategoryToolConfig } from '../../core/config';
 import { AV_ACTION_HINTS, AV_GUIDANCE } from '../../core/help';
 import type { PermissionManager } from '../../core/permissions';
-import {
-    AvActionSchema,
-    AvAddColumnSchema,
-    AvAddViewSchema,
-    AvAddRowsSchema,
-    AvConfigureRollupSchema,
-    AvConfigureTwoWayRelationSchema,
-    AvCreateFromTemplateSchema,
-    AvDuplicateSchema,
-    AvGetSchema,
-    AvCreateSchema,
-    AvQuerySchema,
-    AvUpdateViewSchema,
-    AvRemoveColumnSchema,
-    AvRemoveRowsSchema,
-    AvSearchSchema,
-    AvSetColumnOptionsSchema,
-    AvSetCellsSchema,
-    AvDuplicateRowsSchema,
-    AvSetNewItemTemplatesSchema,
-    AvSetRelationSchema,
-} from '../../core/types';
+import { AvActionSchema, AvAddColumnSchema, AvAddViewSchema, AvAddRowsSchema, AvConfigureRollupSchema, AvConfigureTwoWayRelationSchema, AvCreateFromTemplateSchema, AvDuplicateSchema, AvGetSchema, AvCreateSchema, AvQuerySchema, AvUpdateViewSchema, AvRemoveColumnSchema, AvRemoveRowsSchema, AvRenameSchema, AvSearchSchema, AvSetColumnOptionsSchema, AvSetCellsSchema, AvDuplicateRowsSchema, AvSetNewItemTemplatesSchema, AvSetRelationSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant, type ToolResult } from '../internal/shared';
 import { AV_ACTION_HANDLERS } from './handlers';
@@ -32,14 +11,15 @@ export const AV_TOOL_NAME = 'av';
 
 export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('get', AvGetSchema, 'Read database structure (no rows), columns, exact view configuration, or full raw AV.'),
-    createZodActionVariant('query', AvQuerySchema, 'Query paginated database rows or lightweight primary keys; never creates a database.'),
-    createZodActionVariant('create', AvCreateSchema, 'Create a new database and carrier under parentID; replay preserves IDs and creation progress.'),
+    createZodActionVariant('query', AvQuerySchema, 'Query paginated database rows (one canonical rows[] with columnID cells and kernel formatted text) or lightweight primary keys; never creates a database. Use get(scope="raw") for the complete native payload.'),
+    createZodActionVariant('create', AvCreateSchema, 'Create a new database as parentID\'s last child; replay preserves IDs and creation progress.'),
     createZodActionVariant('update_view', AvUpdateViewSchema, 'Update one carrier-selected view in a single transaction; omitted configurations remain unchanged.'),
     createZodActionVariant('search', AvSearchSchema, 'Search attribute views by name or primary-key values.'),
-    createZodActionVariant('add_rows', AvAddRowsSchema, 'Add bound block rows or detached plain-text primary-key rows to a database.'),
-    createZodActionVariant('remove_rows', AvRemoveRowsSchema, 'Remove rows from a database.'),
+    createZodActionVariant('add_rows', AvAddRowsSchema, 'Add rows. rows:[{clientKey,primaryKeyText,cells}] creates up to 200 rows with their cells (dates included) in one call, with stable rowIDs and a persisted stage ledger; primaryKeyTexts adds text-only rows, blockIDs bound rows.'),
+    createZodActionVariant('remove_rows', AvRemoveRowsSchema, 'Remove rows by validated canonical rowIDs, or by srcIDs through the explicitly native interface. Mixing is rejected before any write.'),
     createZodActionVariant('add_column', AvAddColumnSchema, 'Add a column to a database.'),
     createZodActionVariant('remove_column', AvRemoveColumnSchema, 'Remove a column from a database.'),
+    createZodActionVariant('rename', AvRenameSchema, 'Rename the database and/or columns (including the primary key column).'),
     createZodActionVariant('set_cells', AvSetCellsSchema, 'Set one or more cell values in a database. Provide cells/items, or pass rowID + columnID + valueType for a single-cell write.'),
     createZodActionVariant('set_column_options', AvSetColumnOptionsSchema, 'Replace one select or multi-select column\'s complete option list. Read the current options first: omitted entries are not preserved.'),
     createZodActionVariant('duplicate_rows', AvDuplicateRowsSchema, 'Copy canonical AV row items in source order. Copies create detached rows and can update reverse two-way relations.'),
@@ -54,7 +34,7 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
 
 const avTool = defineTool<AvAction>({
     name: 'av',
-    description: '🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.',
+    description: '🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows (rows with cells in one call) or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.',
     variants: AV_VARIANTS,
     actionSchema: AvActionSchema,
     aggregateOptions: {

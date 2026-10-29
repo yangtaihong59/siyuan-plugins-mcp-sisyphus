@@ -18,9 +18,9 @@ import {
     TIMELINE_APP_TOOL_NAME,
     MASCOT_SHOP_APP_TOOL_NAME,
     MASCOT_SHOP_APP_ACTION_TOOL_NAME,
-} from '@/core/mcp-apps';
-import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText } from '@/core/server';
-import { decorateToolsWithMcpApps } from '@/core/mcp-apps';
+} from '@/mcp/mcp-apps';
+import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText } from '@/mcp/server';
+import { decorateToolsWithMcpApps } from '@/mcp/mcp-apps';
 import { buildDefaultToolConfig } from '@/core/config';
 import { BLOCK_GUIDANCE, BLOCK_ACTION_HINTS } from '@/core/help';
 import { scenarios } from '../../skills/source/scenarios.mjs';
@@ -406,7 +406,7 @@ describe('MCP Server Integration', () => {
                 arguments: { action: 'create_node', name: 'hidden', scope: 'global' },
             });
             expect(hiddenCall.isError).toBe(true);
-            expect(hiddenCall.content.find((item) => item.type === 'text')?.text).toContain('Unknown tool');
+            expect(JSON.parse(hiddenCall.content.find((item) => item.type === 'text')?.text ?? '{}').error.type).toBe('unknown_tool');
         });
 
         it('loads tool config from SiYuan API in standalone mode', async () => {
@@ -621,7 +621,9 @@ describe('MCP Server Integration', () => {
         it('keeps block update details available in action help', async () => {
             const result = await client.callTool({ name: 'block', arguments: { action: 'help', topic: 'update' } });
             const help = JSON.parse((result.content[0] as { text: string }).text);
-            expect(help.guidance).toEqual(BLOCK_GUIDANCE);
+            // Action help keeps this action's guidance and the general lines only.
+            expect(BLOCK_GUIDANCE).toEqual(expect.arrayContaining(help.guidance));
+            for (const line of BLOCK_GUIDANCE.filter((item) => /\bupdate\b/.test(item))) expect(help.guidance).toContain(line);
             expect(help.hint).toBe(BLOCK_ACTION_HINTS.update);
             expect(help.parameters.properties.data).toBeDefined();
         });
@@ -652,8 +654,8 @@ describe('MCP Server Integration', () => {
             expect(instructions).toContain('siyuan://help/ai-layout-guide');
             expect(instructions).toContain('explicit confirmation');
             expect(instructions).toContain('validateOnly=true');
-            expect(instructions).toContain('set validateOnly=false');
-            expect(instructions).toContain('business arguments unchanged');
+            expect(instructions).toContain('send preflight.commitArgs unchanged');
+            expect(instructions).toContain('never invent or edit requestId');
         });
 
         it('omits strict preflight guidance when disabled but retains external submission safety', () => {
@@ -719,7 +721,11 @@ describe('MCP Server Integration', () => {
                 arguments: { action: 'get_doc', id: 'doc-1' },
             });
             expect(result.isError).toBe(true);
-            expect((result.content[0] as { text: string }).text).toContain('Tool "document" is disabled.');
+            expect(JSON.parse((result.content[0] as { text: string }).text).error).toMatchObject({
+                type: 'tool_disabled',
+                tool: 'document',
+                message: 'Tool "document" is disabled.',
+            });
         });
 
         it('sends user custom rules once at initialize without repeating them per tool', async () => {

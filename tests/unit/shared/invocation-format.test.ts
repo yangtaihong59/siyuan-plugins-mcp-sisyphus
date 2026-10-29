@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { databaseNote } from '@/tools/internal/read-guidance';
 
 import {
     formatActionCall,
@@ -59,6 +60,19 @@ describe('presentation/invocation-format', () => {
             'Use old/new shorthand, default /assets/, and block/av/document tools.',
             'cli',
         )).toBe('Use old/new shorthand, default /assets/, and block/av/document tools.');
+    });
+
+    it('translates databaseNote and error messages for the CLI only', () => {
+        const note = databaseNote(['20261029054824-hh54xgn']);
+        const read = translatePresentationPayload({ content: 'x', databaseNote: note }, 'cli') as Record<string, string>;
+        expect(read.databaseNote).toContain('siyuan-sisyphus av query --av-id 20261029054824-hh54xgn');
+        expect(read.databaseNote).not.toContain('action=');
+        expect(databaseNote(['a', 'b'])).toContain('avID="<av-id>"');
+        const error = { error: { type: 'permission_denied', message: 'Not here; use document(action="query").', hint: 'Try search(action="fulltext").' } };
+        const translated = translatePresentationPayload(error, 'cli') as { error: Record<string, string> };
+        expect(translated.error.message).toBe('Not here; use siyuan-sisyphus document query.');
+        expect(translated.error.hint).toBe('Try siyuan-sisyphus search fulltext.');
+        expect(translatePresentationPayload(error, 'mcp')).toBe(error);
     });
 
     it('translates structured help payloads without changing MCP payloads', () => {

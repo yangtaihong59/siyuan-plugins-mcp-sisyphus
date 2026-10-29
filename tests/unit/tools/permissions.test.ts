@@ -12,6 +12,7 @@ import * as searchApi from '@/api/search';
 import * as contextTools from '@/tools/internal/context';
 
 import { parseResult } from '../../helpers/parse-result';
+import { requestError } from '../../helpers/request-error';
 
 const searchConfig: CategoryToolConfig<'fulltext' | 'query_sql' | 'get_backlinks' | 'search_refs'> = {
     enabled: true,
@@ -82,14 +83,16 @@ describe('tool permission and filtering behavior', () => {
         permMgr.get.mockImplementation((notebookId: string) => notebookId === 'blocked' ? 'none' : 'rwd');
     });
 
-    it('rejects raw SQL when notebook permissions cannot be enforced safely', async () => {
+    it('runs raw SQL in restricted mode scoped to readable notebooks when some are unreadable', async () => {
         vi.spyOn(notebookApi, 'listNotebooks').mockResolvedValue({
             notebooks: [
                 { id: 'allowed', name: 'Allowed', closed: false },
                 { id: 'blocked', name: 'Blocked', closed: false },
             ],
         } as never);
-        const querySpy = vi.spyOn(searchApi, 'querySQL');
+        const querySpy = vi.spyOn(searchApi, 'querySQL').mockImplementation(async (_client, stmt) => (
+            stmt.startsWith('SELECT name FROM sqlite_master') ? [] : [{ n: 1 }]
+        ));
 
         const result = await callSearchTool({} as never, {
             action: 'query_sql',
@@ -97,12 +100,11 @@ describe('tool permission and filtering behavior', () => {
         }, searchConfig, permMgr as never);
         const parsed = parseResult(result);
 
-        expect(result.isError).toBe(true);
-        expect(parsed.error).toMatchObject({
-            code: 'raw_sql_unavailable_with_restricted_notebooks',
-            reason: 'permission_scope_not_enforceable',
-        });
-        expect(querySpy).not.toHaveBeenCalled();
+        expect(result.isError).toBeFalsy();
+        expect(parsed.scope).toMatchObject({ mode: 'restricted', readableNotebooks: ['allowed'], excludedNotebooks: 1 });
+        const sent = querySpy.mock.calls.map(([, stmt]) => stmt).find((stmt) => stmt.includes('LIMIT 2'));
+        expect(sent).toContain("(SELECT * FROM main.blocks WHERE box IN ('allowed')) AS blocks");
+        expect(sent).not.toContain('blocked');
     });
 
     it('returns unattributable SQL rows unchanged when every notebook is readable', async () => {
@@ -301,7 +303,7 @@ describe('tool permission and filtering behavior', () => {
             denied: null,
         } as never);
         vi.spyOn(documentApi, 'getHPathByID')
-            .mockRejectedValueOnce(new Error('SiYuan API error: -1 - indexing'))
+            .mockRejectedValueOnce(requestError('SiYuan API error: -1 - indexing'))
             .mockResolvedValueOnce('/Projects/New Doc');
 
         const result = await callDocumentTool({} as never, {
@@ -363,6 +365,55 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.error).toBeUndefined();
         expect(parsed.backlinks).toHaveLength(1);
         expect(parsed.backlinks[0].id).toBe('1');
+    });
+
+    it.each([
+        { live: 'blocked', denied: true },
+        { live: 'moved-to', denied: false },
+    ])('lookup by id authorizes and reports the live notebook after a move (live=$live)', async ({ live, denied }) => {
+        // The SQL index still says the document is in a readable notebook; the
+        // file tree already has it in its new notebook.
+        vi.spyOn(searchApi, 'querySQL').mockImplementation(async (_client, stmt) => {
+            if (stmt.includes("WHERE id = 'moved-doc'")) {
+                return [{
+                    id: 'moved-doc',
+                    root_id: 'moved-doc',
+                    box: 'allowed',
+                    path: '/moved-doc.sy',
+                    hpath: '/Moved',
+                    content: 'Moved',
+                    type: 'd',
+                }];
+            }
+            return [];
+        });
+        vi.spyOn(blockApi, 'getDocInfo').mockResolvedValue({ id: 'moved-doc', rootID: 'moved-doc', name: 'moved-doc.sy' } as never);
+        vi.spyOn(documentApi, 'getPathByID').mockResolvedValue({ notebook: live, path: '/parent/moved-doc.sy' });
+        vi.spyOn(documentApi, 'getHPathByID').mockResolvedValue('/Parent/Moved');
+        vi.spyOn(notebookApi, 'listNotebooks').mockResolvedValue({
+            notebooks: [
+                { id: 'allowed', name: 'Allowed', closed: false },
+                { id: 'moved-to', name: 'Moved To', closed: false },
+                { id: 'blocked', name: 'Blocked', closed: false },
+            ],
+        } as never);
+
+        const result = await callDocumentTool({} as never, {
+            action: 'lookup',
+            id: 'moved-doc',
+        }, documentConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        if (denied) {
+            expect(result.isError).toBe(true);
+            expect(JSON.stringify(parsed)).toContain('permission_denied');
+            expect(JSON.stringify(parsed)).not.toContain('/Parent/Moved');
+            expect(permMgr.canRead).toHaveBeenCalledWith('blocked');
+        } else {
+            expect(result.isError).toBeUndefined();
+            expect(parsed.idPath).toMatchObject({ id: 'moved-doc', notebook: 'moved-to', path: '/parent/moved-doc.sy' });
+            expect(parsed.humanPath).toMatchObject({ notebookName: 'Moved To', hPath: '/Parent/Moved' });
+        }
     });
 
     it('filters recent updates before applying count', async () => {
@@ -447,6 +498,28 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.filteredOutCount).toBe(2);
         expect(parsed.pathFilteredOutCount).toBe(1);
         expect(parsed.partial).toBe(true);
+    });
+
+    it('gives search_docs hits an id and title and keeps only the requested notebook', async () => {
+        // The kernel returns a bare array of hits from every notebook.
+        vi.spyOn(documentApi, 'searchDocs').mockResolvedValue([
+            { box: 'allowed', path: '/', hPath: 'Allowed/', boxIcon: '' },
+            { box: 'allowed', path: '/20240101000000-abcdefg.sy', hPath: 'Allowed/Parent/Doc 1', name: '', alias: '', boxIcon: '' },
+            { box: 'other', path: '/20240101000000-hijklmn.sy', hPath: 'Other/Doc 1', name: '', alias: '', boxIcon: '' },
+        ] as never);
+
+        const result = await callDocumentTool({} as never, {
+            action: 'search_docs',
+            notebook: 'allowed',
+            query: 'Doc',
+        }, documentConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        expect(parsed.docs).toEqual([
+            { notebookRoot: true, box: 'allowed', path: '/', hPath: 'Allowed/' },
+            { id: '20240101000000-abcdefg', title: 'Doc 1', box: 'allowed', path: '/20240101000000-abcdefg.sy', hPath: 'Allowed/Parent/Doc 1' },
+        ]);
+        expect(parsed.otherNotebookCount).toBe(1);
     });
 
     it('adds an icon reminder to document create results', async () => {
@@ -564,8 +637,27 @@ describe('tool permission and filtering behavior', () => {
         expect(getDocInfo).toHaveBeenCalledTimes(1);
     });
 
-    it('falls back to listDocsByPath when listDocTree cannot open a leaf document path', async () => {
-        vi.spyOn(documentApi, 'listDocTree').mockRejectedValue(new Error('no such file or directory'));
+    it('derives list_tree node IDs from the storage path when SiYuan omits id', async () => {
+        vi.spyOn(blockApi, 'getDocInfo').mockResolvedValue({ id: 'doc-2', rootID: 'doc-2', name: 'Doc Two.sy' } as never);
+        vi.spyOn(documentApi, 'listDocsByPath').mockResolvedValue({
+            box: 'allowed',
+            path: '/',
+            files: [{ path: '/doc-2.sy', subFileCount: 0 }],
+        } as never);
+
+        const result = await callDocumentTool({} as never, {
+            action: 'list_tree',
+            notebook: 'allowed',
+            path: '/',
+        }, documentConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        expect(parsed.tree).toHaveLength(1);
+        expect(parsed.tree[0].id).toBe('doc-2');
+    });
+
+    it('lists subpaths through listDocsByPath so the manual sort order matches get_child_docs', async () => {
+        const listDocTree = vi.spyOn(documentApi, 'listDocTree');
         const listDocsByPath = vi.spyOn(documentApi, 'listDocsByPath').mockResolvedValue({
             box: 'allowed',
             path: '/doc-1.sy',
@@ -580,6 +672,8 @@ describe('tool permission and filtering behavior', () => {
         const parsed = parseResult(result);
 
         expect(parsed.tree).toEqual([]);
+        // listDocTree ignores the notebook's manual sort and contradicted reorder results.
+        expect(listDocTree).not.toHaveBeenCalled();
         expect(listDocsByPath).toHaveBeenCalledWith(expect.anything(), 'allowed', '/doc-1.sy', {
             maxListCount: 0,
             showHidden: false,

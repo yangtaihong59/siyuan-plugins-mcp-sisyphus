@@ -1,41 +1,22 @@
 import { availableReadSteps, databaseReadSteps, kramdownDatabases } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
+import { SiYuanRequestError } from '../../api/errors';
 import * as attributeApi from '../../api/block';
 import * as blockApi from '../../api/block';
 import * as transactionApi from '../../api/transaction';
 import type { BlockAction } from '../../core/config';
 import { normalizeKramdownResult, stripZeroWidthChars } from '../../core/normalize';
-import {
-    BlockAddToDailyNoteSchema,
-    BlockAppendSchema,
-    BlockBatchKramdownSchema,
-    BlockBreadcrumbSchema,
-    BlockDeleteSchema,
-    BlockDomSchema,
-    BlockDocsInfoSchema,
-    BlockSetFoldStateSchema,
-    BlockGetAttrsSchema,
-    BlockGetChildrenSchema,
-    BlockGetKramdownSchema,
-    BlockInfoSchema,
-    BlockInsertSchema,
-    BlockMoveSchema,
-    BlockPrependSchema,
-    BlockRecentUpdatedSchema,
-    BlockReplaceSchema,
-    BlockSetAttrsSchema,
-    BlockTransferReferencesSchema,
-    BlockUpdateSchema,
-    BlockWordCountSchema,
-} from '../../core/types';
+import { BlockAddToDailyNoteSchema, BlockAppendSchema, BlockBatchKramdownSchema, BlockBreadcrumbSchema, BlockDeleteSchema, BlockDomSchema, BlockDocsInfoSchema, BlockSetFoldStateSchema, BlockGetAttrsSchema, BlockGetChildrenSchema, BlockGetKramdownSchema, BlockInfoSchema, BlockInsertSchema, BlockMoveSchema, BlockPrependSchema, BlockRecentUpdatedSchema, BlockReplaceSchema, BlockSetAttrsSchema, BlockTransferReferencesSchema, BlockUpdateSchema, BlockWordCountSchema } from './schemas';
 import { isMissingBlockError } from '../internal/errorTranslation';
 import { createResultResolutionCache, ensurePermissionForDocumentId, ensurePermissionForNotebook, resolveDocumentContextById, resolveResultItemContext } from '../internal/context';
 import type { ToolActionHandler } from '../internal/define-tool';
-import { filterItemsByPermission } from '../search';
+import { filterItemsByPermission } from '../internal/permission-filter';
 import { createJsonResult, createPaginatedResult, createWriteSuccessResult, paginate, type ToolResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';
-import { createFootnoteReferenceHint, createSiyuanBlockLinkHint, createUnresolvedBlockRefHint, hasBlockRefIdFallbackAnchors, hasFootnoteReferences, hasSiyuanBlockLinks, normalizeDomInlineRefsAndTags, replaceEditTouchesIndexedInline, replaceSingleKramdownBlockContentInDom } from '../internal/kramdown-safe';
+import { createReferenceSemanticsHints, hasReferenceSemanticsHints, normalizeDomInlineRefsAndTags, withReferenceSemanticsHints, replaceEditTouchesIndexedInline, replaceSingleKramdownBlockContentInDom } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
+import { escapeSqlString } from '../../shared/sql';
+import { updatePreservingAttrs } from '../internal/helpers/preserved-attrs';
 
 
 type RecentUpdatedDocumentSummary = {
@@ -56,14 +37,55 @@ type RecentUpdatedDocumentSummary = {
 
 type BlockActionHandler = ToolActionHandler;
 
-async function getBlockType(client: SiYuanClient, id: string): Promise<string | undefined> {
-    if (typeof (client as { request?: unknown }).request !== 'function') {
-        return undefined;
-    }
+const HEADING_LEAF_ERROR = /is a leaf block and cannot have children/i;
 
+/** Last block of a heading's section among the document's top-level blocks (before the next heading of the same or a higher level). */
+export function lastBlockOfHeadingSection(children: Array<{ id: string; type?: string; subType?: string; subtype?: string }>, headingId: string): string | undefined {
+    const index = children.findIndex((child) => child.id === headingId);
+    if (index < 0) return undefined;
+    const level = (child: { subType?: string; subtype?: string }) => Number(String(child.subType ?? child.subtype ?? '').replace(/^h/, '')) || 6;
+    const headingLevel = level(children[index]);
+    let last = children[index].id;
+    for (const child of children.slice(index + 1)) {
+        if (child.type === 'h' && level(child) <= headingLevel) break;
+        last = child.id;
+    }
+    return last;
+}
+
+/**
+ * SiYuan rejects append/prepend under a heading (a leaf block) and suggests
+ * previousID, which these actions do not take. Rewrite the rejection into the
+ * insert call that does what the caller meant; the kernel error stays an API
+ * rejection, so the write is still recorded as not applied.
+ */
+async function rethrowHeadingParentError(
+    client: SiYuanClient,
+    error: unknown,
+    action: 'append' | 'prepend',
+    headingId: string,
+    documentId: string | undefined,
+    dataType: string,
+): Promise<never> {
+    if (!(error instanceof SiYuanRequestError) || error.kind !== 'api' || !HEADING_LEAF_ERROR.test(error.message)) throw error;
+    let previousID = action === 'prepend' ? headingId : undefined;
+    if (!previousID && documentId) {
+        try {
+            previousID = lastBlockOfHeadingSection(await blockApi.getChildBlocks(client, documentId) as Array<{ id: string; type?: string; subType?: string }>, headingId);
+        } catch {
+            previousID = undefined;
+        }
+    }
+    const where = action === 'prepend' ? 'directly below the heading' : 'at the end of this heading\'s section';
+    const call = `block(action="insert", previousID="${previousID ?? '<last block under the heading>'}", dataType="${dataType}", data="…")`;
+    const find = previousID ? '' : ` (find that block with block(action="get_children", id="${documentId ?? '<document id>'}"))`;
+    throw new SiYuanRequestError('api', `SiYuan rejected block ${action}: ${headingId} is a heading, and a heading cannot have children, so nothing was written. block ${action} has no previousID; to add content ${where}, use ${call}${find}.`, { apiCode: error.apiCode, status: error.status });
+}
+
+async function getBlockType(client: SiYuanClient, id: string): Promise<string | undefined> {
     try {
         const rows = await client.requestRead<unknown[]>('/api/query/sql', {
-            stmt: `SELECT type FROM blocks WHERE id = '${String(id).replace(/\0/g, '').replace(/'/g, "''")}' LIMIT 1`,
+            stmt: `SELECT type FROM blocks WHERE id = '${escapeSqlString(String(id))}' LIMIT 1`,
         });
         const first = Array.isArray(rows) ? rows[0] : undefined;
         return first && typeof first === 'object' && typeof (first as Record<string, unknown>).type === 'string'
@@ -83,23 +105,6 @@ function createDatabaseBlockHint(actionName: string): Record<string, unknown> {
             write: 'av(action="set_cells"|"add_rows"|"remove_rows"|"add_column"|"remove_column", avID="<av-id>", ...)',
         },
     };
-}
-
-function withReferenceSemanticsHints(payload: Record<string, unknown>, data: string): Record<string, unknown> {
-    return {
-        ...payload,
-        ...(hasSiyuanBlockLinks(data) ? createSiyuanBlockLinkHint() : {}),
-        ...(hasFootnoteReferences(data) ? createFootnoteReferenceHint() : {}),
-        ...(hasBlockRefIdFallbackAnchors(data) ? createUnresolvedBlockRefHint() : {}),
-    };
-}
-
-function hasReferenceSemanticsHints(data: string): boolean {
-    return hasSiyuanBlockLinks(data) || hasFootnoteReferences(data) || hasBlockRefIdFallbackAnchors(data);
-}
-
-function createReferenceSemanticsHints(data: string): Record<string, unknown> {
-    return withReferenceSemanticsHints({}, data);
 }
 
 function isLowLevelRecentBlockType(value: unknown): boolean {
@@ -181,6 +186,33 @@ async function aggregateRecentUpdatedDocuments(
     };
 }
 
+/**
+ * IDs of every top-level block an insert/append/prepend created, in order.
+ * SiYuan marks only top-level nodes of the inserted DOM with data-node-index.
+ */
+export function extractTopLevelInsertedIds(operationBatch: unknown): string[] {
+    const operations = operationBatch && typeof operationBatch === 'object' && Array.isArray((operationBatch as { doOperations?: unknown[] }).doOperations)
+        ? (operationBatch as { doOperations: Array<Record<string, unknown>> }).doOperations
+        : [];
+    const ids: string[] = [];
+    for (const operation of operations) {
+        if (typeof operation?.data !== 'string') {
+            if (typeof operation?.id === 'string' && operation.id && !ids.includes(operation.id)) ids.push(operation.id);
+            continue;
+        }
+        const found: string[] = [];
+        for (const match of operation.data.matchAll(/<div\b[^>]*>/g)) {
+            const tag = match[0];
+            if (!/\bdata-node-index="/.test(tag)) continue;
+            const nodeId = /\bdata-node-id="([^"]+)"/.exec(tag)?.[1];
+            if (nodeId && !found.includes(nodeId)) found.push(nodeId);
+        }
+        if (found.length === 0 && typeof operation.id === 'string' && operation.id) found.push(operation.id);
+        for (const nodeId of found) if (!ids.includes(nodeId)) ids.push(nodeId);
+    }
+    return ids;
+}
+
 function createSlimWriteResult(
     rawResult: unknown,
     context: {
@@ -197,6 +229,7 @@ function createSlimWriteResult(
         : undefined;
 
     const id = typeof firstOperation?.id === 'string' ? firstOperation.id : undefined;
+    const ids = extractTopLevelInsertedIds(operationBatch);
     const parentID = typeof firstOperation?.parentID === 'string' ? firstOperation.parentID : context.parentID;
     const previousID = typeof firstOperation?.previousID === 'string' ? firstOperation.previousID : context.previousID;
     const nextID = typeof firstOperation?.nextID === 'string' ? firstOperation.nextID : context.nextID;
@@ -204,6 +237,8 @@ function createSlimWriteResult(
     const payload: Record<string, unknown> = {
         action: context.action,
         ...(id ? { id } : {}),
+        // Multi-block Markdown inserts several top-level blocks in one operation.
+        ...(ids.length > 1 ? { ids, blockCount: ids.length } : {}),
         ...(parentID ? { parentID } : {}),
         ...(previousID ? { previousID } : {}),
         ...(nextID ? { nextID } : {}),
@@ -288,13 +323,13 @@ async function normalizeBatchInsertBlocks(
         previousID?: string;
         parentID?: string;
     },
-): Array<{
+): Promise<Array<{
     dataType: 'markdown' | 'dom';
     data: string;
     nextID?: string;
     previousID?: string;
     parentID?: string;
-}> {
+}>> {
     return Promise.all(blocks.map(async (block) => ({
         ...block,
         data: await normalizeWriteData(client, block.dataType, block.data, 'block.insert'),
@@ -319,11 +354,11 @@ async function normalizeBatchUpdateItems(
         dataType: 'markdown' | 'dom';
         data: string;
     }>,
-): Array<{
+): Promise<Array<{
     id: string;
     dataType: 'markdown' | 'dom';
     data: string;
-}> {
+}>> {
     return Promise.all(items.map(async (item) => ({
         ...item,
         data: await normalizeWriteData(client, item.dataType, item.data, 'block.update'),
@@ -427,7 +462,8 @@ const handlePrepend: BlockActionHandler = async ({ client, permMgr, rawArgs }) =
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
     const data = await normalizeWriteData(client, parsed.dataType, parsed.data, 'block.prepend');
-    const result = await blockApi.prependBlock(client, parsed.dataType, data, parsed.parentID);
+    const result = await blockApi.prependBlock(client, parsed.dataType, data, parsed.parentID)
+        .catch((error: unknown) => rethrowHeadingParentError(client, error, 'prepend', parsed.parentID, context.documentId, parsed.dataType));
     return applyUiRefresh(client, createSlimWriteResult(result, withReferenceSemanticsHints({
         action: 'prepend',
         dataType: parsed.dataType,
@@ -440,7 +476,8 @@ const handleAppend: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
     const data = await normalizeWriteData(client, parsed.dataType, parsed.data, 'block.append');
-    const result = await blockApi.appendBlock(client, parsed.dataType, data, parsed.parentID);
+    const result = await blockApi.appendBlock(client, parsed.dataType, data, parsed.parentID)
+        .catch((error: unknown) => rethrowHeadingParentError(client, error, 'append', parsed.parentID, context.documentId, parsed.dataType));
     return applyUiRefresh(client, createSlimWriteResult(result, withReferenceSemanticsHints({
         action: 'append',
         dataType: parsed.dataType,
@@ -462,12 +499,13 @@ const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
             }
             reloadIds.add(context.documentId);
         }
-        const result = await blockApi.batchUpdateBlock(client, items);
+        const { result, restoredAttrs } = await updatePreservingAttrs(client, items, () => blockApi.batchUpdateBlock(client, items));
         return applyUiRefresh(client, createJsonResult({
             success: true,
             action: 'update',
             count: parsed.items.length,
             transactions: result,
+            ...(Object.keys(restoredAttrs).length > 0 ? { restoredAttrs } : {}),
             ...(items.some((item) => hasReferenceSemanticsHints(item.data)) ? createReferenceSemanticsHints(items.map((item) => item.data).join('\n')) : {}),
             ...(databaseBlockIds.length > 0 ? {
                 databaseBlockIds,
@@ -479,11 +517,16 @@ const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
     if (denied) return denied;
     const isDatabaseBlock = await getBlockType(client, parsed.id!) === 'av';
     const data = await normalizeWriteData(client, parsed.dataType!, parsed.data!, 'block.update');
-    const result = await blockApi.updateBlock(client, parsed.dataType!, data, parsed.id!);
+    const { result, restoredAttrs } = await updatePreservingAttrs(
+        client,
+        [{ id: parsed.id!, dataType: parsed.dataType!, data }],
+        () => blockApi.updateBlock(client, parsed.dataType!, data, parsed.id!),
+    );
     return applyUiRefresh(client, createUpdateResult(result, {
         id: parsed.id!,
         dataType: parsed.dataType!,
         data,
+        ...(restoredAttrs[parsed.id!] ? { restoredAttrs: restoredAttrs[parsed.id!] } : {}),
         ...(isDatabaseBlock ? createDatabaseBlockHint('block.update') : {}),
     }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
@@ -500,15 +543,18 @@ const handleReplace: BlockActionHandler = async ({ client, permMgr, rawArgs }) =
     const edits = await normalizeReplaceEditsRefs(client, Array.isArray(parsed.edit) ? parsed.edit : [parsed.edit], 'block.replace');
     const { kramdown: nextContent, markdown: nextMarkdown, dom: nextDom, summary } = replaceSingleKramdownBlockContentInDom(originalContent, originalDom, edits, 'block.replace');
     const changed = nextContent !== originalContent;
+    let restoredAttrs: string[] | undefined;
 
     if (changed) {
-        const shouldReparseIndexedInline = edits.some(replaceEditTouchesIndexedInline);
-        await blockApi.updateBlock(
+        // A Markdown reparse (tags, refs) rebuilds the IAL; restore user attributes.
+        const dataType = edits.some(replaceEditTouchesIndexedInline) ? 'markdown' : 'dom';
+        const data = dataType === 'markdown' ? nextMarkdown : nextDom;
+        const preserved = await updatePreservingAttrs(
             client,
-            shouldReparseIndexedInline ? 'markdown' : 'dom',
-            shouldReparseIndexedInline ? nextMarkdown : nextDom,
-            parsed.id,
+            [{ id: parsed.id, dataType, data, alwaysRestore: true }],
+            () => blockApi.updateBlock(client, dataType, data, parsed.id),
         );
+        restoredAttrs = preserved.restoredAttrs[parsed.id];
     }
 
     return applyUiRefresh(client, createJsonResult({
@@ -518,6 +564,7 @@ const handleReplace: BlockActionHandler = async ({ client, permMgr, rawArgs }) =
         changed,
         editsApplied: summary.length,
         replacements: summary,
+        ...(restoredAttrs ? { restoredAttrs } : {}),
         ...(hasReferenceSemanticsHints(nextContent) ? createReferenceSemanticsHints(nextContent) : {}),
     }), changed ? [{ type: 'reloadProtyle', id: context.documentId }] : []);
 };
@@ -819,7 +866,12 @@ const handleWordCount: BlockActionHandler = async ({ client, permMgr, rawArgs })
         if (denied) return denied;
     }
     const result = await blockApi.getBlocksWordCount(client, parsed.ids);
-    return createJsonResult(result);
+    // reqId is the kernel's request echo (always null here), not data.
+    const { reqId: _reqId, ...payload } = (result && typeof result === 'object' ? result : {}) as Record<string, unknown>;
+    // Verified on SiYuan 3.8.8: blockCount counts the requested IDs, not the blocks under them.
+    return createJsonResult(result && typeof result === 'object'
+        ? { ...payload, blockCountNote: `blockCount counts the ${parsed.ids.length} ID(s) passed, not their child blocks; the other counts cover all content under them.` }
+        : result);
 };
 
 const handleAddToDailyNote: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {

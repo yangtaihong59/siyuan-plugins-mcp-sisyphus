@@ -1,3 +1,4 @@
+import { SIYUAN_CLIENT_IO_METHODS } from '../api/client';
 import { KernelReadBudget } from './read-budget';
 import type { KernelScheduler, KernelTask } from './scheduler';
 
@@ -5,10 +6,14 @@ import type { KernelScheduler, KernelTask } from './scheduler';
  * An in-flight host fetch retains its slot until it settles. After commit starts
  * checks become inert, including post-write readback and ledger persistence.
  */
-export function taskClient<T extends object>(client: T, scheduler: KernelScheduler, task: KernelTask, budget?: KernelReadBudget): T {
-    const scopedFactory = (client as any).forTask;
-    if (typeof scopedFactory === 'function') client = scopedFactory.call(client, () => { scheduler.checkpoint(task); if (task.readOnly && !task.committing) budget?.check(); }, () => { if (task.readOnly && !task.committing) budget?.before(); });
-    const io = new Set(['request', 'requestRead', 'requestWrite', 'requestApi', 'requestResource', 'readFile', 'readFileBinary', 'writeFile', 'requestFormData', 'requestFormDataRead', 'requestFormDataWrite', 'uploadAssetBytes', 'fetchExternal']);
+/** KernelSiYuanClient.forTask: a per-task view whose retries honour the checkpoints. */
+type TaskScopable<T> = { forTask?(checkpoint: () => void, retryCheckpoint?: () => void): T };
+
+export function taskClient<T extends object & TaskScopable<T>>(base: T, scheduler: KernelScheduler, task: KernelTask, budget?: KernelReadBudget): T {
+    const client = base.forTask
+        ? base.forTask(() => { scheduler.checkpoint(task); if (task.readOnly && !task.committing) budget?.check(); }, () => { if (task.readOnly && !task.committing) budget?.before(); })
+        : base;
+    const io = SIYUAN_CLIENT_IO_METHODS;
     return new Proxy(client, {
         get(target, key) {
             const value = Reflect.get(target, key);

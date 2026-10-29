@@ -43,6 +43,7 @@ export const NOTEBOOK_GUIDANCE: string[] = [
 ];
 
 export const DOCUMENT_GUIDANCE: string[] = [
+    'Use document(action="query") for paginated document metadata, indexed body-block/character counts, empty-document candidates, and same-title candidates across readable open notebooks. It works with unreadable notebooks present and does not require permission changes. Counts describe the SQL index, not native word counts or complete filesystem coverage.',
     'For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"write"|"search") because it accepts human-readable paths and hides storage paths and IDs.',
     'document(action="create") creates both non-empty and empty documents. Prefer path for child documents; path is a notebook-local human-readable hpath such as /Folder/Parent/New Child, not /Notebook/Folder/... and not a .sy storage path.',
     'Do not put # Title at the start of document(action="create") markdown. SiYuan renders the document title as H1 automatically, and MCP strips a matching leading H1 to avoid duplicate titles.',
@@ -55,7 +56,7 @@ export const DOCUMENT_GUIDANCE: string[] = [
     'A safe path-based workflow is lookup -> rename/remove/move.',
     'document(action="reorder") applies a complete manual order to every visible direct child under parentID and switches the notebook to custom sorting. Read the current child documents first and include each child ID exactly once.',
     'document(action="get_child_blocks") and document(action="get_child_docs") return direct children for a document ID.',
-    'document(action="set_attr") updates document metadata such as icon and cover; use attrs.cover=null or an empty string to clear the cover.',
+    'document(action="set_attr") sets icon, cover and custom-* attributes; use attrs.cover=null or an empty string to clear the cover.',
     'document(action="search_docs") remains title-based, but MCP now post-filters results by notebook permission and optional storage path scope.',
     'For recently created documents, document(action="lookup", hpath=...) may briefly lag behind create because it depends on SiYuan indexing; retry if needed.',
     'document(action="lookup", id=...) may hit the same short indexing delay right after create; MCP retries briefly and then returns a timing-specific hint if indexing still has not settled.',
@@ -77,10 +78,11 @@ export const BLOCK_GUIDANCE: string[] = [
 export const AV_GUIDANCE: string[] = [
     'Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.',
     'get defaults to structure: identity, columns and view summaries, never all row IDs. scope=columns reads keys; scope=view reads exact view configuration; scope=raw preserves the complete native AV.',
-    'query returns canonical rowID and columnID. Never substitute sourceBlockID or cell value IDs. mode=primary_keys returns lightweight paginated primary keys; keyword applies to either mode.',
+    'IDs: database = avID, column = columnID (column actions call the same value keyID; av get also lists it as id), row = rowID. keyID and columnID are accepted for each other.',
+    'query returns canonical rowID and columnID. Never substitute sourceBlockID or cell value IDs. fields projects requested stable columnIDs while always keeping rowID. mode=primary_keys returns lightweight paginated primary keys; keyword applies to either mode.',
     'Explicit viewID selects only the read target; it never switches the database carrier. Returned viewID and selectionSource identify the actual selection; selectionFallback reports kernel-default fallback.',
-    'create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.',
-    'update_view requires avID + exact carrier blockID + its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.',
+    'create requires parentID, and optionally name and a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.',
+    'update_view requires avID, the carrier blockID (databaseContext.carrierBlockIDs from get; auto-filled when there is exactly one) and its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.',
     'filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.',
     'Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.',
     'update_view sends one transaction after complete validation, then verifies every requested setting and protected configuration. This is not a guarantee of kernel atomicity. Unchanged requests return no_change without a transaction.',
@@ -90,7 +92,7 @@ export const AV_GUIDANCE: string[] = [
 
 export const FILE_GUIDANCE: string[] = [
     'file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution.',
-    'If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.',
+    'For upload_asset: if the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.',
     'file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.',
     'file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.',
     'Use file(action="list_templates") before rendering when you need to discover valid workspace template paths under data/templates.',
@@ -179,9 +181,9 @@ export const FS_ACTION_HINTS: Partial<Record<FsAction, string>> = {
     write: 'Creates a missing document. Do not include a leading # Title in markdown; the document title is automatic. Existing pure Markdown documents are protected unless overwrite=true; overwrite refuses documents containing complex SiYuan-native blocks. Use ((id \'title\')) for double-links and #tag# for tags; use advanced tools for database rows, cells, super blocks, embeds, widgets, HTML, and media.',
     replace: 'Edits matched non-complex Markdown blocks by exact old/new matching against the same AI-editable view returned by fs.read. Canonical input is edit={old,new}; shorthand old + new is also accepted. If the document contains complex SiYuan-native blocks, fs.replace skips those blocks and returns skippedComplexBlocks; matches only inside skipped blocks or across block boundaries are rejected without writing. For inline formatting, old should be plain text without Markdown style delimiters such as **, *, `, or ~~; existing DOM inline styles are preserved. Naked ((id)) refs are normalized, and footnotes/siyuan://blocks links are allowed but do not create backlinks. replace_all=true replaces every exact match across editable blocks. Use ((id \'title\')) for new double-links and #tag# for tags.',
     rm: 'Deletes a document by human-readable path. This action requires explicit user confirmation.',
-    mv: 'Moves or renames a document using human-readable paths. This action requires explicit user confirmation.',
+    mv: 'Moves or renames a document using human-readable paths (from + to). To move several, pass items:[{from,to}] (up to 20): every item is resolved first, then moved in order; the first failure stops the batch and the receipt lists moved, failed and not_applied items. It is a delete-level operation: every notebook involved (source and destination, also for a rename within one notebook) needs rwd. This action requires explicit user confirmation.',
     reorder: 'Applies a complete manual order to all visible direct child documents under path. orderedPaths must contain every current child path exactly once; the notebook is switched to custom sorting.',
-    search: 'Searches Markdown lines under a human-readable document or folder path. Use regex=true for regular expressions.',
+    search: 'Searches Markdown lines under a human-readable document or folder path. Use regex=true for regular expressions. YAML front matter is not searched; line is 1-based within the body (title heading excluded) and a title hit is reported once with line 0.',
 };
 
 export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
@@ -192,27 +194,29 @@ export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
 };
 
 export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
-    create: 'Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.',
-    lookup: 'Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths.',
+    query: 'Omit notebooks for all readable open notebooks, or pass notebook IDs. Explicit unreadable, unknown, or closed notebooks are rejected. fields selects metadata/stat columns; default all. title is a literal substring and hpathPrefix matches an exact notebook-local human path or descendants. Use maxBlocks=0 for no indexed body blocks, duplicatesOnly=true for same-title candidates. minBlocks/maxBlocks/minChars/maxChars are inclusive. page starts at 1; pageSize defaults to 50 (max 100). blockCount counts non-document indexed rows including containers; contentChars sums SQLite length(content), not bytes/native word count. sameTitleCount is scoped before metric filters. Read scope/excludedClosedNotebooks and index limitations; follow nextSteps for further pages. SQL fragments are not accepted.',
+    create: 'Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles. Batch: document(action="create", notebook="<id>", docs=[{"path":"/A","markdown":"…"},{"path":"/A/B"}]) creates up to 20 documents in order (no repeated path; list a parent before its children). The first failure stops the batch; the receipt lists created (with id), failed and not_applied items, so resend only the items that were not created.',
+    lookup: 'Look up one reference at a time. Use id, notebook + path (storage path), or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.',
     ensure_link_targets: 'Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.',
-    rename: 'Use either id + title or notebook + path + title.',
-    remove: 'Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + storage path.',
-    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. This action requires explicit user confirmation.',
+    rename: 'Single mode uses either id + title or notebook + path + title. To rename several documents, use one batch call: items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.',
+    remove: 'Use either id, or notebook + path (the storage path from lookup). This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + path.',
+    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath; both lists take several documents, so move a group to one destination in one call. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.',
     reorder: 'Use parentID + orderedIDs. parentID may be a notebook ID or parent document ID, and orderedIDs must contain every visible direct child document ID exactly once. The notebook is switched to custom sorting.',
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
     get_child_docs: 'Use a document ID. Returns direct child documents only.',
-    set_attr: 'Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it.',
+    set_attr: 'Sets icon, cover and custom-* attributes of a document (on its root block, like block set_attrs). attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it; attrs["custom-type"]="meeting" sets a custom attribute and "" removes it. For name, alias, memo or bookmark use block(action="set_attrs", id=<document id>).',
     list_tree: 'Use notebook + path, where path is a storage path such as / or /20240318112233-abc123.sy.',
     search_docs: 'Use notebook + query, and optionally path as a storage-path scope. Search is title-based in SiYuan; MCP then filters by notebook permission and optional storage path.',
     get_doc: 'Use a document ID. mode="markdown" tries full clean Markdown by default, bounded to 256 KiB UTF-8 and 2000 complete blocks, with a window-scoped outline and nextWindow; totalBlocks is null until EOF; use blockStart/blockLimit/tokenBudget and optionally includeBlockIds. page/pageSize character pagination was removed. mode="html" uses the current focus view.',
     get_outline: 'Use a document ID to return SiYuan’s native heading tree without reading the document body. preview defaults to false. The response includes heading block IDs, nesting, and headingCount.',
+    heading_to_doc: 'Moves the heading AND everything under it (up to the next heading of the same or higher level) into a new document whose ID is the heading ID; the source document keeps the rest, which is nothing when the heading is its first H1. The new document lands at the target notebook root by default; to make it a child of the source document, pass targetPath = the source document storage path (path from document lookup, e.g. /2024...-abc.sy). The result returns the new document id, title, path, hPath and sourceID.',
     create_daily_note: 'Use a notebook ID and optionally pass app for downstream SiYuan event routing. When the user asks for a diary, journal entry, daily log, or today’s note in a notebook, prefer this action over manually creating a path and then appending content.',
 };
 
 export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
     insert: 'nextID inserts BEFORE that block; previousID inserts AFTER that block. Provide at least one of nextID, previousID, or parentID. Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.',
-    prepend: 'parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.',
-    append: 'parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.',
+    prepend: 'parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent: to add content under a heading use block insert with previousID (the heading, or the last block of its section). Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.',
+    append: 'parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent (SiYuan rejects it): to add content under a heading use block insert with previousID = the last block of that section (or the heading itself to put it first). Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.',
     update: 'Use dataType + data + id to replace block content. Returns a slim success object instead of raw DOM operations. block(action="update") is best for single-block replacement; one table or fenced code block can contain multiple lines. Use append/prepend/insert for multiple sibling blocks and verify the resulting structure. If the content should create tags, write them as #tag#.',
     replace: 'Use id + edit to replace exact text inside one block kramdown content only. First read block(action="get_kramdown", id=...) and copy old from the block body. The writeback patches original DOM text nodes, preserving inline structure while rejecting IAL metadata edits. Naked ((id)) refs are normalized; footnotes and siyuan://blocks links are allowed but do not create backlinks.',
     set_attrs: 'Use attrs to write block attributes such as custom metadata. For flashcards, this only writes metadata such as {"custom-riff-decks":"<deck-id>"}; prefer flashcard(action="create_card") when you want a block to become a real review card.',
@@ -225,44 +229,46 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
     breadcrumb: 'Optional excludeTypes removes matching block types from the breadcrumb.',
     dom: 'Returns rendered DOM, useful for preview-style consumers.',
     recent_updated: 'Returns recent updates across the workspace, then MCP filters unreadable notebooks and applies count when provided. documents is the primary user-facing summary; items remains the raw block stream.',
-    word_count: 'Provide one or more block IDs to receive aggregate stat data.',
+    word_count: 'Provide one or more block IDs to receive aggregate stat data. blockCount is the number of IDs passed (a document ID counts as 1); the text counts cover all content under them. For the block total of a document use document query (blockCount). runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.',
     add_to_daily_note: 'Use notebook + dataType + data + position ("append" or "prepend") to add content to today’s daily note.',
 };
 
 export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     search: 'Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.',
-    add_rows: 'Use avID + blockIDs to add existing blocks as bound rows, or avID + primaryKeyTexts to add detached rows whose primary key is plain text. Optional blockID/viewID/groupID/previousID refine the insertion target and preserve the intended database-block view/group defaults. MCP polls briefly after insertion and only reports success when each new row resolves to a writable rowID. To add initial non-primary-key cell values, follow add_rows with av(action="set_cells", avID, cells=[{rowID, columnID, valueType, ...}, ...]); reuse the rowID returned by add_rows.',
-    remove_rows: 'Use avID + srcIDs to remove rows from the AV. Optional blockID pins a specific registered database block when you need explicit block-view context.',
-    add_column: 'Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.',
+    add_rows: 'To create rows together with their cells (dates, selects, numbers...), use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}]: up to 200 rows in one call, no follow-up set_cells needed. Rows without cells: avID + primaryKeyTexts (detached) or avID + blockIDs (bound); these modes are mutually exclusive with rows. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows. Cells use the same typed fields as set_cells (e.g. {columnID,valueType:"number",number:9}); see av(action="help", topic="set_cells") for the full valueType table.',
+    remove_rows: 'Use avID + rowIDs (canonical AV row item IDs) to remove rows after the server validates every identity against the current AV. srcIDs remains the explicitly native interface and is not an interchangeable alias; mixing rowIDs and srcIDs is rejected before any write. Optional blockID pins a specific registered database block when you need explicit block-view context.',
+    add_column: 'Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. keyID is the column id: av get/query list the same value as columnID (and id), and set_cells takes it as columnID. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.',
     remove_column: 'Use avID + keyID, and optionally blockID to target a specific registered database block. removeRelationDest only matters for relation columns.',
-    set_cells: 'Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell.',
+    rename: 'Use avID + name to rename the database, and/or keyID + keyName to rename one column, including the primary key column that av(action="create") names by default. Types and values are unchanged. Get key IDs from av(action="get"). Strict write: preflight with validateOnly=true, then commit with the returned requestId and expectedStateHash.',
+    set_cells: 'Use avID + cells[]. Each item requires rowID + columnID + valueType and its matching typed field. For a single-cell write, pass rowID + columnID + valueType directly. rowID must be the AV row item ID stored in value.blockID, not value.id or the bound source block ID. Optional blockID must be a registered database block for this AV if you need to pin a specific block view. valueType="mAsset" accepts assets[]. Relation values are intentionally rejected here; use set_relation so MCP can authorize the destination AV and read back the reverse cell. Cell fields by valueType: text→text:"…"; number→number:9; date→date:"2026-01-31" or epoch ms; checkbox→checked:true; select→option:"在读"; multi_select (column type mSelect)→options:["a","b"]; url/email/phone→url/email/phone:"…"; relation→relationBlockIDs:[…]; mAsset→assets:[{type,content}]. Example: {rowID,columnID,valueType:"select",option:"在读"}.',
     set_column_options: 'Dangerous: use avID + keyID + the complete options array for a select or mSelect key. This is a replacement, not a patch: omitted names are removed. First call the same action with validateOnly=true; after confirmation submit the returned expectedStateHash and the returned requestId. If new names are observed in SiYuan append order, MCP reports intermediate_option_order and requires a new preflight before any explicit reorder.',
     duplicate_rows: 'Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.',
     duplicate: 'Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.',
-    add_view: 'Provide avID + exact NodeAttributeView blockID + a new stable viewID + table/gallery/kanban + name. First run validateOnly=true. It does not use render; kanban requires an existing select key to avoid an implicit schema write.',
+    add_view: 'Provide avID, the carrier blockID (databaseContext.carrierBlockIDs from get; auto-filled when the AV has exactly one), a new stable viewID, layout (table, gallery or kanban) and name. First run validateOnly=true. layout=kanban needs an existing single-select column (mSelect does not count); preflight rejects it otherwise.',
     set_new_item_templates: 'Dangerous complete replacement of ordered native new-item templates. Pass every template and defaultTemplateID, not a patch. MCP captures a canonical complete-template preimage, validates each key and select/mSelect option against the raw AV, performs one native transaction, and verifies order, default, and all remaining template fields through getAttributeView. Missing options are rejected rather than added or silently pruned.',
     create_from_template: 'Dangerous native creation using an existing template. itemID in the result is the AV row identity; blockID is the separate bound block/document identity. MCP preflights all default fields and relation targets, then reads every requested default back. Document templates require an explicit saveLocation so the target notebook can be authorized; inherited global document location is intentionally not guessed.',
     configure_two_way_relation: 'Dangerous schema operation for an existing relation key. Pass source and destination AV identities plus a stable reverse-key ID. MCP verifies both writable database carriers, uses the native updateAttrViewColRelation transaction, and reads both directions back. It refuses to retarget an existing relation that would mutate an unpreflighted third AV.',
     configure_rollup: 'Dangerous schema operation for an existing rollup key. Pass its existing relation key, destination key, and the native RollupCalc object exactly as SiYuan defines it. MCP does not invent calculation aliases. SiYuan may remove filters that reference the reconfigured rollup key.',
     set_relation: 'Dangerous complete replacement of one relation cell. blockID is the verified source database carrier; itemID and relatedItemIDs are AV row item IDs, never bound document block IDs. An empty relatedItemIDs array clears the relation. MCP authorizes destination writes and verifies source plus two-way reverse cells without retrying an unknown response.',
     get: 'Use avID with scope=structure (default), columns, view, or raw. structure never contains row IDs or values. Optional blockID proves database context; viewID selects reading only. Use query for records.',
-    query: 'Use avID, optional keyword/page/pageSize, and mode=rows (default) or primary_keys. Row mode supports viewID/blockID/groupPaging. Primary-key mode rejects viewID/groupPaging and defaults to 16 rows. Follow nextSteps only when present.',
-    create: 'Use parentID and optionally a new avID; preflight first. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.',
-    update_view: 'Use avID + blockID + current viewID and at least one of filters, sorts, group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Filter nodes must not mix group fields (combination/filters) with leaf fields (column/operator/value); groups contain only combination and filters. Preflight validates all configurations before one transaction; readback protects every unrequested property.',
+    query: 'Use avID, optional keyword/page/pageSize/fields, and mode=rows (default) or primary_keys. fields is a list of stable columnIDs: requested cells and columns are returned and rowID is always kept. Row mode supports viewID/blockID/groupPaging. Primary-key mode rejects viewID/groupPaging/fields and defaults to 16 rows. Follow nextSteps only when present.',
+    create: 'Use parentID (an existing document or block), optionally name (the database name, set at creation) and a new avID. A new database starts with a primary key column (type block) and one select column; without name it is unnamed. Use rename for column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.',
+    update_view: 'Use avID, the carrier blockID (auto-filled when the AV has exactly one) and the current viewID, plus at least one of filters, sorts:[{column,order}] with order ASC or DESC (any case), group, columnVisibility:[{columnID,hidden}], columnOrder:[columnID]. Arrays replace except visibility, which changes listed columns only. Empty visibility alone is rejected. Filter nodes must not mix group fields (combination/filters) with leaf fields (column/operator/value); groups contain only combination and filters. Preflight validates all configurations before one transaction; readback protects every unrequested property.',
 
 };
 
 export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
-    upload_asset: 'Use assetsDirPath + exactly one of localFilePath or uploadSource. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.',
+    upload_asset: 'Pass exactly one of localFilePath (alias file) or uploadSource; assetsDirPath is optional and defaults to /assets/. MCP servers require an absolute localFilePath (relative paths are rejected because the server cannot know your working directory); the CLI resolves relative paths against your shell. CLI/Node automatically stage local bytes when the kernel coordinator is enabled (10 MiB maximum); direct kernel clients POST {fileName,dataBase64} to the authenticated /plugin/private/siyuan-plugins-mcp-sisyphus/transfer/upload endpoint and use the returned uploadSource within 10 minutes. The file alias is accepted for localFilePath, and omitted assetsDirPath uses /assets/. This action reads the local filesystem and requires explicit user confirmation. Files larger than the configured large-upload threshold (10 MB by default) must be stopped, confirmed by the user, and retried with confirmLargeFile=true.',
+    export_md: 'Exports one document as Markdown; includeChildren=true appends every descendant document in tree order (max 100), listed in documents. Only the root keeps YAML front matter; each descendant follows a --- rule and starts with a <!-- siyuan-document id=... --> marker and its # title heading. Database blocks are exported as tables of their current view, so view filters and hidden columns apply. For larger trees or per-file output use export_markdown_snapshot with roots.',
     list_templates: 'Searches SiYuan data/templates via the kernel template picker endpoint. Empty query lists all visible Markdown templates. Results include readArgs and renderArgsTemplate for reuse.',
     read_template: 'Use a path from list_templates, /data/templates/..., /templates/..., or a path relative to data/templates. Reads only Markdown template source and supports offset/limit pagination.',
     create_template: 'Use path + markdown to create a Markdown template under data/templates. overwrite=false by default returns template_exists when the path already exists; pass overwrite=true to replace it.',
     update_template: 'Use path + markdown to replace an existing Markdown template. The template must resolve through list_templates first; otherwise MCP returns template_not_found.',
     delete_template: 'Deletes an existing Markdown template after resolving it through SiYuan’s template picker. This action is dangerous and disabled by default.',
-    save_doc_as_template: 'Use id + name to save a document as a root-level template through SiYuan’s docSaveAsTemplate API. Slashes are rejected; pass overwrite=true to replace an existing root template.',
+    save_doc_as_template: 'Use id + name to save a document as a root-level template through SiYuan’s docSaveAsTemplate API. Slashes are rejected; pass overwrite=true to replace an existing root template. Side effects: SiYuan stores the template name on the source document (custom-sy-template-export-name), and the template keeps block IALs such as fold state and custom attributes. To create a document from a template, render it with file render (relative template paths work), then append the returned DOM via block append with dataType=dom; or read_template and pass the Markdown, minus its {: id=...} lines, to document create.',
     render: 'Use engine="template" with id + path for a workspace template; that engine uses .action{...} delimiters and exposes limited document fields such as id/title/name/alias. Set preview=true for SiYuan preview DOM. Use engine="sprig" with inline template for {{...}} syntax; Sprig has functions but no document context.',
     export_resources: 'Provide one or more existing resource paths. Asset paths like assets/foo.txt are normalized to /data/assets/foo.txt before export. Set outputPath to also copy the exported ZIP to a local filesystem path. With the kernel coordinator enabled, CLI/Node request delivery=download and save the ZIP locally without overwriting existing files; direct kernel clients can use the returned downloadPath through the authenticated getFile API. Using outputPath is high-risk and requires explicit user confirmation. To extract attachments for direct reading without a ZIP archive, prefer extract_doc which produces an uncompressed folder.',
-    export_markdown_snapshot: 'Provide notebookID plus exactly one of roots or documentIDs. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.',
+    export_markdown_snapshot: 'Provide notebookID plus exactly one of roots or documentIDs. A document root (/<id>.sy storage path) exports that document and all its descendants; "/" exports the whole notebook. Returns one deterministic, paginated page of Markdown with metadata/content hashes, path conflicts, errors, and an opaque cursor. It never writes the host filesystem and does not create a background job.',
     get_doc_assets: 'Use a document ID to list assets directly referenced by the current document tree after read-permission checks. This does not expand query embed blocks; when the user needs to inspect the full document content and assets, guide them to file(action="extract_doc") instead. Use assetType="image" to return only direct image assets.',
     audit_image_refs: 'Use id + expectedRefs from source or preprocessed Markdown. The action reads only SiYuan\'s direct image asset references over HTTP and returns expectedRefs, actualRefs, missingRefs, extraRefs, counts, and ok. Matching is a multiset by basename: each occurrence is preserved and consumed once, so duplicates and same-basename paths are not silently merged. It ignores SiYuan timestamp/id suffixes; it does not read local files or repair imports.',
     read_image: 'Use path plus exactly one of id or documentPath. MCP first authorizes that document tree and verifies that the image is directly referenced there, then returns metadata followed by one standard MCP image content block. Only PNG, JPEG, WebP, and GIF up to 20 MiB are accepted. It never writes a host file or runs OCR.',
@@ -271,9 +277,10 @@ export const FILE_ACTION_HINTS: Partial<Record<FileAction, string>> = {
 };
 
 export const SEARCH_GUIDANCE: string[] = [
+    'For permission-scoped document inventories, body statistics, and same-title candidates, use document(action="query"). SQL mode in fulltext has the same all-notebooks-readable requirement as query_sql.',
     'All search actions are read-only except find_replace, which modifies content and requires explicit user confirmation.',
-    'search(action="query_sql") only accepts SELECT statements and preserves user-selected columns. Raw SQL is available only when every notebook is readable because aggregate, join, CTE, and subquery results cannot be safely post-filtered by notebook.',
-    'When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.',
+    'search(action="query_sql") only accepts SELECT statements and preserves user-selected columns. If any notebook is unreadable it runs in restricted mode: only blocks, spans, attributes, assets, refs and file_annotation_refs (placed after FROM/JOIN) are allowed, and each is rewritten to rows from readable notebooks; the response scope field says which mode ran.',
+    'When listing rows with query_sql, add LIMIT yourself (aggregates need none). MCP may still truncate large result sets and will tell you when to refine the query.',
     'The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.',
     'In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.',
     'Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.',
@@ -285,10 +292,10 @@ export const SEARCH_GUIDANCE: string[] = [
 export const SEARCH_ACTION_HINTS: Partial<Record<SearchAction, string>> = {
     fulltext: 'Pass a query string. Supports keyword, query syntax, SQL, and regex modes via methodName (preferred) or method. fulltext now returns plainContent/excerpt by default. types accepts shortcodes directly: {"h": true, "c": true} auto-expands to {"heading": true, "codeBlock": true}. Use sortBy="relevance" or "date" instead of numeric orderBy. Use parentId to scope within a document, hasTags to filter tagged blocks.',
     semantic: 'Searches SiYuan’s native embedding index by meaning. Requires SiYuan 3.7.0+ and an enabled, indexed embedding model. Supports paths, types/typeShortcodes, subTypes, page, and pageSize; encrypted notebooks are not included in the native embedding index.',
-    query_sql: 'Execute a SELECT statement. Common tables: blocks, spans, assets. Prefer sql over stmt when prompting an AI. Always use LIMIT to control result size. User-selected columns are preserved. Raw SQL is rejected while any notebook is unreadable because arbitrary SQL cannot be safely post-filtered by notebook.',
-    get_backlinks: 'Returns documents/blocks that contain references and/or text mentions for the given block ID. Use mode="links" | "mentions" | "both". Partial permission-filtered results include machine-readable metadata.',
-    search_refs: 'Returns block-level reference contexts for the target id. Use this when you need the surrounding block content, not just the document-level backlink list. beforeLen controls how much leading context is included in each hit.',
-    find_replace: 'This is the mutating exception inside the search tool. It performs content replacement after write-permission checks and still requires explicit user confirmation.',
+    query_sql: 'Execute a SELECT statement. Common tables: blocks, spans, assets. Prefer sql over stmt when prompting an AI. Use LIMIT on row listings to control result size (aggregates need none). User-selected columns are preserved. With any unreadable notebook, query_sql runs in restricted mode (tables blocks/spans/attributes/assets/refs/file_annotation_refs only, scoped to readable notebooks; no sqlite_*/pragma_* or CTEs named like tables) and fulltext SQL mode is rejected. Use document(action="query") for permission-scoped document lists and statistics.',
+    get_backlinks: 'Returns documents that contain references and/or text mentions for the given block ID (backlinks/backmentions, grouped by document), plus refBlocks: the exact blocks that reference it, with their content (same rows as search_refs). Use mode="links" | "mentions" | "both". Partial permission-filtered results include machine-readable metadata.',
+    search_refs: 'Returns the blocks whose content references the target id (block refs to that block or document), each with its own content and ref_text. Empty when nothing references id. Use rootID to limit to one referencing document and k to filter by keyword; get_backlinks groups by document and can include unlinked mentions.',
+    find_replace: 'This is the mutating exception inside the search tool. It performs content replacement after write-permission checks and still requires explicit user confirmation. Only the listed blocks are rewritten, but SiYuan block refs elsewhere whose anchor text is dynamic follow the referenced block, so they show its new text after the change.',
     search_assets: 'Searches asset filenames. Prefer query over k when prompting an AI. If you need OCR or indexed inner-text matches, use fulltext_asset_content instead.',
     fulltext_asset_content: 'Searches indexed asset/OCR text. Prefer methodName and sortBy over numeric method/orderBy. Provide assetId for an exact asset-content lookup.',
 };
@@ -320,10 +327,10 @@ export const SYSTEM_ACTION_HINTS: Partial<Record<SystemAction, string>> = {
 };
 
 export const FLASHCARD_ACTION_HINTS: Partial<Record<FlashcardAction, string>> = {
-    list_cards: 'Use scope="all" | "deck" | "notebook" | "tree" plus filter="due" | "new" | "old". For scope="all", omit deckID; an empty string is treated as omitted. For scope="deck", pass a non-empty deckID. For scope="notebook", pass notebook. For scope="tree", pass rootID. reviewedCards is optional and follows SiYuan\'s review flow.',
+    list_cards: 'Use scope="all" | "deck" | "notebook" | "tree" plus optional filter="due" (default) | "new" | "old". For scope="all", omit deckID; an empty string is treated as omitted. For scope="deck", pass a non-empty deckID. For scope="notebook", pass notebook. For scope="tree", pass rootID. reviewedCards is optional and follows SiYuan\'s review flow.',
     get_decks: 'Returns available flashcard decks so the caller can discover deckID values.',
     get_cards: 'Use deckID + optional page/pageSize to list all cards in a deck (regardless of due state). Use empty string deckID to query across all decks. Returns cards, total count, and pageCount.',
-    review_card: 'Use a concrete deckID + cardID + rating, or pass skip=true to skip. Resolve deckID/cardID through list_cards or get_cards first; empty deckID is rejected. reviewedCards is optional; each entry must include cardID because SiYuan only reads reviewedCards[].cardID.',
+    review_card: 'Use a concrete deckID + cardID + rating, or pass skip=true to skip for the current session without rating/rescheduling. Continue with reviewSession.nextListArgs; omitting reviewedCards starts a new session and clears skips. Copy cardID from list_cards or get_cards, never blockID. Preflight with validateOnly=true, then submit preflight.commitArgs unchanged. The card must exist in that deck and its notebook must be writable; invalid IDs are rejected before review. Strict readback checks the actual scheduling state. reviewedCards is optional; each entry must include cardID because SiYuan only reads reviewedCards[].cardID.',
     create_card: 'Use deckID + content blockIDs to turn existing blocks into flashcards; single blockID is accepted as a convenience alias. Non-built-in deck IDs must already exist. Document block IDs are rejected. This calls SiYuan\'s addRiffCards flow, writes custom-riff-decks, verifies the binding, and creates deck records together.',
     remove_card: 'Use deckID + blockIDs to remove flashcard bindings from a deck. This does not delete the underlying note blocks. This action requires explicit user confirmation.',
 };
@@ -384,6 +391,45 @@ export interface HelpExample {
 
 export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, HelpExample[]>>> = {
     document: {
+        rename: [
+            {
+                title: 'Rename one document',
+                mcp: { action: 'rename', id: '20240318112233-doc0001', title: 'New title', validateOnly: true },
+            },
+            {
+                title: 'Rename several documents in one call',
+                description: 'Up to 50 items, one preflight and one ordered receipt.',
+                mcp: { action: 'rename', items: [{ id: '20240318112233-doc0001', title: '2026-11 Plan' }, { id: '20240318112233-doc0002', title: '2026-11 Notes' }], validateOnly: true },
+            },
+        ],
+        remove: [
+            { title: 'Remove one document by ID (preflight first)', mcp: { action: 'remove', id: '20240318112233-doc0001', validateOnly: true } },
+            { title: 'Remove one document by notebook + storage path', description: 'path is the storage path from document lookup (ends in .sy).', mcp: { action: 'remove', notebook: '20210808180117-czj9bvb', path: '/20240318112233-doc0001.sy', validateOnly: true } },
+        ],
+        lookup: [
+            { title: 'Look up a document by ID', mcp: { action: 'lookup', id: '20240318112233-doc0001' } },
+            { title: 'Look up a document by notebook + human path', mcp: { action: 'lookup', notebook: '20210808180117-czj9bvb', hpath: '/Folder/Doc' } },
+        ],
+        move: [
+            {
+                title: 'Move several documents under another document in one call',
+                description: 'fromIDs move under toID (a document ID, or a notebook ID for its root). Moves are delete-level: every notebook involved needs rwd.',
+                mcp: { action: 'move', fromIDs: ['20240318112233-doc0002', '20240318112233-doc0003'], toID: '20240318112233-doc0001', validateOnly: true },
+            },
+        ],
+        heading_to_doc: [
+            {
+                title: 'Split a heading into a child document of its source',
+                description: 'The heading and everything under it move into the new document (its ID is the heading ID). targetPath is the source document storage path from document lookup; omit it to land at the notebook root. Rename the new document afterwards if needed.',
+                mcp: { action: 'heading_to_doc', headingID: '20240318112233-head001', targetNotebook: '20240318112233-nb00001', targetPath: '/20240318112233-doc0001.sy', validateOnly: true },
+            },
+        ],
+        query: [
+            { title: 'List readable documents with indexed statistics', mcp: { action: 'query', page: 1, pageSize: 50 } },
+            { title: 'Find documents with no indexed body blocks', mcp: { action: 'query', maxBlocks: 0, fields: ['id', 'notebook', 'title', 'hpath', 'blockCount'] } },
+            { title: 'Find same-title candidates across readable notebooks', mcp: { action: 'query', duplicatesOnly: true, sortBy: 'title', sortOrder: 'asc', fields: ['id', 'notebook', 'title', 'hpath', 'sameTitleCount'] } },
+            { title: 'List only metadata under a human path', mcp: { action: 'query', hpathPrefix: '/Projects', fields: ['id', 'notebook', 'title', 'hpath', 'updated'] } },
+        ],
         ensure_link_targets: [
             {
                 title: 'Resolve explicit existing child IDs',
@@ -442,6 +488,19 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
                 },
             },
             {
+                title: 'Create several documents in one call (batch, up to 20)',
+                description: 'Created in order, so list a parent before its children. The first failure stops the batch; the receipt lists created (with id), failed and not_applied items.',
+                mcp: {
+                    action: 'create',
+                    notebook: '20210808180117-czj9bvb',
+                    docs: [
+                        { path: '/Meetings/Notes', markdown: 'Agenda' },
+                        { path: '/Meetings/Notes/Action 1' },
+                        { path: '/Meetings/Notes/Action 2', markdown: 'Owner: Li' },
+                    ],
+                },
+            },
+            {
                 title: 'Create with a storage parent path returned by lookup',
                 description: 'Only parentPath accepts this .sy storage path form; path does not.',
                 mcp: {
@@ -454,6 +513,17 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     fs: {
+        mv: [
+            {
+                title: 'Move or rename one document (preflight first)',
+                mcp: { action: 'mv', from: '/Notebook/Inbox/Draft', to: '/Notebook/Archive/Final', validateOnly: true },
+            },
+            {
+                title: 'Move several documents in one call',
+                description: 'Up to 20 items. All paths are resolved before the first move; a destination cannot be another item\'s source.',
+                mcp: { action: 'mv', items: [{ from: '/Notebook/Inbox/A', to: '/Notebook/Archive/A' }, { from: '/Notebook/Inbox/B', to: '/Notebook/Archive/B 2026' }], validateOnly: true },
+            },
+        ],
         replace: [
             {
                 title: 'Replace exact text with canonical edit object',
@@ -481,6 +551,46 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
     },
     notebook: {},
     block: {
+        insert: [
+            { title: 'Insert a block after another block', mcp: { action: 'insert', dataType: 'markdown', data: 'New paragraph', previousID: '20240318112233-abc123', validateOnly: true } },
+            { title: 'Insert a block as the first child of a document', mcp: { action: 'insert', dataType: 'markdown', data: 'New paragraph', parentID: '20240318112233-doc0001', validateOnly: true } },
+        ],
+        docs_info: [
+            { title: 'Document info for one ID', mcp: { action: 'docs_info', id: '20240318112233-doc0001' } },
+        ],
+        move: [
+            {
+                title: 'Move a block after another block',
+                description: 'previousID places the block right after that sibling (any parent). To make it the first child of a block or document, pass parentID instead.',
+                mcp: { action: 'move', id: '20240318112233-abc123', previousID: '20240318112233-def456', validateOnly: true },
+            },
+            {
+                title: 'Move a block to the top of a document',
+                mcp: { action: 'move', id: '20240318112233-abc123', parentID: '20240318112233-doc0001', validateOnly: true },
+            },
+        ],
+        update: [
+            {
+                title: 'Replace one block (preflight first)',
+                description: 'Writes are two steps: run with validateOnly=true, then commit with the returned requestId and expectedStateHash.',
+                mcp: { action: 'update', id: '20240318112233-abc123', dataType: 'markdown', data: 'New paragraph text', validateOnly: true },
+            },
+            {
+                title: 'Replace several blocks in one call',
+                mcp: { action: 'update', items: [{ id: '20240318112233-abc123', dataType: 'markdown', data: 'First' }, { id: '20240318112233-def456', dataType: 'markdown', data: 'Second' }], validateOnly: true },
+            },
+        ],
+        replace: [
+            {
+                title: 'Replace exact text inside one block (preflight first)',
+                description: 'edit is {old, new} or a list of them; add replace_all=true to replace every occurrence. Copy old from block get_kramdown.',
+                mcp: { action: 'replace', id: '20240318112233-abc123', edit: { old: 'old text', new: 'new text' }, validateOnly: true },
+            },
+            {
+                title: 'Several edits in one block',
+                mcp: { action: 'replace', id: '20240318112233-abc123', edit: [{ old: 'draft', new: 'final' }, { old: 'TODO', new: 'DONE', replace_all: true }], validateOnly: true },
+            },
+        ],
         word_count: [
             {
                 title: 'Get word count for one block',
@@ -500,6 +610,63 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     av: {
+        add_rows: [
+            {
+                title: 'Add calendar events with their dates in one call (preflight first)',
+                description: 'Each row is created with its cells; no set_cells round trip. A date-only value stores that day; "T09:30" adds a time and endDate makes a range.',
+                mcp: {
+                    action: 'add_rows',
+                    avID: '20240318112233-avdb001',
+                    rows: [
+                        { clientKey: 'e1', primaryKeyText: 'Standup', cells: [{ columnID: '20240318112233-date001', valueType: 'date', date: '2026-11-05T09:30', endDate: '2026-11-05T10:00' }] },
+                        { clientKey: 'e2', primaryKeyText: 'Dentist', cells: [{ columnID: '20240318112233-date001', valueType: 'date', date: '2026-11-07' }, { columnID: '20240318112233-status1', valueType: 'select', option: 'Personal' }] },
+                    ],
+                    validateOnly: true,
+                },
+            },
+            {
+                title: 'Add rows and fill their cells in one batch (preflight first)',
+                description: 'Get column IDs from av(action="get"). Each row needs a unique clientKey; primaryKeyText fills the primary key column.',
+                mcp: {
+                    action: 'add_rows',
+                    avID: '20240318112233-avdb001',
+                    rows: [
+                        { clientKey: 'a', primaryKeyText: 'Write spec', cells: [{ columnID: '20240318112233-status1', valueType: 'select', option: 'Doing' }, { columnID: '20240318112233-hours01', valueType: 'number', number: 3 }] },
+                        { clientKey: 'b', primaryKeyText: 'Review', cells: [{ columnID: '20240318112233-status1', valueType: 'select', option: 'Todo' }] },
+                    ],
+                    validateOnly: true,
+                },
+            },
+        ],
+        set_cells: [
+            {
+                title: 'Set a select and a number cell',
+                mcp: {
+                    action: 'set_cells',
+                    avID: '20240318112233-avdb001',
+                    cells: [
+                        { rowID: '20240318112233-row0001', columnID: '20240318112233-status1', valueType: 'select', option: 'Done' },
+                        { rowID: '20240318112233-row0001', columnID: '20240318112233-hours01', valueType: 'number', number: 5 },
+                    ],
+                    validateOnly: true,
+                },
+            },
+            {
+                title: 'Set one date cell',
+                description: 'A date without a time is stored as that day (shown without 00:00). Add a time ("2026-11-05T14:30") for a timed value; endDate makes a range.',
+                mcp: { action: 'set_cells', avID: '20240318112233-avdb001', rowID: '20240318112233-row0001', columnID: '20240318112233-due0001', valueType: 'date', date: '2026-11-05', validateOnly: true },
+            },
+        ],
+        create: [
+            { title: 'Create a named database at the end of a document', mcp: { action: 'create', parentID: '20240318112233-doc0001', name: 'Tasks' } },
+            { title: 'Create an unnamed database (name it later with rename)', mcp: { action: 'create', parentID: '20240318112233-doc0001' } },
+        ],
+        rename: [
+            {
+                title: 'Name the database and rename its primary key column',
+                mcp: { action: 'rename', avID: '20240318112233-avdb001', name: 'Tasks', keyID: '20240318112233-pkey001', keyName: 'Task', validateOnly: true },
+            },
+        ],
         update_view: [
             {
                 title: 'Preflight a select leaf filter',
@@ -537,6 +704,18 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
                     validateOnly: true,
                 },
             },
+            {
+                title: 'Sort descending by one column',
+                description: 'order is ASC or DESC (lowercase is accepted). blockID comes from get databaseContext.carrierBlockIDs and may be omitted when the database has exactly one carrier.',
+                mcp: {
+                    action: 'update_view',
+                    avID: '20240318112233-avdb001',
+                    blockID: '20240318112233-block01',
+                    viewID: '20240318112233-view001',
+                    sorts: [{ column: '20240318112233-score01', order: 'DESC' }],
+                    validateOnly: true,
+                },
+            },
         ],
         query: [
             {
@@ -559,6 +738,17 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     file: {
+        export_markdown_snapshot: [
+            {
+                title: 'Export a document and every descendant as Markdown',
+                description: 'roots takes notebook-local storage paths (from document lookup); each documents[] item carries content (the Markdown) plus hashes. Follow the cursor for further pages.',
+                mcp: { action: 'export_markdown_snapshot', notebookID: '20240318112233-nb00001', roots: ['/20240318112233-doc0001.sy'] },
+            },
+            {
+                title: 'Export specific documents only',
+                mcp: { action: 'export_markdown_snapshot', notebookID: '20240318112233-nb00001', documentIDs: ['20240318112233-doc0001'] },
+            },
+        ],
         upload_asset: [
             {
                 title: 'Upload a local file with canonical fields',
@@ -619,7 +809,21 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
             },
         ],
     },
-    search: {},
+    search: {
+        search_assets: [
+            { title: 'Find assets by file name keyword', mcp: { action: 'search_assets', query: 'report' } },
+        ],
+        fulltext_asset_content: [
+            { title: 'Search text inside assets (PDF, Office, OCR)', mcp: { action: 'fulltext_asset_content', query: 'invoice' } },
+        ],
+        query_sql: [
+            {
+                title: 'List matching blocks (pass the statement as sql)',
+                description: 'Add LIMIT to row listings; an aggregate such as COUNT(*) returns one row and needs none. With an unreadable notebook the result scope says which notebooks were covered.',
+                mcp: { action: 'query_sql', sql: "SELECT id, content, hpath FROM blocks WHERE type = 'p' AND content LIKE '%keyword%' LIMIT 10" },
+            },
+        ],
+    },
     tag: {},
     timeline: {},
     system: {

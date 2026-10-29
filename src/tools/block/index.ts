@@ -1,29 +1,6 @@
 import type { BlockAction } from '../../core/config';
 import { BLOCK_ACTION_HINTS, BLOCK_GUIDANCE } from '../../core/help';
-import {
-    BlockActionSchema,
-    BlockAddToDailyNoteSchema,
-    BlockAppendSchema,
-    BlockBatchKramdownSchema,
-    BlockBreadcrumbSchema,
-    BlockDeleteSchema,
-    BlockDocsInfoSchema,
-    BlockDomSchema,
-    BlockGetAttrsSchema,
-    BlockGetChildrenSchema,
-    BlockGetKramdownSchema,
-    BlockInfoSchema,
-    BlockInsertSchema,
-    BlockMoveSchema,
-    BlockPrependSchema,
-    BlockRecentUpdatedSchema,
-    BlockReplaceSchema,
-    BlockSetAttrsSchema,
-    BlockSetFoldStateSchema,
-    BlockTransferReferencesSchema,
-    BlockUpdateSchema,
-    BlockWordCountSchema,
-} from '../../core/types';
+import { BlockActionSchema, BlockAddToDailyNoteSchema, BlockAppendSchema, BlockBatchKramdownSchema, BlockBreadcrumbSchema, BlockDeleteSchema, BlockDocsInfoSchema, BlockDomSchema, BlockGetAttrsSchema, BlockGetChildrenSchema, BlockGetKramdownSchema, BlockInfoSchema, BlockInsertSchema, BlockMoveSchema, BlockPrependSchema, BlockRecentUpdatedSchema, BlockReplaceSchema, BlockSetAttrsSchema, BlockSetFoldStateSchema, BlockTransferReferencesSchema, BlockUpdateSchema, BlockWordCountSchema } from './schemas';
 import { defineTool } from '../internal/define-tool';
 import { createZodActionVariant, type ActionVariant } from '../internal/shared';
 import { BLOCK_ACTION_HANDLERS } from './handlers';

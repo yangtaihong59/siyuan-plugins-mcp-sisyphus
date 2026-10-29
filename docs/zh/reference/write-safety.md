@@ -1,5 +1,7 @@
 # 严格安全写入
 
+严格预检和提交前的状态核对都会重新加载笔记本权限；已有预检租约不能绕过后续撤销的权限，授权提升后也无需重启服务。
+
 严格安全写入解决的不是“写接口是否返回成功”，而是三个更具体的问题：目标在读取后是否被别人改过、网络失败时是否会重复写、以及重复请求能否被识别。该功能默认开启，且不创建思源数据快照。
 
 ## 调用流程
@@ -26,9 +28,42 @@
   "preconditionField": "expectedStateHash",
   "expectedStateHash": "8ac2",
   "hashPrefixLength": 4,
-  "leaseExpiresAt": 1786543200000
+  "expiresAt": 1786543200000
 }
 ```
+
+同一响应还包含规范化的 `preflight` 对象（`version: 2`），这是首选客户端契约：
+
+```json
+{
+  "preflight": {
+    "version": 2,
+    "requestId": "b72f",
+    "expiresAt": 1786543200000,
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "targetCount": 1 },
+    "commitArgs": {
+      "action": "set_cells",
+      "avID": "20260812120000-abcdefg",
+      "cells": [],
+      "validateOnly": false,
+      "requestId": "b72f",
+      "expectedManifestHash": "8ac2"
+    }
+  }
+}
+```
+
+提交时原样复制 `preflight.commitArgs`，不要自行重建 `requestId`、哈希字段或业务参数。`counts` 按 action 计算：`operationCount` 总是存在；`rowCount`、`cellCount`、`targetCount`（提交时复核状态的不同对象数）只在可计算时出现，相同值不会把显式单元格数去重变小。`expiresAt`（顶层与 `preflight.expiresAt`）是唯一的截止时间：取 requestId 与哈希租约中较早者，预检后 10 分钟。自 0.7.0 起不再返回语义重叠的 `requestIdExpiresAt`、`leaseExpiresAt`、`ttlMs` 与顶层 `targetCount`。迁移期仍保留顶层 `requestId` 与哈希字段，供 0.6.13 客户端使用；两者指向同一条执行路径，不是第二条重试通道。若批次过大无法在响应上限内给出完整可执行参数，会明确拒绝而不是截断。
+
+### 影响预览
+
+每次成功的预检还会在顶层返回 `preview`，说明提交将改变什么。提交前请阅读它，并与本次意图核对：
+
+- `targets`：受影响的文档、块、数据库、笔记本或标签，附 hPath、笔记本名称与当前客户端对该笔记本的权限。
+- `changes`：每项变更一条可读的 `summary` 与结构化细节。以下 action 有专门摘要：block update/replace/delete/move，fs write（覆盖）/replace/rm/mv/reorder，document remove/move/reorder/heading_to_doc/doc_to_heading，search find_replace，tag rename/remove，av remove_rows/remove_column/set_cells；其余写入给出通用说明与关键参数。
+- `risk`：可能包含 `deletes`、`empties_source`、`cross_notebook`、`irreversible`、`large_batch`（超过 20 项）、`workspace_wide`、`overwrites_content`。
+
+默认摘要级别把摘录截断到约 200 字符、每个列表最多 5 项。在 `validateOnly=true` 时传 `preview: "full"`（CLI 用 `--preview full`）可获得完整的前后文本。`preview` 只影响响应：它不进入参数摘要和 `commitArgs`，也不改变哈希。预览只读构建；构建失败时预检仍然成功，并返回 `preview: { "error": "..." }`。
 
 凭证字段名与正式写入参数一致，可直接复制该字段和值；正式执行时移除 `validateOnly`（或设为 `false`），并复制预检返回的 `requestId`：
 
@@ -43,7 +78,7 @@
 }
 ```
 
-`requestId` 由预检签发，从 4 位十六进制开始，遇到已签发 ID 冲突时自动加长。请完整复制，不要自行生成、截短或改名；重试必须沿用同一个 ID。首次执行有效期为 10 分钟（`requestIdExpiresAt`），已执行结果最多保留 7 天。服务器持久保留已用 ID 标记，过期 ID 不会再次签发；标记不含笔记正文，存储量随签发次数增长。纯新增操作也必须先预检领取 ID。
+`requestId` 由预检签发，从 4 位十六进制开始，遇到已签发 ID 冲突时自动加长。请完整复制，不要自行生成、截短或改名；重试必须沿用同一个 ID。首次执行有效期为 10 分钟（`expiresAt`），已执行结果最多保留 7 天。服务器持久保留已用 ID 标记，过期 ID 不会再次签发；标记不含笔记正文，存储量随签发次数增长。纯新增操作也必须先预检领取 ID。
 
 不同 action 可能返回 `expectedStateHash`、`expectedStructureHash`、`expectedManifestHash` 或 `expectedSourceHash`。调用方应读取 `preconditionField`，不要自行猜测字段。纯新增 action 不需要状态哈希，但真实执行仍要求预检返回的 `requestId`。
 
@@ -53,7 +88,52 @@
 
 短值池不保存正文；已分配短值在本次进程内不回收、不改绑，租约过期或消费也不会释放短值。进程重启后池和活动租约清空，所以短值不是跨重启的永久标识。预检租约仍按工具、action、业务参数和目标 ID 隔离，保留原有有效期与容量限制；仅知道池内短值不能授权写入。
 
-`block.update` 的 `targetCount` 包含单个 `id` 或批量 `items[].id` 中的去重目标数。11 个不同块的批量更新返回 11；同一个 ID 重复出现仍只算一个目标。块状态同时读取 Kramdown、块属性和 DOM，因此块引用的 `data-subtype`、`strong` / `em` 等行内属性变化会使哈希变化。DOM 属性顺序和创建/更新时间不会被视为内容修改。预检后发生属性修改会返回 `state_changed`；成功修改属性返回 `committed`，只有读回状态一致时才返回 `no_change`。
+`block.update` 的 `preflight.counts.targetCount` 包含单个 `id` 或批量 `items[].id` 中的去重目标数。11 个不同块的批量更新返回 11；同一个 ID 重复出现仍只算一个目标。块状态同时读取 Kramdown、块属性和 DOM，因此块引用的 `data-subtype`、`strong` / `em` 等行内属性变化会使哈希变化。DOM 属性顺序和创建/更新时间不会被视为内容修改。预检后发生属性修改会返回 `state_changed`；成功修改属性返回 `committed`，只有读回状态一致时才返回 `no_change`。
+
+## 读取哈希与一步写入（可选）
+
+`writeSafety.oneStep` 默认为 `off`（插件设置 → 安全设置 →“低风险一步写入”，在 `mcpToolsConfig` 中保存为 `"writeSafety": { "oneStep": "low_risk" }`）。关闭时，读取结果、schema、服务端 instructions 与上面的两步流程完全不变，不带 `requestId` 的提交仍按原样返回 `precondition_required`。切换后插件会重启 HTTP 服务，客户端需重新连接以加载新 schema。该设置由当前选定的协调器（内核或 Node HTTP）读取，CLI 随同一开关生效。
+
+### 读取哈希（`ifMatch`）
+
+开启一步写入后，读取可写目标会在顶层附带 `ifMatch`：即严格预检探针计算的同一个 sha256:v1 状态哈希的前 16 位十六进制。状态哈希在读取**之前**计算，若两者之间目标被改动，调用方拿到的是比所见内容更旧的哈希，后续写入会安全失败。客户端无写权限（笔记本权限 `r`/`none`）或目标不存在时不返回 `ifMatch`。同时返回的 `ifMatchTarget` 指明该哈希覆盖的 id 或路径：`block.get_children` 覆盖的是被读取的父块，而不是其子块。不匹配时错误会说明该值必须来自哪个目标及对应读取；若该值由本进程为另一目标签发，错误会同时给出两者（`ifMatchIssuedFor`）。
+
+| 读取 | 规范探针（哈希等于该写入的预检凭据） | 接受同一 `ifMatch` 的写入 |
+| --- | --- | --- |
+| `block.get_kramdown` / `get_attrs` / `get_children` `{id}`、`document.get_doc {id}` | `block.update {id}`（`expectedStateHash`） | block `update`、`replace`、`set_attrs`、`set_fold_state`、`delete`；document `rename`、`set_attr`、`remove`（单个 `id`） |
+| `fs.read {path}` | `fs.write {path}` 且 `overwrite=true`（`expectedStateHash`） | fs `write`、`replace`、`rm` |
+| `av.get` / `av.query {avID}` | `av.set_cells {avID}`（`expectedManifestHash`） | av `add_rows`、`add_column`、`add_view`、`set_cells`、`remove_rows`、`remove_column`、`rename` |
+| `file.read_template {path}` | `file.update_template {path}`，路径规范化为相对 `data/templates` 的形式 | file `update_template`、`delete_template` |
+
+同一目标的读取与写入都通过这一个规范探针调用计算哈希，因此“读取哈希 = 预检哈希”由构造保证；同目标的其他写入也与该规范哈希比较。读取与写入的路径写法须一致（模板路径会规范化，fs 路径不会）。批量形态（`items`）没有单一目标，会拒绝 `ifMatch`。
+
+任何严格写入都接受 `ifMatch`（CLI `--if-match`），包括 `validateOnly` 预检——此时它弥补了智能体读取与预检之间的空档。服务端会重新计算规范哈希；不一致时返回 `state_changed`，`expectedField: "ifMatch"`，并提示重新读取目标。`ifMatch` 不进入参数摘要，也不出现在 `commitArgs` 中；格式错误（少于 16 位十六进制）返回 `invalid_arguments`。只有开启一步写入时，挂载 schema 才声明 `ifMatch`（增加数百字符）。
+
+### 一步写入分级
+
+不带 `requestId` 的提交只有在开关开启且分级允许时才能一步执行（见 `src/core/write-safety-policy.ts` 的 `ONE_STEP_TIERS`）：
+
+| 级别 | 动作 | 一步规则 |
+| --- | --- | --- |
+| 1 — 新增/低影响 | document `create`、`rename`、`set_attr`；fs `write`（新建文档）；block `insert`、`prepend`、`append`、`set_attrs`；av `create`（可用 `name` 在创建时命名）、`rename`、`add_rows`、`add_column`、`add_view`；flashcard `create_card`、`review_card` | 可免预检；`ifMatch` 可选（提供时校验） |
+| 2 — 覆盖 | block `update`、`replace`；fs `write` 且 `overwrite=true`；不含 `replace_all` 的 fs `replace`；av `set_cells`；file `update_template` | 仅在单一目标且 `ifMatch` 匹配时可免预检 |
+| 3 — 始终两步 | 所有 `dangerous` 动作、tag `rename`、document `heading_to_doc` / `doc_to_heading` / `reorder` / `move`、fs `reorder` / `mv`、block `transfer_references`、av `remove_rows` / `remove_column`、notebook `set_open_state` / `set_conf` / `rename`、任一编辑含 `replace_all` 的 fs `replace`，以及上表未列出的所有动作（默认拒绝） | 从不 |
+
+最大的条目列表（`items`、`blocks`、`rows`、`blockIDs`、`primaryKeyTexts`、`cells`、`rowIDs`、`ids`、`edit`）超过 20 项的写入一律回退为两步。动作帮助只在确实接受这类列表的动作上提及该上限。
+
+一步提交只省去往返，不省检查：仍会重新加载权限、执行同样的状态探针与引用校验、校验 `ifMatch`、经协调器串行执行、写后读回并写入账本。它会获得服务端签发的 `requestId`（在 `safety.requestId` 中返回，带它重放相同参数不会再次执行），回执带 `oneStep: { tier, meaning }` 以及预检本应返回的同一份 `preview`，便于事后核对。该预览在写入前生成，因此其中目标摘录命名为 `excerptBefore`。由于 ID 在调用过程中才签发，响应前的传输丢失无法靠不带 ID 重发去重：遇到 `outcome_unknown` 时应检查目标，而不是重发。
+
+被拒绝的一步提交返回 `precondition_required`，附 `error.oneStep: { allowed: false, tier, reason }`，`reason` 为 `setting_off`（仅在发送了 `ifMatch` 时出现）、`tier3`、`missing_if_match`、`if_match_unsupported` 或 `batch_too_large`，消息会指明两步流程（CLI：加 `--validate-only` 重新运行）。开启后，对 1/2 级动作调用 `action="help"` 会附带 `oneStep: { tier, rule }`。
+
+### 一步覆盖写入的风险
+
+第 2 级允许覆盖类写入凭新鲜的 `ifMatch` 一步提交。`ifMatch` 只能证明目标自读取后没有变化，无法发现模型读错、选错了目标块。两步模式下，预检预览可以在写入前拦住这种错误；一步模式下，同一份预览要到写入后才出现在回执中。缓解措施：
+
+- 一步写入默认关闭。
+- 第 2 级写入需要对该目标本身做一次新鲜读取（取得其 `ifMatch`）；批量写入不能一步提交。
+- 危险与结构性写入、超过 20 项的批量写入始终保持两步。
+- 模型对目标没有把握时，随时可以改走两步（`validateOnly`；CLI 为 `--validate-only`）。
+- 可恢复性不同：被移除的文档会复制进思源文件历史，可从那里恢复；被覆盖的块内容在写入时不会另存副本，较旧版本只可能存在于思源定期为已修改文档生成的文件历史快照中（`editor.generateHistoryInterval`）。两者都无法通过本工具撤销。
 
 ## 它提高了什么正确性
 
@@ -70,13 +150,15 @@
 
 | 错误码 | 含义 | 调用方行为 |
 | --- | --- | --- |
-| `precondition_required` | 缺少预检哈希或 request ID | 重新预检；不要直接猜哈希 |
+| `precondition_required` | 缺少预检哈希或 request ID，或一步提交被拒（见 `error.oneStep.reason`） | 重新预检；不要直接猜哈希 |
 | `preflight_lease_invalid` | 租约缺失、过期、被淘汰或服务已重启 | 使用相同业务参数重新 `validateOnly` |
-| `state_changed` | 预检后目标已变化 | 停止，重新读取并决定是否仍要修改 |
-| `outcome_unknown` | 写入开始后连接中断，结果无法确定 | 不要换新 ID 自动重试；先检查目标 |
+| `state_changed` | 预检后（或产生 `ifMatch` 的读取之后）目标已变化 | 停止，重新读取并决定是否仍要修改 |
+| `not_applied` | 思源明确拒绝了本次提交的写入（API 错误码或 4xx），且没有发出其他写入：未做任何修改。`safety.transactionState` 为 `not_applied`；重放该 request ID 返回同一错误码 | 修正参数后重新调用（两步模式下重新预检） |
+| `outcome_unknown` | 写入开始后连接中断，或处理器在某次写入可能已生效后失败，结果无法确定 | 不要换新 ID 自动重试；先检查目标 |
 | `readback_mismatch` | 接口返回后无法确认最终状态 | 视为未知结果，人工或只读检查 |
 | `idempotency_conflict` | request ID 被用于另一组参数 | 这是调用方错误，必须生成新 ID |
 | `write_coordinator_unavailable` | 无法发现或连接选定协调器 | 检查内核入口或 Node HTTP 设置并重试预检 |
+| `kernel_endpoint_unsupported` | 已开启内核端点，但思源版本低于 3.7.0 | 关闭内核端点改用 HTTP 服务，或升级思源 |
 | `preflight_unavailable` | action 是无法读回的外部副作用 | 预检不会执行；如确认调用，只能接受非严格保证 |
 
 ## 边界

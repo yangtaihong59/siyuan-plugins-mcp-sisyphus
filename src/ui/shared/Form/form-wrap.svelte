@@ -89,10 +89,11 @@
         min-width: 0;
     }
 
+    /* SiYuan's base.css sets .b3-label__text to 14px !important; keep the settings caption size. */
     .b3-label__text {
         margin-top: 4px;
         color: var(--mcp-config-caption-color, var(--b3-theme-on-surface-light));
-        font-size: 12px;
+        font-size: 12px !important;
         line-height: 1.55;
     }
 

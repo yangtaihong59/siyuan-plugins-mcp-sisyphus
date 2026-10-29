@@ -15,8 +15,7 @@ export async function uploadAsset(
     fileContent: Uint8Array,
     fileName: string,
 ): Promise<{ errFiles: string[]; succMap: { [key: string]: string } }> {
-    const native = client as SiYuanClient & { uploadAssetBytes?: <T>(dir: string, bytes: Uint8Array, name: string) => Promise<T> };
-    if (native.uploadAssetBytes) return native.uploadAssetBytes(assetsDirPath, fileContent, fileName);
+    if (client.uploadAssetBytes) return client.uploadAssetBytes(assetsDirPath, fileContent, fileName);
     const formData = new FormData();
     const file = new File([fileContent as Uint8Array<ArrayBuffer>], fileName);
     formData.append('assetsDirPath', assetsDirPath);
@@ -29,10 +28,12 @@ export async function uploadAsset(
  */
 export async function exportMdContent(
     client: SiYuanClient,
-    id: string
+    id: string,
+    options: { refMode?: number } = {},
 ): Promise<IResExportMdContent> {
     const request: IReqExportMdContent = {
         id,
+        ...(options.refMode !== undefined ? { refMode: options.refMode } : {}),
     };
     return client.requestRead<IResExportMdContent>('/api/export/exportMdContent', request);
 }

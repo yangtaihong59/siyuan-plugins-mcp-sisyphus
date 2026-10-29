@@ -70,7 +70,6 @@ export async function applyUiRefresh(
     operations: UiRefreshOperation[],
 ): Promise<ToolResult> {
     if (result.isError || operations.length === 0) return result;
-    if (!client || typeof (client as { request?: unknown }).request !== 'function') return result;
 
     const payload = parseJsonResult(result);
     if (!payload) return result;

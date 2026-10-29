@@ -48,6 +48,8 @@ function createPermMgr() {
 }
 
 function createContractClient() {
+    let convertedHeading = false, convertedDocument = false;
+    const src = "20261020000000-source1", dst = "20261020000001-target1", heading = "20261020000002-heading";
     return createMockClient({
         getBaseUrl: vi.fn(() => 'http://127.0.0.1:6806'),
         getAuthHeaders: vi.fn(() => ({ Authorization: 'Token test' })),
@@ -56,8 +58,19 @@ function createContractClient() {
         readFileBinary: vi.fn(async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])),
         request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
             if (endpoint.startsWith('/api/ui/')) return null;
+            if (endpoint === '/api/filetree/heading2Doc') { convertedHeading = true; return null; }
+            if (endpoint === '/api/filetree/doc2Heading') { convertedDocument = true; return { srcTreeBox: 'nb-1', srcTreePath: `/${src}.sy` }; }
+            if (endpoint === '/api/filetree/listDocsByPath' && body?.path === `/${src}.sy`) return { files: [] };
+            if (endpoint === '/api/block/getBlockDOM' && body?.id === heading) return { dom: '<div data-type="NodeHeading"></div>' };
+            if (endpoint === '/api/block/getBlockInfo' && [src, dst, heading].includes(String(body?.id))) {
+                const id = String(body?.id);
+                const rootID = id === src ? (convertedDocument ? dst : src) : id === heading && convertedHeading ? heading : dst;
+                return { rootID, box: 'nb-1', path: `/${rootID}.sy` };
+            }
             if (endpoint === '/api/query/sql') {
                 const stmt = String(body?.stmt ?? '');
+                if (/SELECT COUNT\(\*\) AS total/.test(stmt)) return [{ total: 1 }];
+                if (stmt.includes('d.box AS __notebook')) return [{ ...docRow, notebook: 'nb-1', title: 'Doc 1', __notebook: 'nb-1', blockCount: 0, contentChars: 0, sameTitleCount: 1 }];
                 if (stmt.includes("type = 'd'")) {
                     return stmt.includes("hpath = '/New Doc'") ? [] : [docRow];
                 }
@@ -118,7 +131,6 @@ function createContractClient() {
             if (endpoint === '/api/ref/getBacklinkDoc') return { backlinks: [{ id: 'block-1', box: 'nb-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/ref/getBacklink2') return { backlinks: [{ id: 'doc-2', box: 'nb-1', path: '/doc-2.sy' }], backmentions: [] };
             if (endpoint === '/api/ref/getBackmentionDoc') return { backmentions: [{ id: 'block-2', box: 'nb-1', path: '/doc-1.sy' }] };
-            if (endpoint === '/api/search/searchRefBlock') return { blocks: [{ id: 'block-1', box: 'nb-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/search/searchAsset') return [{ path: 'assets/asset.png' }];
             if (endpoint === '/api/search/fullTextSearchAssetContent') return { assetContents: [{ id: 'asset-1', box: 'nb-1', path: '/doc-1.sy' }] };
             if (endpoint === '/api/search/listInvalidBlockRefs') return { blocks: [{ id: 'bad-ref', box: 'nb-1', path: '/doc-1.sy' }] };
@@ -226,6 +238,7 @@ describe('tool action contract coverage', () => {
         await runContracts('document', DOCUMENT_VARIANTS, callDocumentTool as ToolCaller, [
             { action: 'create', args: { action: 'create', notebook: 'nb-1', path: '/Doc', markdown: 'hello' }, expectedEndpoint: '/api/filetree/createDocWithMd' },
             { action: 'lookup', args: { action: 'lookup', id: 'doc-1' }, expectedEndpoint: '/api/filetree/getPathByID' },
+            { action: 'query', args: { action: 'query' }, expectedEndpoint: '/api/query/sql' },
             { action: 'ensure_link_targets', args: { action: 'ensure_link_targets', notebook: 'nb-1', parentId: 'doc-1', mode: 'resolve', targets: [{ key: 'parent', id: 'doc-1' }] }, expectedEndpoint: '/api/filetree/listDocsByPath' },
             { action: 'rename', args: { action: 'rename', id: 'doc-1', title: 'Renamed' }, expectedEndpoint: '/api/filetree/renameDocByID' },
             { action: 'remove', args: { action: 'remove', id: 'doc-1' }, expectedEndpoint: '/api/filetree/removeDocByID' },
@@ -240,8 +253,8 @@ describe('tool action contract coverage', () => {
             { action: 'get_outline', args: { action: 'get_outline', id: 'doc-1' }, expectedEndpoint: '/api/outline/getDocOutline' },
             { action: 'create_daily_note', args: { action: 'create_daily_note', notebook: 'nb-1' }, expectedEndpoint: '/api/filetree/createDailyNote' },
             { action: 'duplicate', args: { action: 'duplicate', id: 'doc-1' }, expectedEndpoint: '/api/filetree/duplicateDoc' },
-            { action: 'heading_to_doc', args: { action: 'heading_to_doc', headingID: 'doc-1', targetNotebook: 'nb-1' }, expectedEndpoint: '/api/filetree/heading2Doc' },
-            { action: 'doc_to_heading', args: { action: 'doc_to_heading', srcID: 'doc-1', targetID: 'doc-2' }, expectedEndpoint: '/api/filetree/doc2Heading' },
+            { action: 'heading_to_doc', args: { action: 'heading_to_doc', headingID: '20261020000002-heading', targetNotebook: 'nb-1' }, expectedEndpoint: '/api/filetree/heading2Doc' },
+            { action: 'doc_to_heading', args: { action: 'doc_to_heading', srcID: '20261020000000-source1', targetID: '20261020000002-heading' }, expectedEndpoint: '/api/filetree/doc2Heading' },
         ]);
     });
 
@@ -277,7 +290,7 @@ describe('tool action contract coverage', () => {
             { action: 'semantic', args: { action: 'semantic', query: 'meaning' }, expectedEndpoint: '/api/search/semanticSearchBlock' },
             { action: 'query_sql', args: { action: 'query_sql', stmt: 'SELECT * FROM blocks LIMIT 1' }, expectedEndpoint: '/api/query/sql' },
             { action: 'get_backlinks', args: { action: 'get_backlinks', id: 'doc-1' }, expectedEndpoint: '/api/ref/getBacklink2' },
-            { action: 'search_refs', args: { action: 'search_refs', id: 'doc-1' }, expectedEndpoint: '/api/search/searchRefBlock' },
+            { action: 'search_refs', args: { action: 'search_refs', id: 'doc-1' }, expectedEndpoint: '/api/query/sql' },
             { action: 'find_replace', args: { action: 'find_replace', k: 'old', r: 'new', ids: ['doc-1'] }, expectedEndpoint: '/api/search/findReplace' },
             { action: 'search_assets', args: { action: 'search_assets', k: 'asset' }, expectedEndpoint: '/api/search/searchAsset' },
             { action: 'fulltext_asset_content', args: { action: 'fulltext_asset_content', query: 'asset' }, expectedEndpoint: '/api/search/fullTextSearchAssetContent' },

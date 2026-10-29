@@ -113,7 +113,7 @@ AI 在正式执行前必须先确认本轮模式：
 
 必须确认：
 
-- `siyuan-sisyphus` 或 `siyuan` 命令可执行
+- `siyuan-sisyphus` 或 `sisyphus` 命令可执行
 - 已配置 `apiUrl` / `token`，或用户允许通过 flag 指定
 - 能成功执行系统版本读取动作
 
@@ -892,7 +892,7 @@ AI 不得：
 - 判断为 MCP 提示不足的原因
 - 建议改动位置，例如：
   - `src/core/help.ts` 的 action hint
-  - `src/core/types.ts` 的 schema description
+  - `src/tools/<tool>/schemas.ts` 的 schema description
   - `src/tools/<tool>/index.ts` 的 variant description
   - `docs/reference/tools/*.md`
   - `server-instructions` 或 tool description 的全局约束
