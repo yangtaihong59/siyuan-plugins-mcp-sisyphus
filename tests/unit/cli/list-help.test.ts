@@ -239,7 +239,7 @@ describe('cli/list-help', () => {
             expect(bare.stdout).toContain('One-step writes (enabled)');
             expect(bare.stdout).toMatch(/One step \(no --validate-only needed\): .*document create/);
             expect(bare.stdout).toMatch(/only with --if-match from a fresh read: .*block update/);
-            expect(bare.stdout).toContain('Reads that print If Match: block get-kramdown --id');
+            expect(bare.stdout).toContain('Reads that print If Match (it covers only the exact id/path read): block get-kramdown --id');
             expect(bare.stdout).toContain('not that it is the right block');
 
             const tool = await help('block', undefined, 'low_risk');
@@ -249,7 +249,7 @@ describe('cli/list-help', () => {
             expect(tool.stdout).toContain('document get-doc --id');
 
             const update = await help('block', 'update', 'low_risk');
-            expect(update.stdout).toContain('If Match is printed by: siyuan-sisyphus block get-kramdown --id');
+            expect(update.stdout).toContain('If Match (from a read of this exact target id/path) is printed by: siyuan-sisyphus block get-kramdown --id');
             const remove = await help('document', 'rename', 'low_risk');
             expect(remove.stdout).toContain('One-step write');
             const tier3 = await help('block', 'move', 'low_risk');

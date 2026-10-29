@@ -321,7 +321,7 @@ export const DocumentSetAttrSchema = z.object({
     }).describe("Document metadata attributes to set"),
 }).superRefine((value, ctx) => {
     if (value.attrs.icon === undefined && value.attrs.cover === undefined) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide at least one of attrs.icon or attrs.cover.", path: ["attrs"] });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "document set_attr sets only attrs.icon and attrs.cover. For custom attributes (custom-*), name, alias, memo or bookmark use block(action=\"set_attrs\", id=\"<document id>\", attrs={\"custom-type\":\"…\"}). A document is a block.", path: ["attrs"] });
     }
 });
 

@@ -20,6 +20,7 @@ import {
     decideOneStep,
     getActionSafetyPolicy,
     getWriteIfMatchTarget,
+    IF_MATCH_HEX_LENGTH,
     ifMatchMatches,
     parseIfMatch,
     type ActionSafetyPolicy,
@@ -30,7 +31,8 @@ import { assertDestinationNotebooksWritable, derivePostWriteProbeArgs, probeCrea
 import { type StateProbe, collectTargetSelectors, isRecord, parseResultObject } from '../core/write-safety-records';
 import { buildWriteImpactPreview } from './write-impact-preview';
 import { assertAvAddRowsHasInput } from './write-safety-av';
-import { annotateHelpWithOneStep, computeIfMatchHash, executeReadWithIfMatch } from './write-safety-if-match';
+import { annotateHelpWithOneStep, computeIfMatchHash, executeReadWithIfMatch, ifMatchReadCall, ifMatchTargetKey } from './write-safety-if-match';
+import { provesNothingApplied, trackWriteDispatch } from './write-dispatch-tracker';
 
 export interface WriteSafetyExecution {
     client: SiYuanClient;
@@ -44,7 +46,8 @@ export interface WriteSafetyExecution {
     /** Synchronous cancellation barrier before any executing ledger entry or side effect. */
     beforeCommit?: () => void;
     validateArgs?: (args: Record<string, unknown>) => void;
-    execute(args: Record<string, unknown>): Promise<ToolResult>;
+    /** `client` overrides the handler's client (the coordinator passes a write-tracking wrapper). */
+    execute(args: Record<string, unknown>, client?: SiYuanClient): Promise<ToolResult>;
 }
 
 /**
@@ -56,6 +59,8 @@ export class WriteSafetyCoordinator {
     private readonly ledger: WriteSafetyLedger;
     private readonly preflightLeases = new WritePreflightLeasePool();
     private serial: Promise<void> = Promise.resolve();
+    /** ifMatch values this process recently returned, and the target each covers (diagnostics only). */
+    private readonly issuedIfMatch = new Map<string, string>();
 
     constructor(client: SiYuanClient) {
         this.ledger = new WriteSafetyLedger(client);
@@ -81,6 +86,7 @@ export class WriteSafetyCoordinator {
                 execution.action,
                 execution.args,
                 () => execution.execute(execution.args),
+                (ifMatch, target) => this.rememberIfMatch(ifMatch, ifMatchTargetKey(target)),
             );
         }
         try {
@@ -207,7 +213,7 @@ export class WriteSafetyCoordinator {
             return fromSafetyError(error);
         }
 
-        if (category === 'av' && action === 'create') return this.runAvCreate(execution, inspected?.argsHash);
+        if (category === 'av' && action === 'create') return this.runAvCreate(execution, inspected?.argsHash, oneStepTier);
         if (category === 'av' && action === 'add_rows') {
             try { assertAvAddRowsHasInput(args); } catch (error) { return fromSafetyError(error); }
         }
@@ -369,7 +375,7 @@ export class WriteSafetyCoordinator {
             }
         }
         const withOneStep = (response: ToolResult): ToolResult => oneStepTier
-            ? addTopLevelFields(response, { oneStep: { tier: oneStepTier }, preview: oneStepPreview })
+            ? addTopLevelFields(response, { oneStep: { tier: oneStepTier, meaning: ONE_STEP_TIER_MEANING[oneStepTier] }, preview: asReceiptPreview(oneStepPreview) })
             : response;
 
         try { execution.beforeCommit?.(); } catch (error) { return fromSafetyError(error); }
@@ -428,9 +434,17 @@ export class WriteSafetyCoordinator {
         }
 
         let result: ToolResult;
+        const dispatch = trackWriteDispatch(client);
+        // A definite SiYuan rejection of the only write proves nothing was
+        // applied; staged batch flows keep their own conservative receipts.
+        const rejectedBeforeApply = () => provesNothingApplied(dispatch.stats) && !addRowsProgress && !batchRenameProgress;
         try {
-            result = await execution.execute(executeArgs);
+            result = await execution.execute(executeArgs, dispatch.client);
         } catch (error) {
+            if (rejectedBeforeApply()) {
+                return this.recordNotApplied(requestId, category, action, inspected!.argsHash, targetIds, activeLease,
+                    createErrorResult(error, { tool: category, action, rawArgs: executeArgs }));
+            }
             await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, error, addRowsProgress, batchRenameProgress);
             if (activeLease) this.preflightLeases.consume(activeLease);
             return writeSafetyFailureAfterAttempt('outcome_unknown', 'The write transport failed after execution began. Do not retry with a new requestId until the target has been inspected.', {
@@ -466,6 +480,9 @@ export class WriteSafetyCoordinator {
                     replayed: false,
                     transactionState: 'rejected',
                 });
+            }
+            if (rejectedBeforeApply()) {
+                return this.recordNotApplied(requestId, category, action, inspected!.argsHash, targetIds, activeLease, result);
             }
             await this.recordUnknown(requestId, category, action, inspected!.argsHash, targetIds, new Error('handler returned an error after execution began'), addRowsProgress, batchRenameProgress);
             if (activeLease) this.preflightLeases.consume(activeLease);
@@ -638,19 +655,40 @@ export class WriteSafetyCoordinator {
             return fromSafetyError(error);
         }
         if (ifMatchMatches(String(args.ifMatch), current)) return undefined;
-        return writeSafetyFailure('state_changed', 'The target changed since the read that produced ifMatch. No write was attempted.', {
+        const key = ifMatchTargetKey(target);
+        const readCall = ifMatchReadCall(target);
+        const issuedFor = this.issuedIfMatch.get(parseIfMatch(args.ifMatch)!.slice(0, IF_MATCH_HEX_LENGTH));
+        if (issuedFor !== undefined && issuedFor !== key) {
+            return writeSafetyFailure('state_changed', `This ifMatch came from a read of ${issuedFor}, not of ${key}. An ifMatch covers only the exact id/path that was read (a get_children ifMatch covers the parent, not its children). No write was attempted.`, {
+                expectedField: 'ifMatch',
+                ifMatchTarget: key,
+                ifMatchIssuedFor: issuedFor,
+                currentHash: current,
+                revalidateRequired: true,
+                hint: `Read this exact target with ${readCall}, re-check the content, then rebuild the write with its ifMatch.`,
+            });
+        }
+        return writeSafetyFailure('state_changed', 'The target changed since the read that produced ifMatch, or the ifMatch came from a read of a different target. No write was attempted.', {
             expectedField: 'ifMatch',
+            ifMatchTarget: key,
             currentHash: current,
             revalidateRequired: true,
-            hint: 'Read the target again (the read returns a fresh ifMatch), re-check the content, then rebuild the write.',
+            hint: `ifMatch must come from a read of this exact target (${key}); a get_children ifMatch covers the parent id. Read it with ${readCall}, re-check the content, then rebuild the write.`,
         });
     }
 
+    private rememberIfMatch(ifMatch: string, key: string): void {
+        this.issuedIfMatch.delete(ifMatch);
+        this.issuedIfMatch.set(ifMatch, key);
+        if (this.issuedIfMatch.size > 512) this.issuedIfMatch.delete(this.issuedIfMatch.keys().next().value!);
+    }
+
     /** Multi-step creation owns a durable identity and result, independent of transport lifetime. */
-    private async runAvCreate(execution: WriteSafetyExecution, argsHash?: string): Promise<ToolResult> {
+    private async runAvCreate(execution: WriteSafetyExecution, argsHash?: string, oneStepTier?: 1 | 2): Promise<ToolResult> {
         const { client, permMgr, args } = execution;
         const parentID = args.parentID as string;
-        const requestId = args.requestId as string;
+        let requestId = args.requestId as string;
+        let oneStepPreview: unknown;
         try {
             const { denied } = await ensurePermissionForDocumentId(client, permMgr, parentID, 'write');
             if (denied) return denied;
@@ -682,8 +720,18 @@ export class WriteSafetyCoordinator {
                     preview,
                 });
             }
+            if (oneStepTier) {
+                // One step skips only the round trip: same checks, a server-issued
+                // request ID and staged ledger, and the preview in the receipt.
+                oneStepPreview = await buildWriteImpactPreview({ client, permMgr, category: 'av', action: 'create', args });
+                requestId = (await this.ledger.issue('av', 'create', args)).requestId;
+                argsHash = hashWriteState(stripSafetyFields(args));
+            }
             execution.beforeCommit?.();
         } catch (error) { return fromSafetyError(error); }
+        const withOneStep = (response: ToolResult): ToolResult => oneStepTier
+            ? addTopLevelFields(response, { oneStep: { tier: oneStepTier, meaning: ONE_STEP_TIER_MEANING[oneStepTier] }, preview: oneStepPreview })
+            : response;
         let progress: AvCreationProgress = {
             avID: typeof args.avID === 'string' ? args.avID : generateSiYuanNodeId(), blockID: generateSiYuanNodeId(), parentID,
             stage: 'ids_reserved', currentStep: 'create_av',
@@ -709,7 +757,7 @@ export class WriteSafetyCoordinator {
             }
             const response = addSafetyMetadata(result, { requestId, writeSafetyMode: 'strict', writeSafetyGuaranteed: true, writeAttempted: true, writeExecuted: true, replayed: false, transactionState: 'committed' });
             await this.ledger.record({ ...base, state: 'committed', creation: { ...progress }, response });
-            return response;
+            return withOneStep(response);
         } catch (error) {
             const failure = writeSafetyFailureAfterAttempt('outcome_unknown', 'Creation did not complete durable verification. Inspect the returned IDs; do not recreate or resume automatically.', {
                 requestId, ...progress, partial: progress.stage !== 'ids_reserved' && progress.stage !== 'verified',
@@ -718,8 +766,48 @@ export class WriteSafetyCoordinator {
             });
             const response = jsonResult({ ...parseResultObject(failure), ...progress, requestId, partial: progress.stage !== 'ids_reserved' && progress.stage !== 'verified', carrierConfirmed: progress.stage === 'carrier_inserted' || progress.stage === 'verified' }, true);
             try { await this.ledger.record({ ...base, state: 'unknown', creation: { ...progress }, response }); } catch { /* Earlier durable progress remains sufficient to prohibit another creation. */ }
-            return response;
+            return withOneStep(response);
         }
+    }
+
+    /**
+     * SiYuan explicitly rejected the commit's write before applying anything
+     * (an API error code or a 4xx answer, and no other write was sent). The
+     * outcome is known: not applied. The request ID is spent; a corrected
+     * call gets a new one.
+     */
+    private async recordNotApplied(
+        requestId: string,
+        category: ToolCategory,
+        action: string,
+        argsHash: string,
+        targetIds: string[],
+        activeLease: WritePreflightLease | undefined,
+        result: ToolResult,
+    ): Promise<ToolResult> {
+        try {
+            await this.ledger.record({
+                requestId,
+                tool: category,
+                action,
+                argsHash,
+                targetIds,
+                state: 'failed_before_execute',
+                result: { error: 'not_applied' },
+            });
+        } catch {
+            // SiYuan already rejected the write; its error stays the answer.
+        }
+        if (activeLease) this.preflightLeases.consume(activeLease);
+        return addSafetyMetadata({ ...result, isError: true }, {
+            requestId,
+            writeSafetyMode: 'strict',
+            writeAttempted: true,
+            writeExecuted: false,
+            replayed: false,
+            transactionState: 'not_applied',
+            error: { code: 'not_applied', message: 'SiYuan rejected the write before applying it; nothing changed. Fix the arguments and send the call again.' },
+        });
     }
 
     private async recordUnknown(
@@ -830,6 +918,12 @@ function replayLedgerEntry(entry: WriteLedgerEntry): ToolResult {
             message: 'Composite add_rows was interrupted. Inspect the exact rowIDs and stage; do not run add_rows again for these rows.',
         },
     }, true);
+    if (entry.state === 'failed_before_execute') {
+        return writeSafetyFailure('not_applied', `requestId ${entry.requestId} was rejected before anything was written; nothing changed and it will not run again. Fix the arguments and run a new validateOnly preflight.`, {
+            requestId: entry.requestId,
+            ledgerState: entry.state,
+        });
+    }
     return writeSafetyFailure('outcome_unknown', `requestId ${entry.requestId} is in ${entry.state} state. Inspect the target before retrying.`, {
         requestId: entry.requestId,
         ledgerState: entry.state,
@@ -844,6 +938,27 @@ function addSafetyMetadata(result: ToolResult, safety: Record<string, unknown>):
         ...result,
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
         structuredContent: payload,
+    };
+}
+
+const ONE_STEP_TIER_MEANING: Record<1 | 2, string> = {
+    1: 'additive or name-only change; ifMatch optional',
+    2: 'overwrite guarded by ifMatch',
+};
+
+/**
+ * A one-step receipt carries the preview computed before the write. Target
+ * excerpts there are the old content, so name them excerptBefore.
+ */
+function asReceiptPreview(preview: unknown): unknown {
+    if (!isRecord(preview) || !Array.isArray(preview.targets)) return preview;
+    return {
+        ...preview,
+        targets: preview.targets.map((target) => {
+            if (!isRecord(target) || typeof target.excerpt !== 'string') return target;
+            const { excerpt, ...rest } = target;
+            return { ...rest, excerptBefore: excerpt };
+        }),
     };
 }
 

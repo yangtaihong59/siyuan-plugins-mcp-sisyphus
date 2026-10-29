@@ -1604,6 +1604,40 @@ export function estimateMarkdownBlocks(markdown: string): string[] {
     return blocks.map((lines) => lines.map((line) => line.trim()).filter(Boolean).join(' '));
 }
 
+/**
+ * Lines that Markdown folds into one paragraph: consecutive plain lines with
+ * no blank line between them become soft line breaks, not separate blocks.
+ */
+export function softLineBreakNote(markdown: string): string | undefined {
+    if (!markdown.includes('\n')) return undefined;
+    let fence: string | undefined;
+    let group = 0;
+    let lines = 0;
+    let paragraphs = 0;
+    const close = () => {
+        if (group > 1) { lines += group; paragraphs += 1; }
+        group = 0;
+    };
+    for (const line of markdown.replace(/\r\n?/g, '\n').split('\n')) {
+        const trimmed = line.trim();
+        const fenceMark = /^(`{3,}|~{3,}|\$\$)/.exec(trimmed)?.[1];
+        if (fence) {
+            if (fenceMark && trimmed.startsWith(fence)) fence = undefined;
+            continue;
+        }
+        if (fenceMark) { close(); if (!(fenceMark === '$$' && trimmed.length > 2 && trimmed.endsWith('$$'))) fence = fenceMark; continue; }
+        if (!trimmed) { close(); continue; }
+        // Headings, rules and IALs stand alone; lists, tables, quotes and
+        // indented lines absorb the plain lines that follow them.
+        if (/^#{1,6}\s|^\{:|^([-*_])(\s*\1){2,}$/.test(trimmed)) { close(); continue; }
+        if (/^([-*+]|\d+[.)])\s|^[|>]/.test(trimmed) || /^(\s{2,}|\t)/.test(line)) { close(); group = -Infinity; continue; }
+        group = group < 0 ? group : group + 1;
+    }
+    close();
+    if (paragraphs === 0) return undefined;
+    return `${lines} lines → ${paragraphs} paragraph${paragraphs === 1 ? '' : 's'}: a single newline is a soft line break inside one paragraph. Separate paragraphs with a blank line.`;
+}
+
 function newBlocksChange(ctx: PreviewContext, dataType: unknown, data: string, where: string): WritePreviewChange {
     if (dataType === 'dom') {
         return { kind: 'create_blocks', summary: `Inserts DOM content (${data.length} chars) ${where}.`, after: ctx.text(domToText(data)) };
@@ -1617,6 +1651,7 @@ function newBlocksChange(ctx: PreviewContext, dataType: unknown, data: string, w
             : `Creates ${blocks.length} top-level block(s) ${where} (counted from the Markdown; SiYuan's parser decides the final split).`,
         blockCount: blocks.length,
         blocks: [...shown.map((block) => ctx.text(block, 80)), ...(omitted > 0 ? [`… ${omitted} more`] : [])],
+        ...(softLineBreakNote(data) ? { note: softLineBreakNote(data) } : {}),
     };
 }
 
@@ -1748,7 +1783,7 @@ async function previewAvCreate(ctx: PreviewContext): Promise<BuilderResult> {
     return {
         changes: [{
             kind: 'create_database',
-            summary: `Inserts a new database block (table view, 0 rows) into ${where}, ${position}. It starts unnamed with a primary key column, and SiYuan adds a default single-select column; set names with av rename. The commit result names that column with a ready removeDefaultColumn step (remove_column preflight) if you do not want it.`,
+            summary: `Inserts a new database block (table view, 0 rows) into ${where}, ${position}. ${ctx.string('name') ? `It is named ${ctx.label(ctx.string('name'), '""')} and starts` : 'It starts unnamed (pass name to name it at creation, or use av rename later)'} with a primary key column, and SiYuan adds a default single-select column; rename columns with av rename. The commit result names that column with a ready removeDefaultColumn step (remove_column preflight) if you do not want it.`,
             ...(ctx.string('avID') ? { avID: ctx.string('avID') } : {}),
             defaultColumns: ['primary key (block)', 'single select'],
             position: last ? { appendedAfter: last.id } : { first: true },

@@ -254,12 +254,13 @@ export const ONE_STEP_TIERS: Partial<Record<ToolCategory, Record<string, 1 | 2>>
     // fs.write creates a new document (tier 1); overwrite=true is tier 2.
     fs: { write: 1, replace: 2 },
     block: { insert: 1, prepend: 1, append: 1, set_attrs: 1, update: 2, replace: 2 },
-    av: { add_rows: 1, add_column: 1, add_view: 1, set_cells: 2 },
+    // av create/rename add a database or change only names; both are recoverable.
+    av: { create: 1, rename: 1, add_rows: 1, add_column: 1, add_view: 1, set_cells: 2 },
     flashcard: { create_card: 1, review_card: 1 },
     file: { update_template: 2 },
 };
 
-const BATCH_ARRAY_KEYS = ['items', 'rows', 'blockIDs', 'primaryKeyTexts', 'cells', 'rowIDs', 'ids', 'edit'] as const;
+export const BATCH_ARRAY_KEYS = ['items', 'blocks', 'rows', 'blockIDs', 'primaryKeyTexts', 'cells', 'rowIDs', 'ids', 'edit'] as const;
 
 /** Largest item list in the arguments (1 for a single-target write). */
 export function getWriteBatchSize(args: Record<string, unknown>): number {

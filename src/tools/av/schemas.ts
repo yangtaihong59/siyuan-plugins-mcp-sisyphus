@@ -77,6 +77,7 @@ export const AvCreateSchema = z.object({
     action: z.literal('create'),
     parentID: z.string().min(1).describe('Parent block/document for the new database carrier'),
     avID: z.string().regex(/^\d{14}-[a-z0-9]{7}$/).optional().describe('Optional new AV ID; an existing AV is rejected for a new request'),
+    name: z.string().trim().min(1).optional(),
 }).strict();
 
 export const AvQuerySchema = z.object({

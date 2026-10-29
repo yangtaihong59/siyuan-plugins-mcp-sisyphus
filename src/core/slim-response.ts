@@ -82,6 +82,7 @@ const SUCCESS_KEEP_KEYS = new Set([
     'preview',
     'oneStep',
     'ifMatch',
+    'ifMatchTarget',
 ]);
 
 const SAFETY_TOP_LEVEL_KEYS = [

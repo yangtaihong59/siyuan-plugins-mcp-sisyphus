@@ -20,7 +20,8 @@ export function ifMatchReads(kind?: IfMatchTargetKind): string[] {
     for (const [category, actions] of Object.entries(READ_IF_MATCH_SOURCES)) {
         for (const [action, source] of Object.entries(actions ?? {})) {
             if (kind && source.kind !== kind) continue;
-            reads.push(`${category} ${kebab(action)} --${source.arg.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}`);
+            // get-children hashes the block it was given (the parent), never a child.
+            reads.push(`${category} ${kebab(action)} --${source.arg.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}${action === 'get_children' ? ' (hash of that parent id, not of its children)' : ''}`);
         }
     }
     return reads;
@@ -58,7 +59,7 @@ export function oneStepToolLines(category: ToolCategory, config: ToolConfig): st
     ];
     const kinds = new Set(tiers.ifMatch.map((action) => ifMatchKindOf(category, action.split(' ')[0])).filter(Boolean) as IfMatchTargetKind[]);
     const reads = [...kinds].flatMap((kind) => ifMatchReads(kind));
-    if (reads.length) lines.push(`Reads that print If Match: ${reads.join(', ')}`);
+    if (reads.length) lines.push(`Reads that print If Match (it covers only the exact id/path read): ${reads.join(', ')}`);
     lines.push(`Batches over ${ONE_STEP_MAX_BATCH} items always use two steps. A one-step receipt shows the preview after the write.`);
     return lines;
 }
@@ -74,8 +75,8 @@ export function oneStepWorkspaceLines(config: ToolConfig): string[] {
     return [
         `One step (no --validate-only needed): ${all.oneStep.join(', ') || 'none'}`,
         `One step only with --if-match from a fresh read: ${all.ifMatch.join(', ') || 'none'}`,
-        'Always two steps: every other write (deletes, moves, structure changes, find-replace, tag and database renames, …).',
-        `Reads that print If Match: ${ifMatchReads().join(', ')}`,
+        'Always two steps: every other write (deletes, moves, structure changes, find-replace, tag renames, …).',
+        `Reads that print If Match (it covers only the exact id/path read): ${ifMatchReads().join(', ')}`,
         'Risk: --if-match proves the target is unchanged since your read, not that it is the right block; the preview comes after the write, so use --validate-only when unsure.',
         `Batches over ${ONE_STEP_MAX_BATCH} items always use two steps. A one-step receipt shows the preview after the write. Per tool: ${PRIMARY_CLI_COMMAND} help <tool>.`,
     ];

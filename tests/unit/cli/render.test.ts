@@ -202,13 +202,13 @@ describe('cli/render', () => {
 
         expect(io.stdout).toContain('document create');
         expect(io.stdout).toContain('Use --notebook + --path + --markdown');
-        expect(io.stdout).toContain('siyuan-sisyphus document resolve --id ... --include "[\\"path\\"]"');
+        expect(io.stdout).toContain(`siyuan-sisyphus document resolve --id ... --include-json '["path"]'`);
         expect(io.stdout).toContain('Accepted Shapes');
         expect(io.stdout).toContain('--notebook + --path + --markdown');
         expect(io.stdout).toContain('Required Fields');
         expect(io.stdout).toContain('--notebook, --path, --markdown');
         expect(io.stdout).toContain('siyuan-sisyphus document create --notebook nb --path /Inbox/Test --markdown Hello');
-        expect(io.stdout).toContain('siyuan-sisyphus document resolve --notebook nb --hpath /Inbox/Test --include "[\\"ids\\"]"');
+        expect(io.stdout).toContain(`siyuan-sisyphus document resolve --notebook nb --hpath /Inbox/Test --include-json '["ids"]'`);
         expect(io.stdout).toContain('Resource: siyuan-sisyphus help document create');
         io.restore();
     });
@@ -234,7 +234,7 @@ describe('cli/render', () => {
         expect(io.stdout).not.toContain('Accepted Shapes');
         expect(io.stdout).not.toContain('none fixed by the schema');
         expect(io.stdout).toContain('always uses the two steps');
-        expect(io.stdout).toContain('If Match is printed by: siyuan-sisyphus block get-kramdown --id');
+        expect(io.stdout).toContain('If Match (from a read of this exact target id/path) is printed by: siyuan-sisyphus block get-kramdown --id');
     });
 
     it('formats curated help examples for terminal reading', () => {

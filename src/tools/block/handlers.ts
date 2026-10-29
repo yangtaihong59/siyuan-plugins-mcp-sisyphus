@@ -1,5 +1,6 @@
 import { availableReadSteps, databaseReadSteps, kramdownDatabases } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
+import { SiYuanRequestError } from '../../api/errors';
 import * as attributeApi from '../../api/block';
 import * as blockApi from '../../api/block';
 import * as transactionApi from '../../api/transaction';
@@ -35,6 +36,51 @@ type RecentUpdatedDocumentSummary = {
 };
 
 type BlockActionHandler = ToolActionHandler;
+
+const HEADING_LEAF_ERROR = /is a leaf block and cannot have children/i;
+
+/** Last block of a heading's section among the document's top-level blocks (before the next heading of the same or a higher level). */
+export function lastBlockOfHeadingSection(children: Array<{ id: string; type?: string; subType?: string; subtype?: string }>, headingId: string): string | undefined {
+    const index = children.findIndex((child) => child.id === headingId);
+    if (index < 0) return undefined;
+    const level = (child: { subType?: string; subtype?: string }) => Number(String(child.subType ?? child.subtype ?? '').replace(/^h/, '')) || 6;
+    const headingLevel = level(children[index]);
+    let last = children[index].id;
+    for (const child of children.slice(index + 1)) {
+        if (child.type === 'h' && level(child) <= headingLevel) break;
+        last = child.id;
+    }
+    return last;
+}
+
+/**
+ * SiYuan rejects append/prepend under a heading (a leaf block) and suggests
+ * previousID, which these actions do not take. Rewrite the rejection into the
+ * insert call that does what the caller meant; the kernel error stays an API
+ * rejection, so the write is still recorded as not applied.
+ */
+async function rethrowHeadingParentError(
+    client: SiYuanClient,
+    error: unknown,
+    action: 'append' | 'prepend',
+    headingId: string,
+    documentId: string | undefined,
+    dataType: string,
+): Promise<never> {
+    if (!(error instanceof SiYuanRequestError) || error.kind !== 'api' || !HEADING_LEAF_ERROR.test(error.message)) throw error;
+    let previousID = action === 'prepend' ? headingId : undefined;
+    if (!previousID && documentId) {
+        try {
+            previousID = lastBlockOfHeadingSection(await blockApi.getChildBlocks(client, documentId) as Array<{ id: string; type?: string; subType?: string }>, headingId);
+        } catch {
+            previousID = undefined;
+        }
+    }
+    const where = action === 'prepend' ? 'directly below the heading' : 'at the end of this heading\'s section';
+    const call = `block(action="insert", previousID="${previousID ?? '<last block under the heading>'}", dataType="${dataType}", data="…")`;
+    const find = previousID ? '' : ` (find that block with block(action="get_children", id="${documentId ?? '<document id>'}"))`;
+    throw new SiYuanRequestError('api', `SiYuan rejected block ${action}: ${headingId} is a heading, and a heading cannot have children, so nothing was written. block ${action} has no previousID; to add content ${where}, use ${call}${find}.`, { apiCode: error.apiCode, status: error.status });
+}
 
 async function getBlockType(client: SiYuanClient, id: string): Promise<string | undefined> {
     try {
@@ -140,6 +186,33 @@ async function aggregateRecentUpdatedDocuments(
     };
 }
 
+/**
+ * IDs of every top-level block an insert/append/prepend created, in order.
+ * SiYuan marks only top-level nodes of the inserted DOM with data-node-index.
+ */
+export function extractTopLevelInsertedIds(operationBatch: unknown): string[] {
+    const operations = operationBatch && typeof operationBatch === 'object' && Array.isArray((operationBatch as { doOperations?: unknown[] }).doOperations)
+        ? (operationBatch as { doOperations: Array<Record<string, unknown>> }).doOperations
+        : [];
+    const ids: string[] = [];
+    for (const operation of operations) {
+        if (typeof operation?.data !== 'string') {
+            if (typeof operation?.id === 'string' && operation.id && !ids.includes(operation.id)) ids.push(operation.id);
+            continue;
+        }
+        const found: string[] = [];
+        for (const match of operation.data.matchAll(/<div\b[^>]*>/g)) {
+            const tag = match[0];
+            if (!/\bdata-node-index="/.test(tag)) continue;
+            const nodeId = /\bdata-node-id="([^"]+)"/.exec(tag)?.[1];
+            if (nodeId && !found.includes(nodeId)) found.push(nodeId);
+        }
+        if (found.length === 0 && typeof operation.id === 'string' && operation.id) found.push(operation.id);
+        for (const nodeId of found) if (!ids.includes(nodeId)) ids.push(nodeId);
+    }
+    return ids;
+}
+
 function createSlimWriteResult(
     rawResult: unknown,
     context: {
@@ -156,6 +229,7 @@ function createSlimWriteResult(
         : undefined;
 
     const id = typeof firstOperation?.id === 'string' ? firstOperation.id : undefined;
+    const ids = extractTopLevelInsertedIds(operationBatch);
     const parentID = typeof firstOperation?.parentID === 'string' ? firstOperation.parentID : context.parentID;
     const previousID = typeof firstOperation?.previousID === 'string' ? firstOperation.previousID : context.previousID;
     const nextID = typeof firstOperation?.nextID === 'string' ? firstOperation.nextID : context.nextID;
@@ -163,6 +237,8 @@ function createSlimWriteResult(
     const payload: Record<string, unknown> = {
         action: context.action,
         ...(id ? { id } : {}),
+        // Multi-block Markdown inserts several top-level blocks in one operation.
+        ...(ids.length > 1 ? { ids, blockCount: ids.length } : {}),
         ...(parentID ? { parentID } : {}),
         ...(previousID ? { previousID } : {}),
         ...(nextID ? { nextID } : {}),
@@ -386,7 +462,8 @@ const handlePrepend: BlockActionHandler = async ({ client, permMgr, rawArgs }) =
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
     const data = await normalizeWriteData(client, parsed.dataType, parsed.data, 'block.prepend');
-    const result = await blockApi.prependBlock(client, parsed.dataType, data, parsed.parentID);
+    const result = await blockApi.prependBlock(client, parsed.dataType, data, parsed.parentID)
+        .catch((error: unknown) => rethrowHeadingParentError(client, error, 'prepend', parsed.parentID, context.documentId, parsed.dataType));
     return applyUiRefresh(client, createSlimWriteResult(result, withReferenceSemanticsHints({
         action: 'prepend',
         dataType: parsed.dataType,
@@ -399,7 +476,8 @@ const handleAppend: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
     const data = await normalizeWriteData(client, parsed.dataType, parsed.data, 'block.append');
-    const result = await blockApi.appendBlock(client, parsed.dataType, data, parsed.parentID);
+    const result = await blockApi.appendBlock(client, parsed.dataType, data, parsed.parentID)
+        .catch((error: unknown) => rethrowHeadingParentError(client, error, 'append', parsed.parentID, context.documentId, parsed.dataType));
     return applyUiRefresh(client, createSlimWriteResult(result, withReferenceSemanticsHints({
         action: 'append',
         dataType: parsed.dataType,

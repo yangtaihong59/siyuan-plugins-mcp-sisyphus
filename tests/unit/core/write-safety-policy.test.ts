@@ -127,12 +127,12 @@ describe('one-step write tiers', () => {
         const { getOneStepTier } = await import('@/core/write-safety-policy');
         const tier1 = [['document', 'create'], ['document', 'rename'], ['document', 'set_attr'], ['fs', 'write'],
             ['block', 'insert'], ['block', 'prepend'], ['block', 'append'], ['block', 'set_attrs'],
-            ['av', 'add_rows'], ['av', 'add_column'], ['av', 'add_view'], ['flashcard', 'create_card'], ['flashcard', 'review_card']] as const;
+            ['av', 'create'], ['av', 'rename'], ['av', 'add_rows'], ['av', 'add_column'], ['av', 'add_view'], ['flashcard', 'create_card'], ['flashcard', 'review_card']] as const;
         const tier2 = [['block', 'update'], ['block', 'replace'], ['fs', 'replace'], ['av', 'set_cells'], ['file', 'update_template']] as const;
         const tier3 = [['tag', 'rename'], ['document', 'heading_to_doc'], ['document', 'doc_to_heading'], ['document', 'reorder'],
             ['fs', 'reorder'], ['block', 'transfer_references'], ['av', 'remove_rows'], ['av', 'remove_column'],
             ['notebook', 'set_open_state'], ['notebook', 'set_conf'], ['notebook', 'rename'], ['block', 'delete'],
-            ['search', 'find_replace'], ['av', 'create'], ['notebook', 'create']] as const;
+            ['search', 'find_replace'], ['notebook', 'create']] as const;
         for (const [category, action] of tier1) expect(getOneStepTier(category, action), `${category}.${action}`).toBe(1);
         for (const [category, action] of tier2) expect(getOneStepTier(category, action), `${category}.${action}`).toBe(2);
         for (const [category, action] of tier3) expect(getOneStepTier(category, action), `${category}.${action}`).toBe(3);

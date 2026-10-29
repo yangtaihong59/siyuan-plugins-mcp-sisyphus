@@ -44,7 +44,10 @@ function fixture() {
             if (path === '/api/transactions') {
                 if (failure === 'carrier-before') throw new Error('carrier insert failed');
                 writes++;
-                for (const operation of args.transactions[0].doOperations) blocks.set(operation.id, operation.data);
+                for (const operation of args.transactions[0].doOperations) {
+                    if (operation.action === 'setAttrViewName') { avs.get(operation.avID).name = operation.data; continue; }
+                    blocks.set(operation.id, operation.data);
+                }
                 if (failure === 'carrier-response') throw new Error('lost carrier response');
                 return [];
             }
@@ -54,13 +57,28 @@ function fixture() {
     };
     const config = buildDefaultToolConfig();
     let coordinator = new WriteSafetyCoordinator(client);
-    const run = (args: Record<string, unknown>) => coordinator.run({ client, permMgr: {} as any, category: 'av', action: 'create', args, strictMode: true,
+    const run = (args: Record<string, unknown>, oneStep?: 'low_risk') => coordinator.run({ client, permMgr: {} as any, category: 'av', action: 'create', args, strictMode: true, oneStep,
         validateArgs: args => { AvCreateSchema.parse(args); }, execute: args => callAvTool(client, args, config.av, {} as any) });
     const payload = (result: any) => result.structuredContent ?? JSON.parse(result.content[0].text);
     return { client, avs, blocks, run, payload, files, writes: () => writes, fail: (value: string) => { failure = value; }, restart: () => { coordinator = new WriteSafetyCoordinator(client); } };
 }
 
 describe('durable multi-step AV creation', () => {
+    it('creates a named database in one step when one-step writes are on', async () => {
+        const f = fixture();
+        const result = f.payload(await f.run({ action: 'create', parentID: 'parent', name: 'Tasks' }, 'low_risk'));
+        expect(result.stage).toBe('verified');
+        expect(result.name).toBe('Tasks');
+        expect(f.avs.get(result.avID).name).toBe('Tasks');
+        expect(result.oneStep).toMatchObject({ tier: 1 });
+        expect(result.preview.changes[0].summary).toContain('named «Tasks»');
+        expect(result.safety).toMatchObject({ transactionState: 'committed', requestId: expect.stringMatching(/^[a-f0-9]{4,}$/) });
+        // Replaying the server-issued request ID returns the saved receipt, without a second database.
+        const replay = f.payload(await f.run({ action: 'create', parentID: 'parent', name: 'Tasks', requestId: result.safety.requestId }));
+        expect(replay.avID).toBe(result.avID);
+        expect(f.avs.size).toBe(1);
+    });
+
     it('replays the original result and identities before the existing-AV check, including after restart', async () => {
         const f = fixture();
         const args = { action: 'create', parentID: 'parent', avID: '20261008120000-abcdefg' };

@@ -19,7 +19,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
         ],
-        "hint": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
+        "hint": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. keyID is the column id: av get/query list the same value as columnID (and id), and set_cells takes it as columnID. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
         "parameters": {
           "additionalProperties": false,
           "description": "Add a column to a database.",
@@ -713,7 +713,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
           "Follow enabled nextSteps using real returned IDs. Completed pages never suggest another page. Writes always require user intent and the applicable strict preflight.",
         ],
-        "hint": "Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
+        "hint": "Use parentID (an existing document or block), optionally name (the database name, set at creation) and a new avID. A new database starts with a primary key column (type block) and one select column; without name it is unnamed. Use rename for column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
         "parameters": {
           "additionalProperties": false,
           "description": "Create a new database as parentID's last child; replay preserves IDs and creation progress.",
@@ -725,6 +725,10 @@ exports[`tool description and help outputs > matches the locked snapshot for all
             "avID": {
               "description": "Optional new AV ID; an existing AV is rejected for a new request",
               "pattern": "^\\d{14}-[a-z0-9]{7}$",
+              "type": "string",
+            },
+            "name": {
+              "minLength": 1,
               "type": "string",
             },
             "parentID": {
@@ -4173,12 +4177,12 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {
       "actionSummaries": {
-        "add_column": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
+        "add_column": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. keyID is the column id: av get/query list the same value as columnID (and id), and set_cells takes it as columnID. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
         "add_rows": "Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows. Cells use the same typed fields as set_cells (e.g. {columnID,valueType:"number",number:9}); see av(action="help", topic="set_cells") for the full valueType table.",
         "add_view": "Provide avID, the carrier blockID (databaseContext.carrierBlockIDs from get; auto-filled when the AV has exactly one), a new stable viewID, layout (table, gallery or kanban) and name. First run validateOnly=true. layout=kanban needs an existing single-select column (mSelect does not count); preflight rejects it otherwise.",
         "configure_rollup": "Dangerous schema operation for an existing rollup key. Pass its existing relation key, destination key, and the native RollupCalc object exactly as SiYuan defines it. MCP does not invent calculation aliases. SiYuan may remove filters that reference the reconfigured rollup key.",
         "configure_two_way_relation": "Dangerous schema operation for an existing relation key. Pass source and destination AV identities plus a stable reverse-key ID. MCP verifies both writable database carriers, uses the native updateAttrViewColRelation transaction, and reads both directions back. It refuses to retarget an existing relation that would mutate an unpreflighted third AV.",
-        "create": "Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
+        "create": "Use parentID (an existing document or block), optionally name (the database name, set at creation) and a new avID. A new database starts with a primary key column (type block) and one select column; without name it is unnamed. Use rename for column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
         "create_from_template": "Dangerous native creation using an existing template. itemID in the result is the AV row identity; blockID is the separate bound block/document identity. MCP preflights all default fields and relation targets, then reads every requested default back. Document templates require an explicit saveLocation so the target notebook can be authorized; inherited global document location is intentionally not guessed.",
         "duplicate": "Matches SiYuan copy-as-mirror behavior: call the kernel duplicate API, spin the AV block DOM, then commit an insert transaction. previousID overrides the insertion target; otherwise MCP uses blockID or the resolved owning database block.",
         "duplicate_rows": "Dangerous: use avID + ordered sourceRowIDs for bound, persistent top-level row items only; each becomes a detached text record. First call validateOnly=true, then confirm and submit expectedManifestHash + requestId. MCP checks every resolved two-way-relation destination AV carrier for rw/rwd before dispatch and verifies source placement plus reverse links after a normal response. Never retry automatically after outcome_unknown.",
@@ -4196,7 +4200,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
       },
       "actions": {
         "add_column": {
-          "hint": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
+          "hint": "Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. keyID is the column id: av get/query list the same value as columnID (and id), and set_cells takes it as columnID. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.",
           "requiresConfirmation": false,
         },
         "add_rows": {
@@ -4216,7 +4220,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "requiresConfirmation": true,
         },
         "create": {
-          "hint": "Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
+          "hint": "Use parentID (an existing document or block), optionally name (the database name, set at creation) and a new avID. A new database starts with a primary key column (type block) and one select column; without name it is unnamed. Use rename for column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
           "requiresConfirmation": false,
         },
         "create_from_template": {
@@ -7492,7 +7496,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"write"|"search") because it accepts human-readable paths and hides storage paths and IDs.",
           "document(action="set_attr") updates document metadata such as icon and cover; use attrs.cover=null or an empty string to clear the cover.",
         ],
-        "hint": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it.",
+        "hint": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it. Only icon and cover: for custom attributes (custom-*), name, alias, memo or bookmark use block(action="set_attrs", id=<document id>) (a document is a block).",
         "parameters": {
           "additionalProperties": false,
           "description": "Set document metadata such as icon and cover image.",
@@ -7576,7 +7580,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
         "rename": "Single mode uses either id + title or notebook + path + title. Batch mode uses items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.",
         "reorder": "Use parentID + orderedIDs. parentID may be a notebook ID or parent document ID, and orderedIDs must contain every visible direct child document ID exactly once. The notebook is switched to custom sorting.",
         "search_docs": "Use notebook + query, and optionally path as a storage-path scope. Search is title-based in SiYuan; MCP then filters by notebook permission and optional storage path.",
-        "set_attr": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it.",
+        "set_attr": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it. Only icon and cover: for custom attributes (custom-*), name, alias, memo or bookmark use block(action="set_attrs", id=<document id>) (a document is a block).",
       },
       "actions": {
         "create": {
@@ -7650,7 +7654,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
           "requiresConfirmation": false,
         },
         "set_attr": {
-          "hint": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it.",
+          "hint": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it. Only icon and cover: for custom attributes (custom-*), name, alias, memo or bookmark use block(action="set_attrs", id=<document id>) (a document is a block).",
           "requiresConfirmation": false,
         },
       },

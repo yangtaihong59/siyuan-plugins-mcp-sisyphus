@@ -990,6 +990,12 @@
             "minLength": 1,
             "description": "Parent block/document for the new database carrier"
           },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "New database name",
+            "maxLength": 255
+          },
           "filters": {
             "description": "Complete replacement; [] clears filters Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
@@ -1197,12 +1203,6 @@
           "removeRelationDest": {
             "description": "Also remove reverse relation metadata when deleting a relation column",
             "type": "boolean"
-          },
-          "name": {
-            "description": "New database name",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
           },
           "cells": {
             "description": "Cell updates Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
@@ -2495,6 +2495,10 @@
             "description": "Optional new AV ID; an existing AV is rejected for a new request",
             "type": "string",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [

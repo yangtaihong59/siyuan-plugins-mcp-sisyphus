@@ -97,7 +97,7 @@
 
 ### 读取哈希（`ifMatch`）
 
-开启一步写入后，读取可写目标会在顶层附带 `ifMatch`：即严格预检探针计算的同一个 sha256:v1 状态哈希的前 16 位十六进制。状态哈希在读取**之前**计算，若两者之间目标被改动，调用方拿到的是比所见内容更旧的哈希，后续写入会安全失败。客户端无写权限（笔记本权限 `r`/`none`）或目标不存在时不返回 `ifMatch`。
+开启一步写入后，读取可写目标会在顶层附带 `ifMatch`：即严格预检探针计算的同一个 sha256:v1 状态哈希的前 16 位十六进制。状态哈希在读取**之前**计算，若两者之间目标被改动，调用方拿到的是比所见内容更旧的哈希，后续写入会安全失败。客户端无写权限（笔记本权限 `r`/`none`）或目标不存在时不返回 `ifMatch`。同时返回的 `ifMatchTarget` 指明该哈希覆盖的 id 或路径：`block.get_children` 覆盖的是被读取的父块，而不是其子块。不匹配时错误会说明该值必须来自哪个目标及对应读取；若该值由本进程为另一目标签发，错误会同时给出两者（`ifMatchIssuedFor`）。
 
 | 读取 | 规范探针（哈希等于该写入的预检凭据） | 接受同一 `ifMatch` 的写入 |
 | --- | --- | --- |
@@ -116,13 +116,13 @@
 
 | 级别 | 动作 | 一步规则 |
 | --- | --- | --- |
-| 1 — 新增/低影响 | document `create`、`rename`、`set_attr`；fs `write`（新建文档）；block `insert`、`prepend`、`append`、`set_attrs`；av `add_rows`、`add_column`、`add_view`；flashcard `create_card`、`review_card` | 可免预检；`ifMatch` 可选（提供时校验） |
+| 1 — 新增/低影响 | document `create`、`rename`、`set_attr`；fs `write`（新建文档）；block `insert`、`prepend`、`append`、`set_attrs`；av `create`（可用 `name` 在创建时命名）、`rename`、`add_rows`、`add_column`、`add_view`；flashcard `create_card`、`review_card` | 可免预检；`ifMatch` 可选（提供时校验） |
 | 2 — 覆盖 | block `update`、`replace`；fs `write` 且 `overwrite=true`；不含 `replace_all` 的 fs `replace`；av `set_cells`；file `update_template` | 仅在单一目标且 `ifMatch` 匹配时可免预检 |
 | 3 — 始终两步 | 所有 `dangerous` 动作、tag `rename`、document `heading_to_doc` / `doc_to_heading` / `reorder` / `move`、fs `reorder` / `mv`、block `transfer_references`、av `remove_rows` / `remove_column`、notebook `set_open_state` / `set_conf` / `rename`、任一编辑含 `replace_all` 的 fs `replace`，以及上表未列出的所有动作（默认拒绝） | 从不 |
 
-最大的条目列表（`items`、`rows`、`blockIDs`、`primaryKeyTexts`、`cells`、`rowIDs`、`ids`、`edit`）超过 20 项的写入一律回退为两步。
+最大的条目列表（`items`、`blocks`、`rows`、`blockIDs`、`primaryKeyTexts`、`cells`、`rowIDs`、`ids`、`edit`）超过 20 项的写入一律回退为两步。动作帮助只在确实接受这类列表的动作上提及该上限。
 
-一步提交只省去往返，不省检查：仍会重新加载权限、执行同样的状态探针与引用校验、校验 `ifMatch`、经协调器串行执行、写后读回并写入账本。它会获得服务端签发的 `requestId`（在 `safety.requestId` 中返回，带它重放相同参数不会再次执行），回执带 `oneStep: { tier }` 以及预检本应返回的同一份 `preview`，便于事后核对。由于 ID 在调用过程中才签发，响应前的传输丢失无法靠不带 ID 重发去重：遇到 `outcome_unknown` 时应检查目标，而不是重发。
+一步提交只省去往返，不省检查：仍会重新加载权限、执行同样的状态探针与引用校验、校验 `ifMatch`、经协调器串行执行、写后读回并写入账本。它会获得服务端签发的 `requestId`（在 `safety.requestId` 中返回，带它重放相同参数不会再次执行），回执带 `oneStep: { tier, meaning }` 以及预检本应返回的同一份 `preview`，便于事后核对。该预览在写入前生成，因此其中目标摘录命名为 `excerptBefore`。由于 ID 在调用过程中才签发，响应前的传输丢失无法靠不带 ID 重发去重：遇到 `outcome_unknown` 时应检查目标，而不是重发。
 
 被拒绝的一步提交返回 `precondition_required`，附 `error.oneStep: { allowed: false, tier, reason }`，`reason` 为 `setting_off`（仅在发送了 `ifMatch` 时出现）、`tier3`、`missing_if_match`、`if_match_unsupported` 或 `batch_too_large`，消息会指明两步流程（CLI：加 `--validate-only` 重新运行）。开启后，对 1/2 级动作调用 `action="help"` 会附带 `oneStep: { tier, rule }`。
 
@@ -154,7 +154,8 @@
 | `precondition_required` | 缺少预检哈希或 request ID，或一步提交被拒（见 `error.oneStep.reason`） | 重新预检；不要直接猜哈希 |
 | `preflight_lease_invalid` | 租约缺失、过期、被淘汰或服务已重启 | 使用相同业务参数重新 `validateOnly` |
 | `state_changed` | 预检后（或产生 `ifMatch` 的读取之后）目标已变化 | 停止，重新读取并决定是否仍要修改 |
-| `outcome_unknown` | 写入开始后连接中断，结果无法确定 | 不要换新 ID 自动重试；先检查目标 |
+| `not_applied` | 思源明确拒绝了本次提交的写入（API 错误码或 4xx），且没有发出其他写入：未做任何修改。`safety.transactionState` 为 `not_applied`；重放该 request ID 返回同一错误码 | 修正参数后重新调用（两步模式下重新预检） |
+| `outcome_unknown` | 写入开始后连接中断，或处理器在某次写入可能已生效后失败，结果无法确定 | 不要换新 ID 自动重试；先检查目标 |
 | `readback_mismatch` | 接口返回后无法确认最终状态 | 视为未知结果，人工或只读检查 |
 | `idempotency_conflict` | request ID 被用于另一组参数 | 这是调用方错误，必须生成新 ID |
 | `write_coordinator_unavailable` | 无法发现或连接选定协调器 | 检查内核入口或 Node HTTP 设置并重试预检 |

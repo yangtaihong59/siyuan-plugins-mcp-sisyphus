@@ -198,7 +198,8 @@ describe('ifMatch on writes', () => {
             args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
         }));
         expect(stale.error).toMatchObject({ code: 'state_changed', expectedField: 'ifMatch', revalidateRequired: true });
-        expect(stale.error.hint).toContain('Read the target again');
+        expect(stale.error.hint).toContain('ifMatch must come from a read of this exact target');
+        expect(stale.error.hint).toContain('block(action="get_kramdown"');
     });
 
     it('rejects malformed or unmappable ifMatch without executing', async () => {
@@ -257,7 +258,7 @@ describe('one-step commits', () => {
             strictMode: true, oneStep: 'low_risk', execute,
         }));
         expect(execute).toHaveBeenCalledTimes(1);
-        expect(result.oneStep).toEqual({ tier: 1 });
+        expect(result.oneStep).toEqual({ tier: 1, meaning: 'additive or name-only change; ifMatch optional' });
         expect(result.preview).toMatchObject({ detail: 'summary' });
         expect(result.safety).toMatchObject({ writeSafetyMode: 'strict', writeExecuted: true, replayed: false });
         expect(result.safety.requestId).toMatch(/^[a-f0-9]{4,}$/);
@@ -296,7 +297,7 @@ describe('one-step commits', () => {
             strictMode: true, oneStep: 'low_risk', execute,
         }));
         expect(execute).toHaveBeenCalledTimes(1);
-        expect(committed.oneStep).toEqual({ tier: 2 });
+        expect(committed.oneStep).toEqual({ tier: 2, meaning: 'overwrite guarded by ifMatch' });
         expect(committed.safety).toMatchObject({ transactionState: 'committed', writeExecuted: true });
         expect(committed.preview.changes[0].kind).toBeTruthy();
     });

@@ -181,7 +181,7 @@ describe('cli write guidance', () => {
         const human = applyCliWriteGuidance(text({ success: true, id: 'b9', oneStep: { tier: 1 }, preview, safety: { requestId: 'e0c4', transactionState: 'committed', replayed: false } }) as never, 'block', false);
         expect(human.previewFirst).toBeUndefined();
         expect(human.previewLines?.[0]).toBe('Preview (committed in one step, tier 1; verify it matches the intent):');
-        expect(human.statusLine).toBe('Write: committed · one step (tier 1) · request e0c4');
+        expect(human.statusLine).toBe('Write: committed · one step (tier 1: additive or name-only change, no --if-match needed) · request e0c4');
         expect(JSON.parse((human.result.content[0] as { text: string }).text)).toEqual({ success: true, id: 'b9' });
     });
 

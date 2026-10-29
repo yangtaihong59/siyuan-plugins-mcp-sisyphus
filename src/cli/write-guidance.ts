@@ -132,6 +132,12 @@ function withDefaultColumnStep(payload: Record<string, any>, tool: string, json:
     return { ...rest, defaultColumnNote: `SiYuan added a default select column${names.length ? ` ${names.join(', ')}` : ''}; keep it (kanban needs one) or remove it with: ${cliCommand}` };
 }
 
+/** What a one-step tier means, for the receipt line. */
+const ONE_STEP_TIER_MEANING: Record<number, string> = {
+    1: 'tier 1: additive or name-only change, no --if-match needed',
+    2: 'tier 2: overwrite guarded by --if-match',
+};
+
 /** One line for a commit receipt; the hashes and flags stay in --json / --debug. */
 export function formatSafetyStatus(safety: Record<string, any>, oneStep?: Record<string, any>): string {
     const state = String(safety.transactionState ?? (safety.writeExecuted === true ? 'committed' : 'unknown'));
@@ -140,7 +146,7 @@ export function formatSafetyStatus(safety: Record<string, any>, oneStep?: Record
             ? 'replayed — this request ID already ran; nothing was executed again'
             : state === 'no_change' ? 'no change — the target already had this content' : state,
     ];
-    if (oneStep) parts.push(`one step${typeof oneStep.tier === 'number' ? ` (tier ${oneStep.tier})` : ''}`);
+    if (oneStep) parts.push(`one step${typeof oneStep.tier === 'number' ? ` (${ONE_STEP_TIER_MEANING[oneStep.tier] ?? `tier ${oneStep.tier}`})` : ''}`);
     if (safety.writeSafetyGuaranteed === false) parts.push(`not covered by strict write safety${safety.reason ? ` (${safety.reason})` : ''}`);
     if (typeof safety.requestId === 'string') parts.push(`request ${safety.requestId}`);
     return `Write: ${parts.join(' · ')}`;
@@ -198,6 +204,8 @@ function formatTarget(target: Record<string, any>): string {
     const name = target.title ?? target.excerpt;
     const parts = [`${String(target.kind ?? 'target')} ${String(target.id ?? '')}`];
     if (typeof name === 'string' && name) parts.push(`"${name}"`);
+    // Receipts describe targets as they were before the write.
+    else if (typeof target.excerptBefore === 'string' && target.excerptBefore) parts.push(`(before the write) "${target.excerptBefore}"`);
     if (typeof target.hPath === 'string' && target.hPath) parts.push(target.hPath);
     if (typeof target.position === 'string' && target.position) parts.push(`(${target.position})`);
     if (typeof target.matchCount === 'number') parts.push(`— ${target.matchCount} match(es)`);
@@ -210,7 +218,7 @@ function formatTarget(target: Record<string, any>): string {
 
 /** Before/after text and example lists are the reviewable detail; counts already sit in the summary. */
 function formatDetail(key: string, value: unknown, indent: string): string[] {
-    if (key === 'recovery' && typeof value === 'string') return [`${indent}recovery: ${value}`];
+    if ((key === 'recovery' || key === 'note') && typeof value === 'string') return [`${indent}${key}: ${value}`];
     if (key === 'before' || key === 'after' || key === 'from' || key === 'to') {
         if (typeof value === 'string') return [`${indent}${key}: ${value}`];
         if (Array.isArray(value)) return [`${indent}${key}: ${value.map(String).join(' | ')}`];

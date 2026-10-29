@@ -50,7 +50,7 @@ export async function executeLocalTool(execution: LocalToolExecution): Promise<T
         oneStep: execution.config.writeSafety.strictMode ? execution.config.writeSafety.oneStep : 'off',
         beforeCommit: execution.beforeCommit,
         validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
-        execute: (safeArgs) => TOOL_REGISTRY[category].callTool(client, safeArgs, actionConfig, permMgr, runtime),
+        execute: (safeArgs, trackedClient = client) => TOOL_REGISTRY[category].callTool(trackedClient, safeArgs, actionConfig, permMgr, runtime),
     });
 }
 

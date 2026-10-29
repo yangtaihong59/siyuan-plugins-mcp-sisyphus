@@ -377,7 +377,7 @@ function renderErrorPayload(payload: unknown): void {
 
         // Coordinator hints speak MCP ("validateOnly preflight"); say it as a command.
         const hint = err.revalidateRequired === true && err.expectedField === 'ifMatch'
-            ? 'Read the target again (the read prints a fresh ifMatch), re-check the content, then rerun the write with the new --if-match.'
+            ? `${typeof err.hint === 'string' && err.hint ? err.hint : 'Read the target again (the read prints a fresh ifMatch), re-check the content, then rebuild the write.'} Pass the new value as --if-match.`
             : err.revalidateRequired === true
             ? `Rerun the command with --validate-only to get a fresh preflight and hashes, then run the new commit command.${err.code === 'state_changed' ? ' Any write to the same target (for a database: any change to it) invalidates other pending preflights.' : ''}`
             : err.hint;
@@ -614,7 +614,12 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
     }
 
     if (Array.isArray(obj.writeWorkflow)) {
-        writeSection('Write Flow (two steps)', out);
+        const oneStepTier = isObject(obj.oneStep) ? obj.oneStep.tier : undefined;
+        writeSection(oneStepTier === 1
+            ? 'Write Flow (two steps; optional here: one-step is on, so this write may also commit without --validate-only)'
+            : oneStepTier === 2
+                ? 'Write Flow (two steps; or one step with --if-match from a fresh read)'
+                : 'Write Flow (two steps)', out);
         writeBulletList([
             '1. Run the command with --validate-only. Nothing is written; it checks permissions, prints a preview of the targets, changes and risk flags, and the exact commit command.',
             '2. Read the preview and check it matches your intent (add --preview full for complete before/after text). If it does not, do not commit.',
@@ -627,7 +632,7 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
         writeSection('One-step write', out);
         writeLine(out, `  ${obj.oneStep.rule.replace(/\bvalidateOnly\b/g, '--validate-only').replace(/\bifMatch\b/g, '--if-match')}`);
         const reads = toStringArray(obj.oneStep.ifMatchReads);
-        if (reads.length > 0) writeLine(out, `  If Match is printed by: ${reads.map((read) => `${PRIMARY_CLI_COMMAND} ${read}`).join(', ')}`);
+        if (reads.length > 0) writeLine(out, `  If Match (from a read of this exact target id/path) is printed by: ${reads.map((read) => `${PRIMARY_CLI_COMMAND} ${read}`).join(', ')}`);
     }
 
     const required = normalizeRequiredFields(obj.requiredFields);

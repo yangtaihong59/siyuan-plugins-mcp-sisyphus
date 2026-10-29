@@ -109,7 +109,7 @@ The pool stores no note content. Aliases remain reserved for the process lifetim
 
 ### Read hashes (`ifMatch`)
 
-With one-step on, reads of a writable target add a top-level `ifMatch`: the first 16 hex digits of the same sha256:v1 state hash the strict preflight probe computes. The state is hashed **before** the read runs, so if the target changes in between, the caller holds an older hash than the content it saw and a later write fails closed. Targets the client cannot write (notebook permission `r`/`none`, missing targets) get no `ifMatch`.
+With one-step on, reads of a writable target add a top-level `ifMatch`: the first 16 hex digits of the same sha256:v1 state hash the strict preflight probe computes. The state is hashed **before** the read runs, so if the target changes in between, the caller holds an older hash than the content it saw and a later write fails closed. Targets the client cannot write (notebook permission `r`/`none`, missing targets) get no `ifMatch`. Next to it, `ifMatchTarget` names the id or path the hash covers: for `block.get_children` that is the parent that was read, never one of its children. A mismatch says which target the value must come from and the read that returns it; when the value was issued by this process for a different target, the error names both (`ifMatchIssuedFor`).
 
 | Read | Canonical probe (the hash equals this write's preflight credential) | Writes that accept the same `ifMatch` |
 | --- | --- | --- |
@@ -128,13 +128,13 @@ A commit without `requestId` may run in one step only when the setting is on and
 
 | Tier | Actions | One-step rule |
 | --- | --- | --- |
-| 1 — additive / low impact | document `create`, `rename`, `set_attr`; fs `write` (new document); block `insert`, `prepend`, `append`, `set_attrs`; av `add_rows`, `add_column`, `add_view`; flashcard `create_card`, `review_card` | Allowed without preflight; `ifMatch` optional (checked when present) |
+| 1 — additive / low impact | document `create`, `rename`, `set_attr`; fs `write` (new document); block `insert`, `prepend`, `append`, `set_attrs`; av `create` (optionally named with `name`), `rename`, `add_rows`, `add_column`, `add_view`; flashcard `create_card`, `review_card` | Allowed without preflight; `ifMatch` optional (checked when present) |
 | 2 — overwrites | block `update`, `replace`; fs `write` with `overwrite=true`; fs `replace` without `replace_all`; av `set_cells`; file `update_template` | Allowed only with a matching `ifMatch` for a single target |
 | 3 — always two-step | every `dangerous` action, tag `rename`, document `heading_to_doc` / `doc_to_heading` / `reorder` / `move`, fs `reorder` / `mv`, block `transfer_references`, av `remove_rows` / `remove_column`, notebook `set_open_state` / `set_conf` / `rename`, fs `replace` with any `replace_all`, and every action not listed above (default deny) | Never |
 
-Any write whose largest item list (`items`, `rows`, `blockIDs`, `primaryKeyTexts`, `cells`, `rowIDs`, `ids`, `edit`) exceeds 20 entries falls back to two-step.
+Any write whose largest item list (`items`, `blocks`, `rows`, `blockIDs`, `primaryKeyTexts`, `cells`, `rowIDs`, `ids`, `edit`) exceeds 20 entries falls back to two-step. Action help mentions the limit only for actions that take such a list.
 
-A one-step commit skips only the round trip. It still reloads permissions, runs the same state probe and reference checks, verifies `ifMatch`, serializes through the coordinator, reads back, and writes the ledger. It receives a server-issued `requestId` (returned in `safety.requestId`; replaying the same arguments with it does not execute again) and the receipt carries `oneStep: { tier }` plus the same `preview` a preflight would have returned, so the agent can check the change after the fact. Because the ID is issued during the call, a transport loss before the response cannot be deduplicated by resending without it: on `outcome_unknown`, inspect the target instead of resending.
+A one-step commit skips only the round trip. It still reloads permissions, runs the same state probe and reference checks, verifies `ifMatch`, serializes through the coordinator, reads back, and writes the ledger. It receives a server-issued `requestId` (returned in `safety.requestId`; replaying the same arguments with it does not execute again) and the receipt carries `oneStep: { tier, meaning }` plus the same `preview` a preflight would have returned, so the agent can check the change after the fact. That preview was computed before the write, so its target excerpts are named `excerptBefore`. Because the ID is issued during the call, a transport loss before the response cannot be deduplicated by resending without it: on `outcome_unknown`, inspect the target instead of resending.
 
 A refused one-step commit returns `precondition_required` with `error.oneStep: { allowed: false, tier, reason }`, where `reason` is `setting_off` (only when `ifMatch` was sent), `tier3`, `missing_if_match`, `if_match_unsupported` or `batch_too_large`, and the message names the two-step path (CLI: rerun with `--validate-only`). With one-step on, `action="help"` for a tier-1/2 topic adds `oneStep: { tier, rule }`.
 
@@ -166,7 +166,8 @@ Tier 2 lets an overwrite commit in one step with a fresh `ifMatch`. `ifMatch` pr
 | `precondition_required` | A request ID or required hash is absent, or a one-step commit was refused (`error.oneStep.reason`) | Run preflight again; never invent a hash |
 | `preflight_lease_invalid` | The lease is missing, expired, evicted, or belonged to a previous process | Run the same `validateOnly` call again |
 | `state_changed` | The target changed after preflight, or since the read that produced `ifMatch` | Stop and reread before deciding to write |
-| `outcome_unknown` | The connection failed after execution began | Do not retry with a new ID; inspect the target |
+| `not_applied` | SiYuan explicitly rejected the commit's write (an API error code or a 4xx answer) and no other write was sent: nothing changed. `safety.transactionState` is `not_applied`; a replay of that request ID returns the same code | Fix the arguments and send a new call (new preflight in two-step mode) |
+| `outcome_unknown` | The connection failed after execution began, or a handler failed after a write may have landed | Do not retry with a new ID; inspect the target |
 | `readback_mismatch` | The returned mutation could not be verified | Treat the outcome as unknown |
 | `idempotency_conflict` | The request ID was reused with different arguments | Generate a new ID |
 | `write_coordinator_unavailable` | The selected coordinator cannot be discovered or reached | Check kernel/Node HTTP settings and preflight again |

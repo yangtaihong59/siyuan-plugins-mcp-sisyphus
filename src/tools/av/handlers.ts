@@ -49,8 +49,13 @@ async function handleCreate({ client, permMgr, rawArgs }: ToolHandlerContext): P
     }
     if (!carrier?.dom?.includes(`data-av-id="${avID}"`)) throw new Error('Database carrier persistence could not be confirmed');
     await context.checkpoint('carrier_inserted', 'verify');
+    if (parsed.name !== undefined) {
+        // Named at creation, so no separate rename is needed; verified below.
+        await transactionApi.performTransactions(client, [{ doOperations: [{ action: 'setAttrViewName', id: avID, avID, data: parsed.name }], undoOperations: [] }]);
+    }
     const readback: any = await avApi.getAttributeView(client, avID);
     if (readback.av?.id !== avID) throw new Error('Database persistence could not be confirmed');
+    if (parsed.name !== undefined && readback.av?.name !== parsed.name) throw new Error('Database name could not be confirmed');
     await context.checkpoint('verified', 'complete');
     // SiYuan adds a single-select column to every new database. Name it and
     // offer the removal step instead of deleting it behind the caller's back.
@@ -66,7 +71,7 @@ async function handleCreate({ client, permMgr, rawArgs }: ToolHandlerContext): P
             arguments: { action: 'remove_column', avID, keyID: defaultColumns[0].keyID, validateOnly: true },
         },
     } : {};
-    return applyUiRefresh(client, createWriteSuccessResult({ action: 'create', ...context.progress, materialized: true, ...defaultColumnGuidance }), [
+    return applyUiRefresh(client, createWriteSuccessResult({ action: 'create', ...context.progress, ...(parsed.name !== undefined ? { name: parsed.name } : {}), materialized: true, ...defaultColumnGuidance }), [
         { type: 'reloadAttributeView', id: avID }, { type: 'reloadProtyle', id: parent.documentId },
     ]);
 }
