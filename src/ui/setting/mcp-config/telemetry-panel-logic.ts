@@ -73,9 +73,20 @@ export function readStorageFile(path: string): Promise<string> {
     });
 }
 
-export function formatTimestamp(ts: number) {
+/** SiYuan's UI language as a BCP 47 tag, so dates follow the UI rather than the OS locale. */
+export function getUiLocale(lang: unknown = (globalThis as any).window?.siyuan?.config?.lang): string | undefined {
+    if (typeof lang !== "string" || !lang) return undefined;
+    const tag = lang === "zh_CHT" ? "zh-TW" : lang.replace(/_/g, "-");
+    try {
+        return Intl.DateTimeFormat.supportedLocalesOf(tag).length > 0 ? tag : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+export function formatTimestamp(ts: number, locale = getUiLocale()) {
     if (!Number.isFinite(ts)) return "—";
-    return new Date(ts).toLocaleString();
+    return new Date(ts).toLocaleString(locale);
 }
 
 export function formatApproxTokens(value: unknown) {
@@ -117,9 +128,9 @@ export function buildDailyHeatmap(trend: AnalyticsSummary["dailyTrend"]): Heatma
     }));
 }
 
-export function buildHeatmapMonths(days: HeatmapDay[]): HeatmapMonth[] {
+export function buildHeatmapMonths(days: HeatmapDay[], locale = getUiLocale()): HeatmapMonth[] {
     const months: HeatmapMonth[] = [];
-    const formatter = new Intl.DateTimeFormat(undefined, { month: "short", timeZone: "UTC" });
+    const formatter = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
 
     for (let week = 0; week < 52; week += 1) {
         const weekDays = days.slice(week * 7, week * 7 + 7);

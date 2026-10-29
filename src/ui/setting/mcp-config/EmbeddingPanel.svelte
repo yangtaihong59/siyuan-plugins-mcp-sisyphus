@@ -324,8 +324,10 @@
     .embedding-row > input:not(.b3-switch), .embedding-unit { flex: 0 1 360px; width: min(360px, 46%); }
     .embedding-row .b3-text-field { box-sizing: border-box; width: 100%; }
     .embedding-number { max-width: 140px; }
-    .embedding-unit { align-items: center; display: flex; gap: 8px; justify-content: flex-end; }
-    .embedding-unit em { color: var(--mcp-config-caption-color); font-style: normal; }
+    /* The unit sits inside the field so it lines up with the other number inputs. */
+    .embedding-unit { align-items: center; display: flex; justify-content: flex-end; position: relative; }
+    .embedding-unit .embedding-number { padding-right: 26px; }
+    .embedding-unit em { color: var(--mcp-config-caption-color); font-style: normal; pointer-events: none; position: absolute; right: 10px; }
     .embedding-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 16px 19px; }
     .embedding-reindex-hint { background: var(--mcp-config-primary-soft); color: var(--b3-theme-primary); padding: 10px 19px; }
     .embedding-index { padding: var(--mcp-config-card-padding, 17px 19px); }

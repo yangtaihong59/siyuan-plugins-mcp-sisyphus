@@ -8,7 +8,7 @@ import {
     parseChangelogEntries,
     replacePromptTokens,
 } from '@/ui/setting/mcp-config/http-server-panel-logic';
-import { buildTelemetryItems, formatChars } from '@/ui/setting/mcp-config/telemetry-panel-logic';
+import { buildDailyHeatmap, buildHeatmapMonths, buildTelemetryItems, formatChars, formatTimestamp, getUiLocale } from '@/ui/setting/mcp-config/telemetry-panel-logic';
 
 const label = (_key: string, fallback: string) => fallback;
 
@@ -46,5 +46,20 @@ describe('settings panel logic', () => {
 
     it('formats character counts for the telemetry summary', () => {
         expect(typeof formatChars(12345)).toBe('string');
+    });
+
+    it('formats usage dates in the SiYuan UI language rather than the OS locale', () => {
+        expect(getUiLocale('en_US')).toBe('en-US');
+        expect(getUiLocale('zh-CN')).toBe('zh-CN');
+        expect(getUiLocale('zh_CHT')).toBe('zh-TW');
+        expect(getUiLocale('not a locale!')).toBeUndefined();
+        vi.stubGlobal('window', { siyuan: { config: { lang: 'en_US' } } });
+        expect(getUiLocale()).toBe('en-US');
+
+        const days = buildDailyHeatmap([]);
+        expect(buildHeatmapMonths(days, 'en-US').map((month) => month.label)).not.toContain('1月');
+        expect(buildHeatmapMonths(days, 'en-US').map((month) => month.label)).toContain('Jan');
+        expect(buildHeatmapMonths(days, 'zh-CN').map((month) => month.label)).toContain('1月');
+        expect(formatTimestamp(Date.UTC(2026, 9, 29, 1, 2, 3), 'en-US')).toMatch(/10\/2[89]\/2026/);
     });
 });

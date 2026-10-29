@@ -223,7 +223,7 @@
             category: "timeline",
             icon: "🕓",
             groupKey: "Timeline",
-            iconSvg: ICON_SVGS.compass,
+            iconSvg: ICON_SVGS.history,
             actions: [
                 { key: "list_nodes", title: "List Nodes", description: "List global or document timeline nodes." },
                 { key: "create_node", title: "Create Node", description: "Create a named global or document timeline node." },
@@ -278,7 +278,7 @@
             category: "extension",
             icon: "🧩",
             groupKey: "Extension Tools",
-            iconSvg: ICON_SVGS.layers,
+            iconSvg: ICON_SVGS.puzzle,
             actions: [
                 { key: "list", title: "List Official Tools", description: "Inspect or refresh plugin and native tools from the official SiYuan MCP endpoint." },
                 { key: "validate_package", title: "Validate Explicit Package", description: "Statically validate caller-supplied plugin, theme, or widget metadata and text files without reading any local package path or changing SiYuan." },
@@ -657,6 +657,7 @@
     }
 
     .tool-settings-group__header {
+        box-sizing: border-box;
         width: 100%;
         display: flex;
         align-items: center;

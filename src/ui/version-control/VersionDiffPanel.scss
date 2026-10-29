@@ -196,16 +196,31 @@ button:disabled {
     display: grid;
     grid-template-columns: minmax(0, auto) 24px minmax(0, auto);
     gap: 8px;
-    align-items: center;
+    align-items: stretch;
     justify-content: start;
 }
 
+.vc-version-line .vc-version-arrow {
+    align-self: center;
+}
+
+.vc-diff-head-cell > .vc-version-card {
+    box-sizing: border-box;
+    height: 100%;
+}
+
+/* Label and time share the first row; the node name gets the full second row so it
+   is not squeezed out when the card is narrow (split view, small docks). */
 .vc-version-card {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "label time" "name name";
     min-width: 0;
     max-width: 100%;
     align-items: baseline;
-    gap: 6px;
+    align-content: start;
+    column-gap: 8px;
+    row-gap: 1px;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--b3-border-color) 78%, transparent);
     border-radius: 6px;
@@ -224,7 +239,7 @@ button:disabled {
 }
 
 .vc-version-label {
-    flex: none;
+    grid-area: label;
     color: var(--b3-theme-on-surface-light, var(--b3-theme-on-surface));
     font-size: 11px;
     font-weight: 600;
@@ -239,12 +254,15 @@ button:disabled {
 }
 
 .vc-version-card strong {
+    grid-area: name;
     color: var(--b3-theme-on-background);
     font-weight: 650;
 }
 
 .vc-version-card time {
+    grid-area: time;
     color: var(--b3-theme-on-surface);
+    font-size: 11px;
     font-variant-numeric: tabular-nums;
 }
 
@@ -705,9 +723,7 @@ small {
     }
 
     .vc-version-card {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 2px;
+        align-items: start;
     }
 
     .vc-block.old {

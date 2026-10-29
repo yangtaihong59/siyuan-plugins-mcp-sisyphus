@@ -75,6 +75,11 @@ describe('mcp-config-tabs icon system', () => {
         expect(PUPPY_GROUP_KEY).toBe('Mascot Display');
     });
 
+    it('gives every tool category its own icon', () => {
+        const iconKeys = CATEGORY_TAB_DEFS.map((def) => def.iconKey);
+        expect(new Set(iconKeys).size).toBe(iconKeys.length);
+    });
+
     it('keeps filesystem and files tool icons distinct', () => {
         expect(CATEGORY_TAB_DEFS.find((d) => d.category === 'fs')?.iconKey).toBe('folder');
         expect(CATEGORY_TAB_DEFS.find((d) => d.category === 'file')?.iconKey).toBe('paperclip');

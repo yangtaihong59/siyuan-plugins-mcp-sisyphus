@@ -31,6 +31,8 @@ export const ICON_SVGS: Record<string, string> = {
     barChart: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z"/></svg>`,
     compass: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.5 14L12 13l-4.5 3 1.5-5.5L5 9l5.5-.5L12 3l1.5 5.5L19 9l-4 1.5 1.5 5.5z"/></svg>`,
     bug: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20 8h-2.81c-.45-.78-1.08-1.45-1.83-1.95L17 4.41 15.59 3 13.5 5.09C13.02 5.03 12.52 5 12 5s-1.02.03-1.5.09L8.41 3 7 4.41l1.64 1.64C7.89 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81C7.85 19.79 9.79 21 12 21s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 9h-4v-2h4v2zm0-4h-4v-2h4v2z"/></svg>`,
+    history: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>`,
+    puzzle: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>`,
     message: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 4h16c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H8l-5 4v-4H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm2 4v2h12V8H6zm0 4v2h8v-2H6z"/></svg>`,
 };
 
@@ -43,10 +45,10 @@ export const CATEGORY_TAB_DEFS: CategoryTabDefinition[] = [
     { category: "file", groupKey: "Files", iconKey: "paperclip" },
     { category: "search", groupKey: "Search", iconKey: "search" },
     { category: "tag", groupKey: "Tags", iconKey: "tagIcon" },
-    { category: "timeline", groupKey: "Timeline", iconKey: "compass" },
+    { category: "timeline", groupKey: "Timeline", iconKey: "history" },
     { category: "system", groupKey: "System", iconKey: "monitor" },
     { category: "flashcard", groupKey: "Flashcards", iconKey: "layers" },
-    { category: "extension", groupKey: "Extension Tools", iconKey: "layers" },
+    { category: "extension", groupKey: "Extension Tools", iconKey: "puzzle" },
     { category: "mascot", groupKey: "Mascot Tool", iconKey: "paw" },
     { category: "feedback", groupKey: "Feedback Tool", iconKey: "message" },
 ];
