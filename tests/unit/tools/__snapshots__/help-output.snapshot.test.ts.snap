@@ -702,12 +702,30 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "action": "create",
         "example": {
           "action": "create",
-          "parentID": "20240318112233-abc123",
+          "name": "Tasks",
+          "parentID": "20240318112233-doc0001",
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "create",
+              "name": "Tasks",
+              "parentID": "20240318112233-doc0001",
+            },
+            "title": "Create a named database at the end of a document",
+          },
+          {
+            "mcp": {
+              "action": "create",
+              "parentID": "20240318112233-doc0001",
+            },
+            "title": "Create an unnamed database (name it later with rename)",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/av/create",
         "guidance": [
           "Explicit viewID selects only the read target; it never switches the database carrier. Returned viewID and selectionSource identify the actual selection; selectionFallback reports kernel-default fallback.",
-          "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
+          "create requires parentID, and optionally name and a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
           "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
           "Relation values use set_relation, not set_cells; two-way relations may write another database. create_from_template can create a document and stays separate from add_rows.",
@@ -749,6 +767,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "requiresConfirmation": false,
         "shapes": [
           "parentID",
+          "parentID + name (database name at creation)",
         ],
         "tool": "av",
         "writeWorkflow": [
@@ -978,6 +997,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "guidance": [
           "Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.",
           "get defaults to structure: identity, columns and view summaries, never all row IDs. scope=columns reads keys; scope=view reads exact view configuration; scope=raw preserves the complete native AV.",
+          "IDs: database = avID, column = columnID (column actions call the same value keyID; av get also lists it as id), row = rowID. keyID and columnID are accepted for each other.",
           "Explicit viewID selects only the read target; it never switches the database carrier. Returned viewID and selectionSource identify the actual selection; selectionFallback reports kernel-default fallback.",
           "update_view requires avID, the carrier blockID (databaseContext.carrierBlockIDs from get; auto-filled when there is exactly one) and its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
           "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
@@ -1467,6 +1487,19 @@ exports[`tool description and help outputs > matches the locked snapshot for all
               "validateOnly": true,
             },
             "title": "Set a select and a number cell",
+          },
+          {
+            "description": "A date without a time is stored as that day (shown without 00:00). Add a time ("2026-11-05T14:30") for a timed value; endDate makes a range.",
+            "mcp": {
+              "action": "set_cells",
+              "avID": "20240318112233-avdb001",
+              "columnID": "20240318112233-due0001",
+              "date": "2026-11-05",
+              "rowID": "20240318112233-row0001",
+              "validateOnly": true,
+              "valueType": "date",
+            },
+            "title": "Set one date cell",
           },
         ],
         "fullDocResource": "siyuan://help/action/av/set_cells",
@@ -4308,9 +4341,10 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
       "guidance": [
         "Find databases with search, inspect structure with get, query paginated records with query, then add_rows or set_cells. A database is not a Markdown table.",
         "get defaults to structure: identity, columns and view summaries, never all row IDs. scope=columns reads keys; scope=view reads exact view configuration; scope=raw preserves the complete native AV.",
+        "IDs: database = avID, column = columnID (column actions call the same value keyID; av get also lists it as id), row = rowID. keyID and columnID are accepted for each other.",
         "query returns canonical rowID and columnID. Never substitute sourceBlockID or cell value IDs. fields projects requested stable columnIDs while always keeping rowID. mode=primary_keys returns lightweight paginated primary keys; keyword applies to either mode.",
         "Explicit viewID selects only the read target; it never switches the database carrier. Returned viewID and selectionSource identify the actual selection; selectionFallback reports kernel-default fallback.",
-        "create requires parentID, and optionally a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
+        "create requires parentID, and optionally name and a new avID. First preflight to obtain requestId. IDs and progress are persisted before creation. Partial or unknown outcomes require inspection, never automatic recreation.",
         "update_view requires avID, the carrier blockID (databaseContext.carrierBlockIDs from get; auto-filled when there is exactly one) and its currently selected viewID. Omitted settings stay unchanged. filters/sorts/group/columnOrder replace complete settings; columnVisibility patches only named columns.",
         "filters:[] and sorts:[] clear settings; group:{field:""} clears grouping. columnOrder includes every current view field, including hidden fields. Duplicate IDs, null and unknown settings are rejected.",
         "Filter leaves use column/operator/value and omit combination/filters. Group nodes use only combination and filters; never mix group and leaf fields in one node.",
@@ -4441,7 +4475,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "To create real SiYuan tags inside markdown content, use the syntax #tag# with both leading and trailing # characters, then verify with tag(action="list", query="tag").",
           "To turn a block into a flashcard, prefer flashcard(action="create_card"). It writes "custom-riff-decks" and registers the riff card together.",
         ],
-        "hint": "parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
+        "hint": "parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent (SiYuan rejects it): to add content under a heading use block insert with previousID = the last block of that section (or the heading itself to put it first). Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
         "parameters": {
           "additionalProperties": false,
           "description": "Insert a block at the end of a parent.",
@@ -5193,7 +5227,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "To create real SiYuan tags inside markdown content, use the syntax #tag# with both leading and trailing # characters, then verify with tag(action="list", query="tag").",
           "To turn a block into a flashcard, prefer flashcard(action="create_card"). It writes "custom-riff-decks" and registers the riff card together.",
         ],
-        "hint": "parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
+        "hint": "parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent: to add content under a heading use block insert with previousID (the heading, or the last block of its section). Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
         "parameters": {
           "additionalProperties": false,
           "description": "Insert a block at the beginning of a parent.",
@@ -5806,7 +5840,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
     "overview": {
       "actionSummaries": {
         "add_to_daily_note": "Use notebook + dataType + data + position ("append" or "prepend") to add content to today’s daily note.",
-        "append": "parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
+        "append": "parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent (SiYuan rejects it): to add content under a heading use block insert with previousID = the last block of that section (or the heading itself to put it first). Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
         "batch_kramdown": "Provide 1–20 block or document IDs. MCP resolves read permission per input item, fetches readable kramdown in one kernel request, preserves input order and duplicates, and returns per-item errors instead of failing the whole batch.",
         "breadcrumb": "Optional excludeTypes removes matching block types from the breadcrumb.",
         "delete": "This action requires explicit user confirmation.",
@@ -5818,7 +5852,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "info": "Returns root document positioning metadata for a block.",
         "insert": "nextID inserts BEFORE that block; previousID inserts AFTER that block. Provide at least one of nextID, previousID, or parentID. Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
         "move": "Provide id or ids plus previousID, parentID, or both to describe the destination. When ids is provided, pass IDs in the desired final order; MCP calls SiYuan from last to first internally and returns apiCallOrder for debugging. This action requires explicit user confirmation.",
-        "prepend": "parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
+        "prepend": "parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent: to add content under a heading use block insert with previousID (the heading, or the last block of its section). Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
         "recent_updated": "Returns recent updates across the workspace, then MCP filters unreadable notebooks and applies count when provided. documents is the primary user-facing summary; items remains the raw block stream.",
         "replace": "Use id + edit to replace exact text inside one block kramdown content only. First read block(action="get_kramdown", id=...) and copy old from the block body. The writeback patches original DOM text nodes, preserving inline structure while rejecting IAL metadata edits. Naked ((id)) refs are normalized; footnotes and siyuan://blocks links are allowed but do not create backlinks.",
         "set_attrs": "Use attrs to write block attributes such as custom metadata. For flashcards, this only writes metadata such as {"custom-riff-decks":"<deck-id>"}; prefer flashcard(action="create_card") when you want a block to become a real review card.",
@@ -5833,7 +5867,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "requiresConfirmation": false,
         },
         "append": {
-          "hint": "parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
+          "hint": "parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent (SiYuan rejects it): to add content under a heading use block insert with previousID = the last block of that section (or the heading itself to put it first). Returns a slim success object with the created block ID. Prefer append when you need to add multi-line markdown, tables, or multiple new blocks. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
           "requiresConfirmation": false,
         },
         "batch_kramdown": {
@@ -5878,7 +5912,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "requiresConfirmation": true,
         },
         "prepend": {
-          "hint": "parentID can be either a document ID or block ID; behavior differs. Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
+          "hint": "parentID can be either a document ID or block ID; behavior differs. A heading cannot be a parent: to add content under a heading use block insert with previousID (the heading, or the last block of its section). Returns a slim success object with the created block ID. Use #tag# syntax in markdown when you want SiYuan to register a real tag.",
           "requiresConfirmation": false,
         },
         "recent_updated": {
@@ -6003,6 +6037,27 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
             "title": "Create with a human-readable parent hpath plus title",
           },
           {
+            "description": "Created in order, so list a parent before its children. The first failure stops the batch; the receipt lists created (with id), failed and not_applied items.",
+            "mcp": {
+              "action": "create",
+              "docs": [
+                {
+                  "markdown": "Agenda",
+                  "path": "/Meetings/Notes",
+                },
+                {
+                  "path": "/Meetings/Notes/Action 1",
+                },
+                {
+                  "markdown": "Owner: Li",
+                  "path": "/Meetings/Notes/Action 2",
+                },
+              ],
+              "notebook": "20210808180117-czj9bvb",
+            },
+            "title": "Create several documents in one call (batch, up to 20)",
+          },
+          {
             "description": "Only parentPath accepts this .sy storage path form; path does not.",
             "mcp": {
               "action": "create",
@@ -6025,7 +6080,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "For recently created documents, document(action="lookup", hpath=...) may briefly lag behind create because it depends on SiYuan indexing; retry if needed.",
           "document(action="lookup", id=...) may hit the same short indexing delay right after create; MCP retries briefly and then returns a timing-specific hint if indexing still has not settled.",
         ],
-        "hint": "Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.",
+        "hint": "Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles. Batch: document(action="create", notebook="<id>", docs=[{"path":"/A","markdown":"…"},{"path":"/A/B"}]) creates up to 20 documents in order (no repeated path; list a parent before its children). The first failure stops the batch; the receipt lists created (with id), failed and not_applied items, so resend only the items that were not created.",
         "parameters": {
           "additionalProperties": false,
           "description": "Create a new document. notebook is an ID from notebook.list, never a notebook name. Requires notebook + path OR notebook + parentPath + title in every mode; notebook + title alone is invalid. Use parentPath=/ for the notebook root. Prefer path for child documents; parentPath + title also accepts a human-readable parent path or a storage path ending in .sy.",
@@ -6060,11 +6115,57 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
                 "title",
               ],
             },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "path",
+                    ],
+                  },
+                  {
+                    "required": [
+                      "parentPath",
+                    ],
+                  },
+                  {
+                    "required": [
+                      "title",
+                    ],
+                  },
+                ],
+              },
+              "required": [
+                "docs",
+              ],
+            },
           ],
           "properties": {
             "action": {
               "const": "create",
               "type": "string",
+            },
+            "docs": {
+              "description": "Batch: up to 20 {path,markdown?}, created in order; excludes path/parentPath/title/markdown/icon",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "markdown": {
+                    "type": "string",
+                  },
+                  "path": {
+                    "description": "Notebook-local path, like path",
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "path",
+                ],
+                "type": "object",
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "type": "array",
             },
             "icon": {
               "description": "Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character.",
@@ -6114,11 +6215,16 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
             "parentPath",
             "title",
           ],
+          [
+            "notebook",
+            "docs",
+          ],
         ],
         "requiresConfirmation": false,
         "shapes": [
           "notebook + path",
           "notebook + parentPath + title",
+          "notebook + docs",
         ],
         "tool": "document",
         "writeWorkflow": [
@@ -7494,9 +7600,9 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "fullDocResource": "siyuan://help/action/document/set_attr",
         "guidance": [
           "For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"write"|"search") because it accepts human-readable paths and hides storage paths and IDs.",
-          "document(action="set_attr") updates document metadata such as icon and cover; use attrs.cover=null or an empty string to clear the cover.",
+          "document(action="set_attr") sets icon, cover and custom-* attributes; use attrs.cover=null or an empty string to clear the cover.",
         ],
-        "hint": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it. Only icon and cover: for custom attributes (custom-*), name, alias, memo or bookmark use block(action="set_attrs", id=<document id>) (a document is a block).",
+        "hint": "Sets icon, cover and custom-* attributes of a document (on its root block, like block set_attrs). attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it; attrs["custom-type"]="meeting" sets a custom attribute and "" removes it. For name, alias, memo or bookmark use block(action="set_attrs", id=<document id>).",
         "parameters": {
           "additionalProperties": false,
           "description": "Set document metadata such as icon and cover image.",
@@ -7506,8 +7612,10 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
               "type": "string",
             },
             "attrs": {
-              "additionalProperties": false,
-              "description": "Document metadata attributes to set",
+              "additionalProperties": {
+                "type": "string",
+              },
+              "description": "icon, cover and custom-* keys ("" removes a custom-* key)",
               "properties": {
                 "cover": {
                   "anyOf": [
@@ -7558,11 +7666,11 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
       },
     },
     "description": "📝 Documents, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown. query lists readable documents with statistics and same-title candidates. create uses notebook + notebook-local path (/Folder/Doc). lookup accepts id, notebook+hpath, or notebook+path (.sy); reuse storage paths for rename/move/remove. Read create help for parentPath + title.
-Actions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · query() · ensure_link_targets(notebook, parentId, mode, targets) · rename(id, title | notebook, path, title | items) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)
+Actions (required fields): create(notebook, path | notebook, parentPath, title | notebook, docs) · lookup() · query() · ensure_link_targets(notebook, parentId, mode, targets) · rename(id, title | notebook, path, title | items) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)
 * = ask the user to confirm first. action="help" (topic=<action>) returns optional fields, nested shapes, and examples.",
     "overview": {
       "actionSummaries": {
-        "create": "Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.",
+        "create": "Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles. Batch: document(action="create", notebook="<id>", docs=[{"path":"/A","markdown":"…"},{"path":"/A/B"}]) creates up to 20 documents in order (no repeated path; list a parent before its children). The first failure stops the batch; the receipt lists created (with id), failed and not_applied items, so resend only the items that were not created.",
         "create_daily_note": "Use a notebook ID and optionally pass app for downstream SiYuan event routing. When the user asks for a diary, journal entry, daily log, or today’s note in a notebook, prefer this action over manually creating a path and then appending content.",
         "doc_to_heading": "requires: srcID, targetID",
         "duplicate": "requires: id",
@@ -7580,11 +7688,11 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
         "rename": "Single mode uses either id + title or notebook + path + title. Batch mode uses items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.",
         "reorder": "Use parentID + orderedIDs. parentID may be a notebook ID or parent document ID, and orderedIDs must contain every visible direct child document ID exactly once. The notebook is switched to custom sorting.",
         "search_docs": "Use notebook + query, and optionally path as a storage-path scope. Search is title-based in SiYuan; MCP then filters by notebook permission and optional storage path.",
-        "set_attr": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it. Only icon and cover: for custom attributes (custom-*), name, alias, memo or bookmark use block(action="set_attrs", id=<document id>) (a document is a block).",
+        "set_attr": "Sets icon, cover and custom-* attributes of a document (on its root block, like block set_attrs). attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it; attrs["custom-type"]="meeting" sets a custom attribute and "" removes it. For name, alias, memo or bookmark use block(action="set_attrs", id=<document id>).",
       },
       "actions": {
         "create": {
-          "hint": "Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.",
+          "hint": "Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles. Batch: document(action="create", notebook="<id>", docs=[{"path":"/A","markdown":"…"},{"path":"/A/B"}]) creates up to 20 documents in order (no repeated path; list a parent before its children). The first failure stops the batch; the receipt lists created (with id), failed and not_applied items, so resend only the items that were not created.",
           "requiresConfirmation": false,
         },
         "create_daily_note": {
@@ -7654,7 +7762,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
           "requiresConfirmation": false,
         },
         "set_attr": {
-          "hint": "Use id + attrs. attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it. Only icon and cover: for custom attributes (custom-*), name, alias, memo or bookmark use block(action="set_attrs", id=<document id>) (a document is a block).",
+          "hint": "Sets icon, cover and custom-* attributes of a document (on its root block, like block set_attrs). attrs.icon sets the document icon; attrs.cover sets an http(s) URL or /assets/... cover, and null/empty clears it; attrs["custom-type"]="meeting" sets a custom attribute and "" removes it. For name, alias, memo or bookmark use block(action="set_attrs", id=<document id>).",
           "requiresConfirmation": false,
         },
       },
@@ -7696,7 +7804,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
         "A safe path-based workflow is lookup -> rename/remove/move.",
         "document(action="reorder") applies a complete manual order to every visible direct child under parentID and switches the notebook to custom sorting. Read the current child documents first and include each child ID exactly once.",
         "document(action="get_child_blocks") and document(action="get_child_docs") return direct children for a document ID.",
-        "document(action="set_attr") updates document metadata such as icon and cover; use attrs.cover=null or an empty string to clear the cover.",
+        "document(action="set_attr") sets icon, cover and custom-* attributes; use attrs.cover=null or an empty string to clear the cover.",
         "document(action="search_docs") remains title-based, but MCP now post-filters results by notebook permission and optional storage path scope.",
         "For recently created documents, document(action="lookup", hpath=...) may briefly lag behind create because it depends on SiYuan indexing; retry if needed.",
         "document(action="lookup", id=...) may hit the same short indexing delay right after create; MCP retries briefly and then returns a timing-specific hint if indexing still has not settled.",

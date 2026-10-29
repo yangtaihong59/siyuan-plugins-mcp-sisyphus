@@ -2617,6 +2617,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);
@@ -2633,6 +2634,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         });
@@ -2664,6 +2666,7 @@ describe('av tool', () => {
             avID: 'av-empty',
             blockID: 'db-block-explicit',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);
@@ -2681,6 +2684,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         });
@@ -2705,6 +2709,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-empty',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);
@@ -2742,6 +2747,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: expect.stringMatching(/^\d{14}-[a-z0-9]{7}$/),
+            columnID: expect.stringMatching(/^\d{14}-[a-z0-9]{7}$/),
             keyName: '日期',
             keyType: 'date',
         });
@@ -2754,6 +2760,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-asset-1',
+            columnID: 'col-asset-1',
             keyName: '封面',
             keyType: 'mAsset',
         }, enabledActions('add_column'), permMgr);
@@ -2770,6 +2777,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-asset-1',
+            columnID: 'col-asset-1',
             keyName: '封面',
             keyType: 'mAsset',
         });
@@ -2782,6 +2790,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-line-1',
+            columnID: 'col-line-1',
             keyName: '行号',
             keyType: 'lineNumber',
         }, enabledActions('add_column'), permMgr);
@@ -2798,6 +2807,7 @@ describe('av tool', () => {
             action: 'add_column',
             avID: 'av-1',
             keyID: 'col-line-1',
+            columnID: 'col-line-1',
             keyName: '行号',
             keyType: 'lineNumber',
         });
@@ -2922,6 +2932,7 @@ describe('av tool', () => {
             avID: 'av-empty',
             blockID: 'db-block-explicit',
             keyID: 'col-1',
+            columnID: 'col-1',
             keyName: '备注',
             keyType: 'text',
         }, enabledActions('add_column'), permMgr);

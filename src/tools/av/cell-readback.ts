@@ -1,4 +1,5 @@
 import { safetyError } from '../../core/write-safety-error';
+import { dateCellOmitsTime, parseDateMillis } from './definition';
 
 /** Verify requested cell semantics; kernel-assigned colors and display text are not input values. */
 export function verifyAvCellsReadback(args: Record<string, any>, definition: Record<string, any>): void {
@@ -7,7 +8,7 @@ export function verifyAvCellsReadback(args: Record<string, any>, definition: Rec
     const finalCells = new Map<string, Record<string, any>>();
     for (const cell of cells) finalCells.set(`${cell.columnID}:${cell.rowID}`, cell);
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-    const millis = (value: string | number) => typeof value === 'number' ? value : Date.parse(value);
+    const millis = (value: string | number) => parseDateMillis(value, 'date');
     for (const cell of finalCells.values()) {
         const column = definition.keyValues?.find((entry: any) => entry.key?.id === cell.columnID);
         const value = column?.values?.find((entry: any) => entry.blockID === cell.rowID);
@@ -33,7 +34,7 @@ export function verifyAvCellsReadback(args: Record<string, any>, definition: Rec
                 case 'date':
                     matches = value.date?.isNotEmpty === true && value.date.content === millis(cell.date)
                         && Boolean(value.date.hasEndDate) === (cell.endDate !== undefined)
-                        && Boolean(value.date.isNotTime) === (cell.includeTime === false)
+                        && Boolean(value.date.isNotTime) === dateCellOmitsTime(cell)
                         && (cell.endDate === undefined || value.date.content2 === millis(cell.endDate));
                     break;
                 case 'mAsset':

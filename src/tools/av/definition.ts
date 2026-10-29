@@ -193,17 +193,33 @@ export function relationBlockIDs(value: Record<string, unknown> | undefined): st
         : [];
 }
 
-function parseDateMillis(value: string | number, fieldName: string): number {
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * A date without a time ("2026-11-05") means that calendar day: store local
+ * midnight (Date.parse would take UTC midnight, another day west of UTC) and,
+ * unless includeTime says otherwise, mark the value as having no time so
+ * SiYuan shows "2026-11-05", not "2026-11-05 00:00".
+ */
+export function parseDateMillis(value: string | number, fieldName: string): number {
     if (typeof value === 'number') {
         if (!Number.isFinite(value)) throw new Error(`${fieldName} must be a finite epoch millisecond value.`);
         return value;
     }
 
+    const dateOnly = DATE_ONLY.exec(value.trim());
+    if (dateOnly) return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])).getTime();
     const parsed = Date.parse(value);
     if (Number.isNaN(parsed)) {
         throw new Error(`${fieldName} must be a valid ISO date string or epoch milliseconds.`);
     }
     return parsed;
+}
+
+/** isNotTime for a date cell: explicit includeTime wins; a date-only string has no time. */
+export function dateCellOmitsTime(input: { date?: string | number; includeTime?: boolean }): boolean {
+    if (input.includeTime !== undefined) return input.includeTime === false;
+    return typeof input.date === 'string' && DATE_ONLY.test(input.date.trim());
 }
 
 export function pickString(record: Record<string, unknown>, keys: string[]): string | undefined {
@@ -248,7 +264,7 @@ export function buildStrongCellValue(
                     content,
                     isNotEmpty: true,
                     hasEndDate: input.endDate !== undefined,
-                    isNotTime: input.includeTime === false,
+                    isNotTime: dateCellOmitsTime(input),
                     content2,
                     isNotEmpty2: input.endDate !== undefined,
                     formattedContent: '',

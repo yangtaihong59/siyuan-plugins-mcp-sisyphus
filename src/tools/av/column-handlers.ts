@@ -277,6 +277,8 @@ export async function handleAddColumn({ client, permMgr, rawArgs }: ToolHandlerC
         action: 'add_column',
         avID: parsed.avID,
         keyID,
+        // The same value under the name set_cells, query and get use.
+        columnID: keyID,
         keyName: parsed.keyName,
         keyType: parsed.keyType,
     });

@@ -185,6 +185,11 @@ const ACTION_REQUIRED_ALTERNATIVES: Partial<Record<ToolCategory, Record<string, 
     },
 };
 
+/** Accepted shapes that name a common optional field (help text only; requiredFields is unchanged). */
+const ACTION_SHAPE_OVERRIDES: Partial<Record<ToolCategory, Record<string, string[]>>> = {
+    av: { create: ['parentID', 'parentID + name (database name at creation)'] },
+};
+
 export function getCuratedActionExamples(category: ToolCategory, action: string): HelpExample[] {
     return TOOL_ACTION_EXAMPLES[category]?.[action] ?? [];
 }
@@ -289,7 +294,7 @@ export function buildActionHelp<Action extends string>(
         ...(TOOL_ACTION_HINTS[category]?.[action] ? { hint: TOOL_ACTION_HINTS[category][action] } : {}),
         // Multi-mode actions validate their alternatives in a refinement, so the
         // schema alone has no required field; say so instead of "action only".
-        shapes: requiredFieldSets.map((fields) => fields.length > 0 ? fields.join(' + ') : curatedExamples.length > 0 ? 'see examples' : hasOptionalFields(matching) ? 'optional fields only' : 'action only'),
+        shapes: ACTION_SHAPE_OVERRIDES[category]?.[action] ?? requiredFieldSets.map((fields) => fields.length > 0 ? fields.join(' + ') : curatedExamples.length > 0 ? 'see examples' : hasOptionalFields(matching) ? 'optional fields only' : 'action only'),
         requiredFields: requiredFieldSets.length === 1 ? requiredFieldSets[0] : requiredFieldSets,
         parameters: matching.length === 1 ? matching[0].schema : matching.map((variant) => variant.schema),
         example,

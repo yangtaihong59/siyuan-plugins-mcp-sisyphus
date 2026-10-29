@@ -118,6 +118,42 @@ function normalizeAvCellValueTypes(args: Record<string, unknown>): void {
     }
 }
 
+/*
+ * AV columns are "keys" in SiYuan: column actions take keyID, cell and read
+ * actions say columnID. Both name the same value, so each spelling is
+ * accepted where the other is canonical (only when the canonical one is absent).
+ */
+const AV_KEY_ID_ACTIONS = new Set(['rename', 'set_column_options', 'configure_two_way_relation', 'configure_rollup', 'set_relation']);
+
+function renameKey(record: Record<string, unknown>, from: string, to: string): Record<string, unknown> {
+    if (!hasOwn(record, from) || hasOwn(record, to)) return record;
+    const { [from]: value, ...rest } = record;
+    return { ...rest, [to]: value };
+}
+
+function normalizeAvIdAliases(action: string, args: Record<string, unknown>): void {
+    if (AV_KEY_ID_ACTIONS.has(action)) {
+        Object.assign(args, renameKey(args, 'columnID', 'keyID'));
+        if (hasOwn(args, 'keyID')) delete args.columnID;
+        return;
+    }
+    if (action !== 'set_cells' && action !== 'add_rows') return;
+    const fixCell = (cell: unknown): unknown => cell && typeof cell === 'object' && !Array.isArray(cell)
+        ? renameKey(cell as Record<string, unknown>, 'keyID', 'columnID')
+        : cell;
+    if (action === 'set_cells') {
+        const fixed = renameKey(args, 'keyID', 'columnID');
+        delete args.keyID;
+        Object.assign(args, fixed);
+        for (const list of ['cells', 'items']) if (Array.isArray(args[list])) args[list] = (args[list] as unknown[]).map(fixCell);
+    }
+    if (Array.isArray(args.rows)) {
+        args.rows = args.rows.map((row) => row && typeof row === 'object' && Array.isArray((row as Record<string, unknown>).cells)
+            ? { ...(row as Record<string, unknown>), cells: ((row as Record<string, unknown>).cells as unknown[]).map(fixCell) }
+            : row);
+    }
+}
+
 // SiYuan stores sort order as "ASC"/"DESC"; accept any letter case.
 function normalizeAvSortOrder(args: Record<string, unknown>): void {
     if (!Array.isArray(args.sorts)) return;
@@ -154,6 +190,7 @@ export function normalizeToolArguments(category: ToolCategory, rawArgs: Record<s
     if (category === 'search' && action === 'search_refs') normalizeSearchRefsArgs(args);
     if (category === 'av' && (action === 'set_cells' || action === 'add_rows')) normalizeAvCellValueTypes(args);
     if (category === 'av' && action === 'update_view') normalizeAvSortOrder(args);
+    if (category === 'av' && action) normalizeAvIdAliases(action, args);
     if (category === 'document' && action === 'query' && !hasOwn(args, 'notebooks') && nonEmptyString(args.notebook)) {
         args.notebooks = [args.notebook];
         delete args.notebook;
@@ -217,6 +254,19 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
     if (context.category === 'document' && action === 'query') {
         return [
             { canonical: 'notebooks', aliases: ['notebook'], schema: { type: 'array', items: STRING_SCHEMA } },
+        ];
+    }
+
+    // AV column IDs: keyID and columnID name the same value (see normalizeAvIdAliases).
+    if (context.category === 'av' && action === 'set_cells') {
+        return [
+            { canonical: 'columnID', aliases: ['key-id', 'key_id', 'keyID'], schema: STRING_SCHEMA },
+        ];
+    }
+
+    if (context.category === 'av' && ['rename', 'set_column_options', 'configure_two_way_relation', 'configure_rollup', 'set_relation'].includes(action)) {
+        return [
+            { canonical: 'keyID', aliases: ['column-id', 'column_id', 'columnID'], schema: STRING_SCHEMA },
         ];
     }
 
