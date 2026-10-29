@@ -307,7 +307,7 @@ export const AvDuplicateSchema = z.object({
 
 const AvViewIDSchema = z.string().min(1).describe('Attribute-view view ID');
 
-const AvCarrierBlockIDSchema = z.string().min(1).describe('Exact NodeAttributeView carrier block ID; kernel fallback is not permitted');
+const AvCarrierBlockIDSchema = z.string().min(1).optional().describe('Carrier block ID (av get carrierBlockIDs); auto-filled when the AV has exactly one');
 
 const AvLayoutSchema = z.enum(['table', 'gallery', 'kanban']).describe('View layout type');
 
@@ -394,7 +394,7 @@ export const AvUpdateViewSchema = z.object({
     blockID: AvCarrierBlockIDSchema,
     viewID: AvViewIDSchema,
     filters: z.array(AvFilterSchema).optional().describe('Complete replacement; [] clears filters'),
-    sorts: z.array(z.object({ column: z.string().min(1), order: z.enum(['ASC', 'DESC']) }).strict()).optional().describe('Complete replacement; [] clears sorts'),
+    sorts: z.array(z.object({ column: z.string().min(1), order: z.enum(['ASC', 'DESC']) }).strict()).optional().describe('Complete replacement; [] clears sorts. order: ASC|DESC (case-insensitive)'),
     group: z.object({
         field: z.string(),
         method: z.number().int().min(0).max(6).optional(),

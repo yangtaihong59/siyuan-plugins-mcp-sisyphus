@@ -228,6 +228,35 @@ describe('file tool asset actions', () => {
         ]);
     });
 
+    it('includes a document root itself in a roots snapshot', async () => {
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockResolvedValueOnce({ tree: [{ id: 'doc-2', children: [] }] });
+        const payload = parseResult(await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/doc-1.sy'],
+        }, config.file, {} as never)) as any;
+        expect(payload.page.total).toBe(2);
+        expect(payload.documents.map((item: any) => item.id).sort()).toEqual(['doc-1', 'doc-2']);
+    });
+
+    it('falls back to listDocsByPath when the kernel rejects listDocTree', async () => {
+        const documentApi = await import('@/api/document');
+        vi.mocked(documentApi.listDocTree).mockRejectedValueOnce(new Error('SiYuan API error: -1 - path escapes notebook directory'));
+        vi.mocked(documentApi.listDocsByPath).mockReset().mockImplementation(async (_client, _notebook, path) => ({
+            files: path === '/'
+                ? [{ id: 'doc-1', path: '/doc-1.sy', name: 'My Document', subFileCount: 1 }]
+                : path === '/doc-1.sy' ? [{ id: 'doc-2', path: '/doc-1/doc-2.sy', name: 'Doc 2', subFileCount: 0 }] : [],
+        }) as never);
+        const payload = parseResult(await callFileTool(client, {
+            action: 'export_markdown_snapshot',
+            notebookID: 'nb-1',
+            roots: ['/'],
+        }, config.file, {} as never)) as any;
+        expect(payload.errors ?? []).toEqual([]);
+        expect(payload.documents.map((item: any) => item.id).sort()).toEqual(['doc-1', 'doc-2']);
+    });
+
     it('exposes asset management actions in the grouped schema', () => {
         const schemaConfig = buildDefaultToolConfig();
         schemaConfig.file.actions.delete_template = true;
@@ -968,10 +997,30 @@ describe('file tool asset actions', () => {
 
         expect(parsed.documents.map((doc: { id: string }) => doc.id)).toEqual(['doc-1', 'child-a', 'child-a1', 'child-b']);
         expect(parsed.documentCount).toBe(4);
-        expect(parsed.content).toBe('# doc-1\n\n---\n\n# child-a\n\n---\n\n# child-a1\n\n---\n\n# child-b');
+        const marker = (id: string) => `<!-- siyuan-document id=${id} hPath=/My Document -->`;
+        expect(parsed.content).toBe(`# doc-1\n\n---\n\n${marker('child-a')}\n\n# child-a\n\n---\n\n${marker('child-a1')}\n\n# child-a1\n\n---\n\n${marker('child-b')}\n\n# child-b`);
         expect(parsed.truncated).toBeUndefined();
         expect(documentApi.listDocsByPath).not.toHaveBeenCalledWith(expect.anything(), 'nb-1', '/doc-1/child-b.sy', expect.anything());
         expect(fileApi.exportMdContent).toHaveBeenCalledTimes(5);
+    });
+
+    it('export_md includeChildren keeps only the root front matter', async () => {
+        const documentApi = await import('@/api/document');
+        const fileApi = await import('@/api/file');
+        vi.mocked(documentApi.listDocsByPath).mockReset().mockImplementation(async (_client, _notebook, path) => ({
+            files: path === '/doc-1.sy' ? [{ id: 'kid', path: '/doc-1/kid.sy', subFileCount: 0 }] : [],
+        }) as never);
+        const original = vi.mocked(fileApi.exportMdContent).getMockImplementation();
+        vi.mocked(fileApi.exportMdContent).mockImplementation(async (_client, id) => (id === 'doc-1'
+            ? { hPath: '/Root', content: '---\ntitle: Root\n---\n\n# Root\n\nroot body\n' }
+            : { hPath: '/Root/Kid', content: '---\ntitle: "Kid"\ndate: 2026\n---\n\nkid body\n' }) as never);
+        try {
+            const parsed = parseResult(await callFileTool(client, { action: 'export_md', id: 'doc-1', includeChildren: true }, config.file, {} as never));
+            expect(parsed.content).toBe('---\ntitle: Root\n---\n\n# Root\n\nroot body\n\n---\n\n<!-- siyuan-document id=kid hPath=/Root/Kid -->\n\n# Kid\n\nkid body');
+            expect(parsed.content.match(/^---$/gm)).toHaveLength(3);
+        } finally {
+            if (original) vi.mocked(fileApi.exportMdContent).mockImplementation(original);
+        }
     });
 
     it('export_md includeChildren stops after 100 descendants and says so', async () => {

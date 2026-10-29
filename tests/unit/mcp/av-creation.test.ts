@@ -35,7 +35,7 @@ function fixture() {
         }),
         requestWrite: vi.fn(async (path: string, args: any) => {
             if (path === '/api/av/renderAttributeView') {
-                writes++; avs.set(args.id, { id: args.id, keyValues: [], views: [] });
+                writes++; avs.set(args.id, { id: args.id, keyValues: [{ key: { id: 'key-pk', name: '主键', type: 'block' } }, { key: { id: 'key-sel', name: '单选', type: 'select' } }], views: [] });
                 if (failure === 'av-response') throw new Error('lost AV response');
                 return {};
             }
@@ -83,6 +83,9 @@ describe('durable multi-step AV creation', () => {
         expect(result.stage).toBe('verified');
         expect(result.safety.transactionState).toBe('committed');
         expect(f.blocks.has(result.blockID)).toBe(true);
+        // SiYuan's default select column is named with a ready removal preflight, never removed silently.
+        expect(result.defaultColumns).toEqual([{ keyID: 'key-sel', name: '单选', type: 'select' }]);
+        expect(result.removeDefaultColumn.arguments).toEqual({ action: 'remove_column', avID: result.avID, keyID: 'key-sel', validateOnly: true });
         f.restart();
         const replay = f.payload(await f.run({ ...args, requestId: pre.requestId }));
         expect(replay).toEqual({ ...result, safety: { ...result.safety, replayed: true } });

@@ -534,8 +534,12 @@ const handleExportMd: ToolActionHandler = async ({ client, permMgr, rawArgs }) =
     for (const id of descendants) parts.push({ id, ...normalizeMarkdownContent(await fileApi.exportMdContent(client, id)) });
     return createJsonResult({
         hPath: result.hPath,
-        // Each document starts with its own title; a rule keeps them apart.
-        content: parts.map((part) => part.content.trim()).join('\n\n---\n\n'),
+        // The root keeps its YAML front matter. Each descendant's front matter
+        // is dropped (a second `---` block would read as a double rule) and
+        // replaced by a marker comment plus its title heading.
+        content: parts.map((part, index) => index === 0
+            ? part.content.trim()
+            : exportMdChildSection(part.id, part.hPath, part.content)).join('\n\n---\n\n'),
         documents: parts.map((part) => ({ id: part.id, hPath: part.hPath })),
         documentCount: parts.length,
         ...(truncated ? { truncated: true, hint: `Stopped after ${EXPORT_MD_MAX_DESCENDANTS} descendants; use export_markdown_snapshot with roots for larger trees.` } : {}),
@@ -543,6 +547,51 @@ const handleExportMd: ToolActionHandler = async ({ client, permMgr, rawArgs }) =
 };
 
 const EXPORT_MD_MAX_DESCENDANTS = 100;
+
+/**
+ * Descendant tree of a snapshot root. Some kernels reject listDocTree for "/"
+ * ("path escapes notebook directory") or fail for a document without a child
+ * directory; the listDocsByPath walk covers both.
+ */
+async function listSnapshotRootTree(client: Parameters<ToolActionHandler>[0]['client'], notebook: string, root: string): Promise<unknown> {
+    try {
+        return await documentApi.listDocTree(client, notebook, root);
+    } catch (treeError) {
+        const walk = async (path: string): Promise<unknown[]> => {
+            const listed = await documentApi.listDocsByPath(client, notebook, path, { maxListCount: 0, showHidden: false, ignoreMaxListHint: true });
+            const nodes: any[] = [];
+            for (const file of listed.files ?? []) {
+                const id = typeof file.id === 'string' && file.id ? file.id : file.path.match(/([^/]+)\.sy$/)?.[1];
+                if (!id) continue;
+                nodes.push({ id, path: file.path, ...(typeof file.name === 'string' ? { name: file.name.replace(/\.sy$/, '') } : {}),
+                    children: (file.subFileCount ?? 1) !== 0 ? await walk(file.path) : [] });
+            }
+            return nodes;
+        };
+        try {
+            return { tree: await walk(root) };
+        } catch {
+            throw treeError;
+        }
+    }
+}
+
+/** Split a leading YAML front matter block; returns its title (when present) and the remaining body. */
+export function splitMarkdownFrontMatter(content: string): { title?: string; body: string } {
+    const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(content);
+    if (!match) return { body: content };
+    const titleLine = /^title:[ \t]*(.*)$/m.exec(match[1]);
+    const title = titleLine?.[1].trim().replace(/^(["'])(.*)\1$/, '$2');
+    return { ...(title ? { title } : {}), body: content.slice(match[0].length) };
+}
+
+function exportMdChildSection(id: string, hPath: string | undefined, content: string): string {
+    const { title, body } = splitMarkdownFrontMatter(content);
+    const trimmed = body.trim();
+    const heading = /^#\s/.test(trimmed) ? '' : `# ${title || hPath?.split('/').pop() || id}\n\n`;
+    const marker = `<!-- siyuan-document id=${id}${hPath ? ` hPath=${hPath.replace(/--/g, '- -')}` : ''} -->`;
+    return `${marker}\n\n${heading}${trimmed}`;
+}
 
 function suffixSnapshotPathWithID(relativePath: string, documentID: string): string {
     const suffix = ` [${documentID}].md`;
@@ -576,7 +625,7 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
         // whole page to an aggregate Promise rejection.
         const rootResults = await Promise.all(roots.map(async (root) => {
             try {
-                return { root, tree: await documentApi.listDocTree(client, parsed.notebookID, root) };
+                return { root, tree: await listSnapshotRootTree(client, parsed.notebookID, root) };
             } catch (error) {
                 return {
                     root,
@@ -593,6 +642,10 @@ const handleExportMarkdownSnapshot: ToolActionHandler = async ({ client, permMgr
             if ('error' in result) {
                 errors.push(result.error);
             } else {
+                // A document root (/.../<id>.sy) exports itself plus its
+                // descendants; "/" stays the notebook's top-level documents.
+                const rootID = /([^/]+)\.sy$/.exec(result.root)?.[1];
+                if (rootID) candidates.push({ id: rootID, path: result.root });
                 candidates.push(...flattenDocumentTree(result.tree));
             }
         }

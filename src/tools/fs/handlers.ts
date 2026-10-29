@@ -916,9 +916,15 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         // Anchor-text refs only: the default footnote mode appends the referenced
         // blocks' text, which would be reported as lines of this document.
         const markdown = normalizeMarkdownContent(await fileApi.exportMdContent(client, doc.id, { refMode: EXPORT_REF_MODE_ANCHOR_TEXT }));
-        const content = typeof markdown.content === 'string' ? markdown.content : '';
+        const rawContent = typeof markdown.content === 'string' ? markdown.content : '';
         const hPath = typeof markdown.hPath === 'string' ? markdown.hPath : `/${doc.id}`;
         const path = `/${doc.notebookName}${hPath}`;
+        // Match the body as fs.read returns it: the YAML front matter and the
+        // leading "# <title>" heading are not document lines. A title hit is
+        // reported once with line 0.
+        const title = deriveDocumentTitle(hPath);
+        if (title && matcher(title)) matches.push({ path, line: 0, text: `# ${title}` });
+        const content = stripExportedDocumentWrapper({ ...markdown, content: rawContent, hPath });
         content.split(/\r?\n/).forEach((line, index) => {
             if (matcher(line)) {
                 matches.push({
@@ -940,6 +946,7 @@ const handleSearch: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const { items, pagination } = pageOf(uniqueMatches, parsed.page, parsed.pageSize);
     return createPaginatedResult(items, pagination, {
         path: scope.canonicalPath,
+        lineBase: 'Document lines are 1-based within the Markdown body (front matter and title heading excluded); line 0 is a title match.',
         query: parsed.query,
         regex: parsed.regex ?? false,
         caseSensitive: parsed.caseSensitive ?? false,

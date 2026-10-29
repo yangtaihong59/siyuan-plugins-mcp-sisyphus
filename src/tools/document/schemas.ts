@@ -102,7 +102,7 @@ export const DocumentLookupSchema = z.object({
     path: z.string().optional().describe("Storage path to look up when notebook is provided, e.g. /20240318112233-abc123.sy. Human-readable paths should use hpath instead."),
     hpath: z.string().optional().describe("Human-readable notebook-local path to look up when notebook is provided. MUST NOT include the notebook name (e.g., /Folder/Doc, not /Notebook/Folder/Doc)"),
     hPath: z.string().optional().describe("Alias for hpath (notebook-local, MUST NOT include the notebook name)"),
-    include: z.array(DocumentResolveIncludeSchema).optional().describe('Fields to include: "id", "ids", "path", "hpath", "docInfo"'),
+    include: z.array(DocumentResolveIncludeSchema).optional().describe('Fields to include, only: "id", "ids", "path", "hpath", "docInfo" (no "title"; use docInfo.name)'),
 }).superRefine((value, ctx) => {
     const hpath = value.hpath ?? value.hPath;
     const sourceCount = [value.id, value.path, hpath].filter((field) => typeof field === "string").length;

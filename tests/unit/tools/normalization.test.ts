@@ -697,6 +697,10 @@ describe('tool result normalization', () => {
         expect(cell.valueType).toBe('mSelect');
         expect((normalizeToolArguments('av', { action: 'set_cells', avID: 'av', ...cell }) as any).valueType).toBe('multi_select');
     });
+    it('accepts any letter case for av update_view sort order', () => {
+        const out = normalizeToolArguments('av', { action: 'update_view', avID: 'av', viewID: 'v', sorts: [{ column: 'c1', order: 'desc' }, { column: 'c2', order: ' Asc ' }, { column: 'c3', order: 'down' }] }) as any;
+        expect(out.sorts).toEqual([{ column: 'c1', order: 'DESC' }, { column: 'c2', order: 'ASC' }, { column: 'c3', order: 'down' }]);
+    });
     it('accepts notebook as a single-notebook alias for document.query notebooks', () => {
         expect(normalizeToolArguments('document', { action: 'query', notebook: 'nb-1' })).toMatchObject({ notebooks: ['nb-1'] });
         expect(normalizeToolArguments('document', { action: 'query', notebook: 'nb-1' })).not.toHaveProperty('notebook');

@@ -305,7 +305,7 @@
             "type": "string"
           },
           "include": {
-            "description": "Fields to include: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\"",
+            "description": "Fields to include, only: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\" (no \"title\"; use docInfo.name)",
             "type": "array",
             "items": {
               "type": "string",
@@ -873,7 +873,7 @@
     },
     {
       "name": "av",
-      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, blockID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · rename(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, blockID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · rename(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -913,7 +913,7 @@
           "blockID": {
             "type": "string",
             "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted",
+            "description": "Carrier block ID (av get carrierBlockIDs); auto-filled when the AV has exactly one",
             "pattern": "^\\d{14}-[a-z0-9]{7}$"
           },
           "viewID": {
@@ -998,7 +998,7 @@
             }
           },
           "sorts": {
-            "description": "Complete replacement; [] clears sorts",
+            "description": "Complete replacement; [] clears sorts. order: ASC|DESC (case-insensitive)",
             "type": "array",
             "items": {
               "type": "object",
@@ -2516,9 +2516,9 @@
             "minLength": 1
           },
           "blockID": {
+            "description": "Carrier block ID (av get carrierBlockIDs); auto-filled when the AV has exactly one",
             "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
+            "minLength": 1
           },
           "viewID": {
             "type": "string",
@@ -4144,7 +4144,7 @@
             }
           },
           "sorts": {
-            "description": "Complete replacement; [] clears sorts",
+            "description": "Complete replacement; [] clears sorts. order: ASC|DESC (case-insensitive)",
             "type": "array",
             "items": {
               "type": "object",
@@ -4249,7 +4249,6 @@
         "required": [
           "action",
           "avID",
-          "blockID",
           "viewID"
         ],
         "additionalProperties": false,
@@ -5240,9 +5239,9 @@
             "description": "Attribute view ID"
           },
           "blockID": {
+            "description": "Carrier block ID (av get carrierBlockIDs); auto-filled when the AV has exactly one",
             "type": "string",
-            "minLength": 1,
-            "description": "Exact NodeAttributeView carrier block ID; kernel fallback is not permitted"
+            "minLength": 1
           },
           "viewID": {
             "type": "string",
@@ -5268,7 +5267,6 @@
         "required": [
           "action",
           "avID",
-          "blockID",
           "viewID",
           "layout",
           "name"
@@ -6416,7 +6414,7 @@
             "type": "string"
           },
           "include": {
-            "description": "Fields to include: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\"",
+            "description": "Fields to include, only: \"id\", \"ids\", \"path\", \"hpath\", \"docInfo\" (no \"title\"; use docInfo.name)",
             "type": "array",
             "items": {
               "type": "string",

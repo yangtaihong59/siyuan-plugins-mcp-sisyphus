@@ -36,6 +36,13 @@ export function applyCliWriteGuidance(result: ToolResult, tool: string, json = t
         payload = { ...payload, commitCommand };
     } else if (result.isError && isRecord(payload.error) && PREFLIGHT_REQUIRED_CODES.has(payload.error.code)) {
         payload = { ...payload, error: { ...payload.error, hint: CLI_PREFLIGHT_HINT } };
+    } else if (!result.isError && isRecord(payload.removeDefaultColumn?.arguments)) {
+        // av create names SiYuan's default select column; give its paste-ready removal preflight.
+        const { tool: stepTool, arguments: stepArgs } = payload.removeDefaultColumn;
+        payload = { ...payload, removeDefaultColumn: {
+            ...payload.removeDefaultColumn,
+            cliCommand: `${buildCliCommand(typeof stepTool === 'string' ? stepTool : tool, stepArgs)}${stepArgs.validateOnly === true ? ' --validate-only' : ''}`,
+        } };
     } else {
         return { result };
     }

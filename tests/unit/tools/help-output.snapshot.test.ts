@@ -141,8 +141,9 @@ describe('tool description and help outputs', () => {
             createMockClient(), { action: 'help', topic: 'update_view' },
             config.av, createMockPermissionManager(),
         ));
-        expect(output.examples).toHaveLength(2);
+        expect(output.examples).toHaveLength(3);
         expect(output.example).toEqual(output.examples[0].mcp);
+        expect(output.examples[2].mcp.sorts).toEqual([{ column: '20240318112233-score01', order: 'DESC' }]);
         expect(output.example.filters[0]).toEqual({
             column: '20240318112233-status1', operator: '=',
             value: { type: 'select', mSelect: [{ content: '待办' }] },
@@ -162,6 +163,7 @@ describe('tool description and help outputs', () => {
         const resource = readHelpResource('siyuan://help/action/av/update_view');
         expect(resource!.text).toContain('Preflight a select leaf filter');
         expect(resource!.text).toContain('Preflight nested filter groups');
+        expect(resource!.text).toContain('Sort descending by one column');
     });
 
     it('publishes valid link-target examples for each mode through shared tool help and resources', async () => {

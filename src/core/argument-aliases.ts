@@ -118,6 +118,18 @@ function normalizeAvCellValueTypes(args: Record<string, unknown>): void {
     }
 }
 
+// SiYuan stores sort order as "ASC"/"DESC"; accept any letter case.
+function normalizeAvSortOrder(args: Record<string, unknown>): void {
+    if (!Array.isArray(args.sorts)) return;
+    args.sorts = args.sorts.map((sort) => {
+        if (!sort || typeof sort !== 'object' || Array.isArray(sort)) return sort;
+        const order = (sort as Record<string, unknown>).order;
+        if (typeof order !== 'string') return sort;
+        const upper = order.trim().toUpperCase();
+        return upper === 'ASC' || upper === 'DESC' ? { ...(sort as Record<string, unknown>), order: upper } : sort;
+    });
+}
+
 function normalizeSearchRefsArgs(args: Record<string, unknown>): void {
     if (!hasOwn(args, 'k')) {
         if (typeof args.keyword === 'string') args.k = args.keyword;
@@ -141,6 +153,7 @@ export function normalizeToolArguments(category: ToolCategory, rawArgs: Record<s
     if (category === 'file' && action === 'upload_asset') normalizeFileUploadAssetArgs(args);
     if (category === 'search' && action === 'search_refs') normalizeSearchRefsArgs(args);
     if (category === 'av' && (action === 'set_cells' || action === 'add_rows')) normalizeAvCellValueTypes(args);
+    if (category === 'av' && action === 'update_view') normalizeAvSortOrder(args);
     if (category === 'document' && action === 'query' && !hasOwn(args, 'notebooks') && nonEmptyString(args.notebook)) {
         args.notebooks = [args.notebook];
         delete args.notebook;

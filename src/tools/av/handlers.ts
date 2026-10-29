@@ -11,7 +11,7 @@ import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
 import { applyUiRefresh } from '../internal/ui-refresh';
 import { sleep } from '../../shared/async';
 import { handleAddColumn, handleRemoveColumn, handleRename, handleSetColumnOptions } from './column-handlers';
-import { AV_MATERIALIZATION_POLL_ATTEMPTS, AV_MATERIALIZATION_POLL_DELAY_MS, AV_TOOL_NAME } from './definition';
+import { AV_MATERIALIZATION_POLL_ATTEMPTS, AV_MATERIALIZATION_POLL_DELAY_MS, AV_TOOL_NAME, extractAttributeViewKeysFromData } from './definition';
 import { buildDuplicateAvBlockDom } from './transaction';
 import { ensurePermissionForAvId, resolveAvOwningBlockId } from './carrier';
 import { handleGet, handleQuery, handleSearch } from './read-handlers';
@@ -48,7 +48,21 @@ async function handleCreate({ client, permMgr, rawArgs }: ToolHandlerContext): P
     const readback: any = await avApi.getAttributeView(client, avID);
     if (readback.av?.id !== avID) throw new Error('Database persistence could not be confirmed');
     await context.checkpoint('verified', 'complete');
-    return applyUiRefresh(client, createWriteSuccessResult({ action: 'create', ...context.progress, materialized: true }), [
+    // SiYuan adds a single-select column to every new database. Name it and
+    // offer the removal step instead of deleting it behind the caller's back.
+    const defaultColumns = extractAttributeViewKeysFromData(readback.av)
+        .filter((key: any) => key.type === 'select' && typeof key.id === 'string')
+        .map((key: any) => ({ keyID: key.id as string, name: typeof key.name === 'string' ? key.name : '', type: 'select' }));
+    const defaultColumnGuidance = defaultColumns.length ? {
+        defaultColumns,
+        removeDefaultColumn: {
+            purpose: 'optional_cleanup',
+            note: 'SiYuan adds this select column to every new database. Keep it (kanban needs a select column) or preflight its removal.',
+            tool: 'av',
+            arguments: { action: 'remove_column', avID, keyID: defaultColumns[0].keyID, validateOnly: true },
+        },
+    } : {};
+    return applyUiRefresh(client, createWriteSuccessResult({ action: 'create', ...context.progress, materialized: true, ...defaultColumnGuidance }), [
         { type: 'reloadAttributeView', id: avID }, { type: 'reloadProtyle', id: parent.documentId },
     ]);
 }

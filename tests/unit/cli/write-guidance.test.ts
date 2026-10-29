@@ -15,6 +15,17 @@ describe('cli write guidance', () => {
         expect(JSON.parse((human.result.content[0] as { text: string }).text).commitCommand).toBeUndefined();
     });
 
+    it('adds a paste-ready removal preflight for the av create default column', () => {
+        const payload = { success: true, action: 'create', avID: 'av-1', defaultColumns: [{ keyID: 'k-1', name: '单选', type: 'select' }],
+            removeDefaultColumn: { tool: 'av', arguments: { action: 'remove_column', avID: 'av-1', keyID: 'k-1', validateOnly: true } } };
+        for (const json of [true, false]) {
+            const { result, commitCommand } = applyCliWriteGuidance(text(payload) as never, 'av', json);
+            expect(commitCommand).toBeUndefined();
+            expect(JSON.parse((result.content[0] as { text: string }).text).removeDefaultColumn.cliCommand)
+                .toBe('siyuan-sisyphus av remove_column --av-id av-1 --key-id k-1 --validate-only');
+        }
+    });
+
     it('round-trips arrays and objects through -json flags the mapper accepts', () => {
         const commitArgs = { action: 'remove_card', deckID: 'd1', blockIDs: ['b1', 'b2'], requestId: 'c93e' };
         const command = buildCliCommand('flashcard', commitArgs);

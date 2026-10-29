@@ -6,6 +6,7 @@ import type { ToolResult } from '../core/tool-result';
 import { validateRegisteredToolArguments } from '../tools/internal/define-tool';
 import type { ToolCallPlan } from './tool-call-gate';
 import { TOOL_REGISTRY } from './tool-registry';
+import { fillImplicitAvViewCarrier } from '../tools/av/carrier';
 import type { WriteSafetyCoordinator } from './write-safety-coordinator';
 
 /**
@@ -32,16 +33,18 @@ export interface LocalToolExecution {
 }
 
 /** Run a planned tool through the write-safety coordinator, which also passes reads straight through. */
-export function executeLocalTool(execution: LocalToolExecution): Promise<ToolResult> {
+export async function executeLocalTool(execution: LocalToolExecution): Promise<ToolResult> {
     const { plan, client, permMgr, coordinator, runtime } = execution;
     const { category, action } = plan;
     const actionConfig = plan.target.actionConfig as ToolConfig[ToolCategory];
+    let args = execution.args ?? plan.args;
+    if (category === 'av') args = await fillImplicitAvViewCarrier(client, args);
     return coordinator.run({
         client,
         permMgr,
         category,
         action,
-        args: execution.args ?? plan.args,
+        args,
         strictMode: execution.config.writeSafety.strictMode,
         beforeCommit: execution.beforeCommit,
         validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),

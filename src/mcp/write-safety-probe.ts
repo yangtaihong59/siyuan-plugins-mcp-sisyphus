@@ -16,6 +16,7 @@ import { prepareDocumentConversion } from '../tools/document/conversion';
 import { readFlashcardReviewState } from '../tools/flashcard/review-state';
 import { assertAvAddRowsStructure } from '../tools/av/add-rows-plan';
 import { prepareViewUpdate } from '../tools/av/view-config';
+import { assertKanbanHasExistingSelectKey } from '../tools/av/carrier';
 import { getStagedUpload } from '../core/upload-source';
 import { verifyAvCellsReadback } from '../tools/av/cell-readback';
 import { nodeFs } from '../core/node-loader';
@@ -263,7 +264,7 @@ export async function probeCurrentState(
             const blockID = typeof args.blockID === 'string' ? args.blockID : '';
             const viewID = typeof args.viewID === 'string' ? args.viewID : '';
             if (!blockID || !viewID) {
-                throw safetyError('precondition_required', 'AV view configuration requires explicit avID, blockID, and viewID.');
+                throw safetyError('precondition_required', 'AV view configuration requires explicit avID, blockID, and viewID. av get returns databaseContext.carrierBlockIDs; blockID is filled automatically only when the AV has exactly one carrier.');
             }
             const [attrs, dom, blockInfo] = await Promise.all([
                 blockApi.getBlockAttrs(client, blockID),
@@ -275,6 +276,8 @@ export async function probeCurrentState(
                 : '';
             const rawAv = extractRawAvDefinition(state.av);
             if (action === 'update_view') prepareViewUpdate(rawAv, stripSafetyFields(args));
+            // Reject at preflight what the handler would refuse at commit.
+            if (action === 'add_view' && args.layout === 'kanban') assertKanbanHasExistingSelectKey(String(args.avID), rawAv);
             if (!selectedViewID || !findRawAvView(rawAv, selectedViewID)) {
                 throw safetyError('precondition_required', 'The AV carrier does not select one exact persisted view. Refusing kernel fallback.');
             }

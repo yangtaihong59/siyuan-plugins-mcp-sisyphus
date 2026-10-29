@@ -4723,6 +4723,36 @@ describe('av tool', () => {
         });
     });
 
+    it('lists verified readable carrier blocks in get and query databaseContext', async () => {
+        const avApi = await import('@/api/av');
+        // The parent document is registered as a mirror too; only the NodeAttributeView carrier counts.
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'doc-parent' }, { refID: 'db-block-1' }] });
+        const got = JSON.parse((await callAvTool(client, { action: 'get', avID: 'av-1' }, enabledActions('get'), permMgr)).content[0].text);
+        expect(got.databaseContext.carrierBlockIDs).toEqual(['db-block-1']);
+        const queried = JSON.parse((await callAvTool(client, { action: 'query', avID: 'av-1' }, enabledActions('query'), permMgr)).content[0].text);
+        expect(queried.databaseContext.carrierBlockIDs).toEqual(['db-block-1']);
+    });
+
+    it('fills add_view/update_view blockID only when the AV has exactly one carrier', async () => {
+        const avApi = await import('@/api/av');
+        const blockApi = await import('@/api/block');
+        const { fillImplicitAvViewCarrier } = await import('@/tools/av/carrier');
+        const args = { action: 'add_view', avID: '20260101120000-avabcde', viewID: 'v2', layout: 'table', name: 'V2' };
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({ av: { id: args.avID, keyValues: [], views: [] } });
+        vi.mocked(blockApi.getBlockDOM).mockImplementation(async (_clientArg, id) => ({
+            id, dom: String(id).startsWith('db-block') ? `<div data-node-id="${id}" data-type="NodeAttributeView" data-av-id="${args.avID}"></div>` : '<div></div>',
+        }));
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'doc-parent' }, { refID: 'db-block-1' }] });
+        expect(await fillImplicitAvViewCarrier(client, args)).toEqual({ ...args, blockID: 'db-block-1' });
+        expect(await fillImplicitAvViewCarrier(client, { ...args, blockID: 'db-block-x' })).toEqual({ ...args, blockID: 'db-block-x' });
+        vi.mocked(avApi.getMirrorDatabaseBlocks).mockResolvedValue({ refDefs: [{ refID: 'db-block-1' }, { refID: 'db-block-2' }] });
+        expect(await fillImplicitAvViewCarrier(client, args)).toEqual(args);
+
+        const result = await callAvTool(client, args, enabledActions('add_view'), permMgr);
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content[0].text).error).toMatchObject({ type: 'validation_error', carrierBlockIDs: ['db-block-1', 'db-block-2'] });
+    });
+
     it('refuses kanban creation that would synthesize a schema field in existing views', async () => {
         const avApi = await import('@/api/av');
         const transactionApi = await import('@/api/transaction');
@@ -4738,7 +4768,7 @@ describe('av tool', () => {
         }, enabledActions('add_view'), permMgr);
 
         expect(result.isError).toBe(true);
-        expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { message: expect.stringContaining('requires an existing select column') } });
+        expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { type: 'validation_error', message: expect.stringContaining('requires an existing single-select') } });
         expect(vi.mocked(transactionApi.performTransactions)).not.toHaveBeenCalled();
     });
 

@@ -12,7 +12,7 @@ import { computePageCount } from '../internal/pagination';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createJsonResult, type ToolResult } from '../internal/shared';
 import { ATTRIBUTE_VIEW_DIR, ATTRIBUTE_VIEW_ID_PATTERN, type AvQueryCell, type AvQueryColumn, type AvQueryRow, type AvViewItems, asRecord, extractAttributeViewKeysFromData, getStringField, pickString } from './definition';
-import { ensurePermissionForAvId, readViewSelection } from './carrier';
+import { ensurePermissionForAvId, listVerifiedAvCarrierBlockIds, readViewSelection } from './carrier';
 import { extractAvRowLookup, extractSourceBlockIdFromBlockValue } from './rows';
 
 async function filterAvSearchResultsByPermission(
@@ -332,7 +332,7 @@ export async function handleGet({ client, permMgr, rawArgs }: ToolHandlerContext
             columnVisibility: viewFields(view).map(field => ({ columnID: field.id, hidden: field.hidden === true })), columnOrder: viewFields(view).map(field => field.id) } }
         : { name: definition?.name, columns, views: (definition?.views ?? []).map((item: any) => ({ viewID: item.id, name: item.name, type: item.type })) };
     return createJsonResult({ avID: parsed.avID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}), scope, ...selection, ...content,
-        databaseContext: databaseContext(parsed.avID, { blockID: parsed.blockID, viewID: selection.viewID, columns: scope === 'raw' ? 'av.keyValues[].key' : scope === 'view' ? 'view.columnVisibility' : 'columns' }),
+        databaseContext: databaseContext(parsed.avID, { blockID: parsed.blockID, carrierBlockIDs: await listVerifiedAvCarrierBlockIds(client, parsed.avID, avData, permMgr), viewID: selection.viewID, columns: scope === 'raw' ? 'av.keyValues[].key' : scope === 'view' ? 'view.columnVisibility' : 'columns' }),
         readInfo: { scope: scope === 'columns' ? 'database_columns' : 'database', coverage: Array.isArray(definition?.keyValues) ? 'complete' : 'unknown', representation: scope === 'raw' ? 'database_raw' : scope === 'view' ? 'view_configuration' : 'database_structure', limitations: scope === 'raw' ? ['bound_block_bodies_not_included'] : ['row_values_not_included'] },
         ...(nextSteps.length ? { nextSteps } : {}),
     });
@@ -486,6 +486,7 @@ export async function handleQuery(context: ToolHandlerContext): Promise<ToolResu
         },
         databaseContext: databaseContext(effectiveAvID, {
             ...(parsed.blockID ? { blockID: parsed.blockID } : {}),
+            carrierBlockIDs: await listVerifiedAvCarrierBlockIds(client, parsed.avID, avData, permMgr),
             ...(selectedViewID ? { viewID: selectedViewID } : {}),
             columns: 'columns',
             rows: 'rows',

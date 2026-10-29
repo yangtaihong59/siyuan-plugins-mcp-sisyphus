@@ -1742,6 +1742,21 @@ describe('fs tool', () => {
         expect(client.request).toHaveBeenCalledWith('/api/export/exportMdContent', expect.objectContaining({ refMode: 3 }));
     });
 
+    it('skips front matter and reports body-relative line numbers', async () => {
+        const client = createFsClient();
+        const base = client.request.getMockImplementation()!;
+        client.request.mockImplementation(async (endpoint: string, body?: Record<string, unknown>) => endpoint === '/api/export/exportMdContent'
+            ? { hPath: '/Doc 1', content: '---\ntitle: Doc 1\ndate: 2026\n---\n\n# Doc 1\n\nfirst Doc 1 body\nsecond' }
+            : base(endpoint, body));
+        const parsed = parseResult(await callFsTool(client, { action: 'search', path: '/Notebook/Doc 1', query: 'doc 1' }, fsConfig(), createPermMgr()));
+
+        expect(parsed.data).toEqual([
+            { path: '/Notebook/Doc 1', line: 0, text: '# Doc 1' },
+            { path: '/Notebook/Doc 1', line: 1, text: 'first Doc 1 body' },
+        ]);
+        expect(parsed.lineBase).toContain('front matter');
+    });
+
     it('searches only agent memory when scoped to the virtual root file', async () => {
         const client = createFsClient({ agentMemory: 'Inbox notebook\nProject archive' });
         const result = await callFsTool(client, { action: 'search', path: AGENT_MEMORY_VIRTUAL_PATH, query: 'inbox' }, fsConfig(), createPermMgr('none'));

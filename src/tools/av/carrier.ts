@@ -7,6 +7,7 @@ import type { AvAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
 import { ensurePermissionForDocumentId } from '../internal/context';
 import { escapeSqlString } from '../../shared/sql';
+import { safetyError } from '../../core/write-safety-error';
 import { isExactAvCarrierDom } from '../../shared/av-carrier-dom';
 import { isMissingBlockError } from '../internal/errorTranslation';
 import { type ToolResult } from '../internal/shared';
@@ -247,16 +248,21 @@ export async function verifyExactAvCarrier(
     return resolveExactCarrierView(avID, avData, attrs, blockID, viewID);
 }
 
-export function assertKanbanHasExistingSelectKey(avID: string, avData: unknown): void {
+/** Kanban groups by a single-select key; null when one exists, otherwise the refusal message. */
+export function kanbanSelectKeyProblem(avID: string, avData: unknown): string | null {
     const keys = extractAttributeViewKeysFromData(avData);
-    if (!keys.some((key) => key && typeof key === 'object' && (key as { type?: unknown }).type === 'select')) {
-        // Kernel `addAttrViewView` synthesizes a Select key when a Kanban view
-        // has no grouping key, and adds it to every existing view. This action
-        // owns view structure only, so require the caller to add that schema
-        // field through the explicit column action first instead of smuggling a
-        // cross-view schema write into an apparently additive view operation.
-        throw new Error(`Kanban view creation for attribute view "${avID}" requires an existing select column; add it through av.add_column before creating the view.`);
-    }
+    if (keys.some((key) => key && typeof key === 'object' && (key as { type?: unknown }).type === 'select')) return null;
+    // Kernel `addAttrViewView` synthesizes a Select key when a Kanban view
+    // has no grouping key, and adds it to every existing view. This action
+    // owns view structure only, so require the caller to add that schema
+    // field through the explicit column action first instead of smuggling a
+    // cross-view schema write into an apparently additive view operation.
+    return `Kanban view creation for attribute view "${avID}" requires an existing single-select (keyType="select") column; mSelect does not qualify. Add one through av.add_column before creating the view. Nothing was written.`;
+}
+
+export function assertKanbanHasExistingSelectKey(avID: string, avData: unknown): void {
+    const problem = kanbanSelectKeyProblem(avID, avData);
+    if (problem) throw safetyError('validation_error', problem);
 }
 
 export async function ensurePermissionForAvId(
@@ -338,6 +344,56 @@ async function resolveVerifiedAvCarrierBlockId(
         }
     }
     return undefined;
+}
+
+/**
+ * Every verified NodeAttributeView carrier of an AV (mirror registrations and
+ * blocks-table hits, DOM-checked). With permMgr, carriers in notebooks the
+ * caller cannot read are omitted.
+ */
+export async function listVerifiedAvCarrierBlockIds(
+    client: SiYuanClient,
+    avID: string,
+    avData: unknown,
+    permMgr?: PermissionManager,
+): Promise<string[]> {
+    const candidates = [...new Set([
+        ...await getAvMirrorDatabaseBlockIds(client, avID),
+        ...await findAvDatabaseBlockIdsBySql(client, avID),
+    ])];
+    const carriers: string[] = [];
+    for (const candidate of candidates) {
+        if (!await isExplicitAvDatabaseBlock(client, avID, avData, candidate)) continue;
+        if (permMgr) {
+            const readable = await ensurePermissionForDocumentId(client, permMgr, candidate, 'read')
+                .then(({ denied }) => !denied, () => false);
+            if (!readable) continue;
+        }
+        carriers.push(candidate);
+    }
+    return carriers.sort();
+}
+
+/**
+ * add_view/update_view name an exact carrier. When the caller omits blockID
+ * and the AV has exactly one verified carrier, fill it in before preflight so
+ * the commit arguments still carry an explicit blockID. Zero or several
+ * carriers leave the arguments unchanged and the normal validation applies.
+ */
+export async function fillImplicitAvViewCarrier(
+    client: SiYuanClient,
+    args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+    if (args.action !== 'add_view' && args.action !== 'update_view') return args;
+    if (typeof args.blockID === 'string' && args.blockID) return args;
+    if (typeof args.avID !== 'string' || !ATTRIBUTE_VIEW_ID_PATTERN.test(args.avID)) return args;
+    try {
+        const avData = (await avApi.getAttributeView(client, args.avID)).av;
+        const carriers = await listVerifiedAvCarrierBlockIds(client, args.avID, avData);
+        return carriers.length === 1 ? { ...args, blockID: carriers[0] } : args;
+    } catch {
+        return args;
+    }
 }
 
 export async function resolveVerifiedAvCarrier(

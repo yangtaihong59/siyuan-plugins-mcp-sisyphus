@@ -1,11 +1,12 @@
 import type { ReadInfo } from '../internal/read-guidance';
 
-export function databaseContext(avID: string, sources: { blockID?: string; viewID?: string; columns?: string; rows?: string }) {
+export function databaseContext(avID: string, sources: { blockID?: string; carrierBlockIDs?: string[]; viewID?: string; columns?: string; rows?: string }) {
     return {
         avID, ...sources,
         idUsage: {
             avID: 'Database ID.',
             blockID: 'Database carrier, not a row source block. Omitted when no exact carrier was supplied.',
+            carrierBlockIDs: 'Readable carrier blocks of this database; pass one as blockID to add_view/update_view.',
             viewID: 'Selected view inside this database.',
             rowID: 'AV row ID from resolvedRows; never substitute sourceBlockID or a cell value ID.',
             columnID: 'Column key.id; set_cells uses columnID, column operations use keyID.',

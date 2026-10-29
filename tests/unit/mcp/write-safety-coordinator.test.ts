@@ -2266,6 +2266,33 @@ describe('write safety coordinator', () => {
         expect(requestRead).not.toHaveBeenCalledWith('/api/av/renderAttributeView', expect.anything());
     });
 
+    it('rejects a kanban add_view without a select column at preflight', async () => {
+        const avID = '20260813045801-avview1';
+        const blockID = '20260813045803-cmg284p';
+        const viewID = '20260813045803-kizaqbf';
+        const client = {
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/av/getAttributeView') return { av: { id: avID, viewID, keyValues: [{ key: { id: 'k-title', type: 'block' } }, { key: { id: 'k-tags', type: 'mSelect' } }], views: [{ id: viewID, name: '表格', type: 'table', table: { columns: [] } }] } };
+                if (endpoint === '/api/attr/getBlockAttrs') return { 'custom-sy-av-view': viewID };
+                if (endpoint === '/api/block/getBlockDOM') return { id: blockID, dom: `<div data-node-id="${blockID}" data-type="NodeAttributeView" data-av-id="${avID}"></div>` };
+                if (endpoint === '/api/block/getBlockInfo') return { id: blockID, box: 'nb-1' };
+                return null;
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager({ canWrite: () => true });
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rw' }));
+        const execute = vi.fn();
+        const result = parseResult(await new WriteSafetyCoordinator(client).run({
+            client, permMgr, category: 'av', action: 'add_view',
+            args: { action: 'add_view', avID, blockID, viewID: '20260813045805-kanban1', layout: 'kanban', name: '看板', validateOnly: true },
+            strictMode: true, execute,
+        }));
+        expect(result).toMatchObject({ writeAttempted: false, transactionState: 'rejected', error: { code: 'validation_error', message: expect.stringContaining('single-select') } });
+        expect(execute).not.toHaveBeenCalled();
+    });
+
     it('treats an add-view carrier list that is not the native new-ID append as unknown', async () => {
         const avID = '20260813045701-avview1';
         const blockID = '20260813045703-cmg284p';
