@@ -12,7 +12,7 @@ import { getNotebookNameArgumentHint } from '../tools/internal/helpers/notebook-
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
 import { type ToolCategory, type WriteOneStepMode } from '../core/config';
 import { compactWriteHashFields, hashWriteState, parseWriteHashCredential } from '../core/write-safety-hash';
-import { WritePreflightLeasePool, WRITE_PREFLIGHT_LEASE_TTL_MS, type WritePreflightLease, type WritePreflightLeaseScope } from '../core/write-preflight-lease';
+import { WritePreflightLeasePool, type WritePreflightLease, type WritePreflightLeaseScope } from '../core/write-preflight-lease';
 import { assertPreflightCommitArgsSize, buildWritePreflight } from '../core/write-preflight';
 import {
     ONE_STEP_REFUSAL_MESSAGES,
@@ -290,22 +290,20 @@ export class WriteSafetyCoordinator {
                     writeSafetyMode: 'strict',
                     writeAttempted: false,
                     writeExecuted: false,
-                    ...request,
+                    requestId: request.requestId,
                     preconditionField: expectedField,
                     [expectedField]: issued.credential,
                     hashPrefixLength: issued.hashPrefixLength,
-                    leaseExpiresAt: issued.leaseExpiresAt,
+                    // One deadline: the earlier of the requestId and hash-lease expiry.
                     expiresAt: effectiveExpiresAt,
-                    ttlMs: WRITE_PREFLIGHT_LEASE_TTL_MS,
-                    targetCount: before.targetIds.length,
-                    ...before.summary,
+                    ...withoutTargetCount(before.summary),
                     ...buildWritePreflight({
                         category,
                         action,
                         args,
                         requestId: request.requestId,
                         expiresAt: effectiveExpiresAt,
-                        guardTargetCount: before.targetIds.length,
+                        targetCount: before.targetIds.length,
                         credentialField: expectedField,
                         credential: issued.credential,
                     }),
@@ -346,9 +344,8 @@ export class WriteSafetyCoordinator {
                 writeSafetyMode: 'strict',
                 writeAttempted: false,
                 writeExecuted: false,
-                ...request,
+                requestId: request.requestId,
                 expiresAt: request.requestIdExpiresAt,
-                ttlMs: WRITE_PREFLIGHT_LEASE_TTL_MS,
                 ...buildWritePreflight({
                     category,
                     action,
@@ -742,9 +739,8 @@ export class WriteSafetyCoordinator {
                     validateOnly: true,
                     writeAttempted: false,
                     writeExecuted: false,
-                    ...request,
+                    requestId: request.requestId,
                     expiresAt: request.requestIdExpiresAt,
-                    ttlMs: WRITE_PREFLIGHT_LEASE_TTL_MS,
                     ...buildWritePreflight({
                         category: 'av',
                         action: 'create',
@@ -1006,6 +1002,13 @@ function addTopLevelFields(result: ToolResult, fields: Record<string, unknown>):
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
         structuredContent: payload,
     };
+}
+
+/** The target count lives once, in preflight.counts.targetCount. */
+function withoutTargetCount(summary: Record<string, unknown> | undefined): Record<string, unknown> {
+    if (!summary) return {};
+    const { targetCount: _targetCount, ...rest } = summary;
+    return rest;
 }
 
 function readHandlerErrorType(result: ToolResult): string {

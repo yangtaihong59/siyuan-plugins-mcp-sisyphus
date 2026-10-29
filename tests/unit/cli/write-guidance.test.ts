@@ -142,9 +142,9 @@ describe('cli write guidance', () => {
         const commitArgs = { action: 'update', id: 'b1', dataType: 'markdown', data: 'x', validateOnly: false, requestId: 'ed8a', expectedStateHash: '623e' };
         const payload = {
             action: 'update', validateOnly: true, writeSafetyMode: 'strict', writeAttempted: false, writeExecuted: false,
-            requestId: 'ed8a', requestIdExpiresAt: 1, preconditionField: 'expectedStateHash', expectedStateHash: '623e',
-            hashPrefixLength: 4, leaseExpiresAt: 1, expiresAt: 1793257578371, ttlMs: 600000, targetCount: 1,
-            preflight: { version: 2, requestId: 'ed8a', commitArgs },
+            requestId: 'ed8a', preconditionField: 'expectedStateHash', expectedStateHash: '623e',
+            hashPrefixLength: 4, expiresAt: 1793257578371,
+            preflight: { version: 2, requestId: 'ed8a', expiresAt: 1793257578371, counts: { operationCount: 1, targetCount: 1 }, commitArgs },
             preview: { targets: [{ id: 'b1', kind: 'block' }], changes: [{ kind: 'content_update', summary: 'Replaces block.' }], risk: ['overwrites_content'] },
         };
         const human = applyCliWriteGuidance(text(payload) as never, 'block', false);

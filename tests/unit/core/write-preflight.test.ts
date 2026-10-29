@@ -16,12 +16,12 @@ describe('write preflight v2', () => {
                 { rowID: 'row-a', columnID: 'col-2', text: 'same' },
                 { rowID: 'row-b', columnID: 'col-1', text: 'same' },
             ],
-        }, 1)).toEqual({ operationCount: 1, rowCount: 2, cellCount: 3, guardTargetCount: 1 });
+        }, 1)).toEqual({ operationCount: 1, rowCount: 2, cellCount: 3, targetCount: 1 });
     });
 
     it('omits metrics that are not meaningful for the action', () => {
         expect(computeWritePreflightCounts('block', 'append', { parentID: 'doc-1' }, 1))
-            .toEqual({ operationCount: 1, guardTargetCount: 1 });
+            .toEqual({ operationCount: 1, targetCount: 1 });
     });
 
     it('builds commitArgs that strip validateOnly and hash fields but keep business arguments', () => {
@@ -38,7 +38,7 @@ describe('write preflight v2', () => {
             },
             requestId: 'abcd',
             expiresAt: 123,
-            guardTargetCount: 1,
+            targetCount: 1,
             credentialField: 'expectedManifestHash',
             credential: 'ef01',
         });
@@ -46,8 +46,7 @@ describe('write preflight v2', () => {
             version: WRITE_PREFLIGHT_VERSION,
             requestId: 'abcd',
             expiresAt: 123,
-            ttlMs: 600000,
-            counts: { operationCount: 1, rowCount: 1, cellCount: 1, guardTargetCount: 1 },
+            counts: { operationCount: 1, rowCount: 1, cellCount: 1, targetCount: 1 },
             commitArgs: {
                 action: 'set_cells',
                 avID: 'av-1',

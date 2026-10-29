@@ -28,7 +28,7 @@ The preflight reads without mutating, computes a complete SHA-256 digest, and cr
   "preconditionField": "expectedStateHash",
   "expectedStateHash": "8ac2",
   "hashPrefixLength": 4,
-  "leaseExpiresAt": 1786543200000
+  "expiresAt": 1786543200000
 }
 ```
 
@@ -40,8 +40,7 @@ The same response also contains a normalized `preflight` object (`version: 2`). 
     "version": 2,
     "requestId": "b72f",
     "expiresAt": 1786543200000,
-    "ttlMs": 600000,
-    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "guardTargetCount": 1 },
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "targetCount": 1 },
     "commitArgs": {
       "action": "set_cells",
       "avID": "20260812120000-abcdefg",
@@ -54,7 +53,7 @@ The same response also contains a normalized `preflight` object (`version: 2`). 
 }
 ```
 
-Copy `preflight.commitArgs` unchanged as the next call arguments. Do not reconstruct `requestId`, hash fields, or business arguments by hand. `counts` is action-specific: `operationCount` is always present; `rowCount`, `cellCount`, and `guardTargetCount` appear only when they can be computed, and equal values are never deduplicated into a smaller cell count. `expiresAt` and `ttlMs` describe the same ten-minute first-execution window. Top-level `requestId` and hash fields remain during the migration window for 0.6.13 clients; both describe one execution path, not a second retry mechanism. If a batch is too large to return executable arguments within the response limit, it is rejected explicitly rather than truncated.
+Copy `preflight.commitArgs` unchanged as the next call arguments. Do not reconstruct `requestId`, hash fields, or business arguments by hand. `counts` is action-specific: `operationCount` is always present; `rowCount`, `cellCount`, and `targetCount` (distinct objects whose state the commit re-checks) appear only when they can be computed, and equal values are never deduplicated into a smaller cell count. `expiresAt` (top level and `preflight.expiresAt`) is the single deadline: the earlier of the requestId and hash-lease expiry, ten minutes after preflight. Since 0.7.0 the overlapping `requestIdExpiresAt`, `leaseExpiresAt`, `ttlMs` and top-level `targetCount` are no longer returned. Top-level `requestId` and hash fields remain during the migration window for 0.6.13 clients; both describe one execution path, not a second retry mechanism. If a batch is too large to return executable arguments within the response limit, it is rejected explicitly rather than truncated.
 
 ### Impact preview
 
@@ -91,7 +90,7 @@ The credential field name matches the write parameter, so copy that field and va
 }
 ```
 
-Preflight issues `requestId` starting at four hex digits, extending it when an already-issued ID collides. Copy the complete value; never generate or truncate it, and reuse it unchanged for retries. First execution expires after 10 minutes (`requestIdExpiresAt`); executed results remain for up to seven days. Persistent ID reservations prevent reuse after expiry, contain no note bodies, and grow with issuance count. Additive operations also require preflight to obtain an ID.
+Preflight issues `requestId` starting at four hex digits, extending it when an already-issued ID collides. Copy the complete value; never generate or truncate it, and reuse it unchanged for retries. First execution expires after 10 minutes (`expiresAt`); executed results remain for up to seven days. Persistent ID reservations prevent reuse after expiry, contain no note bodies, and grow with issuance count. Additive operations also require preflight to obtain an ID.
 
 Actions may use `expectedStateHash`, `expectedStructureHash`, `expectedManifestHash`, or `expectedSourceHash`. Read `preconditionField` instead of guessing. Additive actions have no state hash but still require the preflight-issued request ID for execution.
 
@@ -101,7 +100,7 @@ Preflight and receipts share a short-hash pool in the coordinator runtime. Befor
 
 The pool stores no note content. Aliases remain reserved for the process lifetime, even after leases expire or are consumed, and are never reassigned. Restart clears the pool and active leases; aliases are not permanent identifiers across restarts. Leases retain their operation scope, expiry, and capacity limits. Knowing an alias alone does not authorize a write.
 
-`block.update` reports the number of distinct targets from either `id` or `items[].id` in `targetCount`. A batch of 11 different blocks reports 11; repeated IDs count once. Block state includes Kramdown, block attributes, and DOM, so inline changes such as block-reference `data-subtype`, `strong`, or `em` change the hash. DOM attribute order and creation/update timestamps do not count as content changes. Attribute drift after preflight returns `state_changed`; a successful attribute edit returns `committed`, while an unchanged readback returns `no_change`.
+`block.update` reports the number of distinct targets from either `id` or `items[].id` in `preflight.counts.targetCount`. A batch of 11 different blocks reports 11; repeated IDs count once. Block state includes Kramdown, block attributes, and DOM, so inline changes such as block-reference `data-subtype`, `strong`, or `em` change the hash. DOM attribute order and creation/update timestamps do not count as content changes. Attribute drift after preflight returns `state_changed`; a successful attribute edit returns `committed`, while an unchanged readback returns `no_change`.
 
 ## Read hashes and one-step writes (opt-in)
 

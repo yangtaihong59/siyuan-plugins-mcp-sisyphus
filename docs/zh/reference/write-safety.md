@@ -28,7 +28,7 @@
   "preconditionField": "expectedStateHash",
   "expectedStateHash": "8ac2",
   "hashPrefixLength": 4,
-  "leaseExpiresAt": 1786543200000
+  "expiresAt": 1786543200000
 }
 ```
 
@@ -40,8 +40,7 @@
     "version": 2,
     "requestId": "b72f",
     "expiresAt": 1786543200000,
-    "ttlMs": 600000,
-    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "guardTargetCount": 1 },
+    "counts": { "operationCount": 1, "rowCount": 2, "cellCount": 4, "targetCount": 1 },
     "commitArgs": {
       "action": "set_cells",
       "avID": "20260812120000-abcdefg",
@@ -54,7 +53,7 @@
 }
 ```
 
-提交时原样复制 `preflight.commitArgs`，不要自行重建 `requestId`、哈希字段或业务参数。`counts` 按 action 计算：`operationCount` 总是存在；`rowCount`、`cellCount`、`guardTargetCount` 只在可计算时出现，相同值不会把显式单元格数去重变小。`expiresAt` 与 `ttlMs` 表示同一个 10 分钟首次提交窗口。迁移期仍保留顶层 `requestId` 与哈希字段，供 0.6.13 客户端使用；两者指向同一条执行路径，不是第二条重试通道。若批次过大无法在响应上限内给出完整可执行参数，会明确拒绝而不是截断。
+提交时原样复制 `preflight.commitArgs`，不要自行重建 `requestId`、哈希字段或业务参数。`counts` 按 action 计算：`operationCount` 总是存在；`rowCount`、`cellCount`、`targetCount`（提交时复核状态的不同对象数）只在可计算时出现，相同值不会把显式单元格数去重变小。`expiresAt`（顶层与 `preflight.expiresAt`）是唯一的截止时间：取 requestId 与哈希租约中较早者，预检后 10 分钟。自 0.7.0 起不再返回语义重叠的 `requestIdExpiresAt`、`leaseExpiresAt`、`ttlMs` 与顶层 `targetCount`。迁移期仍保留顶层 `requestId` 与哈希字段，供 0.6.13 客户端使用；两者指向同一条执行路径，不是第二条重试通道。若批次过大无法在响应上限内给出完整可执行参数，会明确拒绝而不是截断。
 
 ### 影响预览
 
@@ -79,7 +78,7 @@
 }
 ```
 
-`requestId` 由预检签发，从 4 位十六进制开始，遇到已签发 ID 冲突时自动加长。请完整复制，不要自行生成、截短或改名；重试必须沿用同一个 ID。首次执行有效期为 10 分钟（`requestIdExpiresAt`），已执行结果最多保留 7 天。服务器持久保留已用 ID 标记，过期 ID 不会再次签发；标记不含笔记正文，存储量随签发次数增长。纯新增操作也必须先预检领取 ID。
+`requestId` 由预检签发，从 4 位十六进制开始，遇到已签发 ID 冲突时自动加长。请完整复制，不要自行生成、截短或改名；重试必须沿用同一个 ID。首次执行有效期为 10 分钟（`expiresAt`），已执行结果最多保留 7 天。服务器持久保留已用 ID 标记，过期 ID 不会再次签发；标记不含笔记正文，存储量随签发次数增长。纯新增操作也必须先预检领取 ID。
 
 不同 action 可能返回 `expectedStateHash`、`expectedStructureHash`、`expectedManifestHash` 或 `expectedSourceHash`。调用方应读取 `preconditionField`，不要自行猜测字段。纯新增 action 不需要状态哈希，但真实执行仍要求预检返回的 `requestId`。
 
@@ -89,7 +88,7 @@
 
 短值池不保存正文；已分配短值在本次进程内不回收、不改绑，租约过期或消费也不会释放短值。进程重启后池和活动租约清空，所以短值不是跨重启的永久标识。预检租约仍按工具、action、业务参数和目标 ID 隔离，保留原有有效期与容量限制；仅知道池内短值不能授权写入。
 
-`block.update` 的 `targetCount` 包含单个 `id` 或批量 `items[].id` 中的去重目标数。11 个不同块的批量更新返回 11；同一个 ID 重复出现仍只算一个目标。块状态同时读取 Kramdown、块属性和 DOM，因此块引用的 `data-subtype`、`strong` / `em` 等行内属性变化会使哈希变化。DOM 属性顺序和创建/更新时间不会被视为内容修改。预检后发生属性修改会返回 `state_changed`；成功修改属性返回 `committed`，只有读回状态一致时才返回 `no_change`。
+`block.update` 的 `preflight.counts.targetCount` 包含单个 `id` 或批量 `items[].id` 中的去重目标数。11 个不同块的批量更新返回 11；同一个 ID 重复出现仍只算一个目标。块状态同时读取 Kramdown、块属性和 DOM，因此块引用的 `data-subtype`、`strong` / `em` 等行内属性变化会使哈希变化。DOM 属性顺序和创建/更新时间不会被视为内容修改。预检后发生属性修改会返回 `state_changed`；成功修改属性返回 `committed`，只有读回状态一致时才返回 `no_change`。
 
 ## 读取哈希与一步写入（可选）
 

@@ -374,7 +374,8 @@ describe('write safety coordinator', () => {
             client, permMgr, category: 'block', action: 'update', strictMode: true,
             args: { ...args, validateOnly: true }, execute: preflightExecute,
         }));
-        expect(preflight.targetCount).toBe(count);
+        expect(preflight.preflight.counts.targetCount).toBe(count);
+        expect(preflight.targetCount).toBeUndefined();
         expect(preflightExecute).not.toHaveBeenCalled();
         if (scenario === 'drift') subtype = 's';
         const execute = vi.fn(async () => {
@@ -957,8 +958,7 @@ describe('write safety coordinator', () => {
         expect(result.preflight).toMatchObject({
             version: 2,
             requestId: result.requestId,
-            expiresAt: result.requestIdExpiresAt,
-            ttlMs: 600000,
+            expiresAt: result.expiresAt,
             counts: { operationCount: 1 },
             commitArgs: {
                 action: 'append',
@@ -1019,8 +1019,7 @@ describe('write safety coordinator', () => {
         expect(preflight.preflight).toMatchObject({
             version: 2,
             requestId: preflight.requestId,
-            ttlMs: 600000,
-            counts: { operationCount: 2, rowCount: 2, cellCount: 2, guardTargetCount: 3 },
+            counts: { operationCount: 2, rowCount: 2, cellCount: 2, targetCount: 3 },
             commitArgs: {
                 action: 'add_rows',
                 avID: 'av-batch',
@@ -1033,9 +1032,9 @@ describe('write safety coordinator', () => {
         });
         // The requestId is issued slightly before the hash lease. The advertised
         // deadline must be the earliest real cutoff, never the later lease.
-        expect(preflight.expiresAt).toBe(Math.min(preflight.requestIdExpiresAt, preflight.leaseExpiresAt));
-        expect(preflight.expiresAt).toBeLessThanOrEqual(preflight.requestIdExpiresAt);
-        expect(preflight.expiresAt).toBeLessThanOrEqual(preflight.leaseExpiresAt);
+        // Only one deadline is advertised; the overlapping fields were removed.
+        for (const key of ['requestIdExpiresAt', 'leaseExpiresAt', 'ttlMs', 'targetCount']) expect(preflight).not.toHaveProperty(key);
+        expect(preflight.preflight).not.toHaveProperty('ttlMs');
         expect(preflight.preflight.expiresAt).toBe(preflight.expiresAt);
         expect(preflight.expiresAt - Date.now()).toBeGreaterThan(9 * 60 * 1000);
 
@@ -1108,7 +1107,7 @@ describe('write safety coordinator', () => {
             client, permMgr, category: 'av', action: 'set_cells', args: { ...args, validateOnly: true }, strictMode: true, execute: vi.fn(),
         }));
         expect(preflight.preflight).toMatchObject({
-            counts: { operationCount: 1, rowCount: 2, cellCount: 4, guardTargetCount: 1 },
+            counts: { operationCount: 1, rowCount: 2, cellCount: 4, targetCount: 1 },
             commitArgs: {
                 action: 'set_cells',
                 avID: 'av-cells',
@@ -1168,7 +1167,7 @@ describe('write safety coordinator', () => {
         }));
         expect(preflight.preflight).toMatchObject({
             version: 2,
-            counts: { operationCount: 2, guardTargetCount: 5 },
+            counts: { operationCount: 2, targetCount: 5 },
             commitArgs: {
                 action: 'rename',
                 items: args.items,
@@ -1463,7 +1462,7 @@ describe('write safety coordinator', () => {
         expect(preflight[preflight.preconditionField]).toBe(preflight.expectedStateHash);
         expect(preflight).not.toHaveProperty('stateHash');
         expect(preflight.hashPrefixLength).toBe(4);
-        expect(preflight.leaseExpiresAt).toBeGreaterThan(Date.now());
+        expect(preflight.expiresAt).toBeGreaterThan(Date.now());
 
         const execute = vi.fn(async () => {
             updated = '20260812020202';
@@ -1928,7 +1927,7 @@ describe('write safety coordinator', () => {
                 client, permMgr, category: 'search', action: 'find_replace', args: { ...args, validateOnly: true }, strictMode: true,
                 execute: vi.fn(),
             }));
-            expect(preflight.targetCount).toBe(1);
+            expect(preflight.preflight.counts.targetCount).toBe(1);
 
             const pending = coordinator.run({
                 client,

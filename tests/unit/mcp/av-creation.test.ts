@@ -87,8 +87,7 @@ describe('durable multi-step AV creation', () => {
         expect(pre.preflight).toMatchObject({
             version: 2,
             requestId: pre.requestId,
-            expiresAt: pre.requestIdExpiresAt,
-            ttlMs: 600000,
+            expiresAt: pre.expiresAt,
             counts: { operationCount: 1 },
             commitArgs: {
                 action: 'create',

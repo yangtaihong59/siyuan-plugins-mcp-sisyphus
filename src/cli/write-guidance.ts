@@ -36,7 +36,8 @@ export interface CliWriteGuidance {
 /*
  * Coordinator bookkeeping on a preflight. The printed commit command already
  * carries the request ID and hash, so human output hides these; --json and
- * --debug keep them.
+ * --debug keep them. requestIdExpiresAt, leaseExpiresAt, ttlMs and a
+ * top-level targetCount are only sent by servers before 0.7.0.
  */
 const PREFLIGHT_META_KEYS = new Set([
     'action', 'validateOnly', 'writeSafetyMode', 'writeAttempted', 'writeExecuted', 'requestId', 'requestIdExpiresAt',

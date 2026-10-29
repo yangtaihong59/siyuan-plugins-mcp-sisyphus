@@ -55,8 +55,7 @@ describe('slim document-window responses', () => {
             version: 2,
             requestId: 'request-1',
             expiresAt: 1,
-            ttlMs: 600000,
-            counts: { operationCount: 1, rowCount: 1, cellCount: 1, guardTargetCount: 1 },
+            counts: { operationCount: 1, rowCount: 1, cellCount: 1, targetCount: 1 },
             commitArgs: {
                 action: 'set_cells',
                 avID: 'av-1',

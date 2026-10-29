@@ -1,6 +1,5 @@
 import type { ToolCategory } from './config';
 import { stripSafetyFields } from './write-safety-fields';
-import { WRITE_PREFLIGHT_LEASE_TTL_MS } from './write-preflight-lease';
 import { asRecord } from '../shared/record';
 
 export const WRITE_PREFLIGHT_VERSION = 2;
@@ -24,14 +23,14 @@ export interface WritePreflightCounts {
     operationCount: number;
     rowCount?: number;
     cellCount?: number;
-    guardTargetCount?: number;
+    /** Distinct objects whose state the commit re-checks (strict preflight only). */
+    targetCount?: number;
 }
 
 export interface WritePreflightEnvelope {
     version: number;
     requestId: string;
     expiresAt: number;
-    ttlMs: number;
     counts: WritePreflightCounts;
     commitArgs: Record<string, unknown>;
 }
@@ -62,7 +61,7 @@ export function computeWritePreflightCounts(
     category: ToolCategory,
     action: string,
     args: Record<string, unknown>,
-    guardTargetCount?: number,
+    targetCount?: number,
 ): WritePreflightCounts {
     const counts: WritePreflightCounts = { operationCount: 1 };
 
@@ -92,8 +91,8 @@ export function computeWritePreflightCounts(
         counts.operationCount = args.items.length;
     }
 
-    if (typeof guardTargetCount === 'number' && Number.isFinite(guardTargetCount)) {
-        counts.guardTargetCount = guardTargetCount;
+    if (typeof targetCount === 'number' && Number.isFinite(targetCount)) {
+        counts.targetCount = targetCount;
     }
     return counts;
 }
@@ -114,7 +113,7 @@ export function buildWritePreflight(options: {
     args: Record<string, unknown>;
     requestId: string;
     expiresAt: number;
-    guardTargetCount?: number;
+    targetCount?: number;
     credentialField?: string;
     credential?: string;
 }): { preflight: WritePreflightEnvelope } {
@@ -131,12 +130,11 @@ export function buildWritePreflight(options: {
             version: WRITE_PREFLIGHT_VERSION,
             requestId: options.requestId,
             expiresAt: options.expiresAt,
-            ttlMs: WRITE_PREFLIGHT_LEASE_TTL_MS,
             counts: computeWritePreflightCounts(
                 options.category,
                 options.action,
                 options.args,
-                options.guardTargetCount,
+                options.targetCount,
             ),
             commitArgs,
         },

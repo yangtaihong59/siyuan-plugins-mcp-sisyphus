@@ -56,10 +56,10 @@ async function preflight(tool, args, connection = client) {
     const p = await call(tool, { ...args, validateOnly: true }, connection);
     assert.equal(p.writeAttempted, false);
     assert.match(p.requestId, /^[a-f0-9]{4,64}$/);
-    assert(p.requestIdExpiresAt > Date.now());
+    assert(p.expiresAt > Date.now());
     if (p.preconditionField) {
         assert.match(p[p.preconditionField], /^[a-f0-9]{4,64}$/);
-        assert(p.hashPrefixLength >= 4 && p.leaseExpiresAt > Date.now());
+        assert(p.hashPrefixLength >= 4);
     }
     return p;
 }
@@ -70,7 +70,7 @@ function executionArgs(args, p) {
 async function mutate(tool, args, { expectedCount, expectedState = 'committed', additive = false, label = `${tool}.${args.action}`, connection = client } = {}) {
     const p = await preflight(tool, args, connection);
     const spare = p.preconditionField ? await preflight(tool, args, connection) : null;
-    if (expectedCount !== undefined) assert.equal(p.targetCount, expectedCount);
+    if (expectedCount !== undefined) assert.equal(p.preflight?.counts?.targetCount, expectedCount);
     const actual = executionArgs(args, p);
     const result = await call(tool, actual, connection);
     assert.equal(result.safety?.writeSafetyGuaranteed, true, JSON.stringify(result));
@@ -81,7 +81,7 @@ async function mutate(tool, args, { expectedCount, expectedState = 'committed', 
         const consumed = await call(tool, { ...actual, requestId: spare.requestId }, connection, true);
         assert.equal(consumed.error?.code, 'preflight_lease_invalid', JSON.stringify(consumed));
     }
-    passed(label, { targetCount: p?.targetCount, transactionState: result.safety.transactionState, replay: true, leaseConsumed: !!spare, previousHash: result.safety.previousHash, resultHash: result.safety.resultHash });
+    passed(label, { targetCount: p?.preflight?.counts?.targetCount, transactionState: result.safety.transactionState, replay: true, leaseConsumed: !!spare, previousHash: result.safety.previousHash, resultHash: result.safety.resultHash });
     return result;
 }
 function validateReferences(tools, transport) {
