@@ -87,6 +87,11 @@ describe('search SQL read-only guard', () => {
         }
     });
 
+    it('names PRAGMA and EXPLAIN instead of calling them mutations', () => {
+        expect(() => assertReadOnlySql('PRAGMA table_info(blocks)')).toThrow(/PRAGMA statements are not allowed.*schema metadata is not exposed/);
+        expect(() => assertReadOnlySql('explain SELECT 1')).toThrow(/EXPLAIN statements are not allowed/);
+    });
+
     it('blocks unsafe CTE SQL before calling the SiYuan query endpoint', async () => {
         const request = vi.fn();
         const client = createMockClient({ request });

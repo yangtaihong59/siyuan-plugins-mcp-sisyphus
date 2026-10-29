@@ -215,7 +215,23 @@ function restrictedScopeHint(scope: RawSqlScope): string {
     return `Results and counts cover only the readable notebooks${excluded.length > 0 ? `; ${excluded.length} unreadable notebook(s) (${names(excluded)}) are excluded` : ''}${closed.length > 0 ? `; closed notebook(s) (${names(closed)}) are not indexed and return no rows` : ''}. ${RESTRICTED_SQL_HINT}`;
 }
 
-function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArgs: Record<string, unknown> | undefined, scope: RawSqlScope): ToolResult {
+/** Flush queued writes into the SQL index; reports whether that worked. */
+async function flushSqlIndex(client: Parameters<typeof searchApi.querySQL>[0]): Promise<boolean> {
+    try {
+        await searchApi.flushTransaction(client);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function emptySqlHint(flushed: boolean): string {
+    return flushed
+        ? 'No rows. Pending writes were flushed to the index first; if a block written moments ago is still missing, retry in a few seconds. Closed notebooks are not indexed.'
+        : 'No rows. The SQL index can lag a write by a few seconds; if you just wrote the content, retry shortly. Closed notebooks are not indexed.';
+}
+
+function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArgs: Record<string, unknown> | undefined, scope: RawSqlScope, flushed = true): ToolResult {
     const truncated = applyTruncation(rows, 50, 'Add LIMIT and OFFSET to your SQL for pagination.');
     const total = rows.length;
     const restricted = scope.mode === 'restricted';
@@ -237,6 +253,7 @@ function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArg
         ...buildTruncationSummary(total, truncated.meta),
         ...createPartialMetadata(removedCount),
         ...(resolvedArgs ? { resolvedArgs } : {}),
+        ...(total === 0 && removedCount === 0 ? { hint: emptySqlHint(flushed) } : {}),
     });
 }
 
@@ -385,6 +402,8 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         const stmt = resolveAliasString(parsed.stmt, parsed.sql);
         assertReadOnlySql(stmt ?? '');
         const scope = await loadRawSqlScope(client, permMgr);
+        // SQL reads the asynchronous index; a write moments ago may not be in it yet.
+        const flushed = await flushSqlIndex(client);
         const resolvedArgs = parsed.sql !== undefined
             ? buildResolvedArgs({ stmt }).resolvedArgs
             : undefined;
@@ -393,7 +412,7 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
             // Every notebook is readable: run the caller's SQL unchanged.
             const result = await searchApi.querySQL(client, stmt ?? '');
             const rows = Array.isArray(result) ? result : [];
-            return createSqlQueryResult(rows, 0, resolvedArgs, scope);
+            return createSqlQueryResult(rows, 0, resolvedArgs, scope, flushed);
         }
 
         let rewritten: string;
@@ -448,7 +467,7 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         const result = await searchApi.querySQL(client, rewritten);
         const rows = Array.isArray(result) ? result : [];
         const filtered = await filterSqlRowsByPermission(client, rows, permMgr);
-        return createSqlQueryResult(filtered.items, filtered.removedCount, resolvedArgs, scope);
+        return createSqlQueryResult(filtered.items, filtered.removedCount, resolvedArgs, scope, flushed);
     },
     get_backlinks: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchGetBacklinksSchema.parse(rawArgs);

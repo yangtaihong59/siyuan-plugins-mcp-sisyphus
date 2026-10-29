@@ -55,17 +55,21 @@ async function ensureTagNotebooksWritable(
  * SiYuan rewrites tags only in open notebooks and reports success either way,
  * so a rename that touched nothing would otherwise look like it worked.
  */
-async function tagScopeWarning(client: SiYuanClient, label: string, blockCount: number): Promise<string | undefined> {
+async function tagScopeWarning(client: SiYuanClient, permMgr: PermissionManager, label: string, blockCount: number): Promise<string | undefined> {
     let notebooks: Awaited<ReturnType<typeof notebookApi.listNotebooks>> | null = null;
     try {
         notebooks = await notebookApi.listNotebooks(client);
     } catch {
         // The warning is advisory; the write itself already succeeded.
     }
-    const closed = (notebooks?.notebooks ?? []).filter((notebook) => notebook.closed).map((notebook) => notebook.name);
-    const closedNote = closed.length > 0
-        ? ` Closed notebooks are skipped by SiYuan (${closed.join(', ')}); open them with notebook set_open_state and retry if the tag lives there.`
-        : '';
+    const closedAll = (notebooks?.notebooks ?? []).filter((notebook) => notebook.closed);
+    // Unreadable notebooks are out of reach whether open or not; name them apart.
+    const closed = closedAll.filter((notebook) => permMgr.canRead(notebook.id)).map((notebook) => notebook.name);
+    const closedUnreadable = closedAll.filter((notebook) => !permMgr.canRead(notebook.id)).map((notebook) => notebook.name);
+    const closedNote = [
+        closed.length > 0 ? ` Closed notebooks are skipped by SiYuan (${closed.join(', ')}); open them with notebook set_open_state and retry if the tag lives there.` : '',
+        closedUnreadable.length > 0 ? ` Closed notebook(s) without read access (${closedUnreadable.join(', ')}) were skipped too.` : '',
+    ].join('');
     if (blockCount === 0) return `No indexed block in an open notebook carries #${label}#, so nothing was changed.${closedNote}`;
     return closedNote ? closedNote.trim() : undefined;
 }
@@ -98,7 +102,7 @@ export const TAG_ACTION_HANDLERS: Record<TagAction, ToolActionHandler> = {
             const { denied, blockCount } = await ensureTagNotebooksWritable(client, permMgr, parsed.oldLabel);
             if (denied) return denied;
             await tagApi.renameTag(client, parsed.oldLabel, parsed.newLabel);
-            const warning = await tagScopeWarning(client, parsed.oldLabel, blockCount);
+            const warning = await tagScopeWarning(client, permMgr, parsed.oldLabel, blockCount);
             return applyUiRefresh(
                 client,
                 createJsonResult({ success: true, oldLabel: parsed.oldLabel, newLabel: parsed.newLabel, count: blockCount, ...(warning ? { warning } : {}) }),
@@ -110,7 +114,7 @@ export const TAG_ACTION_HANDLERS: Record<TagAction, ToolActionHandler> = {
             const { denied, blockCount } = await ensureTagNotebooksWritable(client, permMgr, parsed.label);
             if (denied) return denied;
             await tagApi.removeTag(client, parsed.label);
-            const warning = await tagScopeWarning(client, parsed.label, blockCount);
+            const warning = await tagScopeWarning(client, permMgr, parsed.label, blockCount);
             return applyUiRefresh(
                 client,
                 createJsonResult({ success: true, label: parsed.label, count: blockCount, ...(warning ? { warning } : {}) }),

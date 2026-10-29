@@ -113,6 +113,8 @@ function formatDetail(key: string, value: unknown, indent: string): string[] {
         return [];
     }
     if (!Array.isArray(value) || value.length === 0) return [];
+    // Name lists (attribute names, notebook names) read best on one line; excerpts keep one per line.
+    if (/Attributes$|NotebooksSkipped$|^defaultColumns$/.test(key) && value.every((item) => typeof item === 'string')) return [`${indent}${key}: ${value.join(', ')}`];
     const lines: string[] = [];
     for (const item of value) {
         if (isRecord(item) && typeof item.before === 'string' && typeof item.after === 'string') {
@@ -129,7 +131,8 @@ function formatDetail(key: string, value: unknown, indent: string): string[] {
 }
 
 export function buildCliCommand(tool: string, args: Record<string, unknown>): string {
-    const parts = [PRIMARY_CLI_COMMAND, tool, String(args.action ?? '')];
+    // Kebab-case like the help and the examples; the dispatcher accepts both.
+    const parts = [PRIMARY_CLI_COMMAND, tool, String(args.action ?? '').replace(/_/g, '-')];
     for (const [key, value] of Object.entries(args)) {
         if (key === 'action' || key === 'validateOnly' || value === undefined || value === null) continue;
         const flag = `--${toKebab(key)}`;

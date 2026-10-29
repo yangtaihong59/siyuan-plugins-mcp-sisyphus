@@ -22,7 +22,7 @@ describe('cli write guidance', () => {
             const { result, commitCommand } = applyCliWriteGuidance(text(payload) as never, 'av', json);
             expect(commitCommand).toBeUndefined();
             expect(JSON.parse((result.content[0] as { text: string }).text).removeDefaultColumn.cliCommand)
-                .toBe('siyuan-sisyphus av remove_column --av-id av-1 --key-id k-1 --validate-only');
+                .toBe('siyuan-sisyphus av remove-column --av-id av-1 --key-id k-1 --validate-only');
         }
     });
 
@@ -30,6 +30,7 @@ describe('cli write guidance', () => {
         const commitArgs = { action: 'remove_card', deckID: 'd1', blockIDs: ['b1', 'b2'], requestId: 'c93e' };
         const command = buildCliCommand('flashcard', commitArgs);
         expect(command).toContain(`--block-ids-json '["b1","b2"]'`);
+        expect(command.startsWith('siyuan-sisyphus flashcard remove-card ')).toBe(true);
         const schema = { type: 'object', properties: { action: { type: 'string' }, deckID: { type: 'string' }, blockIDs: { type: 'array', items: { type: 'string' } }, requestId: { type: 'string' } } };
         const { args, unknownFlags } = mapFlagsToArgs(['--deck-id', 'd1', '--block-ids-json', '["b1","b2"]', '--request-id', 'c93e'], schema);
         expect(unknownFlags).toEqual([]);

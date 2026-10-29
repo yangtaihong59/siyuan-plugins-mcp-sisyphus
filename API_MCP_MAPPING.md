@@ -5,7 +5,7 @@
 ## 当前基线
 
 - **14** 个聚合工具、**139** 个静态 action（不含隐式 `help`、MCP App 重复 action、`extension` 运行时动态 action）。
-- `src/api` wrapper 覆盖口径为 **151** 个唯一 `/api/*` 字面量：**150** 个有效，覆盖当前 **582** 个内核 API 路径的 **25.8%**；工具层直调另列，不混入该基线。
+- `src/api` wrapper 覆盖口径为 **152** 个唯一 `/api/*` 字面量：**151** 个有效，覆盖当前 **582** 个内核 API 路径的 **25.9%**；工具层直调另列，不混入该基线。
 - UI 设置页另有 **5** 个 UI-only 路径，不计入工具/API 覆盖率。
 - 唯一失效 wrapper：`/api/asset/setImageAlpha`（`src/api/file.ts`）；本轮仅记录，不删除。
 - 生成器直接读取当前工作区注册表，因此新增或移除 action 后会同步更新本页基线。
@@ -308,6 +308,7 @@
 | `/api/search/searchTag` | api-wrapper | `src/api/search.ts` | 有效内核路由 |
 | `/api/search/searchTemplate` | api-wrapper | `src/api/template.ts` | 有效内核路由 |
 | `/api/search/semanticSearchBlock` | api-wrapper | `src/api/search.ts` | 有效内核路由 |
+| `/api/sqlite/flushTransaction` | api-wrapper | `src/api/search.ts` | 有效内核路由 |
 | `/api/sync/performSync` | api-wrapper+core | `src/api/system.ts`<br>`src/core/help.ts` | 有效内核路由 |
 | `/api/system/bootProgress` | api-wrapper | `src/api/system.ts` | 有效内核路由 |
 | `/api/system/currentTime` | api-wrapper | `src/api/system.ts` | 有效内核路由 |
@@ -331,7 +332,7 @@
 | `/api/ui/reloadTag` | api-wrapper | `src/api/system.ts` | 有效内核路由 |
 | `/api/ui/reloadUI` | api-wrapper | `src/api/system.ts` | 有效内核路由 |
 
-### API wrapper 层外的工具直调（不计 151 wrapper 覆盖口径）
+### API wrapper 层外的工具直调（不计 152 wrapper 覆盖口径）
 
 | API 路径 | 位置 | 状态 |
 |---|---|---|
@@ -349,7 +350,7 @@
 
 ## 覆盖层级解释
 
-- **插件直接覆盖**：后端 API wrapper 或工具层直调，列于上表 151 项。
+- **插件直接覆盖**：后端 API wrapper 或工具层直调，列于上表 152 项。
 - **由 extension 暴露原生工具**：运行时通过思源 `/mcp` 发现；动态 action 不纳入静态 139。
 - **仅内核内部使用**：当前内核路由存在，但没有插件后端字面量；不等同于适合暴露给 AI。
 - **不建议引入**：宿主管理、认证回调、任意文件/网络代理等能力，见人工候选区。

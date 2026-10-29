@@ -190,6 +190,9 @@ export function assertReadOnlySql(stmt: string): void {
         assertReadOnlyWithSql(masked, firstWord.end);
         return;
     }
+    if (firstWord?.keyword === 'PRAGMA' || firstWord?.keyword === 'EXPLAIN') {
+        throw new Error(`${firstWord.keyword} statements are not allowed: query_sql runs only SELECT / WITH … SELECT over the index tables, and schema metadata is not exposed. For column names, SELECT * FROM blocks LIMIT 1; for documents, use document(action="query").`);
+    }
 
     throw new Error(READ_ONLY_SQL_ERROR);
 }

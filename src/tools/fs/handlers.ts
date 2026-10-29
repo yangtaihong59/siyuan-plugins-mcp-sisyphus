@@ -34,6 +34,7 @@ import {
 } from '../internal/document-kramdown';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
 import { escapeRegExp } from '../../shared/text';
+import { updatePreservingAttrs } from '../internal/helpers/preserved-attrs';
 import { paginate } from '../internal/pagination';
 
 type FsActionHandler = ToolActionHandler;
@@ -433,17 +434,21 @@ async function replaceDocumentBlocksSafely(
     }));
     const replaced = applyDocumentKramdownDomReplacements(kramdownBlocks, edits, 'fs.replace');
 
+    const restoredAttrs: Record<string, string[]> = {};
     for (const block of replaced.blocks) {
-        const shouldReparseIndexedInline = block.touchesIndexedInline && block.type !== 'l';
-        await blockApi.updateBlock(
+        // A Markdown reparse (tags, refs) rebuilds the IAL; restore user attributes.
+        const dataType = block.touchesIndexedInline && block.type !== 'l' ? 'markdown' : 'dom';
+        const data = dataType === 'markdown' ? block.markdown : block.dom;
+        const preserved = await updatePreservingAttrs(
             client,
-            shouldReparseIndexedInline ? 'markdown' : 'dom',
-            shouldReparseIndexedInline ? block.markdown : block.dom,
-            block.id,
+            [{ id: block.id, dataType, data, alwaysRestore: true }],
+            () => blockApi.updateBlock(client, dataType, data, block.id),
         );
+        Object.assign(restoredAttrs, preserved.restoredAttrs);
     }
 
     return {
+        restoredAttrs,
         summary: replaced.summary,
         changedBlockCount: replaced.blocks.length,
         changedMarkdown: replaced.blocks.map((block) => block.markdown).join('\n'),
@@ -656,7 +661,11 @@ const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     return createJsonResult({
         ...payload,
         readInfo: documentReadInfo(readWindow, blocks.map(block => block.type)),
-        ...(attributeViews.length > 0 ? { attributeViews } : {}),
+        ...(attributeViews.length > 0 ? {
+            attributeViews,
+            // The div is the database's Markdown form; rewriting it would break write-back.
+            databaseNote: `${attributeViews.length} database block(s) appear in content as <div data-type="NodeAttributeView" data-av-id="…"> lines: the native Markdown form, not their rows. Read rows with av(action="query", avID="<av-id>"); leave the line unchanged when editing the text around it.`,
+        } : {}),
         ...(nextSteps.length ? { nextSteps } : {}),
     });
 };
@@ -765,7 +774,7 @@ const handleReplace: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
 
     const edits = await normalizeReplaceEditsRefs(client, Array.isArray(parsed.edit) ? parsed.edit : [parsed.edit], 'fs.replace');
     const replaceResult = await replaceDocumentBlocksSafely(client, scope.id, edits);
-    const { summary, changedBlockCount, changedMarkdown, skippedComplexBlocks } = replaceResult;
+    const { summary, changedBlockCount, changedMarkdown, skippedComplexBlocks, restoredAttrs } = replaceResult;
     const changed = changedBlockCount > 0;
 
     return applyUiRefresh(client, createJsonResult({
@@ -774,6 +783,7 @@ const handleReplace: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         changed,
         editsApplied: summary.length,
         replacements: summary,
+        ...(Object.keys(restoredAttrs).length > 0 ? { restoredAttrs } : {}),
         ...(skippedComplexBlocks.length > 0 ? {
             warning: 'This document contains SiYuan-native complex blocks. fs.replace edited only matched non-complex Markdown blocks; complex blocks were skipped.',
             skippedComplexBlocks,

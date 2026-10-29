@@ -9,7 +9,7 @@ vi.mock('@/api/tag', () => ({
 }));
 
 vi.mock('@/api/notebook', () => ({
-    listNotebooks: vi.fn(async () => ({ notebooks: [{ id: 'nb-x', name: 'Archive', closed: true }] })),
+    listNotebooks: vi.fn(async () => ({ notebooks: [{ id: 'nb-x', name: 'Archive', closed: true }, { id: 'nb-hidden', name: 'Private', closed: true }] })),
 }));
 
 vi.mock('@/api/search', () => ({
@@ -22,7 +22,7 @@ const enabled = { enabled: true, actions: { list: true, rename: true, remove: tr
 function permissions(writable: (box: string) => boolean) {
     return {
         reload: vi.fn(async () => undefined),
-        canRead: vi.fn(() => true),
+        canRead: vi.fn((box: string) => box !== 'nb-hidden'),
         canWrite: vi.fn(writable),
         canDelete: vi.fn(writable),
         get: vi.fn(() => 'r'),
@@ -76,6 +76,7 @@ describe('tag write permissions', () => {
 
         expect(payload.count).toBe(0);
         expect(payload.warning).toContain('nothing was changed');
-        expect(payload.warning).toContain('Archive');
+        expect(payload.warning).toContain('Closed notebooks are skipped by SiYuan (Archive);');
+        expect(payload.warning).toContain('Closed notebook(s) without read access (Private) were skipped too.');
     });
 });

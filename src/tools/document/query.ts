@@ -86,6 +86,8 @@ export const handleDocumentQuery: ToolActionHandler = async ({ client, permMgr, 
         if (args.duplicatesOnly) filters.push('t.sameTitleCount > 1');
         const withClause = `WITH ${ctes.join(',\n')}`;
         const fromClause = `FROM scoped_docs d ${joins.join(' ')}${filters.length ? ` WHERE ${filters.join(' AND ')}` : ''}`;
+        // Let a write made moments ago reach the index; best effort.
+        await searchApi.flushTransaction(client).catch(() => undefined);
         const countRows = await searchApi.querySQL(client, `${withClause} SELECT COUNT(*) AS total ${fromClause}`);
         const count = (countRows[0] as Record<string, unknown> | undefined)?.total;
         if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {

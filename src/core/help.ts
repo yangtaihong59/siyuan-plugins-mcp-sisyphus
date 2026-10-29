@@ -529,6 +529,17 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
                 mcp: { action: 'update', items: [{ id: '20240318112233-abc123', dataType: 'markdown', data: 'First' }, { id: '20240318112233-def456', dataType: 'markdown', data: 'Second' }], validateOnly: true },
             },
         ],
+        replace: [
+            {
+                title: 'Replace exact text inside one block (preflight first)',
+                description: 'edit is {old, new} or a list of them; add replace_all=true to replace every occurrence. Copy old from block get_kramdown.',
+                mcp: { action: 'replace', id: '20240318112233-abc123', edit: { old: 'old text', new: 'new text' }, validateOnly: true },
+            },
+            {
+                title: 'Several edits in one block',
+                mcp: { action: 'replace', id: '20240318112233-abc123', edit: [{ old: 'draft', new: 'final' }, { old: 'TODO', new: 'DONE', replace_all: true }], validateOnly: true },
+            },
+        ],
         word_count: [
             {
                 title: 'Get word count for one block',

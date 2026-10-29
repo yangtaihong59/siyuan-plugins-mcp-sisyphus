@@ -273,6 +273,7 @@ export class WriteSafetyCoordinator {
                     expectedHash: activeLease.fullHash,
                     currentHash: before.hash,
                     revalidateRequired: true,
+                    hint: 'Rerun the validateOnly preflight for fresh hashes. Any write to the same target (for a database: any change to it) invalidates other pending preflights.',
                 });
             }
         } else if (validateOnly) {

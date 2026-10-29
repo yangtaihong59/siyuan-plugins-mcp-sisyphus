@@ -351,9 +351,10 @@ describe.skipIf(!DatabaseSync)('restricted SQL executed by SQLite', () => {
 
 const CLOSED_BOX = '20260101000000-ccccccc';
 
-function createHandlerHarness(options: { userRows?: unknown[]; lookupRows?: unknown[]; allReadable?: boolean; closedReadable?: boolean; canary?: 'pass' | 'leak' | 'error' } = {}) {
+function createHandlerHarness(options: { userRows?: unknown[]; lookupRows?: unknown[]; allReadable?: boolean; closedReadable?: boolean; canary?: 'pass' | 'leak' | 'error'; flush?: boolean } = {}) {
     const sent: string[] = [];
     const request = vi.fn(async (path: string, body: { stmt?: string }) => {
+        if (path === '/api/sqlite/flushTransaction' && options.flush) return null;
         if (path === '/api/notebook/lsNotebooks') {
             return { notebooks: [{ id: READABLE[0], name: 'Public' }, { id: SECRET_BOX, name: 'Secret' }, ...(options.closedReadable ? [{ id: CLOSED_BOX, name: 'Old', closed: true }] : [])] };
         }
@@ -466,6 +467,21 @@ describe('search(action="query_sql") restricted mode', () => {
         expect(parsed.data).toEqual([{ id: 'x', box: SECRET_BOX }]);
         expect(parsed.scope).toEqual({ mode: 'full', readableNotebooks: [READABLE[0], SECRET_BOX], excludedNotebooks: 0 });
         expect(parsed.readInfo.limitations).not.toContain('notebook_scoped');
+    });
+
+    it('flushes the index before querying and explains an empty result', async () => {
+        const flushed = createHandlerHarness({ allReadable: true, flush: true });
+        const parsed = parseResult(await flushed.call({ stmt: 'SELECT id FROM blocks WHERE id = \'x\'' }));
+        const calls = flushed.request.mock.calls.map((call) => call[0]);
+        expect(calls.indexOf('/api/sqlite/flushTransaction')).toBeLessThan(calls.indexOf('/api/query/sql'));
+        expect(parsed.hint).toMatch(/flushed to the index first/);
+
+        const unflushed = parseResult(await createHandlerHarness({ allReadable: true }).call({ stmt: 'SELECT id FROM blocks' }));
+        expect(unflushed.data).toEqual([]);
+        expect(unflushed.hint).toMatch(/can lag a write by a few seconds/);
+
+        const rows = parseResult(await createHandlerHarness({ allReadable: true, flush: true, userRows: [{ id: 'x' }] }).call({ stmt: 'SELECT id FROM blocks' }));
+        expect(rows.hint).toBeUndefined();
     });
 
     it('runs the kernel canary once per client before the first restricted query', async () => {

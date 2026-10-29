@@ -86,6 +86,17 @@ describe('write safety coordinator preview', () => {
         expect(committed).not.toHaveProperty('preview');
     });
 
+    it('says block.replace keeps user attributes', async () => {
+        const { client, permMgr } = createFixture();
+        const coordinator = new WriteSafetyCoordinator(client);
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'block', action: 'replace', strictMode: true, execute: vi.fn(),
+            args: { action: 'replace', id: BLOCK, edit: { old: 'Old', new: 'Old #tag#' }, validateOnly: true },
+        }));
+        expect(result.preview.changes[0]).toMatchObject({ kind: 'content_replace', userAttributes: ['custom-owner'], attributesRestored: true });
+        expect(result.preview.changes[0].summary).toContain('User attributes custom-owner are kept.');
+    });
+
     it('accepts a stray preview flag on the commit without breaking the argument binding', async () => {
         const { client, permMgr, setKramdown } = createFixture();
         const coordinator = new WriteSafetyCoordinator(client);

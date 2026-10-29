@@ -130,6 +130,8 @@ function normalizeAvValue(value: unknown): unknown {
         if (sub !== undefined && sub !== null) {
             if (typeof sub === 'object' && !Array.isArray(sub)) {
                 const subRecord = sub as Record<string, unknown>;
+                // An unset number cell is { content: 0, isNotEmpty: false }: report it as empty, not 0.
+                if (key === 'number' && subRecord.isNotEmpty === false) return null;
                 if ('content' in subRecord) return subRecord.content;
                 if ('checked' in subRecord) return subRecord.checked;
             }

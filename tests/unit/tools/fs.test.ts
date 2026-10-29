@@ -992,6 +992,7 @@ describe('fs tool', () => {
 
         expect(parsed.content).toContain('NodeAttributeView');
         expect(parsed.attributeViews).toEqual([{ blockID: 'av-block-1', avID: 'av-1' }]);
+        expect(parsed.databaseNote).toContain('leave the line unchanged');
         expect(parsed.readInfo.limitations).toContain('database_contents_not_included');
         expect(parsed.nextSteps).toEqual([{ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: 'av-1', blockID: 'av-block-1' } }]);
     });
@@ -1132,6 +1133,27 @@ describe('fs tool', () => {
         ]);
         expect(client.request).toHaveBeenCalledWith('/api/ui/reloadProtyle', { id: 'doc-1' });
         expect(client.request).toHaveBeenCalledWith('/api/ui/reloadFiletree', {});
+    });
+
+    it('restores user attributes when a tag edit reparses the block from Markdown', async () => {
+        const client = createFsClient();
+        const inner = client.request;
+        let attrs: Record<string, string> = { id: 'block-2', 'custom-status': 'done', memo: 'm' };
+        client.request = vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+            if (endpoint === '/api/attr/getBlockAttrs') return { ...attrs };
+            if (endpoint === '/api/attr/setBlockAttrs') { attrs = { ...attrs, ...(body?.attrs as Record<string, string>) }; return null; }
+            if (endpoint === '/api/block/updateBlock') { attrs = { id: 'block-2' }; return null; }
+            return inner(endpoint, body);
+        });
+        const parsed = parseResult(await callFsTool(client, {
+            action: 'replace',
+            path: '/Notebook/Doc 1',
+            edit: { old: 'budget', new: 'budget #tag#' },
+        }, fsConfig(), createPermMgr()));
+
+        expect(client.request).toHaveBeenCalledWith('/api/block/updateBlock', expect.objectContaining({ id: 'block-2', dataType: 'markdown' }));
+        expect(client.request).toHaveBeenCalledWith('/api/attr/setBlockAttrs', { id: 'block-2', attrs: { 'custom-status': 'done', memo: 'm' } });
+        expect(parsed.restoredAttrs).toEqual({ 'block-2': ['custom-status', 'memo'] });
     });
 
     it('replaces agent memory through the virtual root file', async () => {

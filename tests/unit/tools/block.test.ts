@@ -451,6 +451,57 @@ describe('block tool', () => {
         });
     });
 
+    function withAttrStore(client: any, initial: Record<string, string>) {
+        const inner = client.request;
+        const store = { attrs: { ...initial } };
+        client.request = vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+            if (endpoint === '/api/attr/getBlockAttrs') return { ...store.attrs };
+            if (endpoint === '/api/attr/setBlockAttrs') { store.attrs = { ...store.attrs, ...(body?.attrs as Record<string, string>) }; return null; }
+            if (endpoint === '/api/block/updateBlock' && body?.dataType === 'markdown') { store.attrs = { id: 'block-1' }; return { updated: true }; }
+            return inner(endpoint, body);
+        });
+        return store;
+    }
+
+    it('restores user attributes when block replace adds a tag (Markdown reparse)', async () => {
+        const client = createBlockReplaceClient('alpha budget\n{: id="block-1" custom-status="done"}');
+        const store = withAttrStore(client, { id: 'block-1', 'custom-status': 'done', name: 'n', updated: '1' });
+        const parsed = parseResult(await callBlockTool(client, {
+            action: 'replace',
+            id: 'block-1',
+            edit: { old: 'budget', new: 'budget #tag#' },
+        }, buildDefaultToolConfig().block, permMgr as never));
+
+        expect(client.request).toHaveBeenCalledWith('/api/block/updateBlock', expect.objectContaining({ dataType: 'markdown' }));
+        expect(client.request).toHaveBeenCalledWith('/api/attr/setBlockAttrs', { id: 'block-1', attrs: { 'custom-status': 'done', name: 'n' } });
+        expect(store.attrs['custom-status']).toBe('done');
+        expect(parsed.restoredAttrs).toEqual(['custom-status', 'name']);
+    });
+
+    it('does not touch attributes for a DOM block replace (the kernel keeps them)', async () => {
+        const client = createBlockReplaceClient();
+        withAttrStore(client, { id: 'block-1', 'custom-status': 'done' });
+        const parsed = parseResult(await callBlockTool(client, {
+            action: 'replace',
+            id: 'block-1',
+            edit: { old: 'budget', new: 'forecast' },
+        }, buildDefaultToolConfig().block, permMgr as never));
+
+        expect(client.request).not.toHaveBeenCalledWith('/api/attr/setBlockAttrs', expect.anything());
+        expect(parsed.restoredAttrs).toBeUndefined();
+    });
+
+    it('restores user attributes dropped by a Markdown block update', async () => {
+        const client = createBlockReplaceClient();
+        withAttrStore(client, { id: 'block-1', 'custom-status': 'done', bookmark: 'b' });
+        const parsed = parseResult(await callBlockTool(client, {
+            action: 'update', id: 'block-1', dataType: 'markdown', data: 'new text',
+        }, buildDefaultToolConfig().block, permMgr as never));
+
+        expect(client.request).toHaveBeenCalledWith('/api/attr/setBlockAttrs', { id: 'block-1', attrs: { 'custom-status': 'done', bookmark: 'b' } });
+        expect(parsed.restoredAttrs).toEqual(['custom-status', 'bookmark']);
+    });
+
     it('supports sequential block replacements with replace_all', async () => {
         const client = createBlockReplaceClient('foo\nbaz\nbaz');
 

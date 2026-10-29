@@ -5197,9 +5197,47 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "action": "replace",
         "example": {
           "action": "replace",
-          "edit": "<edit>",
+          "edit": {
+            "new": "new text",
+            "old": "old text",
+          },
           "id": "20240318112233-abc123",
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "description": "edit is {old, new} or a list of them; add replace_all=true to replace every occurrence. Copy old from block get_kramdown.",
+            "mcp": {
+              "action": "replace",
+              "edit": {
+                "new": "new text",
+                "old": "old text",
+              },
+              "id": "20240318112233-abc123",
+              "validateOnly": true,
+            },
+            "title": "Replace exact text inside one block (preflight first)",
+          },
+          {
+            "mcp": {
+              "action": "replace",
+              "edit": [
+                {
+                  "new": "final",
+                  "old": "draft",
+                },
+                {
+                  "new": "DONE",
+                  "old": "TODO",
+                  "replace_all": true,
+                },
+              ],
+              "id": "20240318112233-abc123",
+              "validateOnly": true,
+            },
+            "title": "Several edits in one block",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/block/replace",
         "guidance": [
           "block(action="replace") only searches the kramdown of the single block identified by id. It does not traverse child blocks, sibling blocks, headings with their following content, or the whole document.",

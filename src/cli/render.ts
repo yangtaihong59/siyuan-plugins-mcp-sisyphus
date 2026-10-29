@@ -180,8 +180,57 @@ export function renderToolResult(result: ToolResult, options: RenderOptions): nu
         return 1;
     }
 
-    renderSuccessPayload(flattenAvRowCells(payload));
+    renderSuccessPayload(compactReadMetadata(flattenAvRowCells(payload)));
     return 0;
+}
+
+function names(list: unknown): string[] {
+    return Array.isArray(list)
+        ? list.filter(isObject).map((item) => String(item.name || item.id || '')).filter(Boolean)
+        : [];
+}
+
+/** One-line summary of a query_sql scope; --json keeps the full object. */
+export function summarizeSqlScope(scope: Record<string, unknown>): string {
+    if (scope.mode !== 'restricted') return 'Full: every notebook is readable; the SQL ran unchanged.';
+    const excluded = names(scope.excluded);
+    const excludedCount = typeof scope.excludedNotebooks === 'number' ? scope.excludedNotebooks : excluded.length;
+    const closed = names(Array.isArray(scope.readable) ? scope.readable.filter((item) => isObject(item) && item.closed === true) : []);
+    return [
+        `Restricted: excludes ${excludedCount} unreadable notebook(s)${excluded.length ? ` (${excluded.join(', ')})` : ''}`,
+        ...(closed.length ? [`${closed.length} closed notebook(s) not indexed (${closed.join(', ')})`] : []),
+        'tables: blocks, spans, attributes, assets, refs, file_annotation_refs (--json for the full scope)',
+    ].join('; ') + '.';
+}
+
+/** readInfo as one line: what was read, how completely, and the named limitations. */
+export function summarizeReadInfo(info: Record<string, unknown>): string {
+    const limitations = toStringArray(info.limitations);
+    const extra = Object.entries(info)
+        .filter(([key, value]) => !['scope', 'representation', 'coverage', 'limitations'].includes(key) && isScalar(value))
+        .map(([key, value]) => `${key}=${String(value)}`);
+    return [
+        [info.scope, info.representation].filter((value) => typeof value === 'string').join(' as '),
+        typeof info.coverage === 'string' ? `coverage ${info.coverage}` : '',
+        ...extra,
+        limitations.length ? `limits: ${limitations.join(', ')}` : '',
+    ].filter(Boolean).join(' · ');
+}
+
+/**
+ * Human output only: restricted-SQL scope and readInfo repeat on every read
+ * and dwarfed the rows. Collapse them to one line each.
+ */
+export function compactReadMetadata(payload: unknown): unknown {
+    if (!isObject(payload)) return payload;
+    const next: Record<string, unknown> = { ...payload };
+    if (isObject(next.scope) && (next.scope.mode === 'restricted' || next.scope.mode === 'full') && Array.isArray(next.scope.readableNotebooks)) {
+        next.scope = summarizeSqlScope(next.scope);
+    }
+    if (isObject(next.readInfo) && Object.values(next.readInfo).every((value) => isScalar(value) || Array.isArray(value))) {
+        next.readInfo = summarizeReadInfo(next.readInfo);
+    }
+    return next;
 }
 
 /**
@@ -287,9 +336,13 @@ function renderErrorPayload(payload: unknown): void {
             }
         }
 
-        if (typeof err.hint === 'string' && err.hint) {
+        // Coordinator hints speak MCP ("validateOnly preflight"); say it as a command.
+        const hint = err.revalidateRequired === true
+            ? `Rerun the command with --validate-only to get a fresh preflight and hashes, then run the new commit command.${err.code === 'state_changed' ? ' Any write to the same target (for a database: any change to it) invalidates other pending preflights.' : ''}`
+            : err.hint;
+        if (typeof hint === 'string' && hint) {
             writeSection('Hint', out);
-            writeLine(out, `  ${err.hint}`);
+            writeLine(out, `  ${hint}`);
         }
 
         if (typeof err.details === 'string' && err.details) {
@@ -383,7 +436,8 @@ function renderGenericObject(obj: Record<string, unknown>, out: OutputStream): v
         writeStatus('info', message, out);
     }
 
-    const summaryEntries = pickSummaryEntries(entries, new Set(message ? ['message'] : []));
+    // Read metadata goes after the data, not above it.
+    const summaryEntries = pickSummaryEntries(entries, new Set(['scope', 'readInfo', ...(message ? ['message'] : [])]));
     if (summaryEntries.length > 0) {
         writeKeyValueRows(summaryEntries, out);
     }
@@ -425,7 +479,7 @@ function renderNamedValue(key: string, value: unknown, out: OutputStream): void 
         return;
     }
 
-    writeLine(out, `  ${formatScalar(value)}`);
+    writeLine(out, `  ${formatField(key, value)}`);
 }
 
 function renderTreeItems(values: unknown[], depth: number, out: OutputStream): void {
@@ -702,12 +756,15 @@ const EPOCH_MS_KEYS = /^(created|updated|lastReview|due|expiresAt|requestIdExpir
 
 // Body text the caller asked to read; truncating it made readbacks look wrong.
 const FULL_TEXT_KEYS = new Set(['markdown', 'documentMarkdown', 'kramdown', 'content']);
+// Guidance the reader must act on; a cut-off command is useless.
+const UNTRUNCATED_KEYS = /^(warning|warnings|hint|note|notice|tip|message|reason|scope|readInfo|nextStep|nextStepHint|nextWindowHint|recovery|recoveryHint)$|Hint$|Warning$|Note$/;
 
 /** Epoch-millisecond timestamps read as dates; body text in full; other scalars as-is. */
 function formatField(key: string, value: unknown, fullText = false): string {
     if (fullText && typeof value === 'string' && FULL_TEXT_KEYS.has(key)) {
         return value.includes('\n') ? `\n${indentBlock(value, 4)}` : value;
     }
+    if (typeof value === 'string' && UNTRUNCATED_KEYS.test(key)) return value;
     if (typeof value === 'number' && EPOCH_MS_KEYS.test(key) && value > 1e12 && value < 1e14) {
         const d = new Date(value);
         const pad = (n: number) => String(n).padStart(2, '0');

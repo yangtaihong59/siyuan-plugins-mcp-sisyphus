@@ -211,14 +211,40 @@ function coerce(key: string, value: unknown, schema: JsonSchema): unknown {
         if (typeof value === 'object' && value !== null) return value;
         if (typeof value === 'string') {
             try { return JSON.parse(value); } catch {
-                throw new Error(`--${toKebab(key)} expects JSON for an object field. Use --${toKebab(key)}-json '{"..."}'.`);
+                throw new Error(`--${toKebab(key)} expects JSON for an object field. Use --${toKebab(key)}-json '${structuredExample(key)}'.`);
             }
         }
         return value;
     }
 
+    // Unions such as block.replace's edit (object | object[]): parse JSON the
+    // user passed to the plain flag instead of requiring the -json sidecar.
+    const structured = structuredMemberTypes(schema);
+    if (structured.size > 0 && typeof value === 'string') {
+        const trimmed = value.trim();
+        if (/^[[{]/.test(trimmed)) {
+            try { return JSON.parse(trimmed); } catch (error) {
+                throw new Error(`--${toKebab(key)} looks like JSON but does not parse (${error instanceof Error ? error.message : String(error)}). Example: --${toKebab(key)}-json '${structuredExample(key)}'.`);
+            }
+        }
+        if (!structured.has('string')) {
+            throw new Error(`--${toKebab(key)} expects JSON. Example: --${toKebab(key)}-json '${structuredExample(key)}'.`);
+        }
+    }
+
     // string fallback
     return typeof value === 'string' ? value : String(value);
+}
+
+/** Member types of an anyOf/oneOf union, when any member is an object or array. */
+function structuredMemberTypes(schema: JsonSchema | undefined): Set<string> {
+    const members = Array.isArray(schema?.anyOf) ? schema.anyOf : Array.isArray(schema?.oneOf) ? schema.oneOf : [];
+    const types = new Set<string>(members.map((member: JsonSchema) => inferType(member)));
+    return types.has('object') || types.has('array') ? types : new Set();
+}
+
+function structuredExample(key: string): string {
+    return key === 'edit' ? '{"old":"…","new":"…"}' : '{"…":"…"}';
 }
 
 function coerceItem(item: unknown, itemSchema?: JsonSchema): unknown {

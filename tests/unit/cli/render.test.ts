@@ -361,3 +361,46 @@ describe('flattenAvRowCells', () => {
         expect(flattenAvRowCells(payload)).toBe(payload);
     });
 });
+
+describe('cli/render read metadata and guidance', () => {
+    const scope = {
+        mode: 'restricted', readableNotebooks: ['a', 'b'], excludedNotebooks: 2,
+        readable: [{ id: 'a', name: 'Research', closed: true }, { id: 'b', name: 'Lab' }],
+        excluded: [{ id: 'c', name: 'Private' }, { id: 'd', name: '私密' }],
+        hint: 'long hint '.repeat(40),
+    };
+    const run = (payload: unknown, isError = false, json = false) => {
+        const io = captureStdIO();
+        try {
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify(payload) }], ...(isError ? { isError: true } : {}) }, { json, debug: false });
+        } finally {
+            io.restore();
+        }
+        return io;
+    };
+
+    it('collapses a restricted SQL scope and readInfo to one line each in human output', () => {
+        const io = run({ data: [{ id: 'x' }], total: 1, scope, readInfo: { scope: 'sql_query', representation: 'sql_rows', coverage: 'partial', limitations: ['notebook_scoped'] } });
+        expect(io.stdout).toContain('Restricted: excludes 2 unreadable notebook(s) (Private, 私密); 1 closed notebook(s) not indexed (Research)');
+        expect(io.stdout).toContain('sql_query as sql_rows · coverage partial · limits: notebook_scoped');
+        expect(io.stdout).not.toContain('readableNotebooks');
+        expect(io.stdout).not.toContain('long hint');
+        // The data comes before the metadata.
+        expect(io.stdout.indexOf('ID: x')).toBeLessThan(io.stdout.indexOf('Restricted:'));
+    });
+
+    it('keeps the full scope in --json output', () => {
+        expect(JSON.parse(run({ data: [], total: 0, scope }, false, true).stdout).scope).toEqual(scope);
+    });
+
+    it('prints warnings and hints untruncated', () => {
+        const warning = `Closed notebooks are skipped by SiYuan (${'X, '.repeat(60)}); open them with notebook set_open_state`;
+        expect(run({ success: true, warning }).stdout).toContain('notebook set_open_state');
+    });
+
+    it('turns a state_changed error into a CLI rerun instruction', () => {
+        const io = run({ success: false, error: { code: 'state_changed', message: 'The target changed after it was read. No write was attempted.', revalidateRequired: true, hint: 'Rerun the validateOnly preflight' } }, true);
+        expect(io.stderr).toContain('Rerun the command with --validate-only');
+        expect(io.stderr).not.toContain('validateOnly preflight');
+    });
+});

@@ -22,8 +22,8 @@ const EXPECTED = Object.freeze({
     permissionChanges: 11,
     tools: 14,
     actions: 139,
-    backendApiLiterals: 151,
-    validBackendApiLiterals: 150,
+    backendApiLiterals: 152,
+    validBackendApiLiterals: 151,
     uiApiLiterals: 5,
 });
 

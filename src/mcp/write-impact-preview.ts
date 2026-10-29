@@ -22,7 +22,7 @@ import { stripSafetyFields } from '../core/write-safety-fields';
 import { collectPathSelectors, collectTargetSelectors, isRecord, sqlString, type StateProbe } from '../core/write-safety-records';
 import { toEditableMarkdownBlock } from '../tools/internal/kramdown-safe';
 import { findReplacePattern, readFindReplaceKramdowns, stripKramdownIals } from '../tools/search/find-replace-count';
-import { preservableAttrs, updateRestoresAttrs } from '../tools/block/preserved-attrs';
+import { preservableAttrs, updateRestoresAttrs } from '../tools/internal/helpers/preserved-attrs';
 import { queryTagCarrierRows } from '../tools/tag/handlers';
 import type { prepareDocumentConversion } from '../tools/document/conversion';
 
@@ -639,11 +639,13 @@ async function previewBlockReplace(ctx: PreviewContext): Promise<BuilderResult> 
     const id = ctx.string('id') ?? '';
     const before = await ctx.markdown(id);
     const { after, outcomes } = applyEditsForPreview(ctx, before, editsOf(ctx));
+    const attrs = Object.keys(preservableAttrs(ctx.liveBlock(id)?.attrs as Record<string, string> | undefined)).sort();
     return {
         changes: [{
             kind: 'content_replace',
-            summary: `Edits block ${ctx.label(before, id)}: ${editSummary(outcomes)}`,
+            summary: `Edits block ${ctx.label(before, id)}: ${editSummary(outcomes)}${attrs.length > 0 ? ` User attributes ${attrs.join(', ')} are kept.` : ''}`,
             id,
+            ...(attrs.length > 0 ? { userAttributes: attrs, attributesRestored: true } : {}),
             before: ctx.text(before),
             after: ctx.text(after),
             edits: outcomes,
@@ -682,7 +684,7 @@ async function previewFsWrite(ctx: PreviewContext): Promise<BuilderResult | unde
     return {
         changes: [{
             kind: 'content_overwrite',
-            summary: `Replaces the whole body of ${path}${blockCount !== undefined ? ` (${blockCount} blocks now)` : ''} (${before.length} → ${after.length} chars); the document node and title stay.${after ? '' : ' The document becomes empty.'}`,
+            summary: `Replaces the whole body of ${path}${blockCount !== undefined ? ` (${blockCount} blocks now)` : ''} (${before.length} → ${after.length} chars); the document node, title and document attributes stay. Existing content blocks are deleted and recreated, so their block IDs, references to them and block attributes do not carry over.${after ? '' : ' The document becomes empty.'}`,
             path,
             before: ctx.text(before),
             after: ctx.text(after),
@@ -701,7 +703,7 @@ async function previewFsReplace(ctx: PreviewContext): Promise<BuilderResult | un
     return {
         changes: [{
             kind: 'content_replace',
-            summary: `Edits ${path}: ${editSummary(outcomes)}`,
+            summary: `Edits ${path}: ${editSummary(outcomes)} User attributes (custom-*, name, alias, memo, bookmark) of edited blocks are kept.`,
             path,
             edits: outcomes,
             ...(ctx.detail === 'full' ? { before, after } : {}),
@@ -752,6 +754,12 @@ async function previewBlockDelete(ctx: PreviewContext): Promise<BuilderResult> {
     };
 }
 
+/** The index counts the document root itself; readers count only what is in it. */
+function contentBlocks(indexed: number): string {
+    const n = Math.max(0, indexed - 1);
+    return `${n} content block${n === 1 ? '' : 's'}`;
+}
+
 async function deleteDocumentsChange(ctx: PreviewContext, docs: BlockRow[], requested: string[]): Promise<BuilderResult> {
     const blockCounts = await countDocumentBlocks(ctx, docs.map((doc) => doc.id));
     const { shown, omitted } = ctx.cap(docs);
@@ -763,7 +771,7 @@ async function deleteDocumentsChange(ctx: PreviewContext, docs: BlockRow[], requ
         total += 1 + (childDocuments ?? 0);
         changes.push({
             kind: 'delete',
-            summary: `Removes document ${ctx.label(doc.content, doc.id)} at ${await ctx.place(doc)}${blocks !== undefined ? ` (${blocks} blocks)` : ''}${childDocuments ? ` and its ${childDocuments} child document(s)` : ''}.`,
+            summary: `Removes document ${ctx.label(doc.content, doc.id)} at ${await ctx.place(doc)}${blocks !== undefined ? ` (${contentBlocks(blocks)})` : ''}${childDocuments ? ` and its ${childDocuments} child document(s)` : ''}.`,
             id: doc.id,
             title: doc.content,
             ...(blocks !== undefined ? { blockCount: blocks } : {}),
@@ -801,7 +809,7 @@ async function previewFsRm(ctx: PreviewContext): Promise<BuilderResult | undefin
     return {
         changes: [{
             kind: 'delete',
-            summary: `Removes document ${path}${blocks !== undefined ? ` (${blocks} blocks)` : ''}${childDocuments ? ` and its ${childDocuments} child document(s)` : ''}.`,
+            summary: `Removes document ${path}${blocks !== undefined ? ` (${contentBlocks(blocks + 1)})` : ''}${childDocuments ? ` and its ${childDocuments} child document(s)` : ''}.`,
             id: entry.rootID,
             ...(blocks !== undefined ? { blockCount: blocks } : {}),
             ...(childDocuments !== undefined ? { childDocumentCount: childDocuments } : {}),
@@ -1181,8 +1189,12 @@ async function previewTag(ctx: PreviewContext): Promise<BuilderResult> {
     const rows = await queryTagCarrierRows(ctx.client, label);
     const blockIDs = [...new Set(rows.map((row) => row.block_id).filter((id): id is string => typeof id === 'string'))];
     const boxes = [...new Set(rows.map((row) => row.box).filter((box): box is string => typeof box === 'string' && box.length > 0))];
-    const closed = (await ctx.notebooks()).filter((notebook) => notebook.closed).map((notebook) => notebook.name);
-    const closedNote = closed.length > 0 ? ` SiYuan skips closed notebooks (${closed.join(', ')}).` : '';
+    // Closed notebooks the caller may not read are listed apart: "closed" is not why they are out of reach.
+    const closedAll = (await ctx.notebooks()).filter((notebook) => notebook.closed);
+    const unreadable = new Set((await Promise.all(closedAll.map(async (notebook) => (await ctx.notebook(notebook.id))?.permission === 'none' ? notebook.id : ''))).filter(Boolean));
+    const closed = closedAll.filter((notebook) => !unreadable.has(notebook.id)).map((notebook) => notebook.name);
+    const closedUnreadable = closedAll.filter((notebook) => unreadable.has(notebook.id)).map((notebook) => notebook.name);
+    const closedNote = `${closed.length > 0 ? ` SiYuan skips closed notebooks (${closed.join(', ')}).` : ''}${closedUnreadable.length > 0 ? ` Closed notebook(s) without read access (${closedUnreadable.join(', ')}) are skipped too.` : ''}`;
     const exampleIDs = ctx.cap(blockIDs);
     const exampleRows = await ctx.rows(exampleIDs.shown);
     const examples = await Promise.all(exampleIDs.shown.map(async (id) => {
@@ -1208,6 +1220,7 @@ async function previewTag(ctx: PreviewContext): Promise<BuilderResult> {
             blockCount: blockIDs.length,
             notebookCount: boxes.length,
             ...(closed.length > 0 ? { closedNotebooksSkipped: closed } : {}),
+            ...(closedUnreadable.length > 0 ? { closedUnreadableNotebooksSkipped: closedUnreadable } : {}),
             examples,
         }],
         targets: [{ id: label, kind: 'tag', title: `#${label}#` }, ...notebookTargets],
@@ -1681,6 +1694,95 @@ async function previewTimelineCreateNode(ctx: PreviewContext): Promise<BuilderRe
     };
 }
 
+async function previewAvCreate(ctx: PreviewContext): Promise<BuilderResult> {
+    const parentID = ctx.string('parentID') ?? '';
+    const row = await ctx.row(parentID);
+    const where = row?.type === 'd'
+        ? `document ${ctx.label(row.content, parentID)}`
+        : `block ${await ctx.describeBlock(parentID)}${row ? ` in ${await ctx.place(row)}` : ''}`;
+    return {
+        changes: [{
+            kind: 'create_database',
+            summary: `Inserts a new database block (table view, 0 rows) into ${where}. It starts unnamed with a primary key column, and SiYuan adds a default single-select column; set names with av rename. The commit result names that column with a ready removeDefaultColumn step (remove_column preflight) if you do not want it.`,
+            ...(ctx.string('avID') ? { avID: ctx.string('avID') } : {}),
+            defaultColumns: ['primary key (block)', 'single select'],
+        }],
+        targetIds: parentID ? [parentID] : [],
+    };
+}
+
+async function previewDocumentDuplicate(ctx: PreviewContext): Promise<BuilderResult> {
+    const id = ctx.string('id') ?? '';
+    const row = await ctx.row(id);
+    const blocks = (await countDocumentBlocks(ctx, id ? [id] : [])).get(id);
+    const parentHPath = row?.hpath ? row.hpath.split('/').slice(0, -1).join('/') || '/' : undefined;
+    const notebook = row?.box ? await ctx.notebookLabel(row.box) : undefined;
+    return {
+        changes: [{
+            kind: 'duplicate_document',
+            summary: `Duplicates document ${ctx.label(row?.content, id)}${blocks !== undefined ? ` (${contentBlocks(blocks)})` : ''} as a new sibling${notebook && parentHPath ? ` in ${notebook}:${parentHPath}` : ''}, titled «${row?.content ?? '…'} (Duplicated <date time>)» by SiYuan with new block IDs. The source stays unchanged.`,
+            id,
+            ...(row?.content ? { newTitle: `${row.content} (Duplicated <date time>)` } : {}),
+            ...(parentHPath ? { destination: parentHPath } : {}),
+        }],
+        targetIds: id ? [id] : [],
+    };
+}
+
+async function previewDocumentRename(ctx: PreviewContext): Promise<BuilderResult | undefined> {
+    const items = Array.isArray(ctx.args.items)
+        ? ctx.args.items.filter(isRecord).map((item) => ({ id: typeof item.id === 'string' ? item.id : '', title: typeof item.title === 'string' ? item.title : '' }))
+        : ctx.string('id') ? [{ id: ctx.string('id')!, title: ctx.string('title') ?? '' }] : [];
+    if (items.length === 0) return undefined;
+    const rows = await ctx.rows(items.map((item) => item.id));
+    const { shown, omitted } = ctx.cap(items);
+    const changes: WritePreviewChange[] = [];
+    for (const item of shown) {
+        const row = rows.get(item.id);
+        changes.push({
+            kind: 'rename_document',
+            summary: `Renames document ${ctx.label(row?.content, item.id)}${row ? ` at ${await ctx.place(row)}` : ''} to «${item.title}». Its ID, path and content stay.`,
+            id: item.id,
+            ...(row?.content ? { from: row.content } : {}),
+            to: item.title,
+        });
+    }
+    changes.push(...omittedChange(omitted, 'documents'));
+    return { changes, targetIds: items.map((item) => item.id), itemCount: items.length };
+}
+
+async function previewBlockSetFoldState(ctx: PreviewContext): Promise<BuilderResult> {
+    const id = ctx.string('id') ?? '';
+    const children = await ctx.children(id);
+    const folded = ctx.args.folded === true;
+    return {
+        changes: [{
+            kind: 'fold_state',
+            summary: `${folded ? 'Folds' : 'Unfolds'} ${await ctx.describeBlock(id)}${children.length > 0 ? ` (${children.length} child block(s) ${folded ? 'hidden' : 'shown'})` : ''}. Content does not change.`,
+            id,
+        }],
+        targetIds: [id],
+    };
+}
+
+async function previewNotebookRename(ctx: PreviewContext): Promise<BuilderResult | undefined> {
+    const id = ctx.string('notebook');
+    if (!id) return undefined;
+    return {
+        changes: [{ kind: 'rename_notebook', summary: `Renames notebook «${await ctx.notebookLabel(id)}» to «${ctx.string('name') ?? ''}». Its ID, documents and permission stay.`, from: await ctx.notebookLabel(id), to: ctx.string('name') ?? '' }],
+        targets: [await ctx.target(id)],
+    };
+}
+
+async function previewNotebookCreate(ctx: PreviewContext): Promise<BuilderResult> {
+    const name = ctx.string('name') ?? '';
+    const existing = (await ctx.notebooks()).filter((notebook) => notebook.name === name).length;
+    return {
+        changes: [{ kind: 'create_notebook', summary: `Creates an empty notebook «${name}».${existing > 0 ? ` ${existing} notebook(s) already have this name; SiYuan allows duplicates.` : ''}`, name }],
+        targets: [],
+    };
+}
+
 const SPECIFIC_BUILDERS: Record<string, Builder> = {
     'block.update': previewBlockUpdate,
     'block.replace': previewBlockReplace,
@@ -1711,6 +1813,12 @@ const SPECIFIC_BUILDERS: Record<string, Builder> = {
     'block.set_attrs': previewBlockSetAttrs,
     'document.create': previewDocumentCreate,
     'timeline.create_node': previewTimelineCreateNode,
+    'av.create': previewAvCreate,
+    'document.duplicate': previewDocumentDuplicate,
+    'document.rename': previewDocumentRename,
+    'block.set_fold_state': previewBlockSetFoldState,
+    'notebook.rename': previewNotebookRename,
+    'notebook.create': previewNotebookCreate,
 };
 
 /** Actions with a specific change summary; every other strict write gets the generic one. */

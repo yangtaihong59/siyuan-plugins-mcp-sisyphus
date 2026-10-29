@@ -4375,6 +4375,25 @@ describe('av tool', () => {
         expect(parsed.total).toBe(3);
     });
 
+    it('reports an unset number cell as empty, not 0', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.renderAttributeView).mockResolvedValue({
+            id: 'av-1', viewID: 'view-1', viewType: 'table',
+            view: {
+                id: 'view-1', pageSize: 50,
+                columns: [{ id: 'col-n', name: 'Hours', type: 'number' }],
+                rows: [
+                    { id: 'row-unset', cells: [{ id: 'v1', value: { keyID: 'col-n', blockID: 'row-unset', number: { content: 0, isNotEmpty: false } }, valueType: 2 }] },
+                    { id: 'row-zero', cells: [{ id: 'v2', value: { keyID: 'col-n', blockID: 'row-zero', number: { content: 0, isNotEmpty: true, formattedContent: '0' } }, valueType: 2 }] },
+                ],
+                rowCount: 2,
+            },
+        });
+        const parsed = JSON.parse((await callAvTool(client, { action: 'query', avID: 'av-1' }, enabledActions('query'), permMgr)).content[0].text);
+        expect(parsed.rows[0].cells['col-n']).toEqual({ value: null });
+        expect(parsed.rows[1].cells['col-n']).toEqual({ value: 0, formatted: '0' });
+    });
+
     it('projects requested fields on the callTool path while always keeping rowID', async () => {
         const avApi = await import('@/api/av');
         vi.mocked(avApi.renderAttributeView).mockResolvedValue({

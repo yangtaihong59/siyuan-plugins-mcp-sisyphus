@@ -8,7 +8,7 @@
 - 对照版本：`v3.7.3`，commit `eef10568384e2e7cf547adb029ae46a72e43c287`。
 - `kernel/api/router.go`：**593** 条有效注册声明、**589** 个唯一路径、其中 **582** 个 `/api/*`。
 - 官方 `docs/API.md` 可静态识别 **70** 个公开路径；其余路由标为内部 API。
-- 插件 API wrapper 覆盖口径：**151** 个 API 字面量，**150** 个匹配当前内核，覆盖 `25.8%`；工具层直调另列。
+- 插件 API wrapper 覆盖口径：**152** 个 API 字面量，**151** 个匹配当前内核，覆盖 `25.9%`；工具层直调另列。
 - 同路径不同方法造成 4 条声明差；重复路径为 `/api/system/bootProgress`、`/api/system/version`、`/api/plugin/rpc`、`/api/plugin/rpc/:name`。
 - 扫描排除注释、测试文件和文件名含 ` 2.` 的重复文件；动态参数保留 Gin 模板。任何未知 `ginServer.<注册方法>` 会使审计失败。
 
@@ -53,7 +53,7 @@
 | search | 16 | 16 | 0 | 11 |
 | setting | 27 | 27 | 0 | 0 |
 | snippet | 3 | 3 | 0 | 0 |
-| sqlite | 1 | 1 | 1 | 0 |
+| sqlite | 1 | 1 | 1 | 1 |
 | storage | 19 | 19 | 0 | 0 |
 | sync | 23 | 23 | 0 | 1 |
 | system | 63 | 61 | 3 | 8 |
@@ -400,7 +400,7 @@
 | 174 | POST | `/api/lute/copyStdMarkdown` | lute | `copyStdMarkdown` | ✓ |  |  | 条件可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:220` |
 | 175 | POST | `/api/lute/md2html` | lute | `md2HTML` | ✓ |  |  | 条件可用 | 内部 |  | — | 未知（内部） | `kernel/api/router.go:221` |
 | 176 | POST | `/api/query/sql` | query | `SQL` | ✓ | ✓ | ✓ | 不可用 | 官方公开 |  | `api-wrapper:src/api/search.ts`<br>`tool-direct:src/tools/block/handlers.ts` | 见官方 API 文档 | `kernel/api/router.go:223` |
-| 177 | POST | `/api/sqlite/flushTransaction` | sqlite | `flushTransaction` | ✓ | ✓ | ✓ | 不可用 | 官方公开 |  | — | 见官方 API 文档 | `kernel/api/router.go:224` |
+| 177 | POST | `/api/sqlite/flushTransaction` | sqlite | `flushTransaction` | ✓ | ✓ | ✓ | 不可用 | 官方公开 |  | `api-wrapper:src/api/search.ts` | 见官方 API 文档 | `kernel/api/router.go:224` |
 | 178 | POST | `/api/search/searchTag` | search | `searchTag` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | `api-wrapper:src/api/search.ts` | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:226` |
 | 179 | POST | `/api/search/searchTemplate` | search | `searchTemplate` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | `api-wrapper:src/api/template.ts` | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:227` |
 | 180 | POST | `/api/search/removeTemplate` | search | `removeTemplate` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | `api-wrapper:src/api/template.ts` | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:228` |

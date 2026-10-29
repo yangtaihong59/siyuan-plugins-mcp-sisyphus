@@ -15,7 +15,7 @@ import { applyUiRefresh } from '../internal/ui-refresh';
 import { createReferenceSemanticsHints, hasReferenceSemanticsHints, normalizeDomInlineRefsAndTags, withReferenceSemanticsHints, replaceEditTouchesIndexedInline, replaceSingleKramdownBlockContentInDom } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
 import { escapeSqlString } from '../../shared/sql';
-import { preservableAttrs, updateRestoresAttrs } from './preserved-attrs';
+import { updatePreservingAttrs } from '../internal/helpers/preserved-attrs';
 
 
 type RecentUpdatedDocumentSummary = {
@@ -407,44 +407,6 @@ const handleAppend: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
     }, data)), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
-/**
- * updateBlock rebuilds the block from the new Markdown, so user attributes
- * (custom-*, name, alias, memo, bookmark) vanish unless the Markdown carries
- * its own IAL. Snapshot them first and restore any the update dropped; DOM
- * input and Markdown with an explicit {: ...} IAL are left as written.
- */
-async function readAttrsOrNull(client: SiYuanClient, id: string): Promise<Record<string, string> | null> {
-    try {
-        return await attributeApi.getBlockAttrs(client, id);
-    } catch {
-        return null;
-    }
-}
-
-async function updatePreservingAttrs<T>(
-    client: SiYuanClient,
-    ids: Array<{ id: string; dataType: string; data: string }>,
-    update: () => Promise<T>,
-): Promise<{ result: T; restoredAttrs: Record<string, string[]> }> {
-    const kept = new Map<string, Record<string, string>>();
-    for (const item of ids) {
-        if (!updateRestoresAttrs(item.dataType, item.data)) continue;
-        const attrs = preservableAttrs(await readAttrsOrNull(client, item.id));
-        if (Object.keys(attrs).length > 0) kept.set(item.id, attrs);
-    }
-    const result = await update();
-    const restoredAttrs: Record<string, string[]> = {};
-    for (const [id, attrs] of kept) {
-        const after = await readAttrsOrNull(client, id);
-        if (!after) continue;
-        const missing = Object.fromEntries(Object.entries(attrs).filter(([key]) => after[key] === undefined));
-        if (Object.keys(missing).length === 0) continue;
-        await attributeApi.setBlockAttrs(client, id, missing);
-        restoredAttrs[id] = Object.keys(missing);
-    }
-    return { result, restoredAttrs };
-}
-
 const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockUpdateSchema.parse(rawArgs);
     if (parsed.items) {
@@ -503,15 +465,18 @@ const handleReplace: BlockActionHandler = async ({ client, permMgr, rawArgs }) =
     const edits = await normalizeReplaceEditsRefs(client, Array.isArray(parsed.edit) ? parsed.edit : [parsed.edit], 'block.replace');
     const { kramdown: nextContent, markdown: nextMarkdown, dom: nextDom, summary } = replaceSingleKramdownBlockContentInDom(originalContent, originalDom, edits, 'block.replace');
     const changed = nextContent !== originalContent;
+    let restoredAttrs: string[] | undefined;
 
     if (changed) {
-        const shouldReparseIndexedInline = edits.some(replaceEditTouchesIndexedInline);
-        await blockApi.updateBlock(
+        // A Markdown reparse (tags, refs) rebuilds the IAL; restore user attributes.
+        const dataType = edits.some(replaceEditTouchesIndexedInline) ? 'markdown' : 'dom';
+        const data = dataType === 'markdown' ? nextMarkdown : nextDom;
+        const preserved = await updatePreservingAttrs(
             client,
-            shouldReparseIndexedInline ? 'markdown' : 'dom',
-            shouldReparseIndexedInline ? nextMarkdown : nextDom,
-            parsed.id,
+            [{ id: parsed.id, dataType, data, alwaysRestore: true }],
+            () => blockApi.updateBlock(client, dataType, data, parsed.id),
         );
+        restoredAttrs = preserved.restoredAttrs[parsed.id];
     }
 
     return applyUiRefresh(client, createJsonResult({
@@ -521,6 +486,7 @@ const handleReplace: BlockActionHandler = async ({ client, permMgr, rawArgs }) =
         changed,
         editsApplied: summary.length,
         replacements: summary,
+        ...(restoredAttrs ? { restoredAttrs } : {}),
         ...(hasReferenceSemanticsHints(nextContent) ? createReferenceSemanticsHints(nextContent) : {}),
     }), changed ? [{ type: 'reloadProtyle', id: context.documentId }] : []);
 };

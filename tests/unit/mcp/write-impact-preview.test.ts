@@ -153,7 +153,7 @@ describe('write impact preview', () => {
                 : stmt.includes('COUNT(*) AS n FROM blocks WHERE type') ? [{ n: 3 }] : undefined,
         });
         expect(result.changes[0]).toMatchObject({ kind: 'delete', title: 'Plans', blockCount: 12, childDocumentCount: 3 });
-        expect(result.changes[0].summary).toBe('Removes document «Plans» at Work:/Plans (12 blocks) and its 3 child document(s).');
+        expect(result.changes[0].summary).toBe('Removes document «Plans» at Work:/Plans (11 content blocks) and its 3 child document(s).');
         expect(result.risk).toEqual(['deletes']);
     });
 
@@ -162,7 +162,7 @@ describe('write impact preview', () => {
             category: 'fs', action: 'rm', args: { action: 'rm', path: '/Work/Plans' },
             before: { hash: 'h', targetIds: [], summary: {}, state: { fsPaths: { '/Work/Plans': { notebookID: NB, rootID: DOC, blocks: [{ id: B1 }] } } } },
         }, { rows: [docRow(DOC, 'Plans', '/Plans')], sql: (stmt) => stmt.includes('COUNT(*) AS n FROM blocks WHERE type') ? [{ n: 0 }] : undefined });
-        expect(result.changes[0].summary).toBe('Removes document /Work/Plans (1 blocks).');
+        expect(result.changes[0].summary).toBe('Removes document /Work/Plans (1 content block).');
         expect(result.risk).toContain('deletes');
     });
 
@@ -320,6 +320,18 @@ describe('write impact preview', () => {
         expect(result.changes[0].summary).toContain('#done# already exists on 1 block(s)');
         expect(result.targets[0]).toEqual({ id: 'todo', kind: 'tag', title: '#todo#' });
         expect(result.risk).toEqual(['irreversible', 'workspace_wide']);
+    });
+
+    it('tag.rename lists closed notebooks without read access apart from merely closed ones', async () => {
+        const NB3 = '20260101000002-nbccccc';
+        const permMgr = createMockPermissionManager();
+        permMgr.getAll = vi.fn(() => ({ [NB]: 'rwd', [NB2]: 'rw', [NB3]: 'none' }));
+        const result = await preview({ category: 'tag', action: 'rename', permMgr, args: { action: 'rename', oldLabel: 'todo', newLabel: 'done' } }, {
+            notebooks: [{ id: NB, name: 'Work', closed: false }, { id: NB2, name: 'Archive', closed: true }, { id: NB3, name: 'Private', closed: true }],
+            sql: (stmt) => stmt.includes("content = 'todo'") ? [{ box: NB, block_id: B1 }] : undefined,
+        });
+        expect(result.changes[0]).toMatchObject({ closedNotebooksSkipped: ['Archive'], closedUnreadableNotebooksSkipped: ['Private'] });
+        expect(result.changes[0].summary).toContain('SiYuan skips closed notebooks (Archive). Closed notebook(s) without read access (Private) are skipped too.');
     });
 
     it('tag.remove reports the blocks that lose the tag', async () => {
@@ -503,16 +515,42 @@ describe('write impact preview', () => {
     });
 
     it('falls back to a generic summary with the key arguments', async () => {
-        const result = await preview({ category: 'document', action: 'rename', args: { action: 'rename', id: DOC, title: 'New name', validateOnly: true, requestId: 'abcd' } }, {
+        const result = await preview({ category: 'document', action: 'set_attr', args: { action: 'set_attr', id: DOC, attrs: { icon: '1f4d4' }, validateOnly: true, requestId: 'abcd' } }, {
             rows: [docRow(DOC, 'Plans', '/Plans')],
         });
         expect(result.changes).toEqual([{
             kind: 'generic',
-            summary: 'document.rename will modify document «Plans».',
-            args: { id: DOC, title: 'New name' },
+            summary: 'document.set_attr will modify document «Plans».',
+            args: { id: DOC, attrs: { icon: '1f4d4' } },
         }]);
         expect(result.targets).toEqual([{ id: DOC, kind: 'document', title: 'Plans', hPath: '/Plans', notebook: { id: NB, name: 'Work', permission: 'rwd' } }]);
         expect(result.risk).toEqual([]);
+    });
+
+    it('av.create says what the new database will contain', async () => {
+        const result = await preview({ category: 'av', action: 'create', args: { action: 'create', parentID: DOC } }, { rows: [docRow(DOC, 'Plans', '/Plans')] });
+        expect(result.changes[0].kind).toBe('create_database');
+        expect(result.changes[0].summary).toContain('Inserts a new database block (table view, 0 rows) into document «Plans»');
+        expect(result.changes[0].summary).toContain('default single-select column');
+        expect(result.changes[0].summary).toContain('removeDefaultColumn');
+    });
+
+    it('document.duplicate names the copy and where it lands', async () => {
+        const result = await preview({ category: 'document', action: 'duplicate', args: { action: 'duplicate', id: DOC } }, {
+            rows: [docRow(DOC, 'Plans', '/Work/Plans')],
+            sql: (stmt) => stmt.includes('GROUP BY root_id') ? [{ root_id: DOC, n: 3 }] : undefined,
+        });
+        expect(result.changes[0]).toMatchObject({ kind: 'duplicate_document', newTitle: 'Plans (Duplicated <date time>)', destination: '/Work' });
+        expect(result.changes[0].summary).toContain('Duplicates document «Plans» (2 content blocks) as a new sibling in Work:/Work');
+    });
+
+    it('document.rename, notebook.rename and block.set_fold_state have specific summaries', async () => {
+        const renamed = await preview({ category: 'document', action: 'rename', args: { action: 'rename', id: DOC, title: 'New name' } }, { rows: [docRow(DOC, 'Plans', '/Plans')] });
+        expect(renamed.changes[0]).toMatchObject({ kind: 'rename_document', from: 'Plans', to: 'New name' });
+        const notebook = await preview({ category: 'notebook', action: 'rename', args: { action: 'rename', notebook: NB, name: 'Office' } });
+        expect(notebook.changes[0].summary).toBe('Renames notebook «Work» to «Office». Its ID, documents and permission stay.');
+        const folded = await preview({ category: 'block', action: 'set_fold_state', args: { action: 'set_fold_state', id: B1, folded: true } }, { rows: [blockRow(B1, 'Heading')], children: { [B1]: [{ id: B2 }] } });
+        expect(folded.changes[0].summary).toBe('Folds «Heading» (1 child block(s) hidden). Content does not change.');
     });
 
     it('never fails: a read error becomes { error }', async () => {

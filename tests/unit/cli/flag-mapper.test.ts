@@ -307,3 +307,29 @@ describe('cli/flag-mapper', () => {
         expect(result.acceptedArgs).toContain('requestId');
     });
 });
+
+describe('mapFlagsToArgs JSON for object/array unions', () => {
+    const editSchema = {
+        type: 'object',
+        properties: {
+            action: { type: 'string' },
+            id: { type: 'string' },
+            edit: { anyOf: [{ type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } } }, { type: 'array', items: { type: 'object' } }] },
+            value: { anyOf: [{ type: 'string' }, { type: 'object' }] },
+        },
+    };
+
+    it('parses JSON passed to the plain flag of an object|array union', () => {
+        expect(mapFlagsToArgs(['--id', 'b', '--edit', '{"old":"a","new":"b"}'], editSchema).args.edit).toEqual({ old: 'a', new: 'b' });
+        expect(mapFlagsToArgs(['--edit', '[{"old":"a","new":"b"}]'], editSchema).args.edit).toEqual([{ old: 'a', new: 'b' }]);
+    });
+
+    it('names the -json form when the value is not JSON', () => {
+        expect(() => mapFlagsToArgs(['--edit', 'oops'], editSchema)).toThrow(`--edit-json '{"old":"…","new":"…"}'`);
+        expect(() => mapFlagsToArgs(['--edit', '{bad'], editSchema)).toThrow(/looks like JSON but does not parse/);
+    });
+
+    it('keeps plain strings for unions that accept a string', () => {
+        expect(mapFlagsToArgs(['--value', 'plain'], editSchema).args.value).toBe('plain');
+    });
+});
