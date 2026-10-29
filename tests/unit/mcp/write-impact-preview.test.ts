@@ -299,7 +299,20 @@ describe('write impact preview', () => {
         const result = await preview({ category: 'search', action: 'find_replace', args: { action: 'find_replace', k: 'foo', r: 'bar', ids: [DOC] } }, { kramdown: { [DOC]: blocks } });
         expect(result.changes[0]).toMatchObject({ matchCount: 25, affectedBlockCount: 25, examplesOmitted: 20 });
         expect(result.changes[0].examples).toHaveLength(5);
+        expect(result.changes[0].summary).toContain('Showing 5 of 25 match(es) (5 of 25 block(s)); preview="full" lists all.');
         expect(result.risk).toContain('large_batch');
+        const full = await preview({ category: 'search', action: 'find_replace', args: { action: 'find_replace', k: 'foo', r: 'bar', ids: [DOC], preview: 'full' } }, { kramdown: { [DOC]: blocks } });
+        expect(full.changes[0].examples).toHaveLength(25);
+        expect(full.changes[0].examplesOmitted).toBeUndefined();
+        expect(full.changes[0].summary).not.toContain('Showing');
+    });
+
+    it('search.find_replace full detail still stops at a hard cap and says so', async () => {
+        const blocks = Array.from({ length: 205 }, (_, index) => `foo ${index}\n{: id="20260103${String(index).padStart(6, '0')}-blockxx"}`).join('\n\n');
+        const result = await preview({ category: 'search', action: 'find_replace', args: { action: 'find_replace', k: 'foo', r: 'bar', ids: [DOC], preview: 'full' } }, { kramdown: { [DOC]: blocks } });
+        expect(result.changes[0].examples).toHaveLength(200);
+        expect(result.changes[0]).toMatchObject({ examplesOmitted: 5 });
+        expect(result.changes[0].summary).toContain('a full preview lists at most 200');
     });
 
     it('search.find_replace without matches says nothing will change and raises no risk', async () => {
@@ -533,6 +546,17 @@ describe('write impact preview', () => {
         expect(result.changes[0].summary).toContain('Inserts a new database block (table view, 0 rows) into document «Plans»');
         expect(result.changes[0].summary).toContain('default single-select column');
         expect(result.changes[0].summary).toContain('removeDefaultColumn');
+        expect(result.changes[0].summary).toContain('as its first block');
+        expect(result.changes[0]).toMatchObject({ position: { first: true } });
+    });
+
+    it('av.create names the block the database is appended after', async () => {
+        const result = await preview({ category: 'av', action: 'create', args: { action: 'create', parentID: DOC } }, {
+            rows: [docRow(DOC, 'Plans', '/Plans')],
+            children: { [DOC]: [{ id: B1, type: 'p', content: 'First' }, { id: B2, type: 'p', content: 'Last paragraph' }] },
+        });
+        expect(result.changes[0].summary).toContain(`into document «Plans», at the end, appended after «Last paragraph» (${B2})`);
+        expect(result.changes[0]).toMatchObject({ position: { appendedAfter: B2 } });
     });
 
     it('document.duplicate names the copy and where it lands', async () => {

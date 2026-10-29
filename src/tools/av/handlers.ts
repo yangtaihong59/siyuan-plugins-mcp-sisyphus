@@ -13,7 +13,7 @@ import { sleep } from '../../shared/async';
 import { handleAddColumn, handleRemoveColumn, handleRename, handleSetColumnOptions } from './column-handlers';
 import { AV_MATERIALIZATION_POLL_ATTEMPTS, AV_MATERIALIZATION_POLL_DELAY_MS, AV_TOOL_NAME, extractAttributeViewKeysFromData } from './definition';
 import { buildDuplicateAvBlockDom } from './transaction';
-import { ensurePermissionForAvId, resolveAvOwningBlockId } from './carrier';
+import { ensurePermissionForAvId, resolveAppendAnchor, resolveAvOwningBlockId } from './carrier';
 import { handleGet, handleQuery, handleSearch } from './read-handlers';
 import { handleConfigureRollup, handleConfigureTwoWayRelation, handleSetRelation } from './relation-handlers';
 import { handleAddRows, handleDuplicateRows, handleRemoveRows, handleSetCells } from './row-handlers';
@@ -27,6 +27,10 @@ async function handleCreate({ client, permMgr, rawArgs }: ToolHandlerContext): P
     const { avID, blockID } = context.progress;
     const { denied, context: parent } = await ensurePermissionForDocumentId(client, permMgr, parsed.parentID, 'write');
     if (denied) return denied;
+    // Without previousID the kernel prepends to the parent; append after its
+    // last child instead (an empty parent still gets the first slot). Read it
+    // before any write so a failed read leaves nothing behind.
+    const previousID = await resolveAppendAnchor(client, parsed.parentID, blockID);
     // SiYuan needs an existing block here, so the parent document is passed and
     // also lands in the AV's mirror registry. That entry is never carrier proof:
     // isExplicitAvDatabaseBlock checks the block's own opening tag.
@@ -36,7 +40,7 @@ async function handleCreate({ client, permMgr, rawArgs }: ToolHandlerContext): P
     await context.checkpoint('av_created', 'insert_carrier');
     const spun = await avApi.spinBlockDOM(client, buildDuplicateAvBlockDom(blockID, avID));
     if (typeof spun.dom !== 'string' || !spun.dom) throw new Error('Cannot build database carrier DOM');
-    await transactionApi.performTransactions(client, [{ doOperations: [{ action: 'insert', id: blockID, data: spun.dom, parentID: parsed.parentID }], undoOperations: [] }]);
+    await transactionApi.performTransactions(client, [{ doOperations: [{ action: 'insert', id: blockID, data: spun.dom, parentID: parsed.parentID, ...(previousID ? { previousID } : {}) }], undoOperations: [] }]);
     let carrier: { dom?: string };
     for (let attempt = 0; attempt < AV_MATERIALIZATION_POLL_ATTEMPTS; attempt++) {
         try { carrier = await blockApi.getBlockDOM(client, blockID); } catch { carrier = {}; }

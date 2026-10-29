@@ -14,8 +14,8 @@ import { getExposedExtensionTools } from '../tools/extension';
 
 
 import type { ParsedArgs } from './args';
-import { mapFlagsToArgs, suggestFlag } from './flag-mapper';
-import { applyCliWriteGuidance } from './write-guidance';
+import { mapFlagsToArgs, suggestActions, suggestFlag } from './flag-mapper';
+import { applyCliWriteGuidance, formatPreflightFooter } from './write-guidance';
 import { extractPaginationInfo, renderCliError, renderToolResult } from './render';
 import { loadCliRuntimeState } from './runtime';
 import { callCliWriteCoordinator } from '../core/write-coordinator-client';
@@ -129,9 +129,9 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
         };
 
         const { result, commitCommand, previewLines } = applyCliWriteGuidance(await runPage(), tool, cli.json);
-        const code = renderToolResult(result, { json: cli.json, debug: cli.debug });
+        const code = renderToolResult(result, { json: cli.json, debug: cli.debug, rawKeys: normalizedAction === 'get_attrs' });
         if (previewLines && !cli.json) process.stdout.write(`\n${previewLines.join('\n')}\n`);
-        if (commitCommand && !cli.json) process.stdout.write(`\nPreflight OK. To commit, run:\n  ${commitCommand}\n`);
+        if (commitCommand && !cli.json) process.stdout.write(formatPreflightFooter(commitCommand));
         if (code !== 0 || cli.json) return code;
 
         await runInteractivePaging(result, runPage, { json: cli.json, debug: cli.debug });
@@ -307,9 +307,12 @@ function formatUnknownToolError(tool: string): Error {
 }
 
 function formatUnknownActionError(category: ToolCategory, action: string, dynamicActions: string[] = []): Error {
-    const actions = [...ACTIONS_BY_CATEGORY[category], ...dynamicActions].join(', ');
+    const all = [...ACTIONS_BY_CATEGORY[category], ...dynamicActions];
+    const actions = all.join(', ');
+    const near = suggestActions(action, all).map((name) => name.replace(/_/g, '-'));
     return new Error(
         `Unknown action "${action}" for tool "${category}". ` +
+        (near.length ? `Did you mean: ${near.join(', ')}? ` : '') +
         `Available actions: ${actions}. Try "${PRIMARY_CLI_COMMAND} help ${category}".`,
     );
 }

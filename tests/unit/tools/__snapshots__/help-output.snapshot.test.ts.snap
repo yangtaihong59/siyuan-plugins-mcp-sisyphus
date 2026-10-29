@@ -716,7 +716,7 @@ exports[`tool description and help outputs > matches the locked snapshot for all
         "hint": "Use parentID (an existing document or block) and optionally a new avID; preflight first. A new database starts unnamed with a primary key column (type block) and one select column; use rename to set the database and column names. The result lists that select column in defaultColumns with a ready removeDefaultColumn step (remove_column preflight); keep it if you want a kanban view. Same requestId replays saved IDs, stages and original result before checking existence. Unknown or partial creation must not be retried with another ID.",
         "parameters": {
           "additionalProperties": false,
-          "description": "Create a new database and carrier under parentID; replay preserves IDs and creation progress.",
+          "description": "Create a new database as parentID's last child; replay preserves IDs and creation progress.",
           "properties": {
             "action": {
               "const": "create",

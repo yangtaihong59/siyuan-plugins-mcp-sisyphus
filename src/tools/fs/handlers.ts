@@ -1,4 +1,4 @@
-import { availableReadSteps, databaseReadSteps, documentReadInfo, type ReadStep } from '../internal/read-guidance';
+import { availableReadSteps, databaseNote, databaseReadSteps, documentReadInfo, type ReadStep } from '../internal/read-guidance';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
 import * as fileApi from '../../api/file';
@@ -664,7 +664,7 @@ const handleRead: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
         ...(attributeViews.length > 0 ? {
             attributeViews,
             // The div is the database's Markdown form; rewriting it would break write-back.
-            databaseNote: `${attributeViews.length} database block(s) appear in content as <div data-type="NodeAttributeView" data-av-id="…"> lines: the native Markdown form, not their rows. Read rows with av(action="query", avID="<av-id>"); leave the line unchanged when editing the text around it.`,
+            databaseNote: databaseNote(attributeViews.map((view) => view.avID).filter((id): id is string => typeof id === 'string')),
         } : {}),
         ...(nextSteps.length ? { nextSteps } : {}),
     });

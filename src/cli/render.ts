@@ -6,6 +6,8 @@ import { isRecord as isObject } from '../shared/record';
 export interface RenderOptions {
     json: boolean;
     debug: boolean;
+    /** The payload is an attribute map (get_attrs): print every key verbatim. */
+    rawKeys?: boolean;
 }
 
 export interface PaginationInfo {
@@ -180,8 +182,33 @@ export function renderToolResult(result: ToolResult, options: RenderOptions): nu
         return 1;
     }
 
+    // Plugin-UI refresh bookkeeping means nothing in a terminal; --json keeps it.
+    if (isObject(payload) && 'uiRefresh' in payload) {
+        const { uiRefresh: _uiRefresh, ...rest } = payload;
+        payload = rest;
+    }
+    if (options.rawKeys && isObject(payload) && Object.values(payload).every(isScalar)) {
+        renderAttributeMap(payload, process.stdout);
+        return 0;
+    }
     renderSuccessPayload(compactReadMetadata(flattenAvRowCells(payload)));
     return 0;
+}
+
+/**
+ * Attribute keys are what set-attrs and SQL take (`custom-status`), so print
+ * them as-is, all of them, instead of humanized and capped like field names.
+ */
+function renderAttributeMap(attrs: Record<string, unknown>, out: OutputStream): void {
+    const entries = Object.entries(attrs);
+    if (entries.length === 0) {
+        writeMuted('No attributes.', out);
+        return;
+    }
+    const width = Math.max(...entries.map(([key]) => key.length));
+    for (const [key, value] of entries) {
+        writeLine(out, `  ${paint(out, ANSI.bold, `${key.padEnd(width)}:`)} ${formatField(key, value, true)}`);
+    }
 }
 
 function names(list: unknown): string[] {
@@ -190,15 +217,25 @@ function names(list: unknown): string[] {
         : [];
 }
 
+/** Up to `max` names, then "+N more". */
+function capNames(list: string[], max = 5): string {
+    return list.length > max ? `${list.slice(0, max).join(', ')}, +${list.length - max} more` : list.join(', ');
+}
+
 /** One-line summary of a query_sql scope; --json keeps the full object. */
 export function summarizeSqlScope(scope: Record<string, unknown>): string {
     if (scope.mode !== 'restricted') return 'Full: every notebook is readable; the SQL ran unchanged.';
     const excluded = names(scope.excluded);
     const excludedCount = typeof scope.excludedNotebooks === 'number' ? scope.excludedNotebooks : excluded.length;
-    const closed = names(Array.isArray(scope.readable) ? scope.readable.filter((item) => isObject(item) && item.closed === true) : []);
+    const readable = Array.isArray(scope.readable) ? scope.readable.filter(isObject) : [];
+    const closed = names(readable.filter((item) => item.closed === true));
+    const covered = names(readable.filter((item) => item.closed !== true));
+    // What IS searched first, then the two different reasons a notebook is not:
+    // unreadable (permission) vs closed (not in the index at all).
     return [
-        `Restricted: excludes ${excludedCount} unreadable notebook(s)${excluded.length ? ` (${excluded.join(', ')})` : ''}`,
-        ...(closed.length ? [`${closed.length} closed notebook(s) not indexed (${closed.join(', ')})`] : []),
+        `Restricted: covers ${covered.length} readable open notebook(s)${covered.length ? `: ${capNames(covered)}` : ''}`,
+        `unreadable, excluded: ${excludedCount}${excluded.length ? ` (${capNames(excluded)})` : ''}`,
+        ...(closed.length ? [`closed, not indexed: ${closed.length} (${capNames(closed)})`] : []),
         'tables: blocks, spans, attributes, assets, refs, file_annotation_refs (--json for the full scope)',
     ].join('; ') + '.';
 }
@@ -732,8 +769,10 @@ function prettyJson(value: unknown): string {
 }
 
 function humanizeKey(key: string): string {
-    // Data keys (file names, paths, tags) are values, not field names.
-    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(key)) return key;
+    // Data keys (file names, paths, tags) are values, not field names; so are
+    // hyphenated block attributes (custom-status, title-img), which callers
+    // must copy exactly. Payload field names are camelCase or snake_case.
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(key)) return key;
     // SiYuan search endpoints echo the keyword as `k`.
     if (key === 'k') return 'Query';
     return key

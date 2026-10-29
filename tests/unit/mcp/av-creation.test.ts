@@ -27,6 +27,7 @@ function fixture() {
                 if (failure === 'av-readback' && writes) throw new Error('readback timeout');
                 return { av: avs.get(args.id) ?? null };
             }
+            if (path === '/api/block/getChildBlocks') return args.id === 'parent' ? [{ id: 'first-child', type: 'p' }, { id: 'last-child', type: 'p' }] : [];
             if (path === '/api/block/getBlockDOM') {
                 if (failure === 'carrier-readback') throw new Error('carrier timeout');
                 return { dom: blocks.get(args.id) ?? '' };
@@ -83,6 +84,9 @@ describe('durable multi-step AV creation', () => {
         expect(result.stage).toBe('verified');
         expect(result.safety.transactionState).toBe('committed');
         expect(f.blocks.has(result.blockID)).toBe(true);
+        // Appended after the parent's last child, not prepended (the kernel default without previousID).
+        const insert = f.client.requestWrite.mock.calls.find(([path]: any[]) => path === '/api/transactions')[1].transactions[0].doOperations[0];
+        expect(insert).toMatchObject({ action: 'insert', id: result.blockID, parentID: 'parent', previousID: 'last-child' });
         // SiYuan's default select column is named with a ready removal preflight, never removed silently.
         expect(result.defaultColumns).toEqual([{ keyID: 'key-sel', name: '单选', type: 'select' }]);
         expect(result.removeDefaultColumn.arguments).toEqual({ action: 'remove_column', avID: result.avID, keyID: 'key-sel', validateOnly: true });

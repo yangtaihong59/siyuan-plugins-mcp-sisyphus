@@ -1,6 +1,6 @@
 import { prepareDocumentConversion } from './conversion';
 import { handleDocumentQuery } from './query';
-import { availableReadSteps, databaseReadSteps, documentReadInfo, kramdownDatabases, type ReadStep } from '../internal/read-guidance';
+import { availableReadSteps, databaseNote, databaseReadSteps, documentReadInfo, kramdownDatabases, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
 import * as blockApi from '../../api/block';
 import * as documentApi from '../../api/document';
@@ -1143,7 +1143,8 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     const steps: ReadStep[] = nextWindow
         ? [{ purpose: 'continue_read', tool: 'document', arguments: nextWindow }]
         : [];
-    steps.push(...databaseReadSteps(kramdownDatabases(window.content)));
+    const databases = kramdownDatabases(window.content);
+    steps.push(...databaseReadSteps(databases));
     const nextSteps = await availableReadSteps(client, steps);
     return createJsonResult({
         id: parsed.id,
@@ -1154,6 +1155,8 @@ const handleGetDoc: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         ...windowPayload,
         ...(parsed.includeBlockIds ? { blockRefs } : {}),
         readInfo: documentReadInfo(window, (blockRefs ?? []).map(block => block.type)),
+        // Content stays verbatim for round-trip safety; the note explains the div.
+        ...(databases.length ? { databaseNote: databaseNote(databases.map(database => database.avID)) } : {}),
         ...(nextSteps.length ? { nextSteps } : {}),
         ...(nextWindow ? {
             nextWindow,

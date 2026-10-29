@@ -12,7 +12,7 @@ export const AV_TOOL_NAME = 'av';
 export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('get', AvGetSchema, 'Read database structure (no rows), columns, exact view configuration, or full raw AV.'),
     createZodActionVariant('query', AvQuerySchema, 'Query paginated database rows (one canonical rows[] with columnID cells and kernel formatted text) or lightweight primary keys; never creates a database. Use get(scope="raw") for the complete native payload.'),
-    createZodActionVariant('create', AvCreateSchema, 'Create a new database and carrier under parentID; replay preserves IDs and creation progress.'),
+    createZodActionVariant('create', AvCreateSchema, 'Create a new database as parentID\'s last child; replay preserves IDs and creation progress.'),
     createZodActionVariant('update_view', AvUpdateViewSchema, 'Update one carrier-selected view in a single transaction; omitted configurations remain unchanged.'),
     createZodActionVariant('search', AvSearchSchema, 'Search attribute views by name or primary-key values.'),
     createZodActionVariant('add_rows', AvAddRowsSchema, 'Add bound rows, detached plain-text rows, or composite detached rows with initial cells. Composite rows use one preflight, stable rowIDs, and a persisted stage ledger.'),

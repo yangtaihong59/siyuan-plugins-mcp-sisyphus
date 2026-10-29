@@ -465,6 +465,55 @@ describe('document.get_doc markdown', () => {
         expect(client.request).not.toHaveBeenCalledWith('/api/export/exportMdContent', expect.anything());
     });
 
+    it('notes a database div in get_doc Markdown and keeps the line verbatim', async () => {
+        const client = createMockClient({
+            request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {
+                if (endpoint === '/api/block/getDocInfo') {
+                    return { id: body?.id, rootID: 'doc-1', box: 'nb-1', path: '/doc-1.sy' };
+                }
+                if (endpoint === '/api/notebook/lsNotebooks') {
+                    return { notebooks: [{ id: 'nb-1', name: 'Notebook', closed: false }] };
+                }
+                if (endpoint === '/api/query/sql') {
+                    const stmt = String(body?.stmt ?? '');
+                    if (stmt.includes("WHERE id = 'doc-1'")) {
+                        return [{ id: 'doc-1', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', hpath: '/Doc 1', content: 'Doc 1', type: 'd' }];
+                    }
+                    return [];
+                }
+                if (endpoint === '/api/block/getChildBlocks') {
+                    if (body?.id === 'doc-1') return [{ id: 'block-1', type: 'p' }];
+                    return [];
+                }
+                if (endpoint === '/api/block/getBlockKramdown') {
+                    return {
+                        id: 'block-1',
+                        kramdown: '<div data-type="NodeAttributeView" data-av-id="20261029054824-hh54xgn" data-av-type="table"></div>\n{: id="block-1"}',
+                    };
+                }
+                if (endpoint === '/api/filetree/getHPathByID') return '/Doc 1';
+                throw new Error(`Unexpected endpoint: ${endpoint}`);
+            }),
+        });
+        const permMgr = {
+            reload: vi.fn(async () => undefined),
+            canRead: vi.fn(() => true),
+            get: vi.fn(() => 'rwd'),
+        };
+
+        const result = await callDocumentTool(
+            client,
+            { action: 'get_doc', id: 'doc-1' },
+            buildDefaultToolConfig().document,
+            permMgr as never,
+        );
+        const parsed = parseResult(result);
+
+        expect(parsed.content).toContain('<div data-type="NodeAttributeView" data-av-id="20261029054824-hh54xgn"');
+        expect(parsed.databaseNote).toContain('av(action="query", avID="20261029054824-hh54xgn")');
+        expect(parsed.databaseNote).toContain('leave the line unchanged');
+    });
+
     it('rejects removed page/pageSize character pagination', async () => {
         const result = await callDocumentTool(
             createMockClient(),

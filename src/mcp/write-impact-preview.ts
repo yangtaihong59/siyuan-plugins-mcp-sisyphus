@@ -47,6 +47,8 @@ export const PREVIEW_LIST_LIMIT = 5;
 export const PREVIEW_TEXT_LIMIT = 200;
 /** More affected items than this raises `large_batch`. */
 export const PREVIEW_LARGE_BATCH = 20;
+/** Hard cap on find_replace examples even for preview="full" (one per match). */
+export const FIND_REPLACE_FULL_EXAMPLE_CAP = 200;
 
 export interface WritePreviewNotebook {
     id: string;
@@ -1145,7 +1147,7 @@ async function previewFindReplace(ctx: PreviewContext): Promise<BuilderResult> {
             const local = new RegExp(pattern.source, 'g');
             for (const match of segment.text.matchAll(local)) {
                 affected.add(segment.blockID);
-                if (examples.length < ctx.listLimit) {
+                if (examples.length < Math.min(ctx.listLimit, FIND_REPLACE_FULL_EXAMPLE_CAP)) {
                     examples.push({ blockID: segment.blockID, ...contextPair(ctx, segment.text, match.index ?? 0, match[0].length, replacementFor(match[0])) });
                 }
                 if (match[0].length === 0) break;
@@ -1154,18 +1156,24 @@ async function previewFindReplace(ctx: PreviewContext): Promise<BuilderResult> {
     }
     const replaceTypes = isRecord(ctx.args.replaceTypes) ? ctx.args.replaceTypes : { text: true };
     const onlyText = Object.entries(replaceTypes).every(([key, value]) => key === 'text' || value !== true);
+    // Say when the examples are a sample, and how to see every affected block.
+    const shownBlocks = new Set(examples.map((example) => example.blockID)).size;
+    const capped = matchCount > examples.length;
+    const sampleNote = !capped ? '' : ctx.detail === 'full'
+        ? ` Showing ${examples.length} of ${matchCount} match(es) (${shownBlocks} of ${affected.size} block(s)); a full preview lists at most ${FIND_REPLACE_FULL_EXAMPLE_CAP}.`
+        : ` Showing ${examples.length} of ${matchCount} match(es) (${shownBlocks} of ${affected.size} block(s)); preview="full" lists all.`;
     return {
         changes: [{
             kind: 'find_replace',
             summary: matchCount === 0
                 ? `No match of ${ctx.label(k, '""')} in ${scope}; the commit would change nothing.`
-                : `Replaces ${matchCount} match(es) of ${ctx.label(k, '""')} with ${ctx.label(r, '""')} in ${affected.size} block(s) within ${scope}.${onlyText ? ' Only plain text is replaced (replaceTypes={text:true}); matches inside tags, links or code stay.' : ''}`,
+                : `Replaces ${matchCount} match(es) of ${ctx.label(k, '""')} with ${ctx.label(r, '""')} in ${affected.size} block(s) within ${scope}.${onlyText ? ' Only plain text is replaced (replaceTypes={text:true}); matches inside tags, links or code stay.' : ''}${sampleNote}`,
             k,
             r,
             matchCount,
             affectedBlockCount: affected.size,
             examples,
-            ...(matchCount > examples.length && ctx.detail !== 'full' ? { examplesOmitted: Math.max(0, matchCount - examples.length) } : {}),
+            ...(capped ? { examplesOmitted: matchCount - examples.length } : {}),
         }],
         targetIds: ids,
         itemCount: affected.size,
@@ -1700,12 +1708,17 @@ async function previewAvCreate(ctx: PreviewContext): Promise<BuilderResult> {
     const where = row?.type === 'd'
         ? `document ${ctx.label(row.content, parentID)}`
         : `block ${await ctx.describeBlock(parentID)}${row ? ` in ${await ctx.place(row)}` : ''}`;
+    // Mirrors handleCreate: appended after the parent's current last child.
+    const last = parentID ? (await ctx.siblings(parentID)).at(-1) : undefined;
+    const lastLabel = last ? (last.content ? ctx.label(last.content, last.id) : await ctx.describeBlock(last.id)) : undefined;
+    const position = last ? `at the end, appended after ${lastLabel} (${last.id})` : 'as its first block';
     return {
         changes: [{
             kind: 'create_database',
-            summary: `Inserts a new database block (table view, 0 rows) into ${where}. It starts unnamed with a primary key column, and SiYuan adds a default single-select column; set names with av rename. The commit result names that column with a ready removeDefaultColumn step (remove_column preflight) if you do not want it.`,
+            summary: `Inserts a new database block (table view, 0 rows) into ${where}, ${position}. It starts unnamed with a primary key column, and SiYuan adds a default single-select column; set names with av rename. The commit result names that column with a ready removeDefaultColumn step (remove_column preflight) if you do not want it.`,
             ...(ctx.string('avID') ? { avID: ctx.string('avID') } : {}),
             defaultColumns: ['primary key (block)', 'single select'],
+            position: last ? { appendedAfter: last.id } : { first: true },
         }],
         targetIds: parentID ? [parentID] : [],
     };

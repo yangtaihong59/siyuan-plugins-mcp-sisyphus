@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ToolResult } from '@/tools/internal/shared';
-import { extractPaginationInfo, renderCliError, renderToolResult } from '@/cli/render';
+import { extractPaginationInfo, renderCliError, renderToolResult, summarizeSqlScope } from '@/cli/render';
 
 it('allows continuing a filtered page with an unknown total', () => {
     const result: ToolResult = { content: [{ type: 'text', text: JSON.stringify({ data: [], total: null, page: 1, pageCount: 3, hasNextPage: true }) }] };
@@ -381,12 +381,31 @@ describe('cli/render read metadata and guidance', () => {
 
     it('collapses a restricted SQL scope and readInfo to one line each in human output', () => {
         const io = run({ data: [{ id: 'x' }], total: 1, scope, readInfo: { scope: 'sql_query', representation: 'sql_rows', coverage: 'partial', limitations: ['notebook_scoped'] } });
-        expect(io.stdout).toContain('Restricted: excludes 2 unreadable notebook(s) (Private, 私密); 1 closed notebook(s) not indexed (Research)');
+        expect(io.stdout).toContain('Restricted: covers 1 readable open notebook(s): Lab; unreadable, excluded: 2 (Private, 私密); closed, not indexed: 1 (Research)');
         expect(io.stdout).toContain('sql_query as sql_rows · coverage partial · limits: notebook_scoped');
         expect(io.stdout).not.toContain('readableNotebooks');
         expect(io.stdout).not.toContain('long hint');
         // The data comes before the metadata.
         expect(io.stdout.indexOf('ID: x')).toBeLessThan(io.stdout.indexOf('Restricted:'));
+    });
+
+    it('caps covered notebook names and separates unreadable from closed', () => {
+        const many = { mode: 'restricted', readableNotebooks: [], excludedNotebooks: 0,
+            readable: Array.from({ length: 7 }, (_, i) => ({ id: `n${i}`, name: `N${i}` })), excluded: [] };
+        expect(summarizeSqlScope(many)).toBe('Restricted: covers 7 readable open notebook(s): N0, N1, N2, N3, N4, +2 more; unreadable, excluded: 0; tables: blocks, spans, attributes, assets, refs, file_annotation_refs (--json for the full scope).');
+    });
+
+    it('prints get_attrs keys verbatim and drops uiRefresh from human output', () => {
+        const io = captureStdIO();
+        try {
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({ id: 'b1', 'custom-status': 'done', updated: '20261029' }) }] }, { json: false, debug: false, rawKeys: true });
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({ success: true, avID: 'a1', uiRefresh: { attempted: true } }) }] }, { json: false, debug: false });
+        } finally {
+            io.restore();
+        }
+        expect(io.stdout).toContain('custom-status: done');
+        expect(io.stdout).not.toContain('Custom Status');
+        expect(io.stdout).not.toContain('Ui Refresh');
     });
 
     it('keeps the full scope in --json output', () => {

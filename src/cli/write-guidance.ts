@@ -11,6 +11,11 @@ const PREFLIGHT_REQUIRED_CODES = new Set(['precondition_required', 'invalid_requ
 
 export const CLI_PREFLIGHT_HINT = 'Writes are two steps: rerun this exact command with --validate-only, check the preview it prints, then run the commit command it prints (it already carries --request-id and any --expected-*-hash).';
 
+/** Human output after a preflight: neutral, since "valid" is not "the right target". */
+export function formatPreflightFooter(commitCommand: string): string {
+    return `\nPreflight valid — check the target and changes above, then commit with:\n  ${commitCommand}\n`;
+}
+
 export interface CliWriteGuidance {
     result: ToolResult;
     /** Paste-ready commit command after a successful preflight. */
@@ -50,10 +55,17 @@ export function applyCliWriteGuidance(result: ToolResult, tool: string, json = t
     } else if (!result.isError && isRecord(payload.removeDefaultColumn?.arguments)) {
         // av create names SiYuan's default select column; give its paste-ready removal preflight.
         const { tool: stepTool, arguments: stepArgs } = payload.removeDefaultColumn;
-        payload = { ...payload, removeDefaultColumn: {
-            ...payload.removeDefaultColumn,
-            cliCommand: `${buildCliCommand(typeof stepTool === 'string' ? stepTool : tool, stepArgs)}${stepArgs.validateOnly === true ? ' --validate-only' : ''}`,
-        } };
+        const cliCommand = `${buildCliCommand(typeof stepTool === 'string' ? stepTool : tool, stepArgs)}${stepArgs.validateOnly === true ? ' --validate-only' : ''}`;
+        if (json) {
+            payload = { ...payload, removeDefaultColumn: { ...payload.removeDefaultColumn, cliCommand } };
+        } else {
+            // One line for the reader; the step object and the column list stay in --json.
+            const names = Array.isArray(payload.defaultColumns)
+                ? payload.defaultColumns.filter(isRecord).map((column: Record<string, any>) => `«${String(column.name || column.keyID)}»`)
+                : [];
+            const { removeDefaultColumn: _step, defaultColumns: _columns, ...rest } = payload;
+            payload = { ...rest, defaultColumnNote: `SiYuan added a default select column${names.length ? ` ${names.join(', ')}` : ''}; keep it (kanban needs one) or remove it with: ${cliCommand}` };
+        }
     } else {
         return { result };
     }
@@ -80,14 +92,21 @@ export function formatWritePreview(preview: Record<string, any>): string[] {
     if (changes.length > 0) {
         lines.push('  Changes:');
         for (const change of changes) {
-            lines.push(`    - ${String(change.summary ?? change.kind ?? '')}`);
+            // Previews name the MCP argument; the CLI spells it as a flag.
+            lines.push(`    - ${String(change.summary ?? change.kind ?? '').replace(/\bpreview="full"/g, '--preview full')}`);
             for (const [key, value] of Object.entries(change)) {
                 if (key === 'kind' || key === 'summary') continue;
                 lines.push(...formatDetail(key, value, '        '));
             }
         }
     }
-    const risk = Array.isArray(preview.risk) ? preview.risk.map(String) : [];
+    // "workspace_wide" says what the action can reach; add what it reaches now.
+    const reach = changes.find((change) => typeof change.blockCount === 'number' && typeof change.notebookCount === 'number');
+    const risk = Array.isArray(preview.risk)
+        ? preview.risk.map(String).map((flag: string) => flag === 'workspace_wide' && reach
+            ? `${flag} — currently ${reach.blockCount} block(s) in ${reach.notebookCount} notebook(s)`
+            : flag)
+        : [];
     lines.push(`  Risk: ${risk.length > 0 ? risk.join(', ') : 'none flagged'}`);
     return lines;
 }

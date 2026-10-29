@@ -400,3 +400,32 @@ export function suggestFlag(unknownFlag: string, acceptedArgs: string[]): string
     }
     return best?.name;
 }
+
+/**
+ * Up to `max` actions close to a mistyped one, best first: the input as a
+ * prefix (get → get_kramdown), a whole word of the name (attrs → get_attrs),
+ * a substring, then small typos.
+ */
+export function suggestActions(unknownAction: string, actions: string[], max = 5): string[] {
+    const joined = flagTokens(unknownAction).join('');
+    if (!joined) return [];
+    const scored: Array<{ name: string; score: number }> = [];
+    for (const name of actions) {
+        const tokens = flagTokens(name);
+        const candidate = tokens.join('');
+        if (candidate === joined) continue;
+        let score: number | undefined;
+        if (candidate.startsWith(joined) && joined.length >= 2) score = 1;
+        else if (tokens.some((token) => token === joined || (joined.length >= 3 && token.startsWith(joined)))) score = 2;
+        else if (joined.length >= 3 && candidate.includes(joined)) score = 3;
+        else {
+            const distance = editDistance(joined, candidate);
+            if (distance <= Math.max(1, Math.floor(candidate.length / 3))) score = 4 + distance;
+        }
+        if (score !== undefined) scored.push({ name, score });
+    }
+    return scored
+        .sort((a, b) => a.score - b.score || a.name.length - b.name.length)
+        .slice(0, max)
+        .map((item) => item.name);
+}

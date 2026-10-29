@@ -458,3 +458,12 @@ export async function readViewSelection(client: SiYuanClient, avID: string, defi
     if (!views.length) throw new Error(`Database ${avID} has no readable view`);
     return { view: views[0], viewID: views[0].id, selectionSource: 'kernel_default', selectionFallback: Boolean(blockID) };
 }
+
+/** av create's append anchor: the parent's last child, never the carrier itself. */
+export async function resolveAppendAnchor(client: SiYuanClient, parentID: string, carrierID: string): Promise<string | undefined> {
+    const children = await blockApi.getChildBlocks(client, parentID);
+    return (Array.isArray(children) ? children : [])
+        .map(child => child?.id)
+        .filter((id): id is string => typeof id === 'string' && id !== carrierID)
+        .at(-1);
+}

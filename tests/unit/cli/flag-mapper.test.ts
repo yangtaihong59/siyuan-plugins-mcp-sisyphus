@@ -248,6 +248,13 @@ describe('cli/flag-mapper', () => {
         expect(warnings).toEqual([]);
     });
 
+    it('accepts --old/--new for tag rename as CLI-only aliases', () => {
+        const tagSchema = { type: 'object', properties: { action: { type: 'string' }, oldLabel: { type: 'string' }, newLabel: { type: 'string' } } };
+        const { args, unknownFlags } = mapFlagsToArgs(['--old', 'a', '--new', 'b'], tagSchema, { category: 'tag', action: 'rename' });
+        expect(unknownFlags).toEqual([]);
+        expect(args).toEqual({ oldLabel: 'a', newLabel: 'b' });
+    });
+
     it('maps avID and single block id aliases to canonical fields', () => {
         const avSchema = {
             type: 'object',

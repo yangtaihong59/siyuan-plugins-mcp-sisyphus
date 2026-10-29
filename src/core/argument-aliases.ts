@@ -226,6 +226,14 @@ export function getFlagAliasRules(context?: Partial<ArgumentAliasContext>): Flag
         ];
     }
 
+    // CLI-only (never in the mounted schema): testers guessed --old/--new.
+    if (context.category === 'tag' && action === 'rename') {
+        return [
+            { canonical: 'oldLabel', aliases: ['old'], schema: STRING_SCHEMA },
+            { canonical: 'newLabel', aliases: ['new'], schema: STRING_SCHEMA },
+        ];
+    }
+
     if (context.category === 'search' && action === 'search_refs') {
         return [
             { canonical: 'k', aliases: ['keyword', 'query'], schema: STRING_SCHEMA },

@@ -90,6 +90,7 @@ describe('search SQL read-only guard', () => {
     it('names PRAGMA and EXPLAIN instead of calling them mutations', () => {
         expect(() => assertReadOnlySql('PRAGMA table_info(blocks)')).toThrow(/PRAGMA statements are not allowed.*schema metadata is not exposed/);
         expect(() => assertReadOnlySql('explain SELECT 1')).toThrow(/EXPLAIN statements are not allowed/);
+        expect(() => assertReadOnlySql('PRAGMA table_info(blocks)')).toThrow(expect.objectContaining({ code: 'permission_denied', hint: expect.stringContaining('SELECT * FROM blocks LIMIT 1') }));
     });
 
     it('blocks unsafe CTE SQL before calling the SiYuan query endpoint', async () => {
@@ -110,6 +111,8 @@ describe('search SQL read-only guard', () => {
 
         const parsed = parseResult(result);
         expect(parsed.error.message).toMatch(/Only SELECT statements/);
+        // A rejected statement is the caller's to fix, never internal_error.
+        expect(parsed.error).toMatchObject({ type: 'permission_denied', code: 'sql_statement_not_allowed' });
         expect(request).not.toHaveBeenCalled();
     });
 });
@@ -823,6 +826,8 @@ describe('search tool filtering', () => {
             excludedNotebooks: 1,
         });
         expect(parsed.error.hint).toContain('blocks, spans, attributes, assets, refs, file_annotation_refs');
+        // The first words say why restricted mode is on, before the table detail.
+        expect(parsed.error.message).toMatch(/^Restricted mode is active because notebook\(s\) \S+ is unreadable; table "stat" cannot be scoped/);
         const sqlCalls = request.mock.calls.filter(([endpoint]) => endpoint === '/api/query/sql');
         expect(sqlCalls.every(([, body]) => String((body as { stmt: string }).stmt).startsWith('SELECT name FROM sqlite_master'))).toBe(true);
     });

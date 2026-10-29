@@ -16,6 +16,19 @@ function escapeSqlLike(value: string): string {
 
 const READ_ONLY_SQL_ERROR = 'Only SELECT statements and WITH CTEs whose main statement is SELECT are allowed. Mutation queries (INSERT, UPDATE, DELETE, DROP, ALTER, CREATE) are forbidden.';
 
+/**
+ * A statement query_sql never runs (mutation, PRAGMA, EXPLAIN, multiple
+ * statements). Caller-correctable: `code` maps it to permission_denied, the
+ * same family as restricted-mode rejections, never internal_error.
+ */
+export class SqlStatementRejectedError extends Error {
+    readonly code = 'permission_denied';
+    constructor(message: string, readonly hint?: string) {
+        super(message);
+        this.name = 'SqlStatementRejectedError';
+    }
+}
+
 function maskSqlLiteralsAndComments(stmt: string): string {
     let result = '';
     let index = 0;
@@ -103,13 +116,13 @@ function readKeyword(value: string, index: number): { keyword: string; end: numb
 function skipIdentifier(value: string, index: number): number {
     const start = skipWhitespace(value, index);
     const match = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(value.slice(start));
-    if (!match) throw new Error(READ_ONLY_SQL_ERROR);
+    if (!match) throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
     return start + match[0].length;
 }
 
 function skipBalancedParens(value: string, index: number): number {
     const start = skipWhitespace(value, index);
-    if (value[start] !== '(') throw new Error(READ_ONLY_SQL_ERROR);
+    if (value[start] !== '(') throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
 
     let depth = 0;
     for (let cursor = start; cursor < value.length; cursor += 1) {
@@ -120,14 +133,14 @@ function skipBalancedParens(value: string, index: number): number {
         }
     }
 
-    throw new Error(READ_ONLY_SQL_ERROR);
+    throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
 }
 
 function assertNoAdditionalStatements(masked: string): void {
     const firstSemicolon = masked.indexOf(';');
     if (firstSemicolon < 0) return;
     if (masked.slice(firstSemicolon + 1).trim().length > 0) {
-        throw new Error(READ_ONLY_SQL_ERROR);
+        throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
     }
 }
 
@@ -148,7 +161,7 @@ function assertReadOnlyWithSql(masked: string, withEnd: number): void {
         }
 
         const asKeyword = readKeyword(masked, index);
-        if (asKeyword?.keyword !== 'AS') throw new Error(READ_ONLY_SQL_ERROR);
+        if (asKeyword?.keyword !== 'AS') throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
         index = skipWhitespace(masked, asKeyword.end);
 
         const materializedKeyword = readKeyword(masked, index);
@@ -156,7 +169,7 @@ function assertReadOnlyWithSql(masked: string, withEnd: number): void {
             index = skipWhitespace(masked, materializedKeyword.end);
         } else if (materializedKeyword?.keyword === 'NOT') {
             const nextKeyword = readKeyword(masked, materializedKeyword.end);
-            if (nextKeyword?.keyword !== 'MATERIALIZED') throw new Error(READ_ONLY_SQL_ERROR);
+            if (nextKeyword?.keyword !== 'MATERIALIZED') throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
             index = skipWhitespace(masked, nextKeyword.end);
         }
 
@@ -170,12 +183,12 @@ function assertReadOnlyWithSql(masked: string, withEnd: number): void {
 
         const mainStatement = readKeyword(masked, index);
         if (mainStatement?.keyword !== 'SELECT') {
-            throw new Error(READ_ONLY_SQL_ERROR);
+            throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
         }
         return;
     }
 
-    throw new Error(READ_ONLY_SQL_ERROR);
+    throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
 }
 
 export function assertReadOnlySql(stmt: string): void {
@@ -191,10 +204,13 @@ export function assertReadOnlySql(stmt: string): void {
         return;
     }
     if (firstWord?.keyword === 'PRAGMA' || firstWord?.keyword === 'EXPLAIN') {
-        throw new Error(`${firstWord.keyword} statements are not allowed: query_sql runs only SELECT / WITH … SELECT over the index tables, and schema metadata is not exposed. For column names, SELECT * FROM blocks LIMIT 1; for documents, use document(action="query").`);
+        throw new SqlStatementRejectedError(
+            `${firstWord.keyword} statements are not allowed: query_sql runs only SELECT / WITH … SELECT over the index tables, and schema metadata is not exposed.`,
+            'For column names, SELECT * FROM blocks LIMIT 1; for documents, use document(action="query").',
+        );
     }
 
-    throw new Error(READ_ONLY_SQL_ERROR);
+    throw new SqlStatementRejectedError(READ_ONLY_SQL_ERROR);
 }
 
 export async function ensureRawSqlReadAccess(

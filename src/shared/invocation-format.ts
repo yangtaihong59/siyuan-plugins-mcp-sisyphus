@@ -160,6 +160,8 @@ export function translatePresentationPayload(payload: unknown, target: Presentat
             ...payload,
             error: {
                 ...error,
+                // Messages can name a call too ("…use document(action=\"query\")").
+                ...(typeof error.message === 'string' ? { message: translatePresentationText(error.message, target) } : {}),
                 ...(typeof error.hint === 'string' ? { hint: translatePresentationText(error.hint, target) } : {}),
                 ...(typeof error.details === 'string' ? { details: translatePresentationText(error.details, target) } : {}),
             },
@@ -171,7 +173,7 @@ export function translatePresentationPayload(payload: unknown, target: Presentat
 
 function translateKnownTextFields(payload: Record<string, unknown>, target: PresentationTarget): Record<string, unknown> {
     const translated: Record<string, unknown> = { ...payload };
-    for (const key of ['hint', 'detailsHint']) {
+    for (const key of ['hint', 'detailsHint', 'databaseNote']) {
         if (typeof translated[key] === 'string') {
             translated[key] = translatePresentationText(translated[key], target);
         }

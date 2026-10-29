@@ -2502,7 +2502,7 @@
           "parentID"
         ],
         "additionalProperties": false,
-        "description": "Create a new database and carrier under parentID; replay preserves IDs and creation progress."
+        "description": "Create a new database as parentID's last child; replay preserves IDs and creation progress."
       },
       "update_view": {
         "type": "object",

@@ -35,6 +35,7 @@ import { assertRestrictedSqlCanary, RestrictedSqlCanaryError } from './restricte
 import {
     assertReadOnlySql,
     ensureRawSqlReadAccess,
+    SqlStatementRejectedError,
     getBacklinksWithFallback,
     listIndexTableNames,
     loadRawSqlScope,
@@ -213,6 +214,21 @@ function restrictedScopeHint(scope: RawSqlScope): string {
     const closed = (scope.readable ?? []).filter((notebook) => notebook.closed);
     const excluded = scope.excluded ?? [];
     return `Results and counts cover only the readable notebooks${excluded.length > 0 ? `; ${excluded.length} unreadable notebook(s) (${names(excluded)}) are excluded` : ''}${closed.length > 0 ? `; closed notebook(s) (${names(closed)}) are not indexed and return no rows` : ''}. ${RESTRICTED_SQL_HINT}`;
+}
+
+/** A restricted-mode rejection that opens with why the mode is on at all. */
+function restrictedModeMessage(scope: RawSqlScope, message: string): string {
+    // "Table …" -> "table …", but keep acronyms such as "SQL …" / "NUL …".
+    const joined = /^[A-Z][a-z]/.test(message) ? message.charAt(0).toLowerCase() + message.slice(1) : message;
+    return `${restrictedModeReason(scope)} ${joined}`;
+}
+
+function restrictedModeReason(scope: RawSqlScope): string {
+    const excluded = (scope.excluded ?? []).map((notebook) => notebook.name || notebook.id);
+    const shown = excluded.slice(0, 5).join(', ') + (excluded.length > 5 ? `, +${excluded.length - 5} more` : '');
+    return excluded.length
+        ? `Restricted mode is active because notebook(s) ${shown} ${excluded.length === 1 ? 'is' : 'are'} unreadable;`
+        : `Restricted mode is active because ${scope.excludedNotebooks} notebook(s) are unreadable;`;
 }
 
 /** Flush queued writes into the SQL index; reports whether that worked. */
@@ -400,7 +416,25 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     query_sql: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchQuerySqlSchema.parse(rawArgs);
         const stmt = resolveAliasString(parsed.stmt, parsed.sql);
-        assertReadOnlySql(stmt ?? '');
+        try {
+            assertReadOnlySql(stmt ?? '');
+        } catch (error) {
+            if (!(error instanceof SqlStatementRejectedError)) throw error;
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: {
+                            type: 'permission_denied',
+                            code: 'sql_statement_not_allowed',
+                            message: error.message,
+                            hint: error.hint ?? 'Rewrite it as one SELECT (or WITH … SELECT) statement.',
+                        },
+                    }, null, 2),
+                }],
+                isError: true,
+            };
+        }
         const scope = await loadRawSqlScope(client, permMgr);
         // SQL reads the asynchronous index; a write moments ago may not be in it yet.
         const flushed = await flushSqlIndex(client);
@@ -432,7 +466,7 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
                             code: 'restricted_sql_rejected',
                             reason: 'permission_scope_not_enforceable',
                             excludedNotebooks: scope.excludedNotebooks,
-                            message: error.message,
+                            message: restrictedModeMessage(scope, error.message),
                             hint: `${RESTRICTED_SQL_HINT} Or use document(action="query").`,
                         },
                     }, null, 2),
@@ -455,7 +489,7 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
                             code: 'restricted_sql_unavailable',
                             reason: error.reason,
                             excludedNotebooks: scope.excludedNotebooks,
-                            message: error.message,
+                            message: restrictedModeMessage(scope, error.message),
                             hint: 'Use document(action="query") or search(action="fulltext"), or make every notebook readable.',
                         },
                     }, null, 2),
