@@ -336,6 +336,21 @@ const handleListTemplates: ToolActionHandler = async ({ client, rawArgs }) => {
     });
 };
 
+/**
+ * Templates saved from a document keep every block IAL ({: id=... fold=...}),
+ * both on their own lines and inline after list markers. Creating a document
+ * from them as-is would reuse the source block IDs, so offer a copy without IALs.
+ */
+export function stripTemplateIals(markdown: string): string {
+    return markdown
+        .split('\n')
+        .filter((line) => !/^\s*\{:\s[^\n]*\}\s*$/.test(line))
+        .map((line) => line.replace(/\{:\s(?:[^}"]|"(?:[^"\\]|\\.)*")*\}/g, ''))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 const handleReadTemplate: ToolActionHandler = async ({ client, rawArgs }) => {
     const parsed = FileReadTemplateSchema.parse(rawArgs);
     try {
@@ -355,6 +370,11 @@ const handleReadTemplate: ToolActionHandler = async ({ client, rawArgs }) => {
             limit,
             truncated,
             ...(truncated ? { nextOffset } : {}),
+            // Only for the full source: a window could cut an IAL in half.
+            ...(offset === 0 && !truncated ? {
+                documentMarkdown: stripTemplateIals(source.markdown),
+                documentMarkdownHint: 'documentMarkdown is the template without block IALs (ids, fold state, custom attributes); pass it as markdown to document create to make a new document from this template. Template .action{...} expressions are kept as text; use file render to evaluate them.',
+            } : {}),
         });
     } catch (error) {
         return templateErrorResult(

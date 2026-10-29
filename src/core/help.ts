@@ -390,6 +390,13 @@ export interface HelpExample {
 
 export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, HelpExample[]>>> = {
     document: {
+        heading_to_doc: [
+            {
+                title: 'Split a heading into a child document of its source',
+                description: 'The heading and everything under it move into the new document (its ID is the heading ID). targetPath is the source document storage path from document lookup; omit it to land at the notebook root. Rename the new document afterwards if needed.',
+                mcp: { action: 'heading_to_doc', headingID: '20240318112233-head001', targetNotebook: '20240318112233-nb00001', targetPath: '/20240318112233-doc0001.sy', validateOnly: true },
+            },
+        ],
         query: [
             { title: 'List readable documents with indexed statistics', mcp: { action: 'query', page: 1, pageSize: 50 } },
             { title: 'Find documents with no indexed body blocks', mcp: { action: 'query', maxBlocks: 0, fields: ['id', 'notebook', 'title', 'hpath', 'blockCount'] } },
@@ -493,6 +500,17 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
     },
     notebook: {},
     block: {
+        move: [
+            {
+                title: 'Move a block after another block',
+                description: 'previousID places the block right after that sibling (any parent). To make it the first child of a block or document, pass parentID instead.',
+                mcp: { action: 'move', id: '20240318112233-abc123', previousID: '20240318112233-def456', validateOnly: true },
+            },
+            {
+                title: 'Move a block to the top of a document',
+                mcp: { action: 'move', id: '20240318112233-abc123', parentID: '20240318112233-doc0001', validateOnly: true },
+            },
+        ],
         update: [
             {
                 title: 'Replace one block (preflight first)',

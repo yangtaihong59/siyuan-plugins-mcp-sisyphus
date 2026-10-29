@@ -507,6 +507,26 @@ describe('file tool asset actions', () => {
         });
     });
 
+    it('strips block IALs from saved-document templates for document create', async () => {
+        const { stripTemplateIals } = await import('@/tools/file/handlers');
+        const source = [
+            '# 议题',
+            '{: id="20261029014256-aaaaaaa" fold="1"}',
+            '',
+            '段一 {: custom-x="a}b"}',
+            '{: id="20261029014256-bbbbbbb" custom-priority="high"}',
+            '',
+            '1. {: id="20261029014256-ccccccc"}甲',
+            '2. {: id="20261029014256-ddddddd"}乙',
+            '{: id="20261029014256-eeeeeee"}',
+            '',
+            '',
+            '{: id="20261029014256-fffffff" title="LAB" type="doc"}',
+        ].join('\n');
+
+        expect(stripTemplateIals(source)).toBe('# 议题\n\n段一 \n\n1. 甲\n2. 乙');
+    });
+
     it('renders a relative template path through the resolved workspace path', async () => {
         const templateApi = await import('@/api/template');
         vi.mocked(templateApi.resolveTemplateRenderPath).mockResolvedValueOnce('/workspace/data/templates/demo.md');

@@ -406,6 +406,51 @@ const handleAppend: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
     }, data)), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
+const PRESERVED_ATTR_NAMES = new Set(['name', 'alias', 'memo', 'bookmark']);
+
+function preservableAttrs(attrs: Record<string, string> | null | undefined): Record<string, string> {
+    return Object.fromEntries(Object.entries(attrs ?? {})
+        .filter(([key, value]) => value !== '' && (key.startsWith('custom-') || PRESERVED_ATTR_NAMES.has(key))));
+}
+
+/**
+ * updateBlock rebuilds the block from the new Markdown, so user attributes
+ * (custom-*, name, alias, memo, bookmark) vanish unless the Markdown carries
+ * its own IAL. Snapshot them first and restore any the update dropped; DOM
+ * input and Markdown with an explicit {: ...} IAL are left as written.
+ */
+async function readAttrsOrNull(client: SiYuanClient, id: string): Promise<Record<string, string> | null> {
+    try {
+        return await attributeApi.getBlockAttrs(client, id);
+    } catch {
+        return null;
+    }
+}
+
+async function updatePreservingAttrs<T>(
+    client: SiYuanClient,
+    ids: Array<{ id: string; dataType: string; data: string }>,
+    update: () => Promise<T>,
+): Promise<{ result: T; restoredAttrs: Record<string, string[]> }> {
+    const kept = new Map<string, Record<string, string>>();
+    for (const item of ids) {
+        if (item.dataType !== 'markdown' || /\{:\s/.test(item.data)) continue;
+        const attrs = preservableAttrs(await readAttrsOrNull(client, item.id));
+        if (Object.keys(attrs).length > 0) kept.set(item.id, attrs);
+    }
+    const result = await update();
+    const restoredAttrs: Record<string, string[]> = {};
+    for (const [id, attrs] of kept) {
+        const after = await readAttrsOrNull(client, id);
+        if (!after) continue;
+        const missing = Object.fromEntries(Object.entries(attrs).filter(([key]) => after[key] === undefined));
+        if (Object.keys(missing).length === 0) continue;
+        await attributeApi.setBlockAttrs(client, id, missing);
+        restoredAttrs[id] = Object.keys(missing);
+    }
+    return { result, restoredAttrs };
+}
+
 const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = BlockUpdateSchema.parse(rawArgs);
     if (parsed.items) {
@@ -420,12 +465,13 @@ const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
             }
             reloadIds.add(context.documentId);
         }
-        const result = await blockApi.batchUpdateBlock(client, items);
+        const { result, restoredAttrs } = await updatePreservingAttrs(client, items, () => blockApi.batchUpdateBlock(client, items));
         return applyUiRefresh(client, createJsonResult({
             success: true,
             action: 'update',
             count: parsed.items.length,
             transactions: result,
+            ...(Object.keys(restoredAttrs).length > 0 ? { restoredAttrs } : {}),
             ...(items.some((item) => hasReferenceSemanticsHints(item.data)) ? createReferenceSemanticsHints(items.map((item) => item.data).join('\n')) : {}),
             ...(databaseBlockIds.length > 0 ? {
                 databaseBlockIds,
@@ -437,11 +483,16 @@ const handleUpdate: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
     if (denied) return denied;
     const isDatabaseBlock = await getBlockType(client, parsed.id!) === 'av';
     const data = await normalizeWriteData(client, parsed.dataType!, parsed.data!, 'block.update');
-    const result = await blockApi.updateBlock(client, parsed.dataType!, data, parsed.id!);
+    const { result, restoredAttrs } = await updatePreservingAttrs(
+        client,
+        [{ id: parsed.id!, dataType: parsed.dataType!, data }],
+        () => blockApi.updateBlock(client, parsed.dataType!, data, parsed.id!),
+    );
     return applyUiRefresh(client, createUpdateResult(result, {
         id: parsed.id!,
         dataType: parsed.dataType!,
         data,
+        ...(restoredAttrs[parsed.id!] ? { restoredAttrs: restoredAttrs[parsed.id!] } : {}),
         ...(isDatabaseBlock ? createDatabaseBlockHint('block.update') : {}),
     }), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
@@ -777,7 +828,9 @@ const handleWordCount: BlockActionHandler = async ({ client, permMgr, rawArgs })
         if (denied) return denied;
     }
     const result = await blockApi.getBlocksWordCount(client, parsed.ids);
-    return createJsonResult(result);
+    // reqId is the kernel's request echo (always null here), not data.
+    const { reqId: _reqId, ...payload } = (result && typeof result === 'object' ? result : {}) as Record<string, unknown>;
+    return createJsonResult(result && typeof result === 'object' ? payload : result);
 };
 
 const handleAddToDailyNote: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {

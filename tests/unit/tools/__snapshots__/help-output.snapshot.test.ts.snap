@@ -5189,7 +5189,31 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "action": "move",
         "example": {
           "action": "move",
+          "id": "20240318112233-abc123",
+          "previousID": "20240318112233-def456",
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "description": "previousID places the block right after that sibling (any parent). To make it the first child of a block or document, pass parentID instead.",
+            "mcp": {
+              "action": "move",
+              "id": "20240318112233-abc123",
+              "previousID": "20240318112233-def456",
+              "validateOnly": true,
+            },
+            "title": "Move a block after another block",
+          },
+          {
+            "mcp": {
+              "action": "move",
+              "id": "20240318112233-abc123",
+              "parentID": "20240318112233-doc0001",
+              "validateOnly": true,
+            },
+            "title": "Move a block to the top of a document",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/block/move",
         "guidance": [
           "block(action="prepend") or block(action="append") with a document ID targets the document start or end.",
@@ -5241,7 +5265,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "requiredFields": [],
         "requiresConfirmation": true,
         "shapes": [
-          "optional fields only",
+          "see examples",
         ],
         "tool": "block",
         "writeWorkflow": [
@@ -6848,9 +6872,24 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "action": "heading_to_doc",
         "example": {
           "action": "heading_to_doc",
-          "headingID": "<headingID>",
-          "targetNotebook": "<targetNotebook>",
+          "headingID": "20240318112233-head001",
+          "targetNotebook": "20240318112233-nb00001",
+          "targetPath": "/20240318112233-doc0001.sy",
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "description": "The heading and everything under it move into the new document (its ID is the heading ID). targetPath is the source document storage path from document lookup; omit it to land at the notebook root. Rename the new document afterwards if needed.",
+            "mcp": {
+              "action": "heading_to_doc",
+              "headingID": "20240318112233-head001",
+              "targetNotebook": "20240318112233-nb00001",
+              "targetPath": "/20240318112233-doc0001.sy",
+              "validateOnly": true,
+            },
+            "title": "Split a heading into a child document of its source",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/document/heading_to_doc",
         "guidance": [
           "Use document(action="query") for paginated document metadata, indexed body-block/character counts, empty-document candidates, and same-title candidates across readable open notebooks. It works with unreadable notebooks present and does not require permission changes. Counts describe the SQL index, not native word counts or complete filesystem coverage.",

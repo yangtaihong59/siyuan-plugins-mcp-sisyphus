@@ -124,7 +124,7 @@ export function writeKeyValueRows(
 
     for (let i = 0; i < entries.length; i++) {
         const label = labels[i].padEnd(width);
-        writeLine(stream, `  ${paint(stream, ANSI.bold, `${label}:`)} ${formatField(entries[i].key, entries[i].value)}`);
+        writeLine(stream, `  ${paint(stream, ANSI.bold, `${label}:`)} ${formatField(entries[i].key, entries[i].value, true)}`);
     }
 }
 
@@ -475,7 +475,7 @@ function renderHelpIndex(obj: Record<string, unknown>, out: OutputStream): void 
     const confirmation = toStringArray(obj.requiresConfirmation);
     if (confirmation.length > 0) {
         writeSection('Confirmation', out);
-        writeBulletList(confirmation.map((action) => `${action} requires explicit confirmation.`), out, 'warning');
+        writeBulletList(confirmation.map((action) => `${action} is destructive: double-check the preflight before running its commit command (the CLI asks no further question).`), out, 'warning');
     }
 
     if (typeof obj.detailsHint === 'string' && obj.detailsHint) {
@@ -531,7 +531,7 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
 
     if (obj.requiresConfirmation === true) {
         writeSection('Safety', out);
-        writeBulletList(['This action requires explicit confirmation.'], out, 'warning');
+        writeBulletList(['Destructive: AI agents should get the user\'s go-ahead first. The CLI asks no further question; running the commit command is the confirmation.'], out, 'warning');
     }
 
     if (typeof obj.fullDocResource === 'string' && obj.fullDocResource) {
@@ -660,6 +660,8 @@ function prettyJson(value: unknown): string {
 function humanizeKey(key: string): string {
     // Data keys (file names, paths, tags) are values, not field names.
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(key)) return key;
+    // SiYuan search endpoints echo the keyword as `k`.
+    if (key === 'k') return 'Query';
     return key
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/[_-]+/g, ' ')
@@ -678,8 +680,14 @@ function humanizeKey(key: string): string {
 
 const EPOCH_MS_KEYS = /^(created|updated|lastReview|due|expiresAt|requestIdExpiresAt|time)$/;
 
-/** Epoch-millisecond timestamps read as dates; other scalars as-is. */
-function formatField(key: string, value: unknown): string {
+// Body text the caller asked to read; truncating it made readbacks look wrong.
+const FULL_TEXT_KEYS = new Set(['markdown', 'documentMarkdown', 'kramdown', 'content']);
+
+/** Epoch-millisecond timestamps read as dates; body text in full; other scalars as-is. */
+function formatField(key: string, value: unknown, fullText = false): string {
+    if (fullText && typeof value === 'string' && FULL_TEXT_KEYS.has(key)) {
+        return value.includes('\n') ? `\n${indentBlock(value, 4)}` : value;
+    }
     if (typeof value === 'number' && EPOCH_MS_KEYS.test(key) && value > 1e12 && value < 1e14) {
         const d = new Date(value);
         const pad = (n: number) => String(n).padStart(2, '0');

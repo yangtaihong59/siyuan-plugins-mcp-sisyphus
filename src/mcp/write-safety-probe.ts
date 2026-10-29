@@ -392,6 +392,11 @@ export async function probeCurrentState(
             children: scope.children,
             declaredTargetIds: [...new Set([...declaredTargetIds, ...resolvedTargetIds])].sort(),
         };
+    } else if (category === 'block' && action === 'move') {
+        await appendBlockRows(client, args, state);
+        // A move inside one parent changes nothing on the blocks themselves,
+        // only their order; fingerprint the child order of every parent involved.
+        state.siblingOrder = await readMoveSiblingOrder(client, args);
     } else {
         await appendBlockRows(client, args, state);
     }
@@ -597,6 +602,26 @@ async function appendHumanPathState(
         };
     }
     state.fsPaths = pathState;
+}
+
+async function readMoveSiblingOrder(client: SiYuanClient, args: Record<string, unknown>): Promise<Record<string, string[]>> {
+    const ids = [args.id, args.previousID, args.parentID]
+        .filter((value): value is string => typeof value === 'string' && /^\d{14}-[a-z0-9]{7}$/.test(value));
+    if (ids.length === 0) return {};
+    const rows = await searchApi.querySQL(client, `SELECT id, parent_id FROM blocks WHERE id IN (${ids.map(sqlString).join(',')})`);
+    const parents = new Set<string>(typeof args.parentID === 'string' && args.parentID ? [args.parentID] : []);
+    for (const row of Array.isArray(rows) ? rows : []) {
+        if (!isRecord(row) || row.id === args.parentID) continue;
+        if (typeof row.parent_id === 'string' && row.parent_id) parents.add(row.parent_id);
+    }
+    const order: Record<string, string[]> = {};
+    for (const parent of [...parents].sort()) {
+        const children = await blockApi.getChildBlocks(client, parent).catch(() => []);
+        order[parent] = (Array.isArray(children) ? children : [])
+            .map((child) => (isRecord(child) && typeof child.id === 'string' ? child.id : ''))
+            .filter(Boolean);
+    }
+    return order;
 }
 
 async function appendBlockRows(

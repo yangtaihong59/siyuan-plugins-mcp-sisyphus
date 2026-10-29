@@ -42,6 +42,7 @@ export function formatIssueMessage(issue: ZodIssue, rawArgs?: Record<string, unk
     const allowed = (issue as { values?: unknown }).values;
     if (Array.isArray(allowed) && allowed.length > 0 && allowed.length <= 30) {
         const list = allowed.map((value) => JSON.stringify(value)).join(', ');
+        if (path && valueAtPath === undefined) return `${path} is required; use one of: ${list}.`;
         return path ? `${path} must be one of: ${list}.` : `Must be one of: ${list}.`;
     }
 

@@ -53,6 +53,7 @@ const SUCCESS_KEEP_KEYS = new Set([
     'reason',
     'warning',
     'skippedComplexBlocks',
+    'restoredAttrs',
     'recommendedTools',
     // flashcard and timeline write identities.
     'deckID',

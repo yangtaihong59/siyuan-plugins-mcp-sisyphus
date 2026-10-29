@@ -33,10 +33,10 @@ export interface ParsedArgs {
 const HELP_TEXT = `${PRIMARY_CLI_COMMAND} — Direct command-line control for SiYuan Note
 
 Agent bootstrap:
-  If you are an AI model or coding agent, run \`${PRIMARY_CLI_COMMAND} skill install\`
-  before using this CLI for SiYuan work. The bundled skills contain the
-  task-specific guidance for safe search, reading, editing, export, database,
-  tag, flashcard, and system operations.
+  Optional for AI models and coding agents: \`${PRIMARY_CLI_COMMAND} skill install\`
+  copies bundled skills (task guidance for search, reading, editing, export,
+  database, tag, flashcard, and system work) into your agent's skills folder
+  (see \`skill install --help\`). Every command also works without them.
 
 Commands:
   ${PRIMARY_CLI_COMMAND} <tool> <action> [--flag value ...]   Execute a SiYuan operation

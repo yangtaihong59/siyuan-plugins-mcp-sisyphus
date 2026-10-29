@@ -301,6 +301,42 @@ describe('write safety coordinator', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
+    it('reports a reorder inside one parent as committed, not no_change', async () => {
+        const [doc, a, b] = ['20260812000000-doc0000', '20260812000000-aaaaaaa', '20260812000000-bbbbbbb'];
+        let order = [a, b];
+        const client = {
+            readFile: vi.fn(async () => { throw requestError('HTTP error: 404 Not Found'); }),
+            writeFile: vi.fn(async () => undefined),
+            requestRead: vi.fn(async (endpoint: string, body?: { id?: string; stmt?: string }) => {
+                if (endpoint === '/api/block/checkBlockExist') return true;
+                if (endpoint === '/api/block/getBlockInfo') return { id: body?.id, box: 'nb-1', rootID: doc };
+                if (endpoint === '/api/attr/getBlockAttrs') return {};
+                if (endpoint === '/api/block/getBlockKramdown') return { kramdown: 'text' };
+                if (endpoint === '/api/block/getChildBlocks') return body?.id === doc ? order.map((id) => ({ id, type: 'p' })) : [];
+                if (endpoint === '/api/block/getBlockDOM') return { dom: '<div>text</div>' };
+                if (endpoint === '/api/query/sql' && body?.stmt?.includes('parent_id')) return [{ id: a, parent_id: doc }, { id: b, parent_id: doc }];
+                return [];
+            }),
+        } as never;
+        const permMgr = createMockPermissionManager();
+        permMgr.getAll = vi.fn(() => ({ 'nb-1': 'rwd' }));
+        const coordinator = new WriteSafetyCoordinator(client);
+        const args = { action: 'move', id: a, previousID: b };
+        const preflight = parseResult(await coordinator.run({
+            client, permMgr, category: 'block', action: 'move', strictMode: true,
+            args: { ...args, validateOnly: true }, execute: vi.fn(),
+        }));
+        const execute = vi.fn(async () => { order = [b, a]; return success({ id: a }); });
+        const result = parseResult(await coordinator.run({
+            client, permMgr, category: 'block', action: 'move', strictMode: true,
+            args: { ...args, requestId: preflight.requestId, expectedStructureHash: preflight.expectedStructureHash }, execute,
+        }));
+
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(result.safety.transactionState).toBe('committed');
+        expect(result.safety.previousHash).not.toBe(result.safety.resultHash);
+    });
+
     it.each([
         ['commit', 1], ['drift', 1], ['unchanged', 1],
         ['commit', 11], ['drift', 11], ['unchanged', 11],
