@@ -1,4 +1,4 @@
-import { getActionTier, isDangerousAction, type ActionTier, type ToolCategory } from '../../core/config';
+import { ACTIONS_BY_CATEGORY, getActionTier, isDangerousAction, type ActionTier, type ToolCategory } from '../../core/config';
 import { TOOL_ACTION_EXAMPLES, TOOL_ACTION_HINTS, TOOL_GUIDANCE_BY_CATEGORY, type HelpExample } from '../../core/help';
 import { getActionSafetyPolicy } from '../../core/write-safety-policy';
 import { WRITE_WORKFLOW_STEPS } from '../../core/write-preflight';
@@ -231,6 +231,17 @@ export function buildHelpIndex<Action extends string>(
     };
 }
 
+/**
+ * Tool guidance is written per tool; most lines name one action. Action help
+ * keeps the lines about this action plus the general ones, instead of every
+ * other action's caveats.
+ */
+function guidanceForAction(lines: readonly string[], action: string, actions: string[]): string[] {
+    const mentions = (line: string, name: string) => new RegExp(`(^|[^A-Za-z_-])(${name}|${name.replace(/_/g, '-')})(?![A-Za-z_-])`).test(line);
+    const others = [...new Set(actions)].filter((name) => name !== action);
+    return lines.filter((line) => mentions(line, action) || !others.some((name) => mentions(line, name)));
+}
+
 export function buildActionHelp<Action extends string>(
     category: ToolCategory,
     action: Action,
@@ -254,7 +265,7 @@ export function buildActionHelp<Action extends string>(
         parameters: matching.length === 1 ? matching[0].schema : matching.map((variant) => variant.schema),
         example,
         ...(curatedExamples.length > 0 ? { examples: curatedExamples } : {}),
-        guidance: TOOL_GUIDANCE_BY_CATEGORY[category] ?? [],
+        guidance: guidanceForAction(TOOL_GUIDANCE_BY_CATEGORY[category] ?? [], action, [...ACTIONS_BY_CATEGORY[category]]),
         requiresConfirmation: isDangerousAction(category, action),
         ...(getActionSafetyPolicy(category, action).mode === 'mutation'
             ? { writeWorkflow: [...WRITE_WORKFLOW_STEPS] }

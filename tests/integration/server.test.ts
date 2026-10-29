@@ -621,7 +621,9 @@ describe('MCP Server Integration', () => {
         it('keeps block update details available in action help', async () => {
             const result = await client.callTool({ name: 'block', arguments: { action: 'help', topic: 'update' } });
             const help = JSON.parse((result.content[0] as { text: string }).text);
-            expect(help.guidance).toEqual(BLOCK_GUIDANCE);
+            // Action help keeps this action's guidance and the general lines only.
+            expect(BLOCK_GUIDANCE).toEqual(expect.arrayContaining(help.guidance));
+            for (const line of BLOCK_GUIDANCE.filter((item) => /\bupdate\b/.test(item))) expect(help.guidance).toContain(line);
             expect(help.hint).toBe(BLOCK_ACTION_HINTS.update);
             expect(help.parameters.properties.data).toBeDefined();
         });

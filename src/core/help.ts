@@ -91,7 +91,7 @@ export const AV_GUIDANCE: string[] = [
 
 export const FILE_GUIDANCE: string[] = [
     'file(action="upload_asset") reads a local file path and uploads that file into SiYuan assets. Because it reads the local filesystem, it requires explicit user confirmation before execution.',
-    'If the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.',
+    'For upload_asset: if the file is larger than the configured large-upload threshold (10 MB by default), MCP must stop and ask the user for explicit confirmation before retrying with confirmLargeFile=true.',
     'file(action="export_resources") exports the given paths as a ZIP archive, normalizes common asset path formats, and can optionally save the ZIP to a local filesystem path.',
     'file(action="export_resources", outputPath=...) writes to the local filesystem and requires explicit user confirmation before execution.',
     'Use file(action="list_templates") before rendering when you need to discover valid workspace template paths under data/templates.',
@@ -390,6 +390,13 @@ export interface HelpExample {
 
 export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, HelpExample[]>>> = {
     document: {
+        move: [
+            {
+                title: 'Move documents under another document by ID',
+                description: 'fromIDs move under toID (a document ID, or a notebook ID for its root). Moves are delete-level: every notebook involved needs rwd.',
+                mcp: { action: 'move', fromIDs: ['20240318112233-doc0002'], toID: '20240318112233-doc0001', validateOnly: true },
+            },
+        ],
         heading_to_doc: [
             {
                 title: 'Split a heading into a child document of its source',
@@ -635,6 +642,17 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     file: {
+        export_markdown_snapshot: [
+            {
+                title: 'Export a document and every descendant as Markdown',
+                description: 'roots takes notebook-local storage paths (from document lookup); each documents[] item carries content (the Markdown) plus hashes. Follow the cursor for further pages.',
+                mcp: { action: 'export_markdown_snapshot', notebookID: '20240318112233-nb00001', roots: ['/20240318112233-doc0001.sy'] },
+            },
+            {
+                title: 'Export specific documents only',
+                mcp: { action: 'export_markdown_snapshot', notebookID: '20240318112233-nb00001', documentIDs: ['20240318112233-doc0001'] },
+            },
+        ],
         upload_asset: [
             {
                 title: 'Upload a local file with canonical fields',

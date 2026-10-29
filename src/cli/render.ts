@@ -428,6 +428,19 @@ function renderNamedValue(key: string, value: unknown, out: OutputStream): void 
     writeLine(out, `  ${formatScalar(value)}`);
 }
 
+function renderTreeItems(values: unknown[], depth: number, out: OutputStream): void {
+    const pad = '  '.repeat(depth);
+    for (const value of values) {
+        if (!isObject(value)) continue;
+        const label = [value.name ?? value.title ?? value.hPath ?? value.path, value.id ? `(${String(value.id)})` : '']
+            .filter(Boolean).join(' ');
+        const children = Array.isArray(value.children) ? value.children : [];
+        const hidden = typeof value.childCount === 'number' && value.childrenTruncated ? ` · ${value.childCount} more below (raise maxDepth)` : '';
+        writeLine(out, `${pad}• ${String(label)}${hidden}`);
+        renderTreeItems(children, depth + 1, out);
+    }
+}
+
 function renderArrayBlock(
     values: unknown[],
     title: string,
@@ -441,6 +454,12 @@ function renderArrayBlock(
     }
 
     writeSection(title, out);
+
+    // Document trees nest `children`; flat summaries hid every level below the first.
+    if (values.some((value) => isObject(value) && Array.isArray(value.children))) {
+        renderTreeItems(values, 1, out);
+        return;
+    }
 
     const maxItems = options.maxItems ?? 10;
     const visible = values.slice(0, maxItems);

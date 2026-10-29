@@ -170,6 +170,8 @@ function shouldBypassSlimming(ctx: SlimContext): boolean {
         // Explicit projections and indexed statistics are the query contract.
         || (ctx.category === 'document' && ctx.action === 'query')
         || (ctx.category === 'file' && ctx.action === 'read_image')
+        // The export page IS the documents' Markdown; item slimming dropped content.
+        || (ctx.category === 'file' && ctx.action === 'export_markdown_snapshot')
         || (ctx.category === 'search' && ctx.action === 'query_sql')
         || ctx.action === 'help'
         || (ctx.category === 'system' && ctx.action === 'conf');

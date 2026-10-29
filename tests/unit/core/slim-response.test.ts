@@ -32,6 +32,12 @@ describe('slim document-window responses', () => {
         expect(slimToolResult(original, { category: 'document', action: 'ensure_link_targets' })).toEqual(original);
     });
 
+    it('preserves the Markdown content of an export snapshot page', () => {
+        const payload = { kind: 'markdown_snapshot', documents: [{ id: 'doc', relativePath: 'Doc [doc].md', content: '# Body', contentHash: 'sha256:v1:x' }] };
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify(payload) }] };
+        expect(slimToolResult(result, { category: 'file', action: 'export_markdown_snapshot' })).toEqual(result);
+    });
+
     it('preserves read_image metadata, structured content, and the image block verbatim', () => {
         const original = {
             content: [
