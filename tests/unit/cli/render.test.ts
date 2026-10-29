@@ -369,10 +369,10 @@ describe('flattenAvRowCells', () => {
         const { flattenAvRowCells } = await import('@/cli/render');
         const payload = {
             rows: [{ rowID: 'r1', cells: {
-                c1: { value: '原则', formatted: '原则' },
-                c2: { value: [{ content: '读完', color: '' }] },
-                c3: { value: 9, formatted: '9' },
-                c4: { value: { id: 'x', type: 'select' } },
+                c1: { type: 'block', value: '原则', formatted: '原则' },
+                c2: { type: 'select', value: ['读完'], formatted: '读完' },
+                c3: { type: 'number', value: 9, formatted: '9' },
+                c4: { type: 'select', value: [], formatted: '' },
             } }],
             columns: [{ name: '书名', columnID: 'c1' }, { name: '状态', columnID: 'c2' }, { name: '评分', columnID: 'c3' }, { name: '单选', columnID: 'c4' }],
         };

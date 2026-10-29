@@ -30,15 +30,13 @@ export interface AvQueryColumn {
     type?: string;
 }
 
-export interface AvQueryCell {
-    value: unknown;
-    formatted?: string;
-}
+export type { AvCanonicalCell as AvQueryCell } from './cell-shape';
+import type { AvCanonicalCell } from './cell-shape';
 
 export interface AvQueryRow {
     rowID?: string;
     groupID?: string;
-    cells: Record<string, AvQueryCell>;
+    cells: Record<string, AvCanonicalCell>;
 }
 
 export interface AvViewItems {
@@ -228,6 +226,32 @@ export function pickString(record: Record<string, unknown>, keys: string[]): str
         if (typeof value === 'string' && value.length > 0) return value;
     }
     return undefined;
+}
+
+/**
+ * The primary key (block) column displays value.block.content. A detached
+ * row's key is written as a block value; a bound row's key is the bound
+ * block's own content and cannot be set through a cell write.
+ */
+export function primaryKeyCellIssue(avData: unknown, cell: { rowID?: unknown; columnID?: unknown; valueType?: unknown }): string | undefined {
+    const entry = extractKeyValueEntries(avData).find((item) => item.key.id === cell.columnID);
+    if (entry?.key.type !== 'block') return undefined;
+    if (cell.valueType !== 'text') return `Column "${String(cell.columnID)}" is the primary key; set it with valueType="text" and text.`;
+    const value = entry.values.find((item) => item.blockID === cell.rowID);
+    if (value && value.isDetached !== true) {
+        const source = asRecord(value.block)?.id;
+        return `Row "${String(cell.rowID)}" is bound to block ${typeof source === 'string' ? source : '(unknown)'}; its primary key shows that block's content. Edit the block (block update) instead.`;
+    }
+    return undefined;
+}
+
+/** Kernel value for a set_cells/add_rows cell, honoring the primary-key (block) column. */
+export function buildCellValueForColumn(avData: unknown, columnID: string, rowID: string, input: StrongCellValueInput): Record<string, unknown> {
+    const keyType = extractKeyValueEntries(avData).find((item) => item.key.id === columnID)?.key.type;
+    if (keyType === 'block' && input.valueType === 'text') {
+        return { keyID: columnID, blockID: rowID, type: 'block', isDetached: true, block: { content: input.text } };
+    }
+    return buildStrongCellValue(columnID, rowID, input);
 }
 
 export function buildStrongCellValue(

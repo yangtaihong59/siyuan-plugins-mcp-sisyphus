@@ -11,6 +11,7 @@ import { createResultResolutionCache, resolveDocumentContextById, resolveResultI
 import { computePageCount } from '../internal/pagination';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createJsonResult, type ToolResult } from '../internal/shared';
+import { toCanonicalAvCell } from './cell-shape';
 import { ATTRIBUTE_VIEW_DIR, ATTRIBUTE_VIEW_ID_PATTERN, type AvQueryCell, type AvQueryColumn, type AvQueryRow, type AvViewItems, asRecord, extractAttributeViewKeysFromData, getStringField, pickString } from './definition';
 import { ensurePermissionForAvId, listVerifiedAvCarrierBlockIds, readViewSelection } from './carrier';
 import { extractAvRowLookup, extractSourceBlockIdFromBlockValue } from './rows';
@@ -120,70 +121,6 @@ async function searchAttributeViewPrimaryKeys(
     return results;
 }
 
-function normalizeAvValue(value: unknown): unknown {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-    const record = value as Record<string, unknown>;
-    // 内核 Value 对象的内容在类型子对象里：text/number/date 等标量类解包出
-    // content/checked，多值/引用类（mSelect/relation/block 等）原样返回
-    for (const key of ['text', 'number', 'date', 'url', 'email', 'phone', 'template', 'created', 'updated', 'checkbox']) {
-        const sub = record[key];
-        if (sub !== undefined && sub !== null) {
-            if (typeof sub === 'object' && !Array.isArray(sub)) {
-                const subRecord = sub as Record<string, unknown>;
-                // An unset number cell is { content: 0, isNotEmpty: false }: report it as empty, not 0.
-                if (key === 'number' && subRecord.isNotEmpty === false) return null;
-                if ('content' in subRecord) return subRecord.content;
-                if ('checked' in subRecord) return subRecord.checked;
-            }
-            return sub;
-        }
-    }
-    for (const key of ['mSelect', 'select', 'block', 'relation', 'rollup', 'mAsset']) {
-        if (record[key] !== undefined && record[key] !== null) return record[key];
-    }
-    return value;
-}
-
-function pickFormattedContent(record: Record<string, unknown> | undefined): string | undefined {
-    if (!record) return undefined;
-    if (typeof record.formattedContent === 'string' && record.formattedContent) {
-        return record.formattedContent;
-    }
-    // The kernel stores date/number/created/updated display text inside the
-    // typed value object: value.date.formattedContent. Checking only the
-    // wrapper's top level silently drops real kernel formatting.
-    for (const key of ['date', 'created', 'updated', 'number', 'text', 'url', 'email', 'phone', 'checkbox']) {
-        const nested = record[key];
-        if (!nested || typeof nested !== 'object' || Array.isArray(nested)) continue;
-        const formatted = (nested as Record<string, unknown>).formattedContent;
-        if (typeof formatted === 'string' && formatted) return formatted;
-    }
-    return undefined;
-}
-
-function normalizeAvCellValue(value: unknown): AvQueryCell {
-    const record = value && typeof value === 'object' && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
-    if (!record) return { value };
-    const inner = record.value && typeof record.value === 'object' && !Array.isArray(record.value)
-        ? record.value as Record<string, unknown>
-        : undefined;
-    const source = inner ?? record;
-    const raw = normalizeAvValue(source);
-    // Reuse the kernel's formattedContent when present. Do not invent date or
-    // option formatting: the canonical value stays raw and callers can still
-    // request get(scope="raw") for the complete native payload. Inspect both
-    // the rendered-cell wrapper and its nested value so neither layer loses
-    // formatting.
-    const kernelFormatted = pickFormattedContent(inner) ?? pickFormattedContent(record);
-    const scalarFormatted = source.date === undefined && (
-        typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean'
-    ) ? String(raw) : undefined;
-    const formatted = kernelFormatted ?? scalarFormatted;
-    return { value: raw, ...(formatted !== undefined ? { formatted } : {}) };
-}
-
 function extractAvQueryColumns(responseObj: Record<string, unknown>): AvQueryColumn[] {
     const candidates = [responseObj.columns, responseObj.keys, responseObj.keyValues, responseObj.attributeViewKeys];
     for (const candidate of candidates) {
@@ -209,6 +146,7 @@ function extractAvQueryRows(
     rows: unknown[],
     groupIDs: Array<string | undefined> = [],
     projectedFields?: ReadonlySet<string>,
+    columnTypes: ReadonlyMap<string, string> = new Map(),
 ): AvQueryRow[] {
     return rows.flatMap((row, index) => {
         if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
@@ -244,7 +182,7 @@ function extractAvQueryRows(
             if (projectedFields && !projectedFields.has(columnID)) continue;
             // Pass the complete rendered cell, not only its inner value, so
             // wrapper-level formattedContent survives projection.
-            cells[columnID] = normalizeAvCellValue(cell);
+            cells[columnID] = toCanonicalAvCell(cell, columnTypes.get(columnID));
         }
         if (!rowID && Object.keys(cells).length === 0) return [];
         const groupID = groupIDs[index];
@@ -447,7 +385,8 @@ export async function handleQuery(context: ToolHandlerContext): Promise<ToolResu
             }]);
         }
     }
-    const rows = extractAvQueryRows(rawRows, groupIDs, projectedFields);
+    const columnTypes = new Map(columns.flatMap((column) => column.type ? [[column.columnID, column.type] as [string, string]] : []));
+    const rows = extractAvQueryRows(rawRows, groupIDs, projectedFields, columnTypes);
     const projectedColumns = projectedFields
         ? columns.filter((column) => projectedFields.has(column.columnID))
         : columns;
@@ -459,18 +398,18 @@ export async function handleQuery(context: ToolHandlerContext): Promise<ToolResu
     if (state.next) steps.push({ purpose: 'continue_read', tool: 'av', arguments: state.next });
     steps.push({ purpose: 'read_database', tool: 'av', arguments: { action: 'get', avID: effectiveAvID, ...(parsed.blockID ? { blockID: parsed.blockID } : {}) } });
     const nextSteps = await availableReadSteps(client, steps);
-    // One canonical rows array. Cells are projected by stable columnID, with
-    // the raw value and the kernel-provided formatted text (when available).
-    // The complete native payload remains available through get(scope="raw").
+    // One canonical rows array. Cells are projected by stable columnID as
+    // { type, value, formatted } (see cell-shape.ts). The complete native
+    // payload remains available through get(scope="raw").
     return createJsonResult({
         avID: effectiveAvID,
         id: effectiveAvID,
-        structureVersion: 2,
+        structureVersion: 3,
         ...(pickString(selectedView, ['type']) ?? getStringField(responseObj, ['viewType'])
             ? { viewType: pickString(selectedView, ['type']) ?? getStringField(responseObj, ['viewType']) }
             : {}),
         rows,
-        columns: projectedColumns,
+        ...(parsed.includeColumns === false ? {} : { columns: projectedColumns }),
         ...(groups.length > 0 ? { groups } : {}),
         total,
         page,
@@ -495,11 +434,6 @@ export async function handleQuery(context: ToolHandlerContext): Promise<ToolResu
         }),
         ...(nextSteps.length ? { nextSteps } : {}),
         ...selection,
-        migration: {
-            fromVersion: 1,
-            toVersion: 2,
-            note: 'query rows now use one rows[] array; cells map columnID to { value, formatted }. The previous data/table/view.row duplicates were removed. Use get(scope="raw") for the complete native AV payload.',
-        },
     });
 }
 
@@ -545,12 +479,27 @@ async function handleGetPrimaryKeyValues({ client, permMgr, rawArgs }: ToolHandl
         ? [{ purpose: 'continue_read', tool: 'av', arguments: { ...parsed, page: page + 1, pageSize } }]
         : [];
     const nextSteps = await availableReadSteps(client, steps);
-    const rows = { ...keyValues, values: visibleValues };
+    const key = asRecord(keyValues.key);
+    const columnID = key ? pickString(key, ['id']) : undefined;
+    const lookup = new Map(extractAvRowLookup({ keyValues: [{ ...keyValues, values: visibleValues }] }).rows.map((row) => [row.rowID, row]));
+    // Same canonical row shape as query(mode="rows"): one cell per row for the primary key column.
+    const rows = visibleValues.flatMap((value) => {
+        const rowID = pickString(asRecord(value) ?? {}, ['blockID']);
+        if (!rowID) return [];
+        const binding = lookup.get(rowID);
+        return [{
+            rowID,
+            ...(binding?.sourceBlockID ? { sourceBlockID: binding.sourceBlockID } : {}),
+            ...(binding?.isDetached ? { isDetached: true } : {}),
+            cells: columnID ? { [columnID]: toCanonicalAvCell(value, 'block') } : {},
+        }];
+    });
+    const name = key ? pickString(key, ['name']) : undefined;
     return createJsonResult({
         avID: parsed.avID, name: response.name, blockIDs, rows,
+        ...(parsed.includeColumns === false || !columnID ? {} : { columns: [{ columnID, ...(name ? { name } : {}), type: 'block' }] }),
         ...(totalKnown ? { total, page, pageSize, hasNextPage } : {}),
-        databaseContext: databaseContext(parsed.avID, { columns: 'rows.key', rows: 'resolvedRows' }),
-        resolvedRows: extractAvRowLookup({ keyValues: [rows] }).rows.map(({ valueIDs, ...row }) => row),
+        databaseContext: databaseContext(parsed.avID, { columns: 'columns', rows: 'rows' }),
         readInfo: {
             scope: 'primary_key_query', representation: 'primary_key_values',
             coverage: filteredOutCount || page > 1 || hasNextPage ? 'partial' : !totalKnown ? 'unknown' : 'complete',

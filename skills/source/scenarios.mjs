@@ -256,8 +256,11 @@ Keep these identifiers distinct: AV ID identifies the database; view ID identifi
 ## Mutations
 
 {{call column}}
+{{call rowsWithCells}}
 {{call rows}}
 {{call cells}}
+
+To create rows together with their values (dates included), pass \`rows\` with \`cells\` in one add_rows call (up to 200 rows) instead of adding rows and then calling set_cells per row; set_cells takes many \`cells\` in one call too.
 
 Before writing cells, query the current view and map column names to column IDs. Preserve the declared value type; do not put a date-shaped string into a number/date/select column without using the action’s expected value shape. Query again after mutation. Read {{help av set_cells}} for the current cell schema.
 
@@ -268,6 +271,7 @@ Treat a successful mutation response as provisional until the same view and affe
             render: call('av', 'query', { avID: '<av-id>', page: 1, pageSize: 50 }),
             search: call('av', 'search', { keyword: 'project' }),
             column: call('av', 'add_column', { avID: '<av-id>', keyName: 'Status', keyType: 'select' }),
+            rowsWithCells: call('av', 'add_rows', { avID: '<av-id>', rows: [{ clientKey: 'e1', primaryKeyText: 'Standup', cells: [{ columnID: '<date-column-id>', valueType: 'date', date: '2026-11-05T09:30' }] }] }),
             rows: call('av', 'add_rows', { avID: '<av-id>', viewID: '<view-id>', blockIDs: ['<block-id>'] }),
             cells: call('av', 'set_cells', { avID: '<av-id>', cells: [{ rowID: '<row-id>', columnID: '<column-id>', valueType: 'text', text: 'Done' }] }),
         },

@@ -1,4 +1,5 @@
 /* av row actions: add_rows (incl. composite), remove_rows, set_cells, duplicate_rows. */
+import { BATCH_HINTS } from '../internal/batch-hints';
 import { generateSiYuanNodeId } from '../../shared/siyuan-id';
 import { AV_ADD_ROWS_CONTEXT, assertAvAddRowsStructure, type AvAddRowsContext } from './add-rows-plan';
 import { verifyAvCellsReadback } from './cell-readback';
@@ -9,7 +10,7 @@ import type { TransactionOperation } from '../../api/transaction';
 import { AvAddRowsSchema, AvDuplicateRowsSchema, AvRemoveRowsSchema, AvSetCellsSchema } from './schemas';
 import type { ToolHandlerContext } from '../internal/define-tool';
 import { createWriteSuccessResult, type ToolResult } from '../internal/shared';
-import { AV_TOOL_NAME, type StrongCellValueInput, asRecord, buildStrongCellValue, createAvValidationErrorResult, extractKeyValueEntries, getStringField } from './definition';
+import { AV_TOOL_NAME, type StrongCellValueInput, asRecord, buildCellValueForColumn, buildStrongCellValue, createAvValidationErrorResult, primaryKeyCellIssue, extractKeyValueEntries, getStringField } from './definition';
 import { avWriteSuccess, dispatchAvTransaction, resolveAvTransactionBlockId, withUpdatedOperation } from './transaction';
 import { createAddRowsSyncTimeoutResult, createAvRowIdErrorResult, createDuplicateRowsValidationResult, extractAvRowLookup, validateRowIdForAv, verifyDuplicateRowsRelationDestinations, waitForAddedRows } from './rows';
 import { ensurePermissionForAvId, resolveDuplicateRowsRelationDestinations } from './carrier';
@@ -220,6 +221,8 @@ export async function handleAddRows({ client, permMgr, rawArgs }: ToolHandlerCon
         ...(primaryKeyTexts.length > 0 ? { primaryKeyTexts } : {}),
         rows: resolution.rows,
         added: blockIDs.length + primaryKeyTexts.length,
+        // Detached rows created without cells: the composite rows form adds them with cells in one call.
+        ...(primaryKeyTexts.length > 0 ? { batchHint: BATCH_HINTS.avAddRows } : {}),
     });
 }
 
@@ -365,6 +368,7 @@ async function handleCompositeAddRows(
         added: plan.rows.length,
         cellsWritten: cells.length,
         stage: 'verified',
+        ...(plan.rows.length === 1 ? { batchHint: BATCH_HINTS.avAddRows } : {}),
     });
 }
 
@@ -453,13 +457,17 @@ export async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerCo
         const item = items[index];
         const validatedRowID = validateRowIdForAv(parsed.avID, 'set_cells', rowLookup, item.rowID, isSingleCellCall ? undefined : index);
         if (validatedRowID.ok === false) return validatedRowID.result;
+        const primaryKeyIssue = primaryKeyCellIssue(avData, item);
+        if (primaryKeyIssue) {
+            return createAvValidationErrorResult('set_cells', { reason: 'primary_key_cell', message: `${isSingleCellCall ? '' : `cells[${index}]: `}${primaryKeyIssue} No cell was written.` });
+        }
         if (isSingleCellCall) {
             await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, [{
                 action: 'updateAttrViewCell',
                 avID: parsed.avID,
                 keyID: item.columnID,
                 rowID: validatedRowID.rowID,
-                data: buildStrongCellValue(item.columnID, validatedRowID.rowID, item),
+                data: buildCellValueForColumn(avData, item.columnID, validatedRowID.rowID, item),
             }]);
             return avWriteSuccess(client, parsed.avID, avData, parsed.blockID, {
                 action: 'set_cells',
@@ -467,6 +475,7 @@ export async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerCo
                 rowID: item.rowID,
                 columnID: item.columnID,
                 valueType: item.valueType,
+                batchHint: BATCH_HINTS.avSetCells,
             });
         }
         values.push({
@@ -474,7 +483,7 @@ export async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerCo
             avID: parsed.avID,
             keyID: item.columnID,
             rowID: validatedRowID.rowID,
-            data: buildStrongCellValue(item.columnID, validatedRowID.rowID, item),
+            data: buildCellValueForColumn(avData, item.columnID, validatedRowID.rowID, item),
         });
     }
     await dispatchAvTransaction(client, parsed.avID, avData, parsed.blockID, values);
@@ -483,6 +492,7 @@ export async function handleSetCells({ client, permMgr, rawArgs }: ToolHandlerCo
         action: 'set_cells',
         avID: parsed.avID,
         updated: items.length,
+        ...(items.length === 1 ? { batchHint: BATCH_HINTS.avSetCells } : {}),
     });
 }
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { vi } from 'vitest';
 import { assertAvAddRowsHasInput, assertAvArgumentReferences } from '@/mcp/write-safety-av';
+import { probeCurrentState, probePostWriteState } from '@/mcp/write-safety-probe';
+import { createMockPermissionManager } from '../../helpers/mock-permissions';
 
 const AV = '20260104000000-avaaaaa';
 const CARRIER = '20260104000009-carrier';
@@ -67,5 +70,16 @@ describe('AV preflight reference checks', () => {
         expect(() => assertAvAddRowsHasInput({ avID: AV })).toThrow(/at least one row/);
         expect(() => assertAvAddRowsHasInput({ avID: AV, primaryKeyTexts: [] })).toThrow(/at least one row/);
         expect(() => assertAvAddRowsHasInput({ avID: AV, primaryKeyTexts: ['A'] })).not.toThrow();
+    });
+
+    it('checks references before a write only: a removed row or column is the expected postimage', async () => {
+        const client: any = { requestRead: vi.fn(async (endpoint: string) => endpoint === '/api/av/getAttributeView' ? readback : null) };
+        const policy = { mode: 'mutation', precondition: 'state', validateOnly: true } as const;
+        const permMgr = createMockPermissionManager();
+        permMgr.getAll = vi.fn(() => ({}));
+        const gone = { avID: AV, rowIDs: ['20260104000007-goneaaa'] };
+        await expect(probeCurrentState(client, permMgr, 'av', 'remove_rows', gone, policy)).rejects.toThrow(/rowIDs\[0\]/);
+        await expect(probePostWriteState(client, permMgr, 'av', 'remove_rows', gone, policy, undefined)).resolves.toMatchObject({ hash: expect.any(String) });
+        await expect(probePostWriteState(client, permMgr, 'av', 'remove_column', { avID: AV, keyID: 'k-gone' }, policy, undefined)).resolves.toMatchObject({ hash: expect.any(String) });
     });
 });

@@ -16,7 +16,8 @@ export function verifyAvCellsReadback(args: Record<string, any>, definition: Rec
         if (value) {
             switch (cell.valueType) {
                 case 'text': case 'url': case 'email': case 'phone':
-                    matches = value[cell.valueType]?.content === cell[cell.valueType];
+                    // The primary key (block) column stores its text in block.content.
+                    matches = (column?.key?.type === 'block' && cell.valueType === 'text' ? value.block : value[cell.valueType])?.content === cell[cell.valueType];
                     break;
                 case 'select':
                     matches = same(value.mSelect?.map((option: any) => option.content), [cell.option]);

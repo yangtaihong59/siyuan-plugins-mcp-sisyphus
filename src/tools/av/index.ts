@@ -15,7 +15,7 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
     createZodActionVariant('create', AvCreateSchema, 'Create a new database as parentID\'s last child; replay preserves IDs and creation progress.'),
     createZodActionVariant('update_view', AvUpdateViewSchema, 'Update one carrier-selected view in a single transaction; omitted configurations remain unchanged.'),
     createZodActionVariant('search', AvSearchSchema, 'Search attribute views by name or primary-key values.'),
-    createZodActionVariant('add_rows', AvAddRowsSchema, 'Add bound rows, detached plain-text rows, or composite detached rows with initial cells. Composite rows use one preflight, stable rowIDs, and a persisted stage ledger.'),
+    createZodActionVariant('add_rows', AvAddRowsSchema, 'Add rows. rows:[{clientKey,primaryKeyText,cells}] creates up to 200 rows with their cells (dates included) in one call, with stable rowIDs and a persisted stage ledger; primaryKeyTexts adds text-only rows, blockIDs bound rows.'),
     createZodActionVariant('remove_rows', AvRemoveRowsSchema, 'Remove rows by validated canonical rowIDs, or by srcIDs through the explicitly native interface. Mixing is rejected before any write.'),
     createZodActionVariant('add_column', AvAddColumnSchema, 'Add a column to a database.'),
     createZodActionVariant('remove_column', AvRemoveColumnSchema, 'Remove a column from a database.'),
@@ -34,7 +34,7 @@ export const AV_VARIANTS: ActionVariant<AvAction>[] = [
 
 const avTool = defineTool<AvAction>({
     name: 'av',
-    description: '🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.',
+    description: '🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows (rows with cells in one call) or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.',
     variants: AV_VARIANTS,
     actionSchema: AvActionSchema,
     aggregateOptions: {

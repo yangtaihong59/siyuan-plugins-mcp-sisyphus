@@ -18,6 +18,7 @@ import { safetyError } from '../core/write-safety-error';
 import { type StateProbe, isRecord, sortedUniqueIds } from '../core/write-safety-records';
 import { asRecord } from '../shared/record';
 import { extractAvRowLookup } from '../tools/av/rows';
+import { primaryKeyCellIssue } from '../tools/av/definition';
 
 export function verifyAvViewConfigurationReadback(
     action: string,
@@ -775,6 +776,8 @@ export function assertAvArgumentReferences(action: string, args: Record<string, 
                 const prefix = cells.length > 1 || cell !== args ? `cells[${index}].` : '';
                 requireColumn(`${prefix}columnID`, record.columnID);
                 requireRow(`${prefix}rowID`, record.rowID);
+                const primaryKeyIssue = primaryKeyCellIssue(definition, record);
+                if (primaryKeyIssue) throw safetyError('invalid_arguments', `${prefix}${primaryKeyIssue} No write was attempted.`);
             });
             break;
         }

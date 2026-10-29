@@ -116,7 +116,10 @@ export async function probePostWriteState(
     policy: Extract<ActionSafetyPolicy, { mode: 'mutation' }>,
     before: StateProbe | undefined,
 ): Promise<StateProbe> {
-    let after = await probeCurrentState(client, permMgr, category, action, args, policy);
+    // Reference checks guard the request before it runs; afterwards a removed
+    // row or column is the expected postimage, not an invalid reference.
+    const postWrite = { postWrite: true };
+    let after = await probeCurrentState(client, permMgr, category, action, args, policy, postWrite);
     // AV view configuration is deliberately one dispatch plus one exact raw
     // definition/carrier readback. The kernel persists these settings in the
     // same request; polling would turn a response-loss investigation into
@@ -130,7 +133,7 @@ export async function probePostWriteState(
     // legitimate idempotent/no-op writes to complete promptly.
     for (const delay of [50, 100, 200, 400, 800]) {
         await new Promise((resolve) => setTimeout(resolve, delay));
-        after = await probeCurrentState(client, permMgr, category, action, args, policy);
+        after = await probeCurrentState(client, permMgr, category, action, args, policy, postWrite);
         if (after.hash !== before.hash) break;
     }
     return after;
@@ -219,7 +222,7 @@ export async function probeCurrentState(
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
         state.av = await avApi.getAttributeView(client, args.avID);
-        if (action !== 'create') assertAvArgumentReferences(action, args, state.av);
+        if (action !== 'create' && precomputed?.postWrite !== true) assertAvArgumentReferences(action, args, state.av);
         if (action === 'add_rows' && Array.isArray(args.rows)) {
             // Composite rows write into an existing AV, so the carrier and
             // every column/type/view/group involved in the batch must enter

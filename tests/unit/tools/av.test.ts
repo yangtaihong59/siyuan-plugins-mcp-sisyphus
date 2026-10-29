@@ -5,6 +5,7 @@ import { isDangerousAction } from '@/core/config';
 import { callAvTool, listAvTools } from '@/tools/av';
 import { projectAvStateWithoutColumnOptions } from '@/tools/av/column-handlers';
 import { AV_ADD_ROWS_CONTEXT } from '@/tools/av/add-rows-plan';
+import { BATCH_HINTS } from '@/tools/internal/batch-hints';
 import type { ToolResult } from '@/tools/internal/shared';
 import { withRequestSemantics } from '../../helpers/mock-client';
 import { requestError } from '../../helpers/request-error';
@@ -1836,6 +1837,7 @@ describe('av tool', () => {
         });
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -1843,6 +1845,50 @@ describe('av tool', () => {
             columnID: 'col-1',
             valueType: 'number',
         });
+    });
+
+    it('writes a detached primary key as a block value and rejects a bound row primary key', async () => {
+        const avApi = await import('@/api/av');
+        const transactionApi = await import('@/api/transaction');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: {
+                id: 'av-1',
+                keyValues: [{
+                    key: { id: 'pk', type: 'block' },
+                    values: [
+                        { id: 'v-1', blockID: 'row-1', isDetached: true, block: { content: 'Dentist' } },
+                        { id: 'v-2', blockID: 'row-2', block: { id: 'block-2', content: 'Bound' } },
+                    ],
+                }],
+            },
+        });
+        const detached = await callAvTool(client, { action: 'set_cells', avID: 'av-1', rowID: 'row-1', columnID: 'pk', valueType: 'text', text: 'Dentist (moved)' }, enabledActions('set_cells'), permMgr);
+        expect(detached.isError).toBeUndefined();
+        expect(vi.mocked(transactionApi.performTransactions).mock.calls[0][1][0].doOperations[0].data).toEqual({
+            keyID: 'pk', blockID: 'row-1', type: 'block', isDetached: true, block: { content: 'Dentist (moved)' },
+        });
+        const bound = await callAvTool(client, { action: 'set_cells', avID: 'av-1', rowID: 'row-2', columnID: 'pk', valueType: 'text', text: 'x' }, enabledActions('set_cells'), permMgr);
+        expect(bound.isError).toBe(true);
+        expect(JSON.parse(bound.content[0].text).error).toMatchObject({ type: 'validation_error', reason: 'primary_key_cell' });
+        expect(JSON.parse(bound.content[0].text).error.message).toContain('bound to block block-2');
+    });
+
+    it('adds batchHint to single-cell set_cells only', async () => {
+        const avApi = await import('@/api/av');
+        vi.mocked(avApi.getAttributeView).mockResolvedValue({
+            av: { id: 'av-1', keyValues: [
+                { key: { id: 'pk', type: 'block' }, values: [{ id: 'p1', blockID: 'row-1', block: { id: 'block-1' } }, { id: 'p2', blockID: 'row-2', block: { id: 'block-2' } }] },
+                { key: { id: 'col-1', type: 'number' }, values: [] },
+            ] },
+        });
+        const single = JSON.parse((await callAvTool(client, { action: 'set_cells', avID: 'av-1', rowID: 'row-1', columnID: 'col-1', valueType: 'number', number: 1 }, enabledActions('set_cells'), permMgr)).content[0].text);
+        expect(single.batchHint, JSON.stringify(single)).toBe(BATCH_HINTS.avSetCells);
+        const batch = JSON.parse((await callAvTool(client, { action: 'set_cells', avID: 'av-1', cells: [
+            { rowID: 'row-1', columnID: 'col-1', valueType: 'number', number: 1 },
+            { rowID: 'row-2', columnID: 'col-1', valueType: 'number', number: 2 },
+        ] }, enabledActions('set_cells'), permMgr)).content[0].text);
+        expect(batch.updated).toBe(2);
+        expect(batch.batchHint).toBeUndefined();
     });
 
     it('maps mAsset set_cells input into the kernel value payload', async () => {
@@ -1891,6 +1937,7 @@ describe('av tool', () => {
         });
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -1941,6 +1988,7 @@ describe('av tool', () => {
         });
 
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -2080,6 +2128,7 @@ describe('av tool', () => {
             },
         });
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -2148,6 +2197,7 @@ describe('av tool', () => {
             },
         });
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'set_cells',
             avID: 'av-1',
@@ -3147,6 +3197,7 @@ describe('av tool', () => {
             ],
         });
         expect(JSON.parse(result.content[0].text)).toEqual({
+            batchHint: expect.stringContaining('in one call'),
             success: true,
             action: 'add_rows',
             avID: 'av-1',
@@ -4223,16 +4274,18 @@ describe('av tool', () => {
             avID: 'av-1',
         }, enabledActions('query'), permMgr);
 
-        expect(JSON.parse(result.content[0].text)).toMatchObject({
+        const parsedPk = JSON.parse(result.content[0].text);
+        expect(parsedPk.resolvedRows).toBeUndefined();
+        expect(parsedPk).toMatchObject({
             avID: 'av-1',
             name: '记账',
             blockIDs: ['block-a'],
-            rows: { key: { id: 'primary', type: 'block' }, values: [
-                { id: 'cell-a', blockID: 'row-a', block: { id: 'block-a' } },
-                { id: 'cell-c', blockID: 'row-c', isDetached: true, block: { content: 'Independent' } },
-            ] },
+            rows: [
+                { rowID: 'row-a', sourceBlockID: 'block-a', cells: { primary: { type: 'block', value: '', formatted: '' } } },
+                { rowID: 'row-c', isDetached: true, cells: { primary: { type: 'block', value: 'Independent', formatted: 'Independent' } } },
+            ],
+            columns: [{ columnID: 'primary', type: 'block' }],
             readInfo: { coverage: 'partial', limitations: ['primary_key_only', 'permission_filtered'] },
-            resolvedRows: [{ rowID: 'row-a', sourceBlockID: 'block-a' }, { rowID: 'row-c', isDetached: true }],
             filteredOutCount: 1,
             partial: true,
             reason: 'permission_filtered',
@@ -4249,7 +4302,7 @@ describe('av tool', () => {
 
         const parsed = JSON.parse(result.content[0].text);
         expect(parsed).toMatchObject({
-            structureVersion: 2,
+            structureVersion: 3,
             rows: [],
             columns: [],
             total: 0,
@@ -4308,12 +4361,12 @@ describe('av tool', () => {
         expect(parsed).toMatchObject({
             avID: 'av-1',
             id: 'av-1',
-            structureVersion: 2,
+            structureVersion: 3,
             rows: [{
                 rowID: 'row-1',
                 cells: {
-                    'col-title': { value: 'Paper A', formatted: 'Paper A' },
-                    'col-done': { value: true, formatted: 'true' },
+                    'col-title': { type: 'text', value: 'Paper A', formatted: 'Paper A' },
+                    'col-done': { type: 'checkbox', value: true, formatted: 'true' },
                 },
             }],
             columns: [
@@ -4328,8 +4381,8 @@ describe('av tool', () => {
                 representation: 'database_rows',
                 limitations: expect.arrayContaining(['cells_projected_by_columnID', 'complete_native_payload_requires_get_scope_raw']),
             },
-            migration: { fromVersion: 1, toVersion: 2 },
         });
+        expect(parsed.migration).toBeUndefined();
         expect(parsed.data).toBeUndefined();
         expect(parsed.table).toBeUndefined();
         expect(parsed.view).toBeUndefined();
@@ -4345,7 +4398,7 @@ describe('av tool', () => {
             view: {
                 id: 'view-1',
                 pageSize: 50,
-                columns: [{ id: 'col-date', name: 'Event date', type: 'date' }],
+                columns: [{ id: 'col-date', name: 'Event date', type: 'date' }, { id: 'col-label', name: 'Label', type: 'text' }],
                 rows: [
                     {
                         id: 'row-date',
@@ -4363,7 +4416,7 @@ describe('av tool', () => {
                         id: 'row-wrapper-formatted',
                         cells: [{
                             id: 'val-wrapper',
-                            value: { keyID: 'col-date', blockID: 'row-wrapper-formatted', text: { content: 'fallback' } },
+                            value: { keyID: 'col-label', blockID: 'row-wrapper-formatted', text: { content: 'fallback' } },
                             formattedContent: 'wrapper display text',
                         }],
                     },
@@ -4380,8 +4433,8 @@ describe('av tool', () => {
         const parsed = JSON.parse(result.content[0].text);
 
         expect(parsed.rows).toHaveLength(3);
-        expect(parsed.rows[0].cells['col-date']).toEqual({ value: epoch, formatted: '2026年1月1日' });
-        expect(parsed.rows[1].cells['col-date']).toEqual({ value: 'fallback', formatted: 'wrapper display text' });
+        expect(parsed.rows[0].cells['col-date']).toEqual({ type: 'date', value: epoch, formatted: '2026年1月1日' });
+        expect(parsed.rows[1].cells['col-label']).toEqual({ type: 'text', value: 'fallback', formatted: 'wrapper display text' });
         expect(parsed.rows[2]).toEqual({ rowID: 'row-empty-projection', cells: {} });
         expect(parsed.total).toBe(3);
     });
@@ -4401,8 +4454,8 @@ describe('av tool', () => {
             },
         });
         const parsed = JSON.parse((await callAvTool(client, { action: 'query', avID: 'av-1' }, enabledActions('query'), permMgr)).content[0].text);
-        expect(parsed.rows[0].cells['col-n']).toEqual({ value: null });
-        expect(parsed.rows[1].cells['col-n']).toEqual({ value: 0, formatted: '0' });
+        expect(parsed.rows[0].cells['col-n']).toEqual({ type: 'number', value: null, formatted: '' });
+        expect(parsed.rows[1].cells['col-n']).toEqual({ type: 'number', value: 0, formatted: '0' });
     });
 
     it('projects requested fields on the callTool path while always keeping rowID', async () => {
@@ -4441,7 +4494,7 @@ describe('av tool', () => {
         const parsed = JSON.parse(result.content[0].text);
         expect(result.isError).toBeUndefined();
         expect(parsed.rows).toEqual([
-            { rowID: 'row-1', cells: { 'col-done': { value: true, formatted: 'true' } } },
+            { rowID: 'row-1', cells: { 'col-done': { type: 'checkbox', value: true, formatted: 'true' } } },
         ]);
         expect(parsed.rows[0].cells['col-title']).toBeUndefined();
         expect(parsed.rows[0].cells['col-note']).toBeUndefined();
