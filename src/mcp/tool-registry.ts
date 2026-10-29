@@ -166,6 +166,13 @@ export function listConfiguredToolsForCategory(
     return descriptors.map((descriptor) => decorateStrictWriteSchema(category, descriptor));
 }
 
+/** Detail of the preflight's write-impact preview; stripped before hashing and commit. */
+const WRITE_PREVIEW_PROPERTY = {
+    type: 'string',
+    enum: ['summary', 'full'],
+    description: 'Preflight preview detail; full = complete before/after text.',
+} as const;
+
 function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescriptor): ToolDescriptor {
     const inputSchema = { ...descriptor.inputSchema } as Record<string, any>;
     const properties = { ...(inputSchema.properties ?? {}) };
@@ -183,6 +190,10 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
         type: 'boolean',
         description: 'true: preflight only, no mutation.',
     };
+    // The optional write `preview` detail is deliberately not advertised in
+    // the mounted schema (it would cost ~1.6k chars of the initial payload
+    // budget). Tool schemas allow additional properties, the server
+    // instructions mention it, and per-action branches (help, CLI) carry it.
     for (const precondition of preconditions) {
         const field = PRECONDITION_FIELD[precondition];
         properties[field] = {
@@ -216,6 +227,7 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
                 ...(branch.properties ?? {}),
                 requestId: properties.requestId,
                 validateOnly: properties.validateOnly,
+                preview: WRITE_PREVIEW_PROPERTY,
             };
             const preconditions = mutationPolicies
                 .map((policy) => policy.mode === 'mutation' ? policy.precondition : 'none')

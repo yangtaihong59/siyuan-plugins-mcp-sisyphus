@@ -80,6 +80,19 @@ describe('slim document-window responses', () => {
         expect(JSON.parse(result.content[0].text).preflight).toEqual(preflight);
     });
 
+    it('keeps the write-impact preview verbatim under general slimming', () => {
+        const preview = {
+            detail: 'summary',
+            targets: [{ id: '20260101000000-abcdefg', kind: 'document', title: 'Plans', hPath: '/Plans', notebook: { id: 'nb', name: 'Work', permission: 'rw' } }],
+            changes: [{ kind: 'delete', summary: 'Removes document «Plans».', content: 'kept', markdown: 'kept', rootID: 'kept' }],
+            risk: ['deletes'],
+        };
+        const result = slimToolResult({
+            content: [{ type: 'text', text: JSON.stringify({ action: 'remove', validateOnly: true, requestId: 'r', preview }) }],
+        }, { category: 'document', action: 'remove' });
+        expect(JSON.parse(result.content[0].text).preview).toEqual(preview);
+    });
+
     it('preserves partial batch rename receipts and counts byte-for-byte', () => {
         const payload = {
             success: false,

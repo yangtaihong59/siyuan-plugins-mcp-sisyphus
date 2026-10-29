@@ -291,7 +291,9 @@ function slimObject(payload: Record<string, unknown>, ctx: SlimContext): Record<
 
     const next: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(payload)) {
-        if (key === 'preflight') {
+        // The write-impact preview is already bounded by its own detail
+        // level; generic item slimming would drop its content excerpts.
+        if (key === 'preflight' || key === 'preview') {
             next[key] = value;
             continue;
         }

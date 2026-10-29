@@ -515,9 +515,10 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
     if (Array.isArray(obj.writeWorkflow)) {
         writeSection('Write Flow (two steps)', out);
         writeBulletList([
-            '1. Run the command with --validate-only. Nothing is written; it checks permissions and prints the exact commit command.',
-            '2. Run the printed commit command unchanged (it carries --request-id and any --expected-*-hash).',
-            '3. Read the target back to confirm. A preflight expires after 10 minutes or when the target changes; then preflight again.',
+            '1. Run the command with --validate-only. Nothing is written; it checks permissions, prints a preview of the targets, changes and risk flags, and the exact commit command.',
+            '2. Read the preview and check it matches your intent (add --preview full for complete before/after text). If it does not, do not commit.',
+            '3. Run the printed commit command unchanged (it carries --request-id and any --expected-*-hash).',
+            '4. Read the target back to confirm. A preflight expires after 10 minutes or when the target changes; then preflight again.',
         ], out);
     }
 

@@ -15,6 +15,7 @@ import { applyUiRefresh } from '../internal/ui-refresh';
 import { createReferenceSemanticsHints, hasReferenceSemanticsHints, normalizeDomInlineRefsAndTags, withReferenceSemanticsHints, replaceEditTouchesIndexedInline, replaceSingleKramdownBlockContentInDom } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs, normalizeReplaceEditsRefs } from '../internal/markdown-input';
 import { escapeSqlString } from '../../shared/sql';
+import { preservableAttrs, updateRestoresAttrs } from './preserved-attrs';
 
 
 type RecentUpdatedDocumentSummary = {
@@ -406,13 +407,6 @@ const handleAppend: BlockActionHandler = async ({ client, permMgr, rawArgs }) =>
     }, data)), [{ type: 'reloadProtyle', id: context.documentId }]);
 };
 
-const PRESERVED_ATTR_NAMES = new Set(['name', 'alias', 'memo', 'bookmark']);
-
-function preservableAttrs(attrs: Record<string, string> | null | undefined): Record<string, string> {
-    return Object.fromEntries(Object.entries(attrs ?? {})
-        .filter(([key, value]) => value !== '' && (key.startsWith('custom-') || PRESERVED_ATTR_NAMES.has(key))));
-}
-
 /**
  * updateBlock rebuilds the block from the new Markdown, so user attributes
  * (custom-*, name, alias, memo, bookmark) vanish unless the Markdown carries
@@ -434,7 +428,7 @@ async function updatePreservingAttrs<T>(
 ): Promise<{ result: T; restoredAttrs: Record<string, string[]> }> {
     const kept = new Map<string, Record<string, string>>();
     for (const item of ids) {
-        if (item.dataType !== 'markdown' || /\{:\s/.test(item.data)) continue;
+        if (!updateRestoresAttrs(item.dataType, item.data)) continue;
         const attrs = preservableAttrs(await readAttrsOrNull(client, item.id));
         if (Object.keys(attrs).length > 0) kept.set(item.id, attrs);
     }

@@ -127,6 +127,7 @@ export function mapFlagsToArgs(rest: string[], inputSchema: JsonSchema, context?
 const WRITE_SAFETY_FLAG_SCHEMAS: Record<string, JsonSchema> = {
     requestId: { type: 'string' },
     validateOnly: { type: 'boolean' },
+    preview: { type: 'string', enum: ['summary', 'full'] },
     expectedStateHash: { type: 'string' },
     expectedStructureHash: { type: 'string' },
     expectedValueHash: { type: 'string' },

@@ -15,6 +15,7 @@ export const WRITE_PREFLIGHT_MAX_COMMIT_ARGS_BYTES = 512 * 1024;
 export const WRITE_WORKFLOW_STEPS = [
     'Confirm the user-authorized target and operation scope.',
     'Call the same action with validateOnly=true to obtain preflight.commitArgs.',
+    'Read the returned preview (targets, changes, risk) and confirm it matches the intended change; if not, do not commit. preview="full" returns complete before/after text.',
     'Copy preflight.commitArgs unchanged as the next call arguments; do not edit requestId, hashes, or business fields.',
     'Read the target back or inspect the returned receipt before reporting success.',
 ] as const;
