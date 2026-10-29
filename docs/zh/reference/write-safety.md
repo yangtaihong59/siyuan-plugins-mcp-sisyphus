@@ -126,6 +126,16 @@
 
 被拒绝的一步提交返回 `precondition_required`，附 `error.oneStep: { allowed: false, tier, reason }`，`reason` 为 `setting_off`（仅在发送了 `ifMatch` 时出现）、`tier3`、`missing_if_match`、`if_match_unsupported` 或 `batch_too_large`，消息会指明两步流程（CLI：加 `--validate-only` 重新运行）。开启后，对 1/2 级动作调用 `action="help"` 会附带 `oneStep: { tier, rule }`。
 
+### 一步覆盖写入的风险
+
+第 2 级允许覆盖类写入凭新鲜的 `ifMatch` 一步提交。`ifMatch` 只能证明目标自读取后没有变化，无法发现模型读错、选错了目标块。两步模式下，预检预览可以在写入前拦住这种错误；一步模式下，同一份预览要到写入后才出现在回执中。缓解措施：
+
+- 一步写入默认关闭。
+- 第 2 级写入需要对该目标本身做一次新鲜读取（取得其 `ifMatch`）；批量写入不能一步提交。
+- 危险与结构性写入、超过 20 项的批量写入始终保持两步。
+- 模型对目标没有把握时，随时可以改走两步（`validateOnly`；CLI 为 `--validate-only`）。
+- 可恢复性不同：被移除的文档会复制进思源文件历史，可从那里恢复；被覆盖的块内容在写入时不会另存副本，较旧版本只可能存在于思源定期为已修改文档生成的文件历史快照中（`editor.generateHistoryInterval`）。两者都无法通过本工具撤销。
+
 ## 它提高了什么正确性
 
 - `fs` 路径读回先确认文档的实时存在状态，避免删除后尚未更新的路径或 SQL 索引让成功删除被误报为读回失败。存在性查询失败仍按未知结果处理，不把网络错误当成已删除。

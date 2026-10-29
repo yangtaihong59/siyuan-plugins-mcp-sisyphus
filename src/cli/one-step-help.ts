@@ -76,6 +76,7 @@ export function oneStepWorkspaceLines(config: ToolConfig): string[] {
         `One step only with --if-match from a fresh read: ${all.ifMatch.join(', ') || 'none'}`,
         'Always two steps: every other write (deletes, moves, structure changes, find-replace, tag and database renames, …).',
         `Reads that print If Match: ${ifMatchReads().join(', ')}`,
+        'Risk: --if-match proves the target is unchanged since your read, not that it is the right block; the preview comes after the write, so use --validate-only when unsure.',
         `Batches over ${ONE_STEP_MAX_BATCH} items always use two steps. A one-step receipt shows the preview after the write. Per tool: ${PRIMARY_CLI_COMMAND} help <tool>.`,
     ];
 }

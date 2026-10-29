@@ -138,6 +138,16 @@ A one-step commit skips only the round trip. It still reloads permissions, runs 
 
 A refused one-step commit returns `precondition_required` with `error.oneStep: { allowed: false, tier, reason }`, where `reason` is `setting_off` (only when `ifMatch` was sent), `tier3`, `missing_if_match`, `if_match_unsupported` or `batch_too_large`, and the message names the two-step path (CLI: rerun with `--validate-only`). With one-step on, `action="help"` for a tier-1/2 topic adds `oneStep: { tier, rule }`.
 
+### Risk of one-step overwrites
+
+Tier 2 lets an overwrite commit in one step with a fresh `ifMatch`. `ifMatch` proves the target has not changed since it was read; it cannot catch the model reading and targeting the wrong block. In two-step mode the preflight preview can stop that before anything is written; in one-step mode the same preview only appears in the receipt, after the write. Mitigations:
+
+- One-step is off by default.
+- A tier-2 write needs a fresh read of that exact target (its `ifMatch`); a batch cannot use one step.
+- Dangerous and structural writes, and batches over 20 items, always stay two-step.
+- A model can still choose two steps (`validateOnly`; CLI `--validate-only`) whenever it is unsure of the target.
+- Recovery differs: a removed document is copied into SiYuan file history and can be restored there, but overwritten block content is not saved at write time; an older version may exist only in SiYuan's periodic file history snapshots of changed documents (`editor.generateHistoryInterval`). Neither can be undone through this tool.
+
 ## Correctness properties
 
 - `fs` path readback checks live document existence before reading its block tree. Stale path or SQL indexes no longer turn a successful deletion into a readback failure. A failed existence query still leaves the outcome unknown; a network error never proves deletion.

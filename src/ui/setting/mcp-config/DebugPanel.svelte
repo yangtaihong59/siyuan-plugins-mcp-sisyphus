@@ -37,7 +37,7 @@
                 title: label("write_safety_one_step_title", "One-step Low-risk Writes"),
                 description: label(
                     "write_safety_one_step_desc",
-                    "Off by default. When on, low-risk writes may commit without a preflight, and overwrites may commit with the ifMatch hash returned by a read. Dangerous, structural and large batch writes always keep the two-step preflight.",
+                    "Off by default. When on, low-risk writes may commit without a preflight, and overwrites may commit with the ifMatch hash returned by a read. Dangerous, structural and large batch writes always keep the two-step preflight. Risk: ifMatch only proves the target is unchanged since it was read; it cannot catch a wrong target, and the preview arrives only after the write. When unsure, use the two-step preflight; overwritten block content may only be recoverable from SiYuan's periodic file history snapshots.",
                 ),
             },
             {

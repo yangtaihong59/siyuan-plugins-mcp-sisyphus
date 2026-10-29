@@ -240,6 +240,7 @@ describe('cli/list-help', () => {
             expect(bare.stdout).toMatch(/One step \(no --validate-only needed\): .*document create/);
             expect(bare.stdout).toMatch(/only with --if-match from a fresh read: .*block update/);
             expect(bare.stdout).toContain('Reads that print If Match: block get-kramdown --id');
+            expect(bare.stdout).toContain('not that it is the right block');
 
             const tool = await help('block', undefined, 'low_risk');
             expect(tool.stdout).toContain('One step (no --validate-only needed): insert, prepend, append, set-attrs');
