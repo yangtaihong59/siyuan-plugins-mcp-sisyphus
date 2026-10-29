@@ -452,12 +452,14 @@ export class WriteSafetyCoordinator {
             });
         }
 
-        if (result.isError && category === 'document' && action === 'create' && Array.isArray(args.docs)
-            && parseResultObject(result)?.overallState === 'partial') {
-            // Some documents were created and SiYuan explicitly rejected the
-            // next one; the rest were never sent. The handler's receipt lists
-            // each item, so this is a known partial outcome, not an unknown one.
-            const created = parseResultObject(result)?.created;
+        const orderedBatch = (category === 'document' && action === 'create' && Array.isArray(args.docs))
+            || (category === 'fs' && action === 'mv' && Array.isArray(args.items));
+        if (result.isError && orderedBatch && parseResultObject(result)?.overallState === 'partial') {
+            // Some documents were created (or moved) and SiYuan explicitly
+            // rejected the next one; the rest were never sent. The handler's
+            // receipt lists each item, so this is a known partial outcome.
+            const payload = parseResultObject(result);
+            const created = payload?.created ?? payload?.moved;
             const createdIds = Array.isArray(created) ? created.flatMap((item) => isRecord(item) && typeof item.id === 'string' ? [item.id] : []) : [];
             const safetyResult = {
                 requestId,

@@ -16,9 +16,14 @@ export const FS_VARIANTS: ActionVariant<FsAction>[] = [
     createZodActionVariant('write', FsWriteSchema, 'Create a document, stripping a duplicate leading title heading when present; overwrite=true performs a full body replacement.'),
     createZodActionVariant('replace', FsReplaceSchema, 'Apply exact old/new text replacement edits inside matched non-complex Markdown block DOM without rebuilding the document.'),
     createZodActionVariant('rm', FsRmSchema, 'Delete a document by human-readable path.'),
-    createZodActionVariant('mv', FsMvSchema, 'Move or rename a document by human-readable paths.'),
+    createZodActionVariant('mv', FsMvSchema, 'Move or rename one document by human-readable paths, or up to 20 with items:[{from,to}].'),
     createZodActionVariant('reorder', FsReorderSchema, 'Apply a complete manual order to all visible direct child documents and enable custom sorting.'),
     createZodActionVariant('search', FsSearchSchema, 'Search Markdown lines under a human-readable path.'),
+];
+
+FS_VARIANTS.find((variant) => variant.action === 'mv')!.schema.oneOf = [
+    { required: ['from', 'to'], not: { required: ['items'] } },
+    { required: ['items'], not: { anyOf: [{ required: ['from'] }, { required: ['to'] }] } },
 ];
 
 const fsTool = defineTool<FsAction>({

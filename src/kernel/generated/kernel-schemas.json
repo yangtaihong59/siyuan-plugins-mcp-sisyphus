@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "fs",
-      "description": "📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.\nActions (required fields): ls(path) · tree(path) · read(path) · write(path, markdown) · replace(path, edit) · rm*(path) · mv*(from, to) · reorder(path, orderedPaths) · search(path, query)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📂 Default for Markdown notes at /Notebook/Folder/Doc: browse, read, write, replace, grep, reorder, move, delete. For local edits, copy old text from read into replace; write(overwrite=true) replaces the entire body. Follow nextWindow for more content. Use block/av for native structures or database cells.\nActions (required fields): ls(path) · tree(path) · read(path) · write(path, markdown) · replace(path, edit) · rm*(path) · mv*(from, to | items) · reorder(path, orderedPaths) · search(path, query)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -66,12 +66,36 @@
             "description": "One replacement edit or an array of edits to apply sequentially inside editable non-complex Markdown blocks without rebuilding the document Read action=\"help\", topic=\"<action>\" before constructing this nested value."
           },
           "from": {
-            "type": "string",
-            "description": "Source workspace path, e.g. /Notebook/Folder/Old."
+            "description": "Source workspace path, e.g. /Notebook/Folder/Old.",
+            "type": "string"
           },
           "to": {
-            "type": "string",
-            "description": "Destination workspace path, e.g. /Notebook/Folder/New."
+            "description": "Destination workspace path, e.g. /Notebook/Folder/New.",
+            "type": "string"
+          },
+          "items": {
+            "description": "Batch: up to 20 {from,to}, moved in order; excludes from/to",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            }
           },
           "orderedPaths": {
             "minItems": 1,
@@ -509,7 +533,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Source storage paths returned by document(action=\"lookup\")."
+            "description": "Source storage paths from document(action=\"lookup\"); several in one call."
           },
           "toNotebook": {
             "type": "string"
@@ -522,7 +546,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Document IDs to move; several in one call."
           },
           "toID": {
             "type": "string"
@@ -897,7 +922,7 @@
     },
     {
       "name": "av",
-      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · rename(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "🗃️ Real databases: rows, columns, cells, views, filters, sorts, relations. Find databases with search, inspect schema with get, query rows with query, then add_rows (rows with cells in one call) or set_cells. Reuse columnID and query rowID; sourceBlockID and cell value IDs are different. Never edit database cells through fs/block. Read action help for nested writes.\nActions (required fields): get(avID) · query(avID) · create(parentID) · update_view*(avID, viewID) · search(keyword) · add_rows(avID) · remove_rows(avID) · add_column(avID, keyName, keyType) · remove_column(avID) · rename(avID) · set_cells(avID) · set_column_options*(avID, keyID, options) · duplicate_rows*(avID, sourceRowIDs) · duplicate(avID) · add_view(avID, viewID, layout, name) · set_new_item_templates*(avID, blockID, templates, defaultTemplateID) · create_from_template*(avID, blockID, templateID) · configure_two_way_relation*(avID, blockID, keyID, destinationAvID, backRelationKeyID, sourceName, destinationName) · configure_rollup*(avID, blockID, keyID, relationKeyID, destinationKeyID, calc) · set_relation*(avID, blockID, itemID, keyID, relatedItemIDs)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -968,7 +993,7 @@
             "description": "Keyword to search in attribute view names"
           },
           "fields": {
-            "description": "Optional stable columnIDs to project. Row identity (rowID) is always kept; unrequested cells and columns are omitted.",
+            "description": "columnIDs to project; rowID is always kept.",
             "minItems": 1,
             "maxItems": 200,
             "type": "array",
@@ -976,6 +1001,10 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "includeColumns": {
+            "description": "false omits columns[] (default true).",
+            "type": "boolean"
           },
           "page": {
             "type": "integer",
@@ -1141,14 +1170,14 @@
             }
           },
           "primaryKeyTexts": {
-            "description": "Plain-text primary key values to add as detached rows",
+            "description": "Detached rows without cells; rows also sets cells",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
           "rows": {
-            "description": "Composite detached rows with initial cells. Mutually exclusive with blockIDs and primaryKeyTexts. Each row receives a server-generated stable rowID before any cell write. Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
+            "description": "Up to 200 rows WITH initial cells (dates too) in one call: [{clientKey,primaryKeyText,cells:[{columnID,valueType,...}]}]. Excludes blockIDs/primaryKeyTexts. Read action=\"help\", topic=\"<action>\" before constructing this nested value.",
             "type": "array",
             "items": {
               "type": "object"
@@ -2454,7 +2483,7 @@
             "type": "string"
           },
           "fields": {
-            "description": "Optional stable columnIDs to project. Row identity (rowID) is always kept; unrequested cells and columns are omitted.",
+            "description": "columnIDs to project; rowID is always kept.",
             "minItems": 1,
             "maxItems": 200,
             "type": "array",
@@ -2462,6 +2491,10 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "includeColumns": {
+            "description": "false omits columns[] (default true).",
+            "type": "boolean"
           },
           "page": {
             "type": "integer",
@@ -4327,14 +4360,14 @@
             }
           },
           "primaryKeyTexts": {
-            "description": "Plain-text primary key values to add as detached rows",
+            "description": "Detached rows without cells; rows also sets cells",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
           "rows": {
-            "description": "Composite detached rows with initial cells. Mutually exclusive with blockIDs and primaryKeyTexts. Each row receives a server-generated stable rowID before any cell write.",
+            "description": "Up to 200 rows WITH initial cells (dates too) in one call: [{clientKey,primaryKeyText,cells:[{columnID,valueType,...}]}]. Excludes blockIDs/primaryKeyTexts.",
             "minItems": 1,
             "maxItems": 200,
             "type": "array",
@@ -4524,7 +4557,7 @@
           "avID"
         ],
         "additionalProperties": false,
-        "description": "Add bound rows, detached plain-text rows, or composite detached rows with initial cells. Composite rows use one preflight, stable rowIDs, and a persisted stage ledger."
+        "description": "Add rows. rows:[{clientKey,primaryKeyText,cells}] creates up to 200 rows with their cells (dates included) in one call, with stable rowIDs and a persisted stage ledger; primaryKeyTexts adds text-only rows, blockIDs bound rows."
       },
       "remove_rows": {
         "type": "object",
@@ -6845,7 +6878,7 @@
           "action"
         ],
         "additionalProperties": false,
-        "description": "Move a document to another location"
+        "description": "Move one or more documents to another location"
       },
       "reorder": {
         "type": "object",
@@ -8225,21 +8258,75 @@
             "const": "mv"
           },
           "from": {
-            "type": "string",
-            "description": "Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks."
+            "description": "Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks.",
+            "type": "string"
           },
           "to": {
-            "type": "string",
-            "description": "Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title."
+            "description": "Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title.",
+            "type": "string"
+          },
+          "items": {
+            "description": "Batch: up to 20 {from,to}, moved in order; excludes from/to",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
-          "action",
-          "from",
-          "to"
+          "action"
         ],
         "additionalProperties": false,
-        "description": "Move or rename a document by human-readable paths."
+        "description": "Move or rename one document by human-readable paths, or up to 20 with items:[{from,to}].",
+        "oneOf": [
+          {
+            "required": [
+              "from",
+              "to"
+            ],
+            "not": {
+              "required": [
+                "items"
+              ]
+            }
+          },
+          {
+            "required": [
+              "items"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "from"
+                  ]
+                },
+                {
+                  "required": [
+                    "to"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
       },
       "reorder": {
         "type": "object",

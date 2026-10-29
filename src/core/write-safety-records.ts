@@ -57,7 +57,12 @@ export function collectTargetSelectors(args: Record<string, unknown>): string[] 
     }
     if (Array.isArray(args.items)) {
         for (const item of args.items) {
-            if (isRecord(item) && typeof item.id === 'string' && item.id.trim()) values.add(item.id.trim());
+            if (!isRecord(item)) continue;
+            // items[].id (rename, block update) and items[].from/to (fs mv batch).
+            for (const key of ['id', 'from', 'to']) {
+                const value = item[key];
+                if (typeof value === 'string' && value.trim()) values.add(value.trim());
+            }
         }
     }
     return [...values].sort();
@@ -68,6 +73,16 @@ export function collectPathSelectors(args: Record<string, unknown>): string[] {
     for (const key of ['path', 'from', 'to', 'oldPath', 'hpath']) {
         const value = args[key];
         if (typeof value === 'string' && value.trim()) paths.add(value.trim());
+    }
+    // fs mv batch: items[].from/to are workspace paths too.
+    if (Array.isArray(args.items)) {
+        for (const item of args.items) {
+            if (!isRecord(item)) continue;
+            for (const key of ['from', 'to']) {
+                const value = item[key];
+                if (typeof value === 'string' && value.trim()) paths.add(value.trim());
+            }
+        }
     }
     return [...paths].sort();
 }

@@ -1,3 +1,4 @@
+import { BATCH_HINTS } from '../internal/batch-hints';
 import { prepareDocumentConversion } from './conversion';
 import { handleDocumentQuery } from './query';
 import { availableReadSteps, databaseNote, databaseReadSteps, documentReadInfo, kramdownDatabases, type ReadStep } from '../internal/read-guidance';
@@ -923,7 +924,7 @@ const handleRename: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'write');
         if (denied) return denied;
         await documentApi.renameDocByID(client, parsed.id, parsed.title);
-        return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, title: parsed.title }), [
+        return applyUiRefresh(client, createJsonResult({ success: true, id: parsed.id, title: parsed.title, batchHint: BATCH_HINTS.documentRename }), [
             { type: 'reloadProtyle', id: context.documentId },
             { type: 'reloadFiletree' },
         ]);
@@ -938,6 +939,7 @@ const handleRename: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         notebook: parsed.notebook,
         path: parsed.path,
         title: parsed.title,
+        batchHint: BATCH_HINTS.documentRename,
     }), [{ type: 'reloadFiletree' }]);
 };
 
@@ -1014,7 +1016,7 @@ const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) =
             sourceDocumentIDs.push(context.documentId);
         }
         await documentApi.moveDocsByID(client, parsed.fromIDs, parsed.toID!);
-        return applyUiRefresh(client, createJsonResult({ success: true, fromIDs: parsed.fromIDs, toID: parsed.toID }), [
+        return applyUiRefresh(client, createJsonResult({ success: true, fromIDs: parsed.fromIDs, toID: parsed.toID, ...(parsed.fromIDs.length === 1 ? { batchHint: BATCH_HINTS.documentMove } : {}) }), [
             ...sourceDocumentIDs.map((id) => ({ type: 'reloadProtyle' as const, id })),
             { type: 'reloadFiletree' },
         ]);
@@ -1033,6 +1035,7 @@ const handleMove: DocumentActionHandler = async ({ client, permMgr, rawArgs }) =
         fromPaths: parsed.fromPaths,
         toNotebook: parsed.toNotebook,
         toPath: parsed.toPath,
+        ...(parsed.fromPaths!.length === 1 ? { batchHint: BATCH_HINTS.documentMove } : {}),
     }), [{ type: 'reloadFiletree' }]);
 };
 

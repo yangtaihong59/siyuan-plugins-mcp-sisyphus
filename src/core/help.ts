@@ -181,7 +181,7 @@ export const FS_ACTION_HINTS: Partial<Record<FsAction, string>> = {
     write: 'Creates a missing document. Do not include a leading # Title in markdown; the document title is automatic. Existing pure Markdown documents are protected unless overwrite=true; overwrite refuses documents containing complex SiYuan-native blocks. Use ((id \'title\')) for double-links and #tag# for tags; use advanced tools for database rows, cells, super blocks, embeds, widgets, HTML, and media.',
     replace: 'Edits matched non-complex Markdown blocks by exact old/new matching against the same AI-editable view returned by fs.read. Canonical input is edit={old,new}; shorthand old + new is also accepted. If the document contains complex SiYuan-native blocks, fs.replace skips those blocks and returns skippedComplexBlocks; matches only inside skipped blocks or across block boundaries are rejected without writing. For inline formatting, old should be plain text without Markdown style delimiters such as **, *, `, or ~~; existing DOM inline styles are preserved. Naked ((id)) refs are normalized, and footnotes/siyuan://blocks links are allowed but do not create backlinks. replace_all=true replaces every exact match across editable blocks. Use ((id \'title\')) for new double-links and #tag# for tags.',
     rm: 'Deletes a document by human-readable path. This action requires explicit user confirmation.',
-    mv: 'Moves or renames a document using human-readable paths. It is a delete-level operation: every notebook involved (source and destination, also for a rename within one notebook) needs rwd. This action requires explicit user confirmation.',
+    mv: 'Moves or renames a document using human-readable paths (from + to). To move several, pass items:[{from,to}] (up to 20): every item is resolved first, then moved in order; the first failure stops the batch and the receipt lists moved, failed and not_applied items. It is a delete-level operation: every notebook involved (source and destination, also for a rename within one notebook) needs rwd. This action requires explicit user confirmation.',
     reorder: 'Applies a complete manual order to all visible direct child documents under path. orderedPaths must contain every current child path exactly once; the notebook is switched to custom sorting.',
     search: 'Searches Markdown lines under a human-readable document or folder path. Use regex=true for regular expressions. YAML front matter is not searched; line is 1-based within the body (title heading excluded) and a title hit is reported once with line 0.',
 };
@@ -198,9 +198,9 @@ export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     create: 'Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles. Batch: document(action="create", notebook="<id>", docs=[{"path":"/A","markdown":"…"},{"path":"/A/B"}]) creates up to 20 documents in order (no repeated path; list a parent before its children). The first failure stops the batch; the receipt lists created (with id), failed and not_applied items, so resend only the items that were not created.',
     lookup: 'Look up one reference at a time. Use id, notebook + path (storage path), or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.',
     ensure_link_targets: 'Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.',
-    rename: 'Single mode uses either id + title or notebook + path + title. Batch mode uses items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.',
+    rename: 'Single mode uses either id + title or notebook + path + title. To rename several documents, use one batch call: items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.',
     remove: 'Use either id, or notebook + path (the storage path from lookup). This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + path.',
-    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.',
+    move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath; both lists take several documents, so move a group to one destination in one call. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.',
     reorder: 'Use parentID + orderedIDs. parentID may be a notebook ID or parent document ID, and orderedIDs must contain every visible direct child document ID exactly once. The notebook is switched to custom sorting.',
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
     get_child_docs: 'Use a document ID. Returns direct child documents only.',
@@ -235,7 +235,7 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
 
 export const AV_ACTION_HINTS: Partial<Record<AvAction, string>> = {
     search: 'Searches AV/database definitions by keyword and post-filters unreadable results. Unresolvable matches remain discoverable in unresolvedResults, alongside raw result counts and filtering reasons. Match scope primarily covers AV names plus primary-key fallback results, not arbitrary cell text.',
-    add_rows: 'Rows without cells: use avID + blockIDs for bound rows, or avID + primaryKeyTexts for detached rows. Composite mode: use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}], mutually exclusive with blockIDs/primaryKeyTexts. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows. Cells use the same typed fields as set_cells (e.g. {columnID,valueType:"number",number:9}); see av(action="help", topic="set_cells") for the full valueType table.',
+    add_rows: 'To create rows together with their cells (dates, selects, numbers...), use avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}]: up to 200 rows in one call, no follow-up set_cells needed. Rows without cells: avID + primaryKeyTexts (detached) or avID + blockIDs (bound); these modes are mutually exclusive with rows. Composite rows are preflighted as one batch, receive stable rowIDs before any write, then write initial cells in a second native phase. MCP checkpoints reserved → rows_created → cells_written → verified. A failure after rows exist returns exact rowIDs and a stage; never re-run add_rows for those rows. Cells use the same typed fields as set_cells (e.g. {columnID,valueType:"number",number:9}); see av(action="help", topic="set_cells") for the full valueType table.',
     remove_rows: 'Use avID + rowIDs (canonical AV row item IDs) to remove rows after the server validates every identity against the current AV. srcIDs remains the explicitly native interface and is not an interchangeable alias; mixing rowIDs and srcIDs is rejected before any write. Optional blockID pins a specific registered database block when you need explicit block-view context.',
     add_column: 'Use avID + keyName + keyType, and optionally keyID or blockID. MCP generates keyID automatically when omitted. keyID is the column id: av get/query list the same value as columnID (and id), and set_cells takes it as columnID. Supported keyType values match the 16 SiYuan addable column types, including keyType="mSelect", keyType="mAsset", and keyType="lineNumber". Optional blockID must be a registered database block for this AV if you need to pin a specific block view.',
     remove_column: 'Use avID + keyID, and optionally blockID to target a specific registered database block. removeRelationDest only matters for relation columns.',
@@ -391,6 +391,17 @@ export interface HelpExample {
 
 export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, HelpExample[]>>> = {
     document: {
+        rename: [
+            {
+                title: 'Rename one document',
+                mcp: { action: 'rename', id: '20240318112233-doc0001', title: 'New title', validateOnly: true },
+            },
+            {
+                title: 'Rename several documents in one call',
+                description: 'Up to 50 items, one preflight and one ordered receipt.',
+                mcp: { action: 'rename', items: [{ id: '20240318112233-doc0001', title: '2026-11 Plan' }, { id: '20240318112233-doc0002', title: '2026-11 Notes' }], validateOnly: true },
+            },
+        ],
         remove: [
             { title: 'Remove one document by ID (preflight first)', mcp: { action: 'remove', id: '20240318112233-doc0001', validateOnly: true } },
             { title: 'Remove one document by notebook + storage path', description: 'path is the storage path from document lookup (ends in .sy).', mcp: { action: 'remove', notebook: '20210808180117-czj9bvb', path: '/20240318112233-doc0001.sy', validateOnly: true } },
@@ -401,9 +412,9 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
         move: [
             {
-                title: 'Move documents under another document by ID',
+                title: 'Move several documents under another document in one call',
                 description: 'fromIDs move under toID (a document ID, or a notebook ID for its root). Moves are delete-level: every notebook involved needs rwd.',
-                mcp: { action: 'move', fromIDs: ['20240318112233-doc0002'], toID: '20240318112233-doc0001', validateOnly: true },
+                mcp: { action: 'move', fromIDs: ['20240318112233-doc0002', '20240318112233-doc0003'], toID: '20240318112233-doc0001', validateOnly: true },
             },
         ],
         heading_to_doc: [
@@ -502,6 +513,17 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     fs: {
+        mv: [
+            {
+                title: 'Move or rename one document (preflight first)',
+                mcp: { action: 'mv', from: '/Notebook/Inbox/Draft', to: '/Notebook/Archive/Final', validateOnly: true },
+            },
+            {
+                title: 'Move several documents in one call',
+                description: 'Up to 20 items. All paths are resolved before the first move; a destination cannot be another item\'s source.',
+                mcp: { action: 'mv', items: [{ from: '/Notebook/Inbox/A', to: '/Notebook/Archive/A' }, { from: '/Notebook/Inbox/B', to: '/Notebook/Archive/B 2026' }], validateOnly: true },
+            },
+        ],
         replace: [
             {
                 title: 'Replace exact text with canonical edit object',
@@ -589,6 +611,19 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
     },
     av: {
         add_rows: [
+            {
+                title: 'Add calendar events with their dates in one call (preflight first)',
+                description: 'Each row is created with its cells; no set_cells round trip. A date-only value stores that day; "T09:30" adds a time and endDate makes a range.',
+                mcp: {
+                    action: 'add_rows',
+                    avID: '20240318112233-avdb001',
+                    rows: [
+                        { clientKey: 'e1', primaryKeyText: 'Standup', cells: [{ columnID: '20240318112233-date001', valueType: 'date', date: '2026-11-05T09:30', endDate: '2026-11-05T10:00' }] },
+                        { clientKey: 'e2', primaryKeyText: 'Dentist', cells: [{ columnID: '20240318112233-date001', valueType: 'date', date: '2026-11-07' }, { columnID: '20240318112233-status1', valueType: 'select', option: 'Personal' }] },
+                    ],
+                    validateOnly: true,
+                },
+            },
             {
                 title: 'Add rows and fill their cells in one batch (preflight first)',
                 description: 'Get column IDs from av(action="get"). Each row needs a unique clientKey; primaryKeyText fills the primary key column.',

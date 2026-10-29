@@ -57,10 +57,56 @@ export const FsRmSchema = z.object({
     path: z.string().describe("Human-readable workspace document path. Prefer including the notebook name (e.g., /Notebook/Folder/Doc); omitting it is accepted only when the document uniquely matches across readable notebooks."),
 });
 
+export const FS_MV_MAX_BATCH = 20;
+
+/** Path key for in-batch duplicate checks: trimmed, single slashes, no trailing slash. */
+export function fsMvPathKey(path: string): string {
+    return path.trim().replace(/\/+/g, "/").replace(/(.)\/$/, "$1");
+}
+
+const FsMvItemSchema = z.object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+}).strict();
+
 export const FsMvSchema = z.object({
     action: z.literal("mv"),
-    from: z.string().describe("Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks."),
-    to: z.string().describe("Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title."),
+    from: z.string().optional().describe("Human-readable workspace source document path. Prefer including the notebook name (e.g., /Notebook/Folder/Old); omitting it is accepted only when the source uniquely matches across readable notebooks."),
+    to: z.string().optional().describe("Human-readable workspace destination document path. Prefer including the notebook name (e.g., /Notebook/Folder/New); omitting it is accepted only when the destination parent uniquely matches across readable notebooks. A root-level destination requires /Notebook/Title."),
+    items: z.array(FsMvItemSchema).min(1).max(FS_MV_MAX_BATCH).optional().describe("Batch: up to 20 {from,to}, moved in order; excludes from/to"),
+}).superRefine((value, ctx) => {
+    if (value.items) {
+        if (value.from !== undefined || value.to !== undefined) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "items is mutually exclusive with from and to.", path: ["items"] });
+            return;
+        }
+        const sources = new Map<string, number>();
+        const destinations = new Map<string, number>();
+        value.items.forEach((item, index) => {
+            const from = fsMvPathKey(item.from);
+            const to = fsMvPathKey(item.to);
+            const repeatedFrom = sources.get(from);
+            if (repeatedFrom !== undefined) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: `items[${index}].from repeats items[${repeatedFrom}].from (${item.from}); each document may move once per batch. Nothing was moved.`, path: ["items", index, "from"] });
+            } else sources.set(from, index);
+            const repeatedTo = destinations.get(to);
+            if (repeatedTo !== undefined) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: `items[${index}].to repeats items[${repeatedTo}].to (${item.to}); two documents cannot move to one path. Nothing was moved.`, path: ["items", index, "to"] });
+            } else destinations.set(to, index);
+        });
+        value.items.forEach((item, index) => {
+            const chained = sources.get(fsMvPathKey(item.to));
+            if (chained !== undefined && chained !== index) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: `items[${index}].to is the source of items[${chained}]; chained or swapped moves are not supported in one batch. Nothing was moved.`, path: ["items", index, "to"] });
+            }
+        });
+        return;
+    }
+    for (const key of ["from", "to"] as const) {
+        if (typeof value[key] !== "string" || !value[key]!.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key} is required (or pass items:[{from,to}] for a batch).`, path: [key] });
+        }
+    }
 });
 
 export const FsReorderSchema = z.object({

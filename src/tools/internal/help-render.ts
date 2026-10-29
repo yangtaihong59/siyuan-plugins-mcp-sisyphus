@@ -187,7 +187,21 @@ const ACTION_REQUIRED_ALTERNATIVES: Partial<Record<ToolCategory, Record<string, 
 
 /** Accepted shapes that name a common optional field (help text only; requiredFields is unchanged). */
 const ACTION_SHAPE_OVERRIDES: Partial<Record<ToolCategory, Record<string, string[]>>> = {
-    av: { create: ['parentID', 'parentID + name (database name at creation)'] },
+    av: {
+        create: ['parentID', 'parentID + name (database name at creation)'],
+        add_rows: [
+            'avID + rows:[{clientKey, primaryKeyText, cells:[{columnID, valueType, ...}]}] (rows with their cells, dates included; up to 200 in one call)',
+            'avID + primaryKeyTexts (text-only rows)',
+            'avID + blockIDs (rows bound to existing blocks)',
+        ],
+    },
+    fs: {
+        mv: ['from + to', 'items:[{from, to}] (up to 20 moves in one call)'],
+    },
+    document: {
+        rename: ['id + title', 'notebook + path + title', 'items:[{id, title}] (up to 50 renames in one call)'],
+        move: ['fromIDs + toID (fromIDs takes several documents)', 'fromPaths + toNotebook + toPath (fromPaths takes several documents)'],
+    },
 };
 
 export function getCuratedActionExamples(category: ToolCategory, action: string): HelpExample[] {

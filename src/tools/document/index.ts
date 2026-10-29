@@ -16,7 +16,7 @@ export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
     createZodActionVariant('ensure_link_targets', DocumentEnsureLinkTargetsSchema, 'Resolve, reuse, or create explicitly scoped direct-child document link targets. Existing targets require IDs; titles are never guessed as identities.'),
     createZodActionVariant('rename', DocumentRenameSchema, 'Rename one document, or up to 50 documents through one bounded batch preflight with per-item receipts. Batch items are mutually exclusive with single-document arguments.'),
     createZodActionVariant('remove', DocumentRemoveSchema, 'Delete a document'),
-    createZodActionVariant('move', DocumentMoveSchema, 'Move a document to another location'),
+    createZodActionVariant('move', DocumentMoveSchema, 'Move one or more documents to another location'),
     createZodActionVariant('reorder', DocumentReorderSchema, 'Apply a complete manual order to all visible direct child documents and enable custom sorting.'),
     createZodActionVariant('get_child_blocks', DocumentGetChildBlocksSchema, 'Get top-level blocks of a document'),
     createZodActionVariant('get_child_docs', DocumentGetChildDocsSchema, 'Get child documents'),
@@ -54,7 +54,8 @@ const documentTool = defineTool<DocumentAction>({
         propertyDescriptionOverrides: {
             path: 'create: notebook-local human path such as /Folder/Doc, never including the notebook name. lookup/list_tree/search_docs/rename/remove/move: .sy storage path from document(action="lookup").',
             parentPath: 'Parent for title-based create: notebook-local path (/Folder, no notebook name) or .sy storage path from lookup.',
-            fromPaths: 'Source storage paths returned by document(action="lookup").',
+            fromIDs: 'Document IDs to move; several in one call.',
+            fromPaths: 'Source storage paths from document(action="lookup"); several in one call.',
             toPath: 'Target storage path. Use the storage path of an existing destination document returned by document(action="lookup").',
         },
     },

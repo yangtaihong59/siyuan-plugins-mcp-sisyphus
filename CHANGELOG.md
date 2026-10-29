@@ -8,8 +8,13 @@
 - 存在不可读笔记本时 `query_sql` 改为受限 SQL：只允许白名单表、按可读笔记本过滤结果，执行前做内核 canary 自检，不通过即拒绝（不再整体拒绝，也不会退回不受限执行）；`PRAGMA`、变更语句改报 `permission_denied`
 - 读取结果返回 `ifMatch`，写入可带 `ifMatch` 校验目标未变；新增可选的“低风险一步写入”分级（默认关闭，在安全设置中开启）：新增类可免预检，覆盖类需带匹配的 `ifMatch`（CLI `--if-match`），危险与结构性动作仍须两步
 - `document create` 新增批量 `docs`（最多 20 篇，首个失败即停并给出逐条回执），`document set_attr` 支持 `custom-*` 属性；新增 `av.rename`，`av create` 可直接命名
+- `fs mv` 新增批量 `items:[{from,to}]`（最多 20 条，与 `from`/`to` 互斥，CLI `--items-json`）：先解析全部路径与权限并拒绝同批重复、链式/互换移动和已存在的目标，再按顺序移动，首个失败即停并给出 moved / failed / notApplied 逐条回执；仍需两步预检
+- 批量能力更易发现：`av add_rows` 的 `rows`（一次建行并写入含日期的单元格）、`document rename` 的 `items`、`document move` 的多个 `fromIDs`/`fromPaths` 写进参数说明、帮助与示例；单条 rename / set_cells / mv、单行或无单元格的 add_rows 回执附一句 `batchHint`
+- `av query` 新增可选 `includeColumns`（默认 true，false 时不返回 `columns`）；修复 `set_cells` 写主键列只写入 `text` 而界面仍显示旧值的问题：独立行主键改写为 block 值，绑定块行明确拒绝并提示改块内容；修复 `av remove_rows` / `remove_column` 提交成功后读回时仍按删除前做引用校验、误报 `readback_mismatch` 的问题
 - 按多轮 AI 体验测试修复一批问题：替换或更新块时自定义属性丢失、写入后 SQL 索引滞后、内核明确拒绝归类为 `not_applied`、数据库预检引用校验与 ID 别名（keyID/columnID）、不含时间的日期显示等；CLI 同步提升至 v0.3.0
 - 不兼容变化：`search_refs` 改为按 refs 表返回引用块并移除 `beforeLen`/`isSquareBrackets`/`isDatabase`/`reqId`，`flashcard get_cards` 以 `cardID` 为主，MCP 服务端 `upload_asset` 拒绝相对路径
+- 不兼容变化（数据库读取）：`av query` 每个单元格统一为 `{ type, value, formatted }`（`structureVersion: 3`）——主键/文本为字符串，数字为 number 或 null，日期为毫秒时间戳或 `{start,end}`，单选/多选为选项名数组，关系为行 ID 数组，资源为路径数组；主键不再带内核 `created`/`updated`；`mode="primary_keys"` 同样返回规范 `rows` + `columns`，原生 `rows.values` 与 `resolvedRows` 移除；移除每次返回的 `migration` 说明
+- 不兼容变化（预检回执）：截止时间只保留 `expiresAt`（顶层与 `preflight.expiresAt`），移除 `requestIdExpiresAt`、`leaseExpiresAt` 与 `ttlMs`；目标数只保留 `preflight.counts.targetCount`（原 `counts.guardTargetCount` 改名，即提交时复核状态的不同对象数），移除顶层 `targetCount`
 
 ## v0.6.13 - 2026-10-20
 

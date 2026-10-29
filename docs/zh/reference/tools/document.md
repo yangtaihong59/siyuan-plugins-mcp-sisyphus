@@ -33,6 +33,7 @@
 - `lookup` 返回的 `idPath` 会包含可用的 `id` / `ids`。当同一 hpath 有多个同名文档时，`include: ["ids"]` 会返回全部匹配 ID；内部已包含 SQL 兜底。
 - `rename`、`remove`、`move` 在非 ID 模式下通常需要存储路径。
 - `rename(items:[{id,title}])` 用一次有界预检和一份有序回执重命名最多 50 个文档（序列化输入上限 256 KiB），`items` 与单文档参数互斥。预检拒绝重复 ID、目标冲突、已存在的同级名称、不明确的同级结果、改名循环以及存在父子依赖的批次。每项写入前重新核对；首个失败或未知即停止，后续项为 `not_started`，已完成项不自动回滚。重放原 `requestId` 返回原回执且不补跑；只有已证实 `not_started` 的项才能重新预检提交。
+- `move` 一次可移动多篇：`fromIDs`（或 `fromPaths`）是移到同一目标的列表。单条 `rename` 或 `move` 的回执附一句简短 `batchHint`，指出批量写法。
 - `reorder` 接收笔记本或父文档 `parentID` 与 `orderedIDs`。数组必须把全部可见直属子文档 ID 各包含一次。它会启用笔记本自定义排序（`sortMode: 6`），但不会移动、重命名或修改文档正文。
 - `get_child_docs` 必须传文档 `id`，不接受 `notebook + path`。
 - `list_tree` 使用 `notebook + path`，其中 `path` 是 `/` 或 `/20240318112233-abc123.sy` 这类存储路径，不是人类可读路径。

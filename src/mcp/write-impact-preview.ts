@@ -955,9 +955,7 @@ async function previewDocumentMove(ctx: PreviewContext): Promise<BuilderResult> 
     };
 }
 
-async function previewFsMv(ctx: PreviewContext): Promise<BuilderResult> {
-    const from = ctx.string('from') ?? '';
-    const to = ctx.string('to') ?? '';
+async function describeFsMove(ctx: PreviewContext, from: string, to: string) {
     const entry = fsPathState(ctx, from);
     const row = entry && typeof entry.rootID === 'string' ? await ctx.row(entry.rootID) : undefined;
     const childDocuments = await countChildDocuments(ctx, row);
@@ -966,6 +964,49 @@ async function previewFsMv(ctx: PreviewContext): Promise<BuilderResult> {
     const crossNotebook = (entry?.notebookID && toEntry?.notebookID)
         ? entry.notebookID !== toEntry.notebookID
         : notebookOf(from) !== notebookOf(to);
+    const notes = [
+        ...(entry?.missing === true ? ['the source was not found'] : []),
+        ...(toEntry && toEntry.missing !== true && typeof toEntry.rootID === 'string' && toEntry.rootID !== entry?.rootID ? ['a document already exists at the destination; the commit is rejected'] : []),
+    ];
+    return { childDocuments, crossNotebook, notes };
+}
+
+async function previewFsMv(ctx: PreviewContext): Promise<BuilderResult> {
+    const items = Array.isArray(ctx.args.items) ? ctx.args.items.filter(isRecord) : undefined;
+    if (items) {
+        const changes: WritePreviewChange[] = [];
+        let total = 0;
+        let crossNotebook = false;
+        let flagged = 0;
+        for (const [index, item] of items.entries()) {
+            const from = typeof item.from === 'string' ? item.from : '';
+            const to = typeof item.to === 'string' ? item.to : '';
+            const move = await describeFsMove(ctx, from, to);
+            total += 1 + (move.childDocuments ?? 0);
+            crossNotebook ||= move.crossNotebook;
+            if (move.notes.length > 0) flagged += 1;
+            changes.push({
+                kind: 'move',
+                summary: `[${index}] Moves ${from} to ${to}${move.childDocuments ? ` with its ${move.childDocuments} child document(s)` : ''}.${move.notes.length > 0 ? ` Note: ${move.notes.join('; ')}.` : ''}`,
+                from,
+                to,
+                ...(move.childDocuments !== undefined ? { childDocumentCount: move.childDocuments } : {}),
+            });
+        }
+        changes.unshift({
+            kind: 'move_documents',
+            summary: `Moves ${items.length} document(s), one by one in this order; the first failure stops the batch and the receipt lists moved, failed and not_applied items.${flagged > 0 ? ` ${flagged} item(s) have a note below.` : ''}`,
+        });
+        return {
+            changes,
+            targets: await Promise.all(items.map((item) => fsTarget(ctx, typeof item.from === 'string' ? item.from : ''))),
+            itemCount: total,
+            risk: crossNotebook ? ['cross_notebook'] : [],
+        };
+    }
+    const from = ctx.string('from') ?? '';
+    const to = ctx.string('to') ?? '';
+    const { childDocuments, crossNotebook } = await describeFsMove(ctx, from, to);
     return {
         changes: [{
             kind: 'move',

@@ -83,6 +83,8 @@ const SUCCESS_KEEP_KEYS = new Set([
     'oneStep',
     'ifMatch',
     'ifMatchTarget',
+    // One-line pointer from a single-item write to its batch form.
+    'batchHint',
 ]);
 
 const SAFETY_TOP_LEVEL_KEYS = [
@@ -175,6 +177,8 @@ function shouldBypassSlimming(ctx: SlimContext): boolean {
         // including partial and unknown batches. Generic success/error
         // slimming would drop items[] and make a partial batch unrecoverable.
         || (ctx.category === 'document' && ctx.action === 'rename')
+        // Batch mv receipts (moved / failed / notApplied) are the recovery contract too.
+        || (ctx.category === 'fs' && ctx.action === 'mv')
         // Explicit projections and indexed statistics are the query contract.
         || (ctx.category === 'document' && ctx.action === 'query')
         || (ctx.category === 'file' && ctx.action === 'read_image')

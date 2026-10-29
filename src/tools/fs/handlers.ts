@@ -23,7 +23,10 @@ import {
 } from '../internal/helpers/document-reorder';
 import { applyExactReplaceEdits } from '../internal/replace';
 import { createJsonResult, createPaginatedResult, type ToolResult } from '../internal/shared';
-import { applyUiRefresh } from '../internal/ui-refresh';
+import { applyUiRefresh, type UiRefreshOperation } from '../internal/ui-refresh';
+import { BATCH_HINTS } from '../internal/batch-hints';
+import { isAmbiguousWriteFailure } from '../../api/errors';
+import { ZodError } from 'zod';
 import { applyDocumentKramdownDomReplacements, createReferenceSemanticsHints, stripRedundantTitleHeading } from '../internal/kramdown-safe';
 import {
     createSyntheticDocumentBlockWindow,
@@ -822,23 +825,35 @@ const handleRm: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     ]);
 };
 
-const handleMv: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
-    const parsed = FsMvSchema.parse(rawArgs);
-    assertUserRulesWritable(parsed.from);
-    assertUserRulesWritable(parsed.to);
-    if (getVirtualRootFilePath(parsed.from) === AGENT_MEMORY_VIRTUAL_PATH
-        || getVirtualRootFilePath(parsed.to) === AGENT_MEMORY_VIRTUAL_PATH
-        || getVirtualRootFileDescendantPath(parsed.from) === AGENT_MEMORY_VIRTUAL_PATH
-        || getVirtualRootFileDescendantPath(parsed.to) === AGENT_MEMORY_VIRTUAL_PATH) {
+type FsMvTarget = Awaited<ReturnType<typeof resolveFsDestinationTarget>>;
+type FsMvSource = Awaited<ReturnType<typeof resolveFsScopePath>>;
+
+function assertMvPathsMovable(from: string, to: string): void {
+    assertUserRulesWritable(from);
+    assertUserRulesWritable(to);
+    if (getVirtualRootFilePath(from) === AGENT_MEMORY_VIRTUAL_PATH
+        || getVirtualRootFilePath(to) === AGENT_MEMORY_VIRTUAL_PATH
+        || getVirtualRootFileDescendantPath(from) === AGENT_MEMORY_VIRTUAL_PATH
+        || getVirtualRootFileDescendantPath(to) === AGENT_MEMORY_VIRTUAL_PATH) {
         throw new Error(`${AGENT_MEMORY_VIRTUAL_PATH} is a fixed virtual file and cannot be moved or renamed.`);
     }
-    const source = await resolveFsScopePath(client, permMgr, parsed.from, 'write');
-    if (source.type !== 'document') throw new Error(`fs.mv source must be a document path, got "${parsed.from}".`);
-    const destination = await resolveFsDestinationTarget(client, permMgr, parsed.to);
+}
+
+/** Resolve and authorize one move; returns a permission-denied result instead of throwing. */
+async function resolveMv(
+    client: Parameters<FsActionHandler>[0]['client'],
+    permMgr: Parameters<FsActionHandler>[0]['permMgr'],
+    from: string,
+    to: string,
+): Promise<{ denied: ToolResult } | { source: FsMvSource & { type: 'document' }; destination: FsMvTarget }> {
+    assertMvPathsMovable(from, to);
+    const source = await resolveFsScopePath(client, permMgr, from, 'write');
+    if (source.type !== 'document') throw new Error(`fs.mv source must be a document path, got "${from}".`);
+    const destination = await resolveFsDestinationTarget(client, permMgr, to);
     const sourceDenied = await ensurePermissionForNotebook(permMgr, source.notebook, 'write');
-    if (sourceDenied) return sourceDenied;
+    if (sourceDenied) return { denied: sourceDenied };
     const destinationDenied = await ensurePermissionForNotebook(permMgr, destination.notebook, 'write');
-    if (destinationDenied) return destinationDenied;
+    if (destinationDenied) return { denied: destinationDenied };
     try {
         const existingDestination = await resolveFsScopePath(client, permMgr, destination.canonicalPath, 'write');
         if (existingDestination.type === 'document' && existingDestination.id !== source.id) {
@@ -849,20 +864,146 @@ const handleMv: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
             throw error;
         }
     }
+    return { source: source as FsMvSource & { type: 'document' }, destination };
+}
 
+/** Move then (if the title changes) rename; reports how many writes SiYuan acknowledged. */
+async function executeMv(
+    client: Parameters<FsActionHandler>[0]['client'],
+    source: FsMvSource & { type: 'document' },
+    destination: FsMvTarget,
+    progress: { writes: number },
+): Promise<void> {
     await documentApi.moveDocsByID(client, [source.id], destination.parentId ?? destination.notebook);
+    progress.writes += 1;
     if (source.name !== destination.title) {
         await documentApi.renameDocByID(client, source.id, destination.title);
+        progress.writes += 1;
     }
+}
+
+const handleMv: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
+    const parsed = FsMvSchema.parse(rawArgs);
+    if (parsed.items) return handleBatchMv(client, permMgr, parsed.items);
+    const resolved = await resolveMv(client, permMgr, parsed.from!, parsed.to!);
+    if ('denied' in resolved) return resolved.denied;
+    const { source, destination } = resolved;
+    await executeMv(client, source, destination, { writes: 0 });
     return applyUiRefresh(client, createJsonResult({
         success: true,
         path: source.canonicalPath,
         movedTo: destination.canonicalPath,
+        batchHint: BATCH_HINTS.fsMv,
     }), [
         { type: 'reloadProtyle', id: source.id },
         { type: 'reloadFiletree' },
     ]);
 };
+
+interface BatchMvReceipt {
+    index: number;
+    from: string;
+    to: string;
+    id: string;
+    state: 'moved' | 'not_applied' | 'unknown';
+    error?: string;
+}
+
+function batchMvInvalid(index: number, field: 'from' | 'to', message: string): ZodError {
+    return new ZodError([{ code: 'custom', path: ['items', index, field], message: `${message} Nothing was moved.` }]);
+}
+
+/**
+ * Batch mv: every source, destination and permission is resolved before the
+ * first write, so a bad item fails the whole batch with nothing moved. Moves
+ * then run one by one in order and the first failure stops the batch. When
+ * the first item fails the error propagates unchanged and the coordinator
+ * classifies it (not_applied / unknown); after at least one move the receipt
+ * lists moved, the failed item and the never-sent notApplied items.
+ */
+async function handleBatchMv(
+    client: Parameters<FsActionHandler>[0]['client'],
+    permMgr: Parameters<FsActionHandler>[0]['permMgr'],
+    items: Array<{ from: string; to: string }>,
+): Promise<ToolResult> {
+    const plans: Array<{ source: FsMvSource & { type: 'document' }; destination: FsMvTarget }> = [];
+    for (const [index, item] of items.entries()) {
+        let resolved: Awaited<ReturnType<typeof resolveMv>>;
+        try {
+            resolved = await resolveMv(client, permMgr, item.from, item.to);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw batchMvInvalid(index, /destination|^to\b/i.test(message) ? 'to' : 'from', `items[${index}]: ${message}`);
+        }
+        if ('denied' in resolved) return resolved.denied;
+        plans.push(resolved);
+    }
+    const sources = new Map<string, number>();
+    const destinations = new Map<string, number>();
+    for (const [index, { source, destination }] of plans.entries()) {
+        const seenSource = sources.get(source.id);
+        if (seenSource !== undefined) throw batchMvInvalid(index, 'from', `items[${index}].from resolves to the same document as items[${seenSource}].from (${source.canonicalPath}).`);
+        sources.set(source.id, index);
+        const seenDestination = destinations.get(destination.canonicalPath);
+        if (seenDestination !== undefined) throw batchMvInvalid(index, 'to', `items[${index}].to resolves to the same path as items[${seenDestination}].to (${destination.canonicalPath}).`);
+        destinations.set(destination.canonicalPath, index);
+        if (destination.parentId === source.id) throw batchMvInvalid(index, 'to', `items[${index}] would move ${source.canonicalPath} under itself.`);
+    }
+    for (const [index, { destination }] of plans.entries()) {
+        const other = plans.findIndex(({ source }, otherIndex) => otherIndex !== index && source.canonicalPath === destination.canonicalPath);
+        if (other >= 0) throw batchMvInvalid(index, 'to', `items[${index}].to is the current path of items[${other}].from; chained or swapped moves are not supported in one batch.`);
+    }
+
+    const receipts: BatchMvReceipt[] = plans.map(({ source, destination }, index) => ({
+        index, from: source.canonicalPath, to: destination.canonicalPath, id: source.id, state: 'not_applied',
+    }));
+    let failedAt: number | undefined;
+    for (const [index, receipt] of receipts.entries()) {
+        const progress = { writes: 0 };
+        try {
+            await executeMv(client, plans[index].source, plans[index].destination, progress);
+            receipt.state = 'moved';
+        } catch (error) {
+            if (index === 0) throw error;
+            // A move that landed before its rename failed is half done: never report it as not applied.
+            receipt.state = progress.writes > 0 || isAmbiguousWriteFailure(error) ? 'unknown' : 'not_applied';
+            receipt.error = `${error instanceof Error ? error.message : String(error)}${progress.writes > 0 ? ' (the document was moved but not renamed)' : ''}`;
+            failedAt = index;
+            break;
+        }
+    }
+    const moved = receipts.filter((item) => item.state === 'moved');
+    const refresh: UiRefreshOperation[] = [
+        ...moved.map(({ id }) => ({ type: 'reloadProtyle' as const, id })),
+        { type: 'reloadFiletree' },
+    ];
+    const brief = ({ index, from, to, id }: BatchMvReceipt) => ({ index, from, to, id });
+    if (failedAt === undefined) {
+        return applyUiRefresh(client, createJsonResult({ success: true, count: moved.length, moved: moved.map(brief) }), refresh);
+    }
+    const failed = receipts[failedAt];
+    const skipped = receipts.slice(failedAt + 1);
+    const line = (item: BatchMvReceipt) => `  [${item.index}] ${item.from} → ${item.to}`;
+    const details = [
+        `moved (${moved.length}):`, ...moved.map(line),
+        `failed (${failed.state}): [${failed.index}] ${failed.from} → ${failed.to}: ${failed.error}`,
+        ...(skipped.length > 0 ? [`not_applied, never sent (${skipped.length}):`, ...skipped.map(line)] : []),
+    ].join('\n');
+    const refreshed = await applyUiRefresh(client, createJsonResult({
+        success: false,
+        overallState: failed.state === 'unknown' ? 'unknown' : 'partial',
+        moved: moved.map(brief),
+        failed: { ...brief(failed), state: failed.state, error: failed.error },
+        notApplied: skipped.map(brief),
+        counts: { requested: receipts.length, moved: moved.length, failed: 1, notApplied: skipped.length },
+        error: {
+            type: 'batch_partial',
+            message: `Batch mv stopped at items[${failed.index}] (${failed.from}): ${moved.length} of ${receipts.length} document(s) were moved, items[${failed.index}] is ${failed.state}${skipped.length > 0 ? ` and ${skipped.length} later item(s) were not sent` : ''}. Do not resend the whole batch: ${failed.state === 'unknown' ? `first check where ${failed.from} is now, then ` : ''}send only the items that were not moved.`,
+            details,
+        },
+    }), refresh);
+    return { ...refreshed, isError: true };
+}
 
 const handleReorder: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FsReorderSchema.parse(rawArgs);

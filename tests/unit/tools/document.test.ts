@@ -6,6 +6,7 @@ import { BATCH_RENAME_CONTEXT } from '@/tools/document/batch-rename-plan';
 import { callDocumentTool, DOCUMENT_VARIANTS, listDocumentTools } from '@/tools/document';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
+import { BATCH_HINTS } from '@/tools/internal/batch-hints';
 
 describe('document tool extended actions', () => {
     it('exposes filetree enhancement actions in the grouped schema', () => {
@@ -45,6 +46,7 @@ describe('document.rename batch receipts', () => {
                 if (endpoint === '/api/filetree/getPathByID') {
                     return { notebook: 'nb-1', path: `/${id}.sy` };
                 }
+                if (endpoint === '/api/block/getDocInfo') return { id, rootID: id };
                 if (endpoint === '/api/filetree/getHPathByID') {
                     return id === options.changedHPathID ? '/Changed/Path' : `/${titles[id] ?? id}`;
                 }
@@ -77,6 +79,18 @@ describe('document.rename batch receipts', () => {
             })),
         };
     }
+
+    it('points a single rename at the batch form, and the batch receipt carries no hint', async () => {
+        const { client } = createRenameClient();
+        const single = parseResult(await callDocumentTool(client, { action: 'rename', id: 'a', title: 'Alpha 2' }, buildDefaultToolConfig().document, permMgr as never));
+        expect(single, JSON.stringify(single)).toMatchObject({ success: true, id: 'a', batchHint: BATCH_HINTS.documentRename });
+        const batch = parseResult(await callDocumentTool(client, {
+            action: 'rename',
+            items: [{ id: 'b', title: 'Beta 2' }],
+            [BATCH_RENAME_CONTEXT]: { plan: plan([{ id: 'b', title: 'Beta 2', currentHPath: '/Beta', targetHPath: '/Beta 2' }]), checkpoint: vi.fn(async () => undefined) },
+        } as any, buildDefaultToolConfig().document, permMgr as never));
+        expect(batch.batchHint).toBeUndefined();
+    });
 
     it('commits a bounded batch and returns per-item receipts in one call', async () => {
         const { client, calls } = createRenameClient();
