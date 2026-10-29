@@ -366,6 +366,55 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.backlinks[0].id).toBe('1');
     });
 
+    it.each([
+        { live: 'blocked', denied: true },
+        { live: 'moved-to', denied: false },
+    ])('lookup by id authorizes and reports the live notebook after a move (live=$live)', async ({ live, denied }) => {
+        // The SQL index still says the document is in a readable notebook; the
+        // file tree already has it in its new notebook.
+        vi.spyOn(searchApi, 'querySQL').mockImplementation(async (_client, stmt) => {
+            if (stmt.includes("WHERE id = 'moved-doc'")) {
+                return [{
+                    id: 'moved-doc',
+                    root_id: 'moved-doc',
+                    box: 'allowed',
+                    path: '/moved-doc.sy',
+                    hpath: '/Moved',
+                    content: 'Moved',
+                    type: 'd',
+                }];
+            }
+            return [];
+        });
+        vi.spyOn(blockApi, 'getDocInfo').mockResolvedValue({ id: 'moved-doc', rootID: 'moved-doc', name: 'moved-doc.sy' } as never);
+        vi.spyOn(documentApi, 'getPathByID').mockResolvedValue({ notebook: live, path: '/parent/moved-doc.sy' });
+        vi.spyOn(documentApi, 'getHPathByID').mockResolvedValue('/Parent/Moved');
+        vi.spyOn(notebookApi, 'listNotebooks').mockResolvedValue({
+            notebooks: [
+                { id: 'allowed', name: 'Allowed', closed: false },
+                { id: 'moved-to', name: 'Moved To', closed: false },
+                { id: 'blocked', name: 'Blocked', closed: false },
+            ],
+        } as never);
+
+        const result = await callDocumentTool({} as never, {
+            action: 'lookup',
+            id: 'moved-doc',
+        }, documentConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        if (denied) {
+            expect(result.isError).toBe(true);
+            expect(JSON.stringify(parsed)).toContain('permission_denied');
+            expect(JSON.stringify(parsed)).not.toContain('/Parent/Moved');
+            expect(permMgr.canRead).toHaveBeenCalledWith('blocked');
+        } else {
+            expect(result.isError).toBeUndefined();
+            expect(parsed.idPath).toMatchObject({ id: 'moved-doc', notebook: 'moved-to', path: '/parent/moved-doc.sy' });
+            expect(parsed.humanPath).toMatchObject({ notebookName: 'Moved To', hPath: '/Parent/Moved' });
+        }
+    });
+
     it('filters recent updates before applying count', async () => {
         vi.spyOn(blockApi, 'getRecentUpdatedBlocks').mockResolvedValue([
             { id: '1', box: 'allowed', root_id: 'doc-a', path: '/doc-a.sy', type: 'p', content: 'a' },

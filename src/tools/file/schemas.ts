@@ -72,6 +72,7 @@ export const FileRenderSchema = z.object({
 export const FileExportMdSchema = z.object({
     action: z.literal("export_md"),
     id: z.string().describe("Document ID to export"),
+    includeChildren: z.boolean().optional().describe("Also export every descendant document, in tree order (max 100)"),
 });
 
 export const FileExportMarkdownSnapshotSchema = z.object({

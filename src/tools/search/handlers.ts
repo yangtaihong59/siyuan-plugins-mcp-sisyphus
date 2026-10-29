@@ -1,6 +1,7 @@
 import { availableReadSteps, type ReadStep } from '../internal/read-guidance';
 import type { SiYuanClient } from '../../api/client';
 import * as searchApi from '../../api/search';
+import * as blockApi from '../../api/block';
 import type { SearchAction } from '../../core/config';
 import {
     expandTypeShortcodes,
@@ -257,6 +258,40 @@ async function resolveFindReplaceTargetIDs(
     return [...resolved];
 }
 
+/**
+ * The kernel's findReplace returns nothing about what it changed. Count the
+ * search text in the caller's scope (IALs stripped) before and after, so a
+ * caller sees whether anything was replaced. Only literal (0) and regex (3)
+ * searches can be counted, and only when the replacement cannot re-match.
+ */
+function findReplacePattern(k: string, method: number | undefined): RegExp | undefined {
+    if (k === '') return undefined;
+    try {
+        if (method === 3) return new RegExp(k, 'g');
+        if (method === undefined || method === 0) return new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    } catch {
+        // An invalid regex is the kernel's to report.
+    }
+    return undefined;
+}
+
+async function countFindReplaceMatches(
+    client: SiYuanClient,
+    ids: string[],
+    k: string,
+    method: number | undefined,
+): Promise<number | undefined> {
+    const pattern = findReplacePattern(k, method);
+    if (!pattern) return undefined;
+    let total = 0;
+    for (const id of [...new Set(ids)]) {
+        const result = await blockApi.getBlockKramdown(client, id).catch(() => undefined);
+        const text = typeof result?.kramdown === 'string' ? result.kramdown.replace(/\{:\s(?:[^}"]|"(?:[^"\\]|\\.)*")*\}/g, '') : '';
+        total += text.match(pattern)?.length ?? 0;
+    }
+    return total;
+}
+
 export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     fulltext: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchFulltextSchema.parse(rawArgs);
@@ -391,9 +426,21 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
                 filtered = filterBacklinkResultByPermission({ ...result, backlinks, backmentions }, permMgr);
                 filtered = { ...filtered, ...createPartialMetadata(unattributedCount + (filtered.filteredOutCount ?? 0)) };
             }
+            // backlinks group by referencing document; callers usually want the
+            // exact referencing blocks too, which search_refs reads from refs.
+            let refBlocks: unknown[] | undefined;
+            if (mode !== 'mentions') {
+                try {
+                    const rows = await queryReferencingBlocks(client, parsed.id, scopeRootId, parsed.keyword);
+                    refBlocks = normalizeReferencedBlocks((await filterItemsByPermission(client, rows.slice(0, REFERENCING_BLOCKS_LIMIT), permMgr)).items);
+                } catch {
+                    refBlocks = undefined;
+                }
+            }
             return createJsonResult({
                 ...filtered,
                 mode,
+                ...(refBlocks ? { refBlocks } : {}),
                 backlinks: mode !== 'mentions' ? normalizeReferencedBlocks(Array.isArray(filtered.backlinks) ? filtered.backlinks : []) : [],
                 backmentions: mode !== 'links' ? normalizeReferencedBlocks(Array.isArray(filtered.backmentions) ? filtered.backmentions : []) : [],
                 ...(result.sourcePayloadMissing ? { sourcePayloadMissing: true } : {}),
@@ -456,6 +503,10 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
         // code, tags, and other node kinds explicitly.
         const resolvedReplaceTypes = parsed.replaceTypes ?? { text: true };
         const resolvedTargetIDs = await resolveFindReplaceTargetIDs(client, parsed.ids, resolvedReplaceTypes);
+        // A replacement that itself matches would make the after-count meaningless.
+        const pattern = findReplacePattern(parsed.k, resolvedMethod.method);
+        const countable = !parsed.paths && !!pattern && !(parsed.r ?? '').match(pattern);
+        const before = countable ? await countFindReplaceMatches(client, parsed.ids, parsed.k, resolvedMethod.method) : undefined;
         await searchApi.findReplace(client, {
             k: parsed.k,
             r: parsed.r,
@@ -467,10 +518,17 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
             ...(parsed.groupBy !== undefined ? { groupBy: parsed.groupBy } : {}),
             replaceTypes: resolvedReplaceTypes,
         });
+        const after = before !== undefined ? await countFindReplaceMatches(client, parsed.ids, parsed.k, resolvedMethod.method) : undefined;
         const shouldExposeResolvedArgs = parsed.methodName !== undefined || parsed.sortBy !== undefined;
         return createJsonResult({
             success: true,
             replaced: true,
+            ...(before !== undefined && after !== undefined ? {
+                count: Math.max(0, before - after),
+                matchesBefore: before,
+                matchesRemaining: after,
+                ...(after > 0 ? { warning: `${after} match(es) remain, e.g. inside tags, links or code that replaceTypes excluded.` } : {}),
+            } : {}),
             ids: parsed.ids,
             targetIDs: resolvedTargetIDs,
             k: parsed.k,

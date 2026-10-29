@@ -511,11 +511,38 @@ const handleSaveDocAsTemplate: ToolActionHandler = async ({ client, permMgr, raw
 
 const handleExportMd: ToolActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = FileExportMdSchema.parse(rawArgs);
-    const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
+    const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
     if (denied) return denied;
     const result = normalizeMarkdownContent(await fileApi.exportMdContent(client, parsed.id));
-    return createJsonResult(result);
+    if (!parsed.includeChildren) return createJsonResult(result);
+
+    // Descendants share the root's notebook, so its read permission covers them.
+    const descendants: string[] = [];
+    let truncated = false;
+    const visit = async (path: string): Promise<void> => {
+        const listed = await documentApi.listDocsByPath(client, context.notebook, path, { maxListCount: 0, showHidden: false, ignoreMaxListHint: true });
+        for (const file of listed.files ?? []) {
+            if (descendants.length >= EXPORT_MD_MAX_DESCENDANTS) { truncated = true; return; }
+            const id = typeof file.id === 'string' && file.id ? file.id : file.path.match(/([^/]+)\.sy$/)?.[1];
+            if (!id) continue;
+            descendants.push(id);
+            if ((file.subFileCount ?? 1) !== 0) await visit(file.path);
+        }
+    };
+    await visit(context.path);
+    const parts = [{ id: parsed.id, ...result }];
+    for (const id of descendants) parts.push({ id, ...normalizeMarkdownContent(await fileApi.exportMdContent(client, id)) });
+    return createJsonResult({
+        hPath: result.hPath,
+        // Each document starts with its own title; a rule keeps them apart.
+        content: parts.map((part) => part.content.trim()).join('\n\n---\n\n'),
+        documents: parts.map((part) => ({ id: part.id, hPath: part.hPath })),
+        documentCount: parts.length,
+        ...(truncated ? { truncated: true, hint: `Stopped after ${EXPORT_MD_MAX_DESCENDANTS} descendants; use export_markdown_snapshot with roots for larger trees.` } : {}),
+    });
 };
+
+const EXPORT_MD_MAX_DESCENDANTS = 100;
 
 function suffixSnapshotPathWithID(relativePath: string, documentID: string): string {
     const suffix = ` [${documentID}].md`;

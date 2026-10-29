@@ -30,6 +30,7 @@ import {
     ensurePermissionForNotebook,
     extractDocumentId,
     listChildDocumentsByPath,
+    normalizePath,
     resolveMoveTargetNotebook,
     resolveNotebookForPath,
 } from '../internal/context';
@@ -439,17 +440,25 @@ const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     if (parsed.id) {
         const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
         if (denied) return denied;
+        // The SQL index lags a document move by a few seconds; the file tree
+        // does not. Report (and authorize) the live location.
+        const live = await documentApi.getPathByID(client, context.documentId).catch(() => undefined);
+        const notebook = live?.notebook || context.notebook;
+        if (notebook !== context.notebook) {
+            const deniedLive = await ensurePermissionForNotebook(permMgr, notebook, 'read');
+            if (deniedLive) return deniedLive;
+        }
         result.id = parsed.id;
-        result.notebook = context.notebook;
-        result.path = context.path;
+        result.notebook = notebook;
+        result.path = live?.path ? normalizePath(live.path) : context.path;
         if (include.has('path')) {
-            result.path = await documentApi.getPathByID(client, parsed.id);
+            result.path = live ?? await documentApi.getPathByID(client, parsed.id);
         }
         result.hPath = await getHPathByIdWithRetry(client, parsed.id);
         if (include.has('docInfo')) {
             result.docInfo = await blockApi.getDocInfo(client, parsed.id);
         }
-        const notebookName = await resolveNotebookName(client, context.notebook);
+        const notebookName = await resolveNotebookName(client, notebook);
         if (notebookName) result.notebookName = notebookName;
         return createJsonResult(createLookupPathResult(result));
     }

@@ -43,6 +43,8 @@ const SUCCESS_KEEP_KEYS = new Set([
     'changed',
     'editsApplied',
     'replacements',
+    'matchesBefore',
+    'matchesRemaining',
     'replaced',
     'created',
     'updated',

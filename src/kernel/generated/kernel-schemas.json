@@ -1588,6 +1588,10 @@
             "description": "When engine=\"template\", ask SiYuan to render preview DOM instead of insertion DOM.",
             "type": "boolean"
           },
+          "includeChildren": {
+            "description": "Also export every descendant document, in tree order (max 100)",
+            "type": "boolean"
+          },
           "notebookID": {
             "type": "string",
             "minLength": 1,
@@ -7355,6 +7359,10 @@
           "id": {
             "type": "string",
             "description": "Document ID to export"
+          },
+          "includeChildren": {
+            "description": "Also export every descendant document, in tree order (max 100)",
+            "type": "boolean"
           }
         },
         "required": [

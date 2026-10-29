@@ -471,6 +471,58 @@ describe('search tool filtering', () => {
         });
     });
 
+    it('find_replace reports before/after match counts in the ids scope, ignoring IALs', async () => {
+        const runCase = async (afterKramdown: string, args: Record<string, unknown> = {}) => {
+            let replacedYet = false;
+            const client = createMockClient({
+                request: vi.fn(async (endpoint: string) => {
+                    if (endpoint === '/api/query/sql') {
+                        return [{ id: 'block-1', root_id: 'doc-1', box: 'nb-1', path: '/doc-1.sy', type: 'p' }];
+                    }
+                    if (endpoint === '/api/block/getBlockInfo') return { id: 'block-1', rootID: 'doc-1' };
+                    if (endpoint === '/api/notebook/lsNotebooks') return { notebooks: [{ id: 'nb-1', name: 'NB', closed: false }] };
+                    if (endpoint === '/api/block/getBlockKramdown') {
+                        return {
+                            id: 'block-1',
+                            kramdown: replacedYet ? afterKramdown : 'old and old.\n{: id="block-1" custom-note="old"}',
+                        };
+                    }
+                    if (endpoint === '/api/search/findReplace') {
+                        replacedYet = true;
+                        return null;
+                    }
+                    return null;
+                }),
+            });
+            const permMgr = { reload: vi.fn(async () => undefined), canWrite: () => true, canRead: () => true, canDelete: () => true, get: () => 'rwd' };
+            const result = await callSearchTool(client, {
+                action: 'find_replace', k: 'old', r: 'new', ids: ['block-1'], ...args,
+            }, buildDefaultToolConfig().search, permMgr as never);
+            return { parsed: parseResult(result), client };
+        };
+
+        const clean = await runCase('new and new.\n{: id="block-1" custom-note="old"}');
+        expect(clean.parsed).toMatchObject({ success: true, count: 2, matchesBefore: 2, matchesRemaining: 0 });
+        expect(clean.parsed.warning).toBeUndefined();
+
+        const partial = await runCase('new and [old](x).\n{: id="block-1"}');
+        expect(partial.parsed).toMatchObject({ count: 1, matchesBefore: 2, matchesRemaining: 1 });
+        expect(partial.parsed.warning).toContain('1 match(es) remain');
+
+        // Regex mode counts with the regex itself.
+        const regex = await runCase('new and new.', { k: 'o.d', method: 3 });
+        expect(regex.parsed).toMatchObject({ count: 2, matchesBefore: 2, matchesRemaining: 0 });
+
+        // Uncountable: a replacement that re-matches, a paths scope, or query-syntax search.
+        for (const args of [{ r: 'older' }, { paths: ['nb-1'] }, { method: 1 }]) {
+            const skipped = await runCase('new and new.', args);
+            expect(skipped.parsed, JSON.stringify(args)).toMatchObject({ success: true });
+            expect(skipped.parsed.count).toBeUndefined();
+            expect(skipped.parsed.matchesBefore).toBeUndefined();
+            expect(skipped.client.request).not.toHaveBeenCalledWith('/api/block/getBlockKramdown', expect.anything());
+        }
+    });
+
     it('maps search_refs keyword alias to k while still requiring id', async () => {
         const statements: string[] = [];
         const client = createMockClient({
