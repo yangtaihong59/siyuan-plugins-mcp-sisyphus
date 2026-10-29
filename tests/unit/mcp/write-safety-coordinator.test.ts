@@ -1077,7 +1077,7 @@ describe('write safety coordinator', () => {
                 if (endpoint === '/api/av/getAttributeView') {
                     const values = revision.value > 1
                         ? [{ blockID: 'row-a', text: { content: 'same' } }, { blockID: 'row-b', text: { content: 'same' } }]
-                        : [];
+                        : [{ blockID: 'row-a', text: { content: '' } }, { blockID: 'row-b', text: { content: '' } }];
                     return { av: {
                         id: 'av-cells',
                         revision: revision.value,

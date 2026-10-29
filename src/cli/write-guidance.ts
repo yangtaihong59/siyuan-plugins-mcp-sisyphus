@@ -97,6 +97,7 @@ function formatTarget(target: Record<string, any>): string {
     const parts = [`${String(target.kind ?? 'target')} ${String(target.id ?? '')}`];
     if (typeof name === 'string' && name) parts.push(`"${name}"`);
     if (typeof target.hPath === 'string' && target.hPath) parts.push(target.hPath);
+    if (typeof target.position === 'string' && target.position) parts.push(`(${target.position})`);
     if (isRecord(target.notebook)) {
         const notebook = target.notebook;
         parts.push(`[notebook ${notebook.name ?? notebook.id}${notebook.permission ? `, ${notebook.permission}` : ''}]`);

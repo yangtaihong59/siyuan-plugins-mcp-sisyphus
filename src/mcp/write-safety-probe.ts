@@ -35,7 +35,7 @@ import { canonicalizeAvCarrierDom, findHtmlOpeningTagEnd, parseHtmlOpeningTagAtt
 import { type ActionSafetyPolicy } from '../core/write-safety-policy';
 import { safetyError } from '../core/write-safety-error';
 import { stripSafetyFields } from './write-safety-ledger';
-import { extractRawAvDefinition, findRawAvView, inspectHighRiskAvMutation, isCrossObjectAvMutation, requireCarrierWritePermission, verifyAvViewConfigurationReadback } from './write-safety-av';
+import { assertAvArgumentReferences, extractRawAvDefinition, findRawAvView, inspectHighRiskAvMutation, isCrossObjectAvMutation, requireCarrierWritePermission, verifyAvViewConfigurationReadback } from './write-safety-av';
 import { AV_VIEW_CONFIGURATION_ACTIONS, type StateProbe, collectNotebookBoxes, collectPathSelectors, collectStateSelectors, collectTargetSelectors, isRecord, parseResultObject, sqlString } from '../core/write-safety-records';
 
 export function derivePostWriteProbeArgs(
@@ -210,6 +210,7 @@ export async function probeCurrentState(
         if (action === 'set_permission') state.permissions = permMgr.getAll();
     } else if (category === 'av' && typeof args.avID === 'string') {
         state.av = await avApi.getAttributeView(client, args.avID);
+        if (action !== 'create') assertAvArgumentReferences(action, args, state.av);
         if (action === 'add_rows' && Array.isArray(args.rows)) {
             // Composite rows write into an existing AV, so the carrier and
             // every column/type/view/group involved in the batch must enter

@@ -20,6 +20,7 @@ import { WriteSafetyLedger, stripSafetyFields, type WriteLedgerEntry } from './w
 import { assertDestinationNotebooksWritable, derivePostWriteProbeArgs, probeCreatedNotebook, probeCurrentState, probePostWriteState, probeUploadedResult, verifyPostWriteSemanticState } from './write-safety-probe';
 import { type StateProbe, collectTargetSelectors, isRecord, parseResultObject } from '../core/write-safety-records';
 import { buildWriteImpactPreview } from './write-impact-preview';
+import { assertAvAddRowsHasInput } from './write-safety-av';
 
 export interface WriteSafetyExecution {
     client: SiYuanClient;
@@ -165,6 +166,9 @@ export class WriteSafetyCoordinator {
         }
 
         if (category === 'av' && action === 'create') return this.runAvCreate(execution, inspected?.argsHash);
+        if (category === 'av' && action === 'add_rows') {
+            try { assertAvAddRowsHasInput(args); } catch (error) { return fromSafetyError(error); }
+        }
 
         if (category === 'document' && action === 'rename' && Array.isArray(args.items)) {
             try {

@@ -381,6 +381,127 @@ describe('write impact preview', () => {
         expect(result.risk).toEqual(['overwrites_content']);
     });
 
+    it('av.remove_rows counts the non-empty cells that are lost', async () => {
+        const result = await preview({
+            category: 'av', action: 'remove_rows', args: { action: 'remove_rows', avID: AV, rowIDs: [ROW1] },
+        }, { av: avDefinition });
+        expect(result.changes[0]).toMatchObject({ lostCellCount: 1 });
+        expect(result.changes[0].summary).toContain('Removes 1 row(s) and their 1 non-empty cell value(s)');
+    });
+
+    it('av.rename shows database and column names old → new and labels the column, not a block', async () => {
+        const result = await preview({
+            category: 'av', action: 'rename', args: { action: 'rename', avID: AV, name: 'Projects', keyID: 'k-name', keyName: 'Task' },
+        }, { av: avDefinition });
+        expect(result.changes[0]).toMatchObject({ kind: 'av_rename', before: 'Tasks', after: 'Projects' });
+        expect(result.changes[0].summary).toBe('Renames the database «Tasks» → «Projects».');
+        expect(result.changes[1]).toMatchObject({ kind: 'av_rename_column', columns: [{ id: 'k-name', before: 'Name', after: 'Task' }] });
+        expect(result.changes[1].summary).toContain('Renames column «Name» (block, primary key) → «Task».');
+        expect(result.targets).toEqual([{ id: AV, kind: 'av', title: 'Tasks' }]);
+    });
+
+    it('av.add_column names the new column and its type', async () => {
+        const result = await preview({
+            category: 'av', action: 'add_column', args: { action: 'add_column', avID: AV, keyName: 'Hours', keyType: 'number', previousKeyID: 'k-status' },
+        }, { av: avDefinition });
+        expect(result.changes[0]).toMatchObject({ kind: 'av_add_column', column: { name: 'Hours', type: 'number' } });
+        expect(result.changes[0].summary).toContain('Adds column «Hours» (number) after column «Status»');
+        expect(result.changes[0].summary).toContain('2 row(s)');
+    });
+
+    it('av.add_rows lists each row with its primary text and cell values', async () => {
+        const result = await preview({
+            category: 'av', action: 'add_rows', args: { action: 'add_rows', avID: AV, rows: [
+                { clientKey: 'a', primaryKeyText: 'Plan', cells: [{ columnID: 'k-status', valueType: 'select', option: 'Todo' }] },
+                { clientKey: 'b', primaryKeyText: 'Review' },
+            ] },
+        }, { av: avDefinition });
+        expect(result.changes[0]).toMatchObject({
+            kind: 'av_add_rows',
+            rowCount: 2,
+            rows: [{ row: 'Plan', cells: 'Status = Todo' }, { row: 'Review' }],
+        });
+        expect(result.changes[0].summary).toBe('Adds 2 detached row(s) with 1 cell value(s); the database grows from 2 to 4 row(s).');
+    });
+
+    it('other av actions name the database instead of a bare block id', async () => {
+        const result = await preview({
+            category: 'av', action: 'update_view', args: { action: 'update_view', avID: AV, viewID: 'v1' },
+        }, { av: avDefinition });
+        expect(result.targets).toEqual([{ id: AV, kind: 'av', title: 'Tasks' }]);
+        expect(result.changes[0].summary).toBe('av.update_view will modify database «Tasks».');
+    });
+
+    it('block.append counts the top-level blocks the Markdown creates', async () => {
+        const result = await preview({
+            category: 'block', action: 'append',
+            args: { action: 'append', parentID: DOC, dataType: 'markdown', data: '## Heading\nFirst para\n\nSecond para\n\n- a\n- b\n\n  continued\n\n```js\nx\n\ny\n```' },
+        }, { rows: [docRow(DOC, 'Plans', '/Plans')] });
+        expect(result.changes[0]).toMatchObject({ kind: 'create_blocks', blockCount: 5 });
+        expect(result.changes[0].blocks).toEqual(['## Heading', 'First para', 'Second para', '- a - b continued', '```js x y ```']);
+        expect(result.changes[0].summary).toContain('Creates 5 top-level block(s) at the end of document «Plans» in Work:/Plans');
+    });
+
+    it('block targets show their position among siblings and the preceding heading', async () => {
+        const result = await preview({
+            category: 'block', action: 'delete', args: { action: 'delete', id: B2 },
+        }, {
+            rows: [blockRow(B2, 'Second'), docRow(DOC, 'Plans', '/Plans')],
+            children: { [DOC]: [{ id: B1, type: 'p', content: 'First' }, { id: H1, type: 'h', content: 'Risks' }, { id: B2, type: 'p', content: 'Second' }, { id: B3, type: 'p', content: 'Third' }] },
+        });
+        expect(result.targets[0].position).toBe('#3 of 4 top-level blocks in «Plans», under heading «Risks»');
+    });
+
+    it('block position uses the flat document list even when the index parents the block to a heading', async () => {
+        const result = await preview({
+            category: 'block', action: 'delete', args: { action: 'delete', id: B2 },
+        }, {
+            rows: [{ ...blockRow(B2, 'Second'), parent_id: H1 }, docRow(DOC, 'Plans', '/Plans')],
+            children: {
+                [DOC]: [{ id: H1, type: 'h', content: 'Risks' }, { id: B1, type: 'p', content: 'First' }, { id: B2, type: 'p', content: 'Second' }],
+                [H1]: [{ id: B1, type: 'p' }, { id: B2, type: 'p' }],
+            },
+        });
+        expect(result.targets[0].position).toBe('#3 of 3 top-level blocks in «Plans», under heading «Risks»');
+    });
+
+    it('block.set_attrs lists every key with current → next and flags replaced values', async () => {
+        const result = await preview({
+            category: 'block', action: 'set_attrs', args: { action: 'set_attrs', id: B1, attrs: { 'custom-status': 'done', 'custom-owner': '', 'custom-new': 'x' } },
+            before: { hash: 'h', targetIds: [B1], summary: {}, state: { liveBlocks: { [B1]: { attrs: { id: B1, 'custom-status': 'todo', 'custom-owner': 'amy' } } } } },
+        }, { rows: [blockRow(B1, 'Old text')] });
+        expect(result.changes[0].attrs).toEqual([
+            { key: 'custom-new', current: '(none)', next: 'x', status: 'added' },
+            { key: 'custom-owner', current: 'amy', next: '(removed)', status: 'removed' },
+            { key: 'custom-status', current: 'todo', next: 'done', status: 'replaced' },
+        ]);
+        expect(result.changes[0].summary).toContain('1 added, 1 replaced, 1 removed');
+        expect(result.risk).toEqual(['overwrites_content']);
+    });
+
+    it('document.create shows the resolved final hPath and the body blocks', async () => {
+        const result = await preview({
+            category: 'document', action: 'create', args: { action: 'create', notebook: NB, parentPath: '/Plans', title: 'Draft', markdown: 'One\n\nTwo' },
+        });
+        expect(result.changes[0]).toMatchObject({ kind: 'create_document', hPath: '/Plans/Draft' });
+        expect(result.changes[0].summary).toBe('Creates document «Draft» at Work:/Plans/Draft.');
+        expect(result.changes[1]).toMatchObject({ kind: 'create_blocks', blockCount: 2 });
+        expect(result.targets[1]).toMatchObject({ id: '/Plans/Draft', kind: 'path' });
+    });
+
+    it('timeline.create_node names the document and the snapshot', async () => {
+        const result = await preview({
+            category: 'timeline', action: 'create_node', args: { action: 'create_node', scope: 'document', documentId: DOC, name: 'Before edit' },
+        }, { rows: [docRow(DOC, 'Plans', '/Plans')] });
+        expect(result.changes[0].summary).toBe('Creates timeline snapshot «Before edit» of document «Plans» at Work:/Plans. Nothing in the document changes.');
+        expect(result.targets[0]).toMatchObject({ id: DOC, kind: 'document', title: 'Plans' });
+    });
+
+    it('create-like generic actions say "will create"', async () => {
+        const result = await preview({ category: 'flashcard', action: 'add_card', args: { action: 'add_card', blockIDs: [B1] } }, { rows: [blockRow(B1, 'Card')] });
+        expect(result.changes[0].summary).toContain('flashcard.add_card will create content in «Card»');
+    });
+
     it('falls back to a generic summary with the key arguments', async () => {
         const result = await preview({ category: 'document', action: 'rename', args: { action: 'rename', id: DOC, title: 'New name', validateOnly: true, requestId: 'abcd' } }, {
             rows: [docRow(DOC, 'Plans', '/Plans')],

@@ -61,6 +61,8 @@ export interface WritePreviewTarget {
     title?: string;
     excerpt?: string;
     hPath?: string;
+    /** Block targets: ordinal among the parent's children and the nearest preceding heading. */
+    position?: string;
     notebook?: WritePreviewNotebook;
 }
 
@@ -149,6 +151,7 @@ class PreviewContext {
     readonly textLimit: number;
     private notebookList?: Promise<Array<{ id: string; name: string; closed: boolean }>>;
     private readonly rowCache = new Map<string, BlockRow | null>();
+    private readonly siblingCache = new Map<string, Promise<Array<{ id: string; type?: string; content?: string }>>>();
 
     constructor(readonly input: WriteImpactPreviewInput) {
         this.args = stripSafetyFields(input.args);
@@ -297,11 +300,13 @@ class PreviewContext {
         const row = await this.row(id);
         if (row) {
             const isDocument = row.type === 'd';
+            const position = isDocument ? undefined : await this.position(row);
             return {
                 id,
                 kind: isDocument ? 'document' : 'block',
                 ...(isDocument ? { title: row.content || undefined } : { excerpt: this.text(row.content ?? '', 80) }),
                 ...(row.hpath ? { hPath: row.hpath } : {}),
+                ...(position ? { position } : {}),
                 ...(row.box ? { notebook: await this.notebook(row.box) } : {}),
             };
         }
@@ -315,6 +320,42 @@ class PreviewContext {
             };
         }
         return { id, kind: 'block' };
+    }
+
+    /** Ordered children of a parent, one read per parent per preview. */
+    siblings(parentID: string): Promise<Array<{ id: string; type?: string; content?: string }>> {
+        let cached = this.siblingCache.get(parentID);
+        if (!cached) {
+            cached = blockApi.getChildBlocks(this.client, parentID)
+                .then((raw) => (Array.isArray(raw) ? raw : []).flatMap((child) => isRecord(child) && typeof child.id === 'string'
+                    ? [{ id: child.id, type: typeof child.type === 'string' ? child.type : undefined, content: typeof child.content === 'string' ? child.content : undefined }]
+                    : []))
+                .catch(() => []);
+            this.siblingCache.set(parentID, cached);
+        }
+        return cached;
+    }
+
+    /** "#3 of 4 in «Doc», under heading «H»" so a wrong-but-similar block is easier to spot. */
+    async position(row: BlockRow): Promise<string | undefined> {
+        if (!row.parent_id) return undefined;
+        // The index stores a heading as the parent of its section, while the
+        // document's child list is flat; try the document first.
+        let topLevel = true;
+        let siblings = row.root_id ? await this.siblings(row.root_id) : [];
+        let index = siblings.findIndex((sibling) => sibling.id === row.id);
+        if (index < 0) {
+            topLevel = false;
+            siblings = await this.siblings(row.parent_id);
+            index = siblings.findIndex((sibling) => sibling.id === row.id);
+        }
+        if (index < 0) return undefined;
+        const docTitle = (row.hpath ?? '').split('/').filter(Boolean).at(-1);
+        const where = topLevel
+            ? `top-level blocks in ${this.label(docTitle, 'the document')}`
+            : 'children of its parent block';
+        const heading = siblings.slice(0, index).reverse().find((sibling) => sibling.type === 'h');
+        return `#${index + 1} of ${siblings.length} ${where}${heading ? `, under heading ${this.label(heading.content, heading.id)}` : ''}`;
     }
 
     async describeBlock(id: string | undefined): Promise<string> {
@@ -421,15 +462,28 @@ function baseRisks(ctx: PreviewContext, category: ToolCategory, action: string):
 /*  Generic fallback                                                  */
 /* ------------------------------------------------------------------ */
 
+/** Additive actions read "will create … in X" rather than "will modify X". */
+const CREATE_LIKE_ACTION = /^(create|append|prepend|insert|add|duplicate|upload|copy)(_|$)/;
+
 async function genericChange(ctx: PreviewContext): Promise<BuilderResult> {
     const { category, action } = ctx.input;
+    const verb = CREATE_LIKE_ACTION.test(action) ? 'will create content in' : 'will modify';
+    if (category === 'av' && ctx.string('avID')) {
+        // Name the database instead of resolving its ID as if it were a block.
+        const { targets } = await avBase(ctx);
+        const name = targets[0]?.title;
+        return {
+            changes: [{ kind: 'generic', summary: `av.${action} ${verb} database ${ctx.label(name, ctx.string('avID')!)}.`, args: keyArgs(ctx) }],
+            targets,
+        };
+    }
     const ids = defaultTargetIds(ctx);
     const names = await Promise.all(ctx.cap(ids).shown.map((id) => ctx.describeBlock(id)));
     const paths = collectPathSelectors(ctx.args).filter((path) => !ID_PATTERN.test(path));
     const described = [...names, ...paths.map((path) => ctx.label(path, path))];
     const more = ids.length > names.length ? ` and ${ids.length - names.length} more` : '';
     const summary = described.length > 0
-        ? `${category}.${action} will modify ${described.join(', ')}${more}.`
+        ? `${category}.${action} ${verb} ${described.join(', ')}${more}.`
         : `${category}.${action} will apply the arguments below.`;
     return { changes: [{ kind: 'generic', summary, args: keyArgs(ctx) }] };
 }
@@ -1229,7 +1283,7 @@ async function avBase(ctx: PreviewContext): Promise<{ avID: string; definition?:
     const avID = ctx.string('avID') ?? '';
     const definition = await ctx.avDefinition(avID);
     const name = typeof definition?.name === 'string' && definition.name ? definition.name : undefined;
-    const targets: WritePreviewTarget[] = [{ id: avID, kind: 'av', ...(name ? { title: name } : {}) }];
+    const targets: WritePreviewTarget[] = [{ id: avID, kind: 'av', ...(name ? { title: name } : definition ? { title: '(unnamed database)' } : {}) }];
     const blockID = ctx.string('blockID');
     if (blockID) targets.push(await ctx.target(blockID));
     return { avID, definition, columns: avColumns(definition), targets };
@@ -1249,10 +1303,17 @@ async function previewAvRemoveRows(ctx: PreviewContext): Promise<BuilderResult> 
         const rowID = resolveRow(id);
         return { id: rowID, title: ctx.text(avRowTitle(columns, rowID) ?? '(untitled)', 80) };
     });
+    const removedRows = new Set(requested.map(resolveRow));
+    const lostCells = columns.filter((column) => column.key.type !== 'block').reduce((total, column) => total + column.values.filter((value) => {
+        if (!removedRows.has(String(value.blockID ?? ''))) return false;
+        const text = cellText(value, column.key.type);
+        return !!text && text !== 'unchecked';
+    }).length, 0);
     return {
         changes: [{
             kind: 'av_remove_rows',
-            summary: `Removes ${requested.length} row(s) and all their cell values: ${rows.map((row) => ctx.label(row.title, row.id)).join(', ')}${omitted > 0 ? ` and ${omitted} more` : ''}.`,
+            summary: `Removes ${requested.length} row(s) and their ${lostCells} non-empty cell value(s) (beyond the primary key): ${rows.map((row) => ctx.label(row.title, row.id)).join(', ')}${omitted > 0 ? ` and ${omitted} more` : ''}.`,
+            lostCellCount: lostCells,
             rows,
             ...(omitted > 0 ? { rowsOmitted: omitted } : {}),
         }],
@@ -1321,6 +1382,305 @@ async function previewAvSetCells(ctx: PreviewContext): Promise<BuilderResult> {
     };
 }
 
+function avColumnName(column: AvColumn | undefined, fallback: string): string {
+    return typeof column?.key.name === 'string' && column.key.name ? column.key.name : fallback;
+}
+
+function avRowIDs(columns: AvColumn[]): string[] {
+    const primary = columns.find((column) => column.key.type === 'block');
+    return (primary?.values ?? []).flatMap((value) => typeof value.blockID === 'string' ? [value.blockID] : []);
+}
+
+async function previewAvRename(ctx: PreviewContext): Promise<BuilderResult> {
+    const { definition, columns, targets } = await avBase(ctx);
+    const changes: WritePreviewChange[] = [];
+    const newName = ctx.string('name');
+    if (newName !== undefined) {
+        const oldName = typeof definition?.name === 'string' ? definition.name : '';
+        changes.push({
+            kind: 'av_rename',
+            summary: oldName === newName
+                ? `The database is already named ${ctx.label(newName, '""')}; the name does not change.`
+                : `Renames the database ${ctx.label(oldName, '(unnamed)')} → ${ctx.label(newName, '""')}.`,
+            before: oldName || '(unnamed)',
+            after: newName,
+        });
+    }
+    const keyID = ctx.string('keyID');
+    if (keyID) {
+        const column = columns.find((entry) => entry.key.id === keyID);
+        const oldName = avColumnName(column, keyID);
+        const newKeyName = ctx.string('keyName') ?? '';
+        changes.push({
+            kind: 'av_rename_column',
+            summary: `Renames column ${ctx.label(oldName, keyID)} (${String(column?.key.type ?? 'unknown type')}${column?.key.type === 'block' ? ', primary key' : ''}) → ${ctx.label(newKeyName, '""')}.`,
+            columns: [{ id: keyID, before: oldName, after: newKeyName }],
+        });
+    }
+    return { changes, targets };
+}
+
+async function previewAvAddColumn(ctx: PreviewContext): Promise<BuilderResult> {
+    const { columns, targets } = await avBase(ctx);
+    const name = ctx.string('keyName') ?? '';
+    const type = ctx.string('keyType') ?? 'unknown type';
+    const previousKeyID = ctx.string('previousKeyID');
+    const previous = previousKeyID ? columns.find((entry) => entry.key.id === previousKeyID) : undefined;
+    const rowCount = avRowIDs(columns).length;
+    return {
+        changes: [{
+            kind: 'av_add_column',
+            summary: `Adds column ${ctx.label(name, '""')} (${type})${previousKeyID ? ` after column ${ctx.label(avColumnName(previous, previousKeyID), previousKeyID)}` : ''}; the database has ${columns.length} column(s) and ${rowCount} row(s)${rowCount > 0 ? ', which start with an empty value in it' : ''}.`,
+            column: { name, type, ...(ctx.string('keyID') ? { id: ctx.string('keyID') } : {}) },
+            existingColumns: ctx.cap(columns.map((column) => `${avColumnName(column, String(column.key.id ?? ''))} (${String(column.key.type ?? '?')})`)).shown,
+        }],
+        targets,
+    };
+}
+
+async function previewAvAddRows(ctx: PreviewContext): Promise<BuilderResult> {
+    const { columns, targets } = await avBase(ctx);
+    const columnName = (id: string) => avColumnName(columns.find((entry) => entry.key.id === id), id);
+    const composite = Array.isArray(ctx.args.rows) ? ctx.args.rows.filter(isRecord) : [];
+    const texts = ctx.strings('primaryKeyTexts');
+    const blockIDs = ctx.strings('blockIDs');
+    let rows: Array<{ row: string; cells?: string }>;
+    let mode: string;
+    let cellCount = 0;
+    if (composite.length > 0) {
+        mode = 'detached';
+        rows = composite.map((row) => {
+            const cells = (Array.isArray(row.cells) ? row.cells : []).filter(isRecord);
+            cellCount += cells.length;
+            return {
+                row: ctx.text(String(row.primaryKeyText ?? ''), 80),
+                ...(cells.length > 0 ? { cells: ctx.text(cells.map((cell) => `${columnName(String(cell.columnID ?? ''))} = ${cellInputText(cell)}`).join('; ')) } : {}),
+            };
+        });
+    } else if (texts.length > 0) {
+        mode = 'detached';
+        rows = texts.map((text) => ({ row: ctx.text(text, 80) }));
+    } else {
+        mode = 'bound to existing blocks';
+        const shownIDs = ctx.cap(blockIDs).shown;
+        const described = await Promise.all(shownIDs.map((id) => ctx.describeBlock(id)));
+        rows = [...described.map((row) => ({ row })), ...blockIDs.slice(shownIDs.length).map((id) => ({ row: id }))];
+    }
+    const { shown, omitted } = ctx.cap(rows);
+    const existing = avRowIDs(columns).length;
+    return {
+        changes: [{
+            kind: 'av_add_rows',
+            summary: rows.length === 0
+                ? 'No rows are given; the commit would be rejected.'
+                : `Adds ${rows.length} ${mode} row(s)${cellCount > 0 ? ` with ${cellCount} cell value(s)` : ''}; the database grows from ${existing} to ${existing + rows.length} row(s).`,
+            rowCount: rows.length,
+            rows: shown,
+        }, ...omittedChange(omitted, 'rows')],
+        targets,
+        itemCount: rows.length,
+    };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Block creation and attributes                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Best-effort split of Markdown into the top-level blocks SiYuan will create:
+ * blank lines separate blocks, headings and fences stand alone, list items and
+ * their indented continuation stay one list. An estimate, labelled as such.
+ */
+export function estimateMarkdownBlocks(markdown: string): string[] {
+    const blocks: string[][] = [];
+    let current: string[] | undefined;
+    let currentIsList = false;
+    let blank = false;
+    let fence: string | undefined;
+    const flush = () => {
+        if (current && current.some((line) => line.trim())) blocks.push(current);
+        current = undefined;
+        currentIsList = false;
+        blank = false;
+    };
+    for (const line of markdown.replace(/\r\n?/g, '\n').split('\n')) {
+        const trimmed = line.trim();
+        if (fence) {
+            current!.push(line);
+            if (trimmed.startsWith(fence) && trimmed.slice(fence.length).replace(new RegExp(`\\${fence[0]}`, 'g'), '').trim() === '') {
+                fence = undefined;
+                flush();
+            }
+            continue;
+        }
+        if (/^\{:[^}]*\}$/.test(trimmed)) continue;
+        if (!trimmed) {
+            if (currentIsList) blank = true;
+            else flush();
+            continue;
+        }
+        const fenceOpen = /^(`{3,}|~{3,}|\$\$)/.exec(trimmed)?.[1];
+        const isListItem = /^([-*+]|\d+[.)])\s/.test(trimmed);
+        const isIndented = /^(\s{2,}|\t)/.test(line);
+        if (fenceOpen) {
+            flush();
+            current = [line];
+            if (!(fenceOpen === '$$' && trimmed.length > 2 && trimmed.endsWith('$$'))) fence = fenceOpen;
+            else flush();
+            continue;
+        }
+        if (/^#{1,6}\s/.test(trimmed) || /^([-*_])(\s*\1){2,}$/.test(trimmed)) {
+            flush();
+            blocks.push([line]);
+            continue;
+        }
+        if (current && currentIsList && (isListItem || isIndented)) {
+            current.push(line);
+            blank = false;
+            continue;
+        }
+        if (current && (blank || isListItem)) flush();
+        if (!current) {
+            current = [];
+            currentIsList = isListItem;
+        }
+        current.push(line);
+    }
+    flush();
+    return blocks.map((lines) => lines.map((line) => line.trim()).filter(Boolean).join(' '));
+}
+
+function newBlocksChange(ctx: PreviewContext, dataType: unknown, data: string, where: string): WritePreviewChange {
+    if (dataType === 'dom') {
+        return { kind: 'create_blocks', summary: `Inserts DOM content (${data.length} chars) ${where}.`, after: ctx.text(domToText(data)) };
+    }
+    const blocks = estimateMarkdownBlocks(data);
+    const { shown, omitted } = ctx.cap(blocks);
+    return {
+        kind: 'create_blocks',
+        summary: blocks.length === 0
+            ? `Inserts empty Markdown ${where}; SiYuan may create one empty paragraph.`
+            : `Creates ${blocks.length} top-level block(s) ${where} (counted from the Markdown; SiYuan's parser decides the final split).`,
+        blockCount: blocks.length,
+        blocks: [...shown.map((block) => ctx.text(block, 80)), ...(omitted > 0 ? [`… ${omitted} more`] : [])],
+    };
+}
+
+async function previewBlockInsert(ctx: PreviewContext): Promise<BuilderResult> {
+    const { action } = ctx.input;
+    const items = action === 'insert' && Array.isArray(ctx.args.blocks)
+        ? ctx.args.blocks.filter(isRecord)
+        : [ctx.args];
+    const changes: WritePreviewChange[] = [];
+    const targetIds = new Set<string>();
+    for (const item of ctx.cap(items).shown) {
+        const parentID = typeof item.parentID === 'string' && item.parentID ? item.parentID : undefined;
+        const previousID = typeof item.previousID === 'string' && item.previousID ? item.previousID : undefined;
+        const nextID = typeof item.nextID === 'string' && item.nextID ? item.nextID : undefined;
+        let where: string;
+        if (action === 'append' || action === 'prepend') {
+            where = `at the ${action === 'append' ? 'end' : 'start'} of ${await ctx.describeBlock(parentID)} in ${await ctx.place(await ctx.row(parentID))}`;
+        } else if (previousID) {
+            where = `after ${await ctx.describeBlock(previousID)} in ${await ctx.place(await ctx.row(previousID))}`;
+        } else if (nextID) {
+            where = `before ${await ctx.describeBlock(nextID)} in ${await ctx.place(await ctx.row(nextID))}`;
+        } else {
+            where = `first inside ${await ctx.describeBlock(parentID)} in ${await ctx.place(await ctx.row(parentID))}`;
+        }
+        for (const id of [parentID, previousID, nextID]) if (id) targetIds.add(id);
+        changes.push(newBlocksChange(ctx, item.dataType, typeof item.data === 'string' ? item.data : '', where));
+    }
+    changes.push(...omittedChange(items.length - Math.min(items.length, ctx.listLimit), 'insertions'));
+    return { changes, targetIds: [...targetIds], itemCount: items.length };
+}
+
+async function previewBlockSetAttrs(ctx: PreviewContext): Promise<BuilderResult> {
+    const id = ctx.string('id') ?? '';
+    const next = isRecord(ctx.args.attrs) ? ctx.args.attrs : {};
+    const live = ctx.liveBlock(id)?.attrs;
+    const current = isRecord(live)
+        ? live
+        : await blockApi.getBlockAttrs(ctx.client, id).catch(() => ({} as Record<string, string>));
+    let replaced = 0;
+    let removed = 0;
+    let added = 0;
+    const attrs = Object.keys(next).sort().map((key) => {
+        const before = typeof current[key] === 'string' ? current[key] as string : '';
+        const after = String(next[key] ?? '');
+        let status: string;
+        if (!after) { status = before ? 'removed' : 'unchanged (absent)'; if (before) removed++; }
+        else if (!before) { status = 'added'; added++; }
+        else if (before === after) status = 'unchanged';
+        else { status = 'replaced'; replaced++; }
+        return { key, current: before ? ctx.text(before, 80) : '(none)', next: after ? ctx.text(after, 80) : '(removed)', status };
+    });
+    const { shown, omitted } = ctx.cap(attrs);
+    return {
+        changes: [{
+            kind: 'set_attrs',
+            summary: `Sets ${attrs.length} attribute(s) on ${await ctx.describeBlock(id)}: ${added} added, ${replaced} replaced, ${removed} removed. Other attributes stay.`,
+            attrs: shown,
+            ...(omitted > 0 ? { attrsOmitted: omitted } : {}),
+        }],
+        targetIds: [id],
+        risk: replaced + removed > 0 ? ['overwrites_content'] : [],
+    };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Document creation and timeline nodes                              */
+/* ------------------------------------------------------------------ */
+
+async function previewDocumentCreate(ctx: PreviewContext): Promise<BuilderResult> {
+    const notebook = ctx.string('notebook');
+    const path = ctx.string('path');
+    let hPath: string;
+    if (path) {
+        hPath = path;
+    } else {
+        let parent = ctx.string('parentPath') ?? '/';
+        if (/\.sy$/i.test(parent) && notebook) {
+            const rows = await searchApi.querySQL(ctx.client,
+                `SELECT hpath FROM blocks WHERE type = 'd' AND box = ${sqlString(notebook)} AND path = ${sqlString(parent)} LIMIT 1`,
+            ).catch(() => []);
+            const first = Array.isArray(rows) ? rows[0] : undefined;
+            parent = isRecord(first) && typeof first.hpath === 'string' ? first.hpath : parent;
+        }
+        hPath = `${parent.replace(/\/+$/, '')}/${ctx.string('title') ?? ''}`;
+    }
+    const notebookName = await ctx.notebookLabel(notebook);
+    const markdown = typeof ctx.args.markdown === 'string' ? ctx.args.markdown : '';
+    const content = markdown.trim() ? newBlocksChange(ctx, 'markdown', markdown, 'as its body') : undefined;
+    return {
+        changes: [{
+            kind: 'create_document',
+            summary: `Creates document ${ctx.label(hPath.split('/').filter(Boolean).at(-1), hPath)} at ${notebookName}:${hPath}.${content ? '' : ' Its body starts empty (SiYuan adds one empty paragraph).'}`,
+            hPath,
+        }, ...(content ? [content] : [])],
+        targets: [
+            ...(notebook ? [await ctx.target(notebook)] : []),
+            { id: hPath, kind: 'path', ...(notebook ? { notebook: await ctx.notebook(notebook) } : {}) },
+        ],
+    };
+}
+
+async function previewTimelineCreateNode(ctx: PreviewContext): Promise<BuilderResult> {
+    const name = ctx.string('name') ?? '';
+    const documentId = ctx.string('documentId');
+    if (ctx.args.scope !== 'document' || !documentId) {
+        return { changes: [{ kind: 'timeline_node', summary: `Creates a workspace-global timeline snapshot ${ctx.label(name, '""')}.`, name }], targets: [] };
+    }
+    const row = await ctx.row(documentId);
+    return {
+        changes: [{
+            kind: 'timeline_node',
+            summary: `Creates timeline snapshot ${ctx.label(name, '""')} of document ${ctx.label(row?.content, documentId)} at ${await ctx.place(row)}. Nothing in the document changes.`,
+            name,
+        }],
+        targetIds: [documentId],
+    };
+}
+
 const SPECIFIC_BUILDERS: Record<string, Builder> = {
     'block.update': previewBlockUpdate,
     'block.replace': previewBlockReplace,
@@ -1342,6 +1702,15 @@ const SPECIFIC_BUILDERS: Record<string, Builder> = {
     'av.remove_rows': previewAvRemoveRows,
     'av.remove_column': previewAvRemoveColumn,
     'av.set_cells': previewAvSetCells,
+    'av.rename': previewAvRename,
+    'av.add_column': previewAvAddColumn,
+    'av.add_rows': previewAvAddRows,
+    'block.append': previewBlockInsert,
+    'block.prepend': previewBlockInsert,
+    'block.insert': previewBlockInsert,
+    'block.set_attrs': previewBlockSetAttrs,
+    'document.create': previewDocumentCreate,
+    'timeline.create_node': previewTimelineCreateNode,
 };
 
 /** Actions with a specific change summary; every other strict write gets the generic one. */

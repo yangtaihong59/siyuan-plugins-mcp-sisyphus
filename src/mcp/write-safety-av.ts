@@ -17,6 +17,7 @@ import { canonicalizeAvCarrierDom, isExactAvCarrierDom } from '../shared/av-carr
 import { safetyError } from '../core/write-safety-error';
 import { type StateProbe, isRecord, sortedUniqueIds } from '../core/write-safety-records';
 import { asRecord } from '../shared/record';
+import { extractAvRowLookup } from '../tools/av/rows';
 
 export function verifyAvViewConfigurationReadback(
     action: string,
@@ -701,4 +702,111 @@ async function inspectTemplateDocumentDestination(
         notebook,
         config: await notebookApi.getNotebookConf(client, notebook),
     };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Preflight reference checks                                        */
+/* ------------------------------------------------------------------ */
+
+const AV_REFERENCE_LIST_LIMIT = 20;
+
+/**
+ * Reject column and row IDs that do not belong to this AV before any lease is
+ * issued, so a wrong ID (a carrier block, a made-up value) never reads as
+ * "Preflight OK". Cross-object actions are checked by inspectHighRiskAvMutation
+ * and view configuration by prepareViewUpdate; this covers the rest.
+ */
+export function assertAvArgumentReferences(action: string, args: Record<string, unknown>, avReadback: unknown): void {
+    const definition = asRecord(avEnvelope(avReadback));
+    if (!definition) return;
+    const avID = typeof args.avID === 'string' ? args.avID : '';
+    const avName = typeof definition.name === 'string' && definition.name ? `"${definition.name}" (${avID})` : avID;
+    const keys = avKeyValueEntries(definition).map((entry) => entry.key);
+    const keyIDs = new Set(keys.map((key) => stringField(key, ['id'])).filter((id): id is string => !!id));
+    const lookup = extractAvRowLookup(definition);
+
+    const columnList = () => {
+        const shown = keys.slice(0, AV_REFERENCE_LIST_LIMIT)
+            .map((key) => `${stringField(key, ['name']) ?? '(unnamed)'} = ${stringField(key, ['id']) ?? '?'} (${stringField(key, ['type']) ?? '?'})`);
+        return `Columns of ${avName}: ${shown.join('; ') || 'none'}${keys.length > shown.length ? `; … ${keys.length - shown.length} more` : ''}.`;
+    };
+    const requireColumn = (field: string, id: unknown) => {
+        if (typeof id !== 'string' || !id) return;
+        if (keyIDs.has(id)) return;
+        const isRow = lookup.rowIDs.has(id);
+        throw safetyError('invalid_arguments', `${field} "${id}" is not a column of database ${avName}${isRow ? ' (it is a row ID)' : id === args.blockID ? ' (it is the database block ID)' : id === avID ? ' (it is the database ID)' : ''}. No write was attempted. ${columnList()}`);
+    };
+    const primary = avKeyValueEntries(definition).find((entry) => entry.key.type === 'block');
+    const rowList = () => {
+        const rows = [...lookup.rowIDs];
+        const shown = rows.slice(0, AV_REFERENCE_LIST_LIMIT).map((rowID) => {
+            const value = primary?.values.find((entry) => entry.blockID === rowID);
+            const text = asRecord(value?.block)?.content;
+            return `${typeof text === 'string' && text ? text : '(untitled)'} = ${rowID}`;
+        });
+        return `Rows of ${avName}: ${shown.join('; ') || 'none'}${rows.length > shown.length ? `; … ${rows.length - shown.length} more (av query lists all)` : ''}.`;
+    };
+    const requireRow = (field: string, id: unknown) => {
+        if (typeof id !== 'string' || !id) return;
+        if (lookup.rowIDs.has(id)) return;
+        const alias = lookup.valueIdToRowIDs.get(id) ?? lookup.sourceBlockToRowIDs.get(id);
+        const aliasNote = alias?.length === 1 ? ` It identifies row ${alias[0]}; pass that row ID instead.` : '';
+        throw safetyError('invalid_arguments', `${field} "${id}" is not a row of database ${avName}${keyIDs.has(id) ? ' (it is a column ID)' : ''}. No write was attempted.${aliasNote} ${rowList()}`);
+    };
+
+    switch (action) {
+        case 'rename':
+            requireColumn('keyID', args.keyID);
+            break;
+        case 'remove_column':
+            requireColumn(args.keyID ? 'keyID' : 'columnID', args.keyID ?? args.columnID);
+            break;
+        case 'add_column':
+            if (typeof args.keyID === 'string' && keyIDs.has(args.keyID)) {
+                throw safetyError('invalid_arguments', `keyID "${args.keyID}" already names a column of database ${avName}; omit keyID to let MCP generate a new one. No write was attempted.`);
+            }
+            requireColumn('previousKeyID', args.previousKeyID);
+            break;
+        case 'set_cells': {
+            const cells = Array.isArray(args.cells) ? args.cells : Array.isArray(args.items) ? args.items : [args];
+            cells.forEach((cell, index) => {
+                const record = asRecord(cell);
+                if (!record) return;
+                const prefix = cells.length > 1 || cell !== args ? `cells[${index}].` : '';
+                requireColumn(`${prefix}columnID`, record.columnID);
+                requireRow(`${prefix}rowID`, record.rowID);
+            });
+            break;
+        }
+        case 'add_rows':
+            if (Array.isArray(args.rows)) {
+                args.rows.forEach((row, index) => {
+                    const cells = asRecord(row)?.cells;
+                    if (Array.isArray(cells)) cells.forEach((cell, cellIndex) => requireColumn(`rows[${index}].cells[${cellIndex}].columnID`, asRecord(cell)?.columnID));
+                });
+            }
+            requireRow('previousID', args.previousID);
+            break;
+        case 'remove_rows':
+            if (Array.isArray(args.rowIDs)) args.rowIDs.forEach((id, index) => requireRow(`rowIDs[${index}]`, id));
+            break;
+        case 'duplicate_rows':
+            if (Array.isArray(args.sourceRowIDs)) args.sourceRowIDs.forEach((id, index) => requireRow(`sourceRowIDs[${index}]`, id));
+            requireRow('previousID', args.previousID);
+            break;
+        case 'set_column_options':
+            requireColumn('keyID', args.keyID);
+            break;
+        default:
+            break;
+    }
+}
+
+/** add_rows needs at least one row in some input mode; an empty batch is not a write. */
+export function assertAvAddRowsHasInput(args: Record<string, unknown>): void {
+    const count = ['rows', 'blockIDs', 'primaryKeyTexts']
+        .reduce((total, key) => total + (Array.isArray(args[key]) ? (args[key] as unknown[]).length : 0), 0);
+    if (count === 0) {
+        throw safetyError('invalid_arguments', 'add_rows needs at least one row: pass rows (composite rows with cells), primaryKeyTexts (detached rows) or blockIDs (bound rows). No write was attempted.');
+    }
 }

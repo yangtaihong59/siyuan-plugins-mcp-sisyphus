@@ -125,9 +125,9 @@ describe('write safety coordinator preview', () => {
         }));
         expect(preflight.preview).toMatchObject({
             detail: 'summary',
-            changes: [{ kind: 'generic', args: { parentID: BLOCK, dataType: 'markdown', data: 'Appended' } }],
+            changes: [{ kind: 'create_blocks', blockCount: 1, blocks: ['Appended'] }],
             risk: [],
         });
-        expect(preflight.preview.changes[0].summary).toContain('block.append will modify');
+        expect(preflight.preview.changes[0].summary).toContain('Creates 1 top-level block(s) at the end of');
     });
 });
