@@ -191,7 +191,7 @@ describe('cli/render', () => {
                     shapes: ['notebook + path + markdown'],
                     requiredFields: ['notebook', 'path', 'markdown'],
                     example: { action: 'create', notebook: 'nb', path: '/Inbox/Test', markdown: 'Hello' },
-                    guidance: ['Parent paths must already exist. Use document(action="resolve", notebook="nb", hpath="/Inbox/Test", include=["ids"]) to resolve IDs.'],
+                    guidance: ['Auto-creates missing parents. Use document(action="resolve", notebook="nb", hpath="/Inbox/Test", include=["ids"]) to resolve IDs.'],
                     requiresConfirmation: false,
                     fullDocResource: 'siyuan://help/action/document/create',
                 }),

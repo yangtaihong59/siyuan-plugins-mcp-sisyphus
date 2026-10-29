@@ -6184,7 +6184,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
               "type": "string",
             },
             "path": {
-              "description": "Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Parent paths must already exist.",
+              "description": "Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Auto-creates missing parents.",
               "type": "string",
             },
             "sorts": {

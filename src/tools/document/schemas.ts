@@ -77,7 +77,7 @@ const DocumentCreateItemSchema = z.object({
 export const DocumentCreateSchema = z.object({
     action: z.literal("create"),
     notebook: z.string().describe("Notebook ID"),
-    path: z.string().optional().describe("Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Parent paths must already exist."),
+    path: z.string().optional().describe("Human-readable target path, relative to the notebook root. Must start with / and MUST NOT include the notebook name (e.g., /Folder/Doc, not /NotebookName/Folder/Doc). Auto-creates missing parents."),
     parentPath: z.string().optional().describe("Parent path for title-based creation, relative to the notebook root. Accepts a human-readable path (must start with /, MUST NOT include the notebook name) or a storage path ending in .sy returned by document(action=\"lookup\")."),
     title: z.string().optional().describe("Required together with parentPath when create omits path; notebook + title alone is invalid"),
     markdown: z.string().optional().describe("Markdown content, defaults to empty. Do not include a leading # Title; a matching H1 is stripped automatically."),

@@ -23,7 +23,7 @@ Format:
 Rules:
 
 - Must start with `/`
-- Parent path must already exist
+- Missing parent docs are auto-created empty
 
 ## Storage Path
 
