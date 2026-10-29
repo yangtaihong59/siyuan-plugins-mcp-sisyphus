@@ -40,7 +40,7 @@ export const SearchSemanticSchema = z.object({
 
 export const SearchQuerySqlSchema = z.object({
     action: z.literal("query_sql"),
-    stmt: z.string().optional().describe("Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column."),
+    stmt: z.string().optional().describe("Read-only SELECT or WITH query. With unreadable notebooks, only scoped tables are allowed and rows are filtered. Keeps every selected column."),
     sql: z.string().optional().describe("Semantic alias for stmt. Overrides stmt when both are provided."),
 }).superRefine((value, ctx) => {
     if (!value.stmt && !value.sql) {

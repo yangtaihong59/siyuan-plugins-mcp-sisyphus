@@ -11535,7 +11535,7 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
               "type": "string",
             },
             "stmt": {
-              "description": "Read-only SELECT or WITH query. Requires every notebook to be readable; otherwise rejected before execution. Preserves every selected column.",
+              "description": "Read-only SELECT or WITH query. With unreadable notebooks, only scoped tables are allowed and rows are filtered. Keeps every selected column.",
               "type": "string",
             },
           },
