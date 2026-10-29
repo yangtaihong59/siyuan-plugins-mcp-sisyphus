@@ -374,7 +374,9 @@ function renderErrorPayload(payload: unknown): void {
         }
 
         // Coordinator hints speak MCP ("validateOnly preflight"); say it as a command.
-        const hint = err.revalidateRequired === true
+        const hint = err.revalidateRequired === true && err.expectedField === 'ifMatch'
+            ? 'Read the target again (the read prints a fresh ifMatch), re-check the content, then rerun the write with the new --if-match.'
+            : err.revalidateRequired === true
             ? `Rerun the command with --validate-only to get a fresh preflight and hashes, then run the new commit command.${err.code === 'state_changed' ? ' Any write to the same target (for a database: any change to it) invalidates other pending preflights.' : ''}`
             : err.hint;
         if (typeof hint === 'string' && hint) {
@@ -611,6 +613,11 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
             '3. Run the printed commit command unchanged (it carries --request-id and any --expected-*-hash).',
             '4. Read the target back to confirm. A preflight expires after 10 minutes or when the target changes; then preflight again.',
         ], out);
+    }
+
+    if (isObject(obj.oneStep) && typeof obj.oneStep.rule === 'string') {
+        writeSection('One-step write', out);
+        writeLine(out, `  ${obj.oneStep.rule.replace(/\bvalidateOnly\b/g, '--validate-only').replace(/\bifMatch\b/g, '--if-match')}`);
     }
 
     const shapes = toStringArray(obj.shapes);

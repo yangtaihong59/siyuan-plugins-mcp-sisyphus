@@ -91,6 +91,41 @@
 
 `block.update` 的 `targetCount` 包含单个 `id` 或批量 `items[].id` 中的去重目标数。11 个不同块的批量更新返回 11；同一个 ID 重复出现仍只算一个目标。块状态同时读取 Kramdown、块属性和 DOM，因此块引用的 `data-subtype`、`strong` / `em` 等行内属性变化会使哈希变化。DOM 属性顺序和创建/更新时间不会被视为内容修改。预检后发生属性修改会返回 `state_changed`；成功修改属性返回 `committed`，只有读回状态一致时才返回 `no_change`。
 
+## 读取哈希与一步写入（可选）
+
+`writeSafety.oneStep` 默认为 `off`（插件设置 → 安全设置 →“低风险一步写入”，在 `mcpToolsConfig` 中保存为 `"writeSafety": { "oneStep": "low_risk" }`）。关闭时，读取结果、schema、服务端 instructions 与上面的两步流程完全不变，不带 `requestId` 的提交仍按原样返回 `precondition_required`。切换后插件会重启 HTTP 服务，客户端需重新连接以加载新 schema。该设置由当前选定的协调器（内核或 Node HTTP）读取，CLI 随同一开关生效。
+
+### 读取哈希（`ifMatch`）
+
+开启一步写入后，读取可写目标会在顶层附带 `ifMatch`：即严格预检探针计算的同一个 sha256:v1 状态哈希的前 16 位十六进制。状态哈希在读取**之前**计算，若两者之间目标被改动，调用方拿到的是比所见内容更旧的哈希，后续写入会安全失败。客户端无写权限（笔记本权限 `r`/`none`）或目标不存在时不返回 `ifMatch`。
+
+| 读取 | 规范探针（哈希等于该写入的预检凭据） | 接受同一 `ifMatch` 的写入 |
+| --- | --- | --- |
+| `block.get_kramdown` / `get_attrs` / `get_children` `{id}`、`document.get_doc {id}` | `block.update {id}`（`expectedStateHash`） | block `update`、`replace`、`set_attrs`、`set_fold_state`、`delete`；document `rename`、`set_attr`、`remove`（单个 `id`） |
+| `fs.read {path}` | `fs.write {path}` 且 `overwrite=true`（`expectedStateHash`） | fs `write`、`replace`、`rm` |
+| `av.get` / `av.query {avID}` | `av.set_cells {avID}`（`expectedManifestHash`） | av `add_rows`、`add_column`、`add_view`、`set_cells`、`remove_rows`、`remove_column`、`rename` |
+| `file.read_template {path}` | `file.update_template {path}`，路径规范化为相对 `data/templates` 的形式 | file `update_template`、`delete_template` |
+
+同一目标的读取与写入都通过这一个规范探针调用计算哈希，因此“读取哈希 = 预检哈希”由构造保证；同目标的其他写入也与该规范哈希比较。读取与写入的路径写法须一致（模板路径会规范化，fs 路径不会）。批量形态（`items`）没有单一目标，会拒绝 `ifMatch`。
+
+任何严格写入都接受 `ifMatch`（CLI `--if-match`），包括 `validateOnly` 预检——此时它弥补了智能体读取与预检之间的空档。服务端会重新计算规范哈希；不一致时返回 `state_changed`，`expectedField: "ifMatch"`，并提示重新读取目标。`ifMatch` 不进入参数摘要，也不出现在 `commitArgs` 中；格式错误（少于 16 位十六进制）返回 `invalid_arguments`。只有开启一步写入时，挂载 schema 才声明 `ifMatch`（增加数百字符）。
+
+### 一步写入分级
+
+不带 `requestId` 的提交只有在开关开启且分级允许时才能一步执行（见 `src/core/write-safety-policy.ts` 的 `ONE_STEP_TIERS`）：
+
+| 级别 | 动作 | 一步规则 |
+| --- | --- | --- |
+| 1 — 新增/低影响 | document `create`、`rename`、`set_attr`；fs `write`（新建文档）；block `insert`、`prepend`、`append`、`set_attrs`；av `add_rows`、`add_column`、`add_view`；flashcard `create_card`、`review_card` | 可免预检；`ifMatch` 可选（提供时校验） |
+| 2 — 覆盖 | block `update`、`replace`；fs `write` 且 `overwrite=true`；不含 `replace_all` 的 fs `replace`；av `set_cells`；file `update_template` | 仅在单一目标且 `ifMatch` 匹配时可免预检 |
+| 3 — 始终两步 | 所有 `dangerous` 动作、tag `rename`、document `heading_to_doc` / `doc_to_heading` / `reorder` / `move`、fs `reorder` / `mv`、block `transfer_references`、av `remove_rows` / `remove_column`、notebook `set_open_state` / `set_conf` / `rename`、任一编辑含 `replace_all` 的 fs `replace`，以及上表未列出的所有动作（默认拒绝） | 从不 |
+
+最大的条目列表（`items`、`rows`、`blockIDs`、`primaryKeyTexts`、`cells`、`rowIDs`、`ids`、`edit`）超过 20 项的写入一律回退为两步。
+
+一步提交只省去往返，不省检查：仍会重新加载权限、执行同样的状态探针与引用校验、校验 `ifMatch`、经协调器串行执行、写后读回并写入账本。它会获得服务端签发的 `requestId`（在 `safety.requestId` 中返回，带它重放相同参数不会再次执行），回执带 `oneStep: { tier }` 以及预检本应返回的同一份 `preview`，便于事后核对。由于 ID 在调用过程中才签发，响应前的传输丢失无法靠不带 ID 重发去重：遇到 `outcome_unknown` 时应检查目标，而不是重发。
+
+被拒绝的一步提交返回 `precondition_required`，附 `error.oneStep: { allowed: false, tier, reason }`，`reason` 为 `setting_off`（仅在发送了 `ifMatch` 时出现）、`tier3`、`missing_if_match`、`if_match_unsupported` 或 `batch_too_large`，消息会指明两步流程（CLI：加 `--validate-only` 重新运行）。开启后，对 1/2 级动作调用 `action="help"` 会附带 `oneStep: { tier, rule }`。
+
 ## 它提高了什么正确性
 
 - `fs` 路径读回先确认文档的实时存在状态，避免删除后尚未更新的路径或 SQL 索引让成功删除被误报为读回失败。存在性查询失败仍按未知结果处理，不把网络错误当成已删除。
@@ -106,9 +141,9 @@
 
 | 错误码 | 含义 | 调用方行为 |
 | --- | --- | --- |
-| `precondition_required` | 缺少预检哈希或 request ID | 重新预检；不要直接猜哈希 |
+| `precondition_required` | 缺少预检哈希或 request ID，或一步提交被拒（见 `error.oneStep.reason`） | 重新预检；不要直接猜哈希 |
 | `preflight_lease_invalid` | 租约缺失、过期、被淘汰或服务已重启 | 使用相同业务参数重新 `validateOnly` |
-| `state_changed` | 预检后目标已变化 | 停止，重新读取并决定是否仍要修改 |
+| `state_changed` | 预检后（或产生 `ifMatch` 的读取之后）目标已变化 | 停止，重新读取并决定是否仍要修改 |
 | `outcome_unknown` | 写入开始后连接中断，结果无法确定 | 不要换新 ID 自动重试；先检查目标 |
 | `readback_mismatch` | 接口返回后无法确认最终状态 | 视为未知结果，人工或只读检查 |
 | `idempotency_conflict` | request ID 被用于另一组参数 | 这是调用方错误，必须生成新 ID |

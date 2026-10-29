@@ -422,4 +422,18 @@ describe('cli/render read metadata and guidance', () => {
         expect(io.stderr).toContain('Rerun the command with --validate-only');
         expect(io.stderr).not.toContain('validateOnly preflight');
     });
+
+    it('turns a stale ifMatch into a re-read instruction', () => {
+        const io = run({ success: false, error: { code: 'state_changed', message: 'The target changed since the read that produced ifMatch. No write was attempted.', expectedField: 'ifMatch', revalidateRequired: true } }, true);
+        expect(io.stderr).toContain('Read the target again');
+        expect(io.stderr).toContain('--if-match');
+        expect(io.stderr).not.toContain('--validate-only');
+    });
+
+    it('prints the one-step rule in action help only when the server sent it', () => {
+        const help = { tool: 'block', action: 'update', writeWorkflow: ['x'], example: { action: 'update' } };
+        expect(run(help).stdout).not.toContain('One-step');
+        const io = run({ ...help, oneStep: { tier: 2, rule: 'Enabled: may commit without validateOnly only with ifMatch from a fresh read of the target; otherwise use the two steps.' } });
+        expect(io.stdout).toContain('without --validate-only only with --if-match');
+    });
 });

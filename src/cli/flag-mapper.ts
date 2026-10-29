@@ -133,6 +133,9 @@ const WRITE_SAFETY_FLAG_SCHEMAS: Record<string, JsonSchema> = {
     expectedValueHash: { type: 'string' },
     expectedManifestHash: { type: 'string' },
     expectedSourceHash: { type: 'string' },
+    // Read-derived precondition (writeSafety.oneStep); the server rejects it
+    // with a reason when one-step writes are off or the write cannot use it.
+    ifMatch: { type: 'string' },
 };
 
 function collectInputProperties(inputSchema: JsonSchema, action?: string): Record<string, JsonSchema> {

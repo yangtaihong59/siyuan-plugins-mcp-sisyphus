@@ -21,6 +21,7 @@ import {
 } from './render';
 import { loadCliRuntimeState } from './runtime';
 import { createDisabledToolResult } from '../tools/internal/shared';
+import { annotateHelpWithOneStep } from '../mcp/write-safety-if-match';
 
 export async function runList(cli: ParsedArgs): Promise<number> {
     const out = process.stdout;
@@ -109,7 +110,11 @@ export async function runHelp(cli: ParsedArgs): Promise<number> {
         if (cli.action) payload.topic = normalizeActionAlias(category, cli.action);
 
         const result = await module.callTool(client, payload, toolConfig[category], permMgr, officialMcpRuntime);
-        return renderToolResult(result, { json: cli.json, debug: cli.debug });
+        // Same one-step note the coordinator adds to action help, only when enabled.
+        const annotated = toolConfig.writeSafety.oneStep === 'low_risk' && toolConfig.writeSafety.strictMode
+            ? annotateHelpWithOneStep(category, payload, result)
+            : result;
+        return renderToolResult(annotated, { json: cli.json, debug: cli.debug });
     } catch (error) {
         renderCliError(error, { debug: cli.debug });
         return 1;

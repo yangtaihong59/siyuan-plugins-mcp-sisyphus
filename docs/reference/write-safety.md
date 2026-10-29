@@ -103,6 +103,41 @@ The pool stores no note content. Aliases remain reserved for the process lifetim
 
 `block.update` reports the number of distinct targets from either `id` or `items[].id` in `targetCount`. A batch of 11 different blocks reports 11; repeated IDs count once. Block state includes Kramdown, block attributes, and DOM, so inline changes such as block-reference `data-subtype`, `strong`, or `em` change the hash. DOM attribute order and creation/update timestamps do not count as content changes. Attribute drift after preflight returns `state_changed`; a successful attribute edit returns `committed`, while an unchanged readback returns `no_change`.
 
+## Read hashes and one-step writes (opt-in)
+
+`writeSafety.oneStep` is `off` by default (plugin settings → Safety settings → "One-step Low-risk Writes", stored as `"writeSafety": { "oneStep": "low_risk" }` in `mcpToolsConfig`). While it is off, reads, schemas, server instructions and the two-step flow above are unchanged, and a commit without `requestId` returns `precondition_required` exactly as before. Changing it restarts the plugin's HTTP server; reconnect clients to load the new schema. The setting is read by the selected coordinator (kernel or Node HTTP), so the CLI follows the same switch.
+
+### Read hashes (`ifMatch`)
+
+With one-step on, reads of a writable target add a top-level `ifMatch`: the first 16 hex digits of the same sha256:v1 state hash the strict preflight probe computes. The state is hashed **before** the read runs, so if the target changes in between, the caller holds an older hash than the content it saw and a later write fails closed. Targets the client cannot write (notebook permission `r`/`none`, missing targets) get no `ifMatch`.
+
+| Read | Canonical probe (the hash equals this write's preflight credential) | Writes that accept the same `ifMatch` |
+| --- | --- | --- |
+| `block.get_kramdown` / `get_attrs` / `get_children` `{id}`, `document.get_doc {id}` | `block.update {id}` (`expectedStateHash`) | block `update`, `replace`, `set_attrs`, `set_fold_state`, `delete`; document `rename`, `set_attr`, `remove` (single `id`) |
+| `fs.read {path}` | `fs.write {path}` with `overwrite=true` (`expectedStateHash`) | fs `write`, `replace`, `rm` |
+| `av.get` / `av.query {avID}` | `av.set_cells {avID}` (`expectedManifestHash`) | av `add_rows`, `add_column`, `add_view`, `set_cells`, `remove_rows`, `remove_column`, `rename` |
+| `file.read_template {path}` | `file.update_template {path}` with the path normalized to its `data/templates`-relative form | file `update_template`, `delete_template` |
+
+Reads and writes of one target are both hashed through that single canonical probe call, so "read hash = preflight hash" holds by construction; sibling writes compare against the same canonical hash. A path must be spelled the same way in the read and the write (templates are normalized; fs paths are not). A batch shape (`items`) has no single target and rejects `ifMatch`.
+
+`ifMatch` is accepted on any strict write (CLI `--if-match`), including a `validateOnly` preflight — there it closes the gap between the agent's read and the preflight. The server recomputes the canonical hash; a mismatch returns `state_changed` with `expectedField: "ifMatch"` and the hint to read the target again. `ifMatch` is stripped from the argument digest and from `commitArgs`; malformed values (fewer than 16 hex digits) return `invalid_arguments`. Only when one-step is on do the mounted schemas advertise `ifMatch` (a few hundred characters).
+
+### One-step tiers
+
+A commit without `requestId` may run in one step only when the setting is on and the tier allows it (`ONE_STEP_TIERS` in `src/core/write-safety-policy.ts`):
+
+| Tier | Actions | One-step rule |
+| --- | --- | --- |
+| 1 — additive / low impact | document `create`, `rename`, `set_attr`; fs `write` (new document); block `insert`, `prepend`, `append`, `set_attrs`; av `add_rows`, `add_column`, `add_view`; flashcard `create_card`, `review_card` | Allowed without preflight; `ifMatch` optional (checked when present) |
+| 2 — overwrites | block `update`, `replace`; fs `write` with `overwrite=true`; fs `replace` without `replace_all`; av `set_cells`; file `update_template` | Allowed only with a matching `ifMatch` for a single target |
+| 3 — always two-step | every `dangerous` action, tag `rename`, document `heading_to_doc` / `doc_to_heading` / `reorder` / `move`, fs `reorder` / `mv`, block `transfer_references`, av `remove_rows` / `remove_column`, notebook `set_open_state` / `set_conf` / `rename`, fs `replace` with any `replace_all`, and every action not listed above (default deny) | Never |
+
+Any write whose largest item list (`items`, `rows`, `blockIDs`, `primaryKeyTexts`, `cells`, `rowIDs`, `ids`, `edit`) exceeds 20 entries falls back to two-step.
+
+A one-step commit skips only the round trip. It still reloads permissions, runs the same state probe and reference checks, verifies `ifMatch`, serializes through the coordinator, reads back, and writes the ledger. It receives a server-issued `requestId` (returned in `safety.requestId`; replaying the same arguments with it does not execute again) and the receipt carries `oneStep: { tier }` plus the same `preview` a preflight would have returned, so the agent can check the change after the fact. Because the ID is issued during the call, a transport loss before the response cannot be deduplicated by resending without it: on `outcome_unknown`, inspect the target instead of resending.
+
+A refused one-step commit returns `precondition_required` with `error.oneStep: { allowed: false, tier, reason }`, where `reason` is `setting_off` (only when `ifMatch` was sent), `tier3`, `missing_if_match`, `if_match_unsupported` or `batch_too_large`, and the message names the two-step path (CLI: rerun with `--validate-only`). With one-step on, `action="help"` for a tier-1/2 topic adds `oneStep: { tier, rule }`.
+
 ## Correctness properties
 
 - `fs` path readback checks live document existence before reading its block tree. Stale path or SQL indexes no longer turn a successful deletion into a readback failure. A failed existence query still leaves the outcome unknown; a network error never proves deletion.
@@ -118,9 +153,9 @@ The pool stores no note content. Aliases remain reserved for the process lifetim
 
 | Code | Meaning | Caller action |
 | --- | --- | --- |
-| `precondition_required` | A request ID or required hash is absent | Run preflight again; never invent a hash |
+| `precondition_required` | A request ID or required hash is absent, or a one-step commit was refused (`error.oneStep.reason`) | Run preflight again; never invent a hash |
 | `preflight_lease_invalid` | The lease is missing, expired, evicted, or belonged to a previous process | Run the same `validateOnly` call again |
-| `state_changed` | The target changed after preflight | Stop and reread before deciding to write |
+| `state_changed` | The target changed after preflight, or since the read that produced `ifMatch` | Stop and reread before deciding to write |
 | `outcome_unknown` | The connection failed after execution began | Do not retry with a new ID; inspect the target |
 | `readback_mismatch` | The returned mutation could not be verified | Treat the outcome as unknown |
 | `idempotency_conflict` | The request ID was reused with different arguments | Generate a new ID |

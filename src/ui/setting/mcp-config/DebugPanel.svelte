@@ -32,6 +32,16 @@
             },
             {
                 type: "checkbox",
+                key: "writeSafety__oneStep",
+                value: currentConfig.writeSafety.strictMode && currentConfig.writeSafety.oneStep === "low_risk",
+                title: label("write_safety_one_step_title", "One-step Low-risk Writes"),
+                description: label(
+                    "write_safety_one_step_desc",
+                    "Off by default. When on, low-risk writes may commit without a preflight, and overwrites may commit with the ifMatch hash returned by a read. Dangerous, structural and large batch writes always keep the two-step preflight.",
+                ),
+            },
+            {
+                type: "checkbox",
                 key: "versionControl__enabled",
                 value: currentVersionControlSettings.enabled,
                 title: label("version_control_enabled_title", "Enable Document Snapshots and Diff"),
@@ -76,8 +86,8 @@
     }
 
     $: debugItems = buildDebugItems(config, puppySettings, versionControlSettings, getLabel);
-    $: runtimeItems = debugItems.slice(0, 4);
-    $: testItems = debugItems.slice(4);
+    $: runtimeItems = debugItems.slice(0, 5);
+    $: testItems = debugItems.slice(5);
 </script>
 
 <div class="debug-settings" class:fn__none={!display}>

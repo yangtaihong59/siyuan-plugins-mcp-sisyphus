@@ -113,6 +113,31 @@ describe('cli write guidance', () => {
         expect(args).toEqual({ id: 'b1', validateOnly: true, preview: 'full' });
     });
 
+    it('accepts --if-match as a write-safety flag', () => {
+        const schema = { type: 'object', 'x-sisyphus-actionSchemas': [{ properties: { action: { const: 'update' }, id: { type: 'string' } } }] };
+        const { args, unknownFlags } = mapFlagsToArgs(['--id', 'b1', '--if-match', '0123456789abcdef'], schema, { category: 'block', action: 'update' });
+        expect(unknownFlags).toEqual([]);
+        expect(args).toEqual({ id: 'b1', ifMatch: '0123456789abcdef' });
+    });
+
+    it('prints a one-step receipt preview after the write and keeps it in JSON', () => {
+        const preview = { detail: 'summary', targets: [{ id: 'b1', kind: 'block' }], changes: [{ kind: 'update', summary: 'Replaces block b1.' }], risk: ['overwrites_content'] };
+        const payload = { success: true, id: 'b1', oneStep: { tier: 2 }, preview, safety: { transactionState: 'committed' } };
+        expect(applyCliWriteGuidance(text(payload) as never, 'block').result).toEqual(text(payload));
+        const human = applyCliWriteGuidance(text(payload) as never, 'block', false);
+        expect(human.commitCommand).toBeUndefined();
+        expect(human.previewLines?.[0]).toContain('committed in one step');
+        expect(human.previewLines).toContain('    - Replaces block b1.');
+        expect(JSON.parse((human.result.content[0] as { text: string }).text)).not.toHaveProperty('preview');
+    });
+
+    it('keeps the one-step refusal reason next to the CLI two-step hint', () => {
+        const payload = { success: false, error: { code: 'precondition_required', message: 'requestId is required for this strict write. This overwrite can skip preflight only with ifMatch from a fresh read of the target.', oneStep: { allowed: false, tier: 2, reason: 'missing_if_match' } } };
+        const parsed = JSON.parse((applyCliWriteGuidance(text(payload, true) as never, 'block').result.content[0] as { text: string }).text);
+        expect(parsed.error).toMatchObject({ hint: CLI_PREFLIGHT_HINT, oneStep: { reason: 'missing_if_match' } });
+        expect(parsed.error.message).toContain('ifMatch');
+    });
+
     it('leaves ordinary results untouched', () => {
         const original = text({ success: true, id: 'x' });
         expect(applyCliWriteGuidance(original as never, 'document').result).toBe(original);

@@ -69,6 +69,7 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── tool-execution.ts    # executeLocalTool：三入口共用的执行链（写协调器 + 参数校验 + 处理函数）
 │   │   ├── write-safety-coordinator.ts # 严格写入协调器主流程（锁、租约、账本、提交）
 │   │   ├── write-safety-probe.ts / write-safety-av.ts / write-safety-ledger.ts # 状态探针、AV 校验、请求账本
+│   │   ├── write-safety-if-match.ts # 读取哈希 ifMatch（与预检同一探针）与一步写入的 help 标注；分级表在 core/write-safety-policy.ts
 │   │   ├── resources.ts / mcp-apps.ts # MCP Resources（help 文档）与 MCP Apps 注册、App 工具执行与结果投影
 │   │   └── mcp-initial-cost.ts  # tools/list 时写入初始 token 成本
 │   │

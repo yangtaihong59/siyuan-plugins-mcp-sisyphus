@@ -50,7 +50,15 @@ export function applyCliWriteGuidance(result: ToolResult, tool: string, json = t
             const { preview: _preview, ...rest } = payload;
             payload = rest;
         }
+    } else if (!result.isError && isRecord(payload.oneStep) && isRecord(payload.preview)) {
+        // One-step receipt: the write already ran; show what it changed.
+        if (json) return { result };
+        previewLines = formatWritePreview(payload.preview, 'Preview (committed in one step; verify it matches the intent):');
+        const { preview: _preview, ...rest } = payload;
+        payload = rest;
     } else if (result.isError && isRecord(payload.error) && PREFLIGHT_REQUIRED_CODES.has(payload.error.code)) {
+        // A one-step refusal already names its reason in error.message and
+        // error.oneStep; the hint gives the CLI spelling of the two-step path.
         payload = { ...payload, error: { ...payload.error, hint: CLI_PREFLIGHT_HINT } };
     } else if (!result.isError && isRecord(payload.removeDefaultColumn?.arguments)) {
         // av create names SiYuan's default select column; give its paste-ready removal preflight.
@@ -77,9 +85,9 @@ export function applyCliWriteGuidance(result: ToolResult, tool: string, json = t
 }
 
 /** Terminal rendering of a preflight `preview` object (targets, changes, risk). */
-export function formatWritePreview(preview: Record<string, any>): string[] {
+export function formatWritePreview(preview: Record<string, any>, heading = 'Preview (read it before committing):'): string[] {
     if (typeof preview.error === 'string') return [`Preview unavailable: ${preview.error}`];
-    const lines: string[] = ['Preview (read it before committing):'];
+    const lines: string[] = [heading];
     const targets = Array.isArray(preview.targets) ? preview.targets.filter(isRecord) : [];
     if (targets.length > 0) {
         const more = typeof preview.targetCount === 'number' && preview.targetCount > targets.length
