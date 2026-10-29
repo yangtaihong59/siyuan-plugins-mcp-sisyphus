@@ -562,6 +562,15 @@ function md(value) {
     return String(value ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ');
 }
 
+/**
+ * Plugin-side locations are listed by file only. Line numbers in our own
+ * source shift with every unrelated edit, which made the no-drift gate fail on
+ * changes that did not touch any API mapping. Pinned SiYuan sources keep lines.
+ */
+function pluginFiles(locations, label = (item) => item.file) {
+    return [...new Set(locations.map(label))].sort().map((text) => `\`${text}\``);
+}
+
 function linkSource(file, line) {
     return `\`${file}:${line}\``;
 }
@@ -671,7 +680,7 @@ function generateComplete(model) {
     lines.push('', ancillaryTables(model), '', '## 全量路由总表', '', '“发布模式”仅按 middleware 作保守判断：Admin/Readonly 路由不可由发布 Reader 角色调用；仅 Auth 的路由仍可能在 handler 内进行数据级发布访问检查。请求/响应 schema 若未公开则明确为“未知（内部）”。', '', '| # | 方法 | 路径 | Family | 处理器 | Auth | Admin | Readonly | 发布模式 | 公开性 | 前端字面调用 | Sisyphus | 请求/响应概要 | 来源 |', '|---:|---|---|---|---|:---:|:---:|:---:|---|---|:---:|---|---|---|');
     model.routes.forEach((route, index) => {
         const locations = model.backendLiterals.get(route.path) ?? [];
-        const pluginText = locations.length ? locations.map((item) => `${item.layer}:${item.file}:${item.line}`).join('<br>') : '—';
+        const pluginText = locations.length ? pluginFiles(locations, (item) => `${item.layer}:${item.file}`).join('<br>') : '—';
         const exposure = model.official.has(route.path) ? '官方公开' : route.path.includes(':') || route.registration === 'Any' ? '动态/内部' : '内部';
         const schema = model.official.has(route.path) ? '见官方 API 文档' : locations.length ? '见插件 wrapper 类型；内核未公开稳定 schema' : '未知（内部）';
         const publish = route.admin || route.readonly ? '不可用' : route.auth ? '条件可用' : '公开可达';
@@ -711,7 +720,7 @@ function generatePlugin(model, existing = '') {
         `- **${model.plugin.tools.length}** 个聚合工具、**${model.actions.length}** 个静态 action（不含隐式 \`help\`、MCP App 重复 action、\`extension\` 运行时动态 action）。`,
         `- \`src/api\` wrapper 覆盖口径为 **${model.backendLiterals.size}** 个唯一 \`/api/*\` 字面量：**${model.validBackend.length}** 个有效，覆盖当前 **${EXPECTED.apiPaths}** 个内核 API 路径的 **${(model.validBackend.length / EXPECTED.apiPaths * 100).toFixed(1)}%**；工具层直调另列，不混入该基线。`,
         `- UI 设置页另有 **${model.uiOnly.size}** 个 UI-only 路径，不计入工具/API 覆盖率。`,
-        `- 唯一失效 wrapper：\`${model.invalidBackend[0]}\`（\`src/api/file.ts:93\`）；本轮仅记录，不删除。`,
+        `- 唯一失效 wrapper：\`${model.invalidBackend[0]}\`（${pluginFiles(model.backendLiterals.get(model.invalidBackend[0]) ?? []).join('、')}）；本轮仅记录，不删除。`,
         '- 生成器直接读取当前工作区注册表，因此新增或移除 action 后会同步更新本页基线。', '',
         '## 工具汇总', '',
         '| 工具 | Action 数 | 危险 Action | 原生 MCP 重叠候选 |', '|---|---:|---|---|',
@@ -740,12 +749,12 @@ function generatePlugin(model, existing = '') {
     for (const [apiPath, locations] of sortedLiterals) {
         const valid = model.paths.has(apiPath);
         const layers = [...new Set(locations.filter((item) => item.layer !== 'ui').map((item) => item.layer))].join('+');
-        lines.push(`| \`${apiPath}\` | ${layers} | ${locations.filter((item) => item.layer !== 'ui').map((item) => `\`${item.file}:${item.line}\``).join('<br>')} | ${valid ? '有效内核路由' : '失效 wrapper（保留审计）'} |`);
+        lines.push(`| \`${apiPath}\` | ${layers} | ${pluginFiles(locations.filter((item) => item.layer !== 'ui')).join('<br>')} | ${valid ? '有效内核路由' : '失效 wrapper（保留审计）'} |`);
     }
     lines.push('', `### API wrapper 层外的工具直调（不计 ${model.backendLiterals.size} wrapper 覆盖口径）`, '', '| API 路径 | 位置 | 状态 |', '|---|---|---|');
-    for (const [apiPath, locations] of [...model.toolDirectOnly].sort(([a], [b]) => a.localeCompare(b))) lines.push(`| \`${apiPath}\` | ${locations.filter((item) => item.layer === 'tool-direct').map((item) => `\`${item.file}:${item.line}\``).join('<br>')} | ${model.paths.has(apiPath) ? '有效' : '失效'} |`);
+    for (const [apiPath, locations] of [...model.toolDirectOnly].sort(([a], [b]) => a.localeCompare(b))) lines.push(`| \`${apiPath}\` | ${pluginFiles(locations.filter((item) => item.layer === 'tool-direct')).join('<br>')} | ${model.paths.has(apiPath) ? '有效' : '失效'} |`);
     lines.push('', '### UI-only（不计覆盖率）', '', '| API 路径 | 位置 | 状态 |', '|---|---|---|');
-    for (const [apiPath, locations] of [...model.uiOnly].sort(([a], [b]) => a.localeCompare(b))) lines.push(`| \`${apiPath}\` | ${locations.map((item) => `\`${item.file}:${item.line}\``).join('<br>')} | ${model.paths.has(apiPath) ? '有效' : '失效'} |`);
+    for (const [apiPath, locations] of [...model.uiOnly].sort(([a], [b]) => a.localeCompare(b))) lines.push(`| \`${apiPath}\` | ${pluginFiles(locations).join('<br>')} | ${model.paths.has(apiPath) ? '有效' : '失效'} |`);
     lines.push('', '## 覆盖层级解释', '', `- **插件直接覆盖**：后端 API wrapper 或工具层直调，列于上表 ${model.backendLiterals.size} 项。`, `- **由 extension 暴露原生工具**：运行时通过思源 \`/mcp\` 发现；动态 action 不纳入静态 ${model.actions.length}。`, '- **仅内核内部使用**：当前内核路由存在，但没有插件后端字面量；不等同于适合暴露给 AI。', '- **不建议引入**：宿主管理、认证回调、任意文件/网络代理等能力，见人工候选区。', '', '## 风险模型说明', '', '- `DANGEROUS_ACTIONS` 表示 MCP 协议级确认，不等价于“是否写入”。', '- `ACTION_SAFETY_POLICIES` 区分 read/mutation/external 与 precondition；`ACTION_TIERS` 只表示披露层级。三者不得合并成一个布尔值。', '- 原生 MCP 的 action effect 需从 Go 源读取，因为 `ActionEffects` 不通过 `/mcp tools/list` 返回。例如 `semantic` 在上游标注 DataEgress 与 ExternalCost。', '', MANUAL_START, manual, MANUAL_END, '');
     return lines.join('\n');
 }
