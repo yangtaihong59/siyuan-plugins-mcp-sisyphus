@@ -450,6 +450,28 @@ describe('tool permission and filtering behavior', () => {
         expect(parsed.partial).toBe(true);
     });
 
+    it('gives search_docs hits an id and title and keeps only the requested notebook', async () => {
+        // The kernel returns a bare array of hits from every notebook.
+        vi.spyOn(documentApi, 'searchDocs').mockResolvedValue([
+            { box: 'allowed', path: '/', hPath: 'Allowed/', boxIcon: '' },
+            { box: 'allowed', path: '/20240101000000-abcdefg.sy', hPath: 'Allowed/Parent/Doc 1', name: '', alias: '', boxIcon: '' },
+            { box: 'other', path: '/20240101000000-hijklmn.sy', hPath: 'Other/Doc 1', name: '', alias: '', boxIcon: '' },
+        ] as never);
+
+        const result = await callDocumentTool({} as never, {
+            action: 'search_docs',
+            notebook: 'allowed',
+            query: 'Doc',
+        }, documentConfig, permMgr as never);
+        const parsed = parseResult(result);
+
+        expect(parsed.docs).toEqual([
+            { notebookRoot: true, box: 'allowed', path: '/', hPath: 'Allowed/' },
+            { id: '20240101000000-abcdefg', title: 'Doc 1', box: 'allowed', path: '/20240101000000-abcdefg.sy', hPath: 'Allowed/Parent/Doc 1' },
+        ]);
+        expect(parsed.otherNotebookCount).toBe(1);
+    });
+
     it('adds an icon reminder to document create results', async () => {
         vi.spyOn(documentApi, 'createDoc').mockResolvedValue('doc-1');
 

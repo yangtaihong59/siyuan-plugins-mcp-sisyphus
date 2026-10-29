@@ -1,5 +1,6 @@
 import * as tagApi from '../../api/tag';
 import * as searchApi from '../../api/search';
+import * as notebookApi from '../../api/notebook';
 import type { SiYuanClient } from '../../api/client';
 import type { TagAction } from '../../core/config';
 import type { PermissionManager } from '../../core/permissions';
@@ -24,20 +25,41 @@ async function ensureTagNotebooksWritable(
     client: SiYuanClient,
     permMgr: PermissionManager,
     label: string,
-): Promise<ToolResult | null> {
+): Promise<{ denied: ToolResult | null; blockCount: number }> {
     const literal = escapeSqlString(label);
     const rows = await searchApi.querySQL(
         client,
-        `SELECT DISTINCT box FROM spans WHERE type LIKE '%tag%' AND (content = '${literal}' OR substr(content, 1, length('${literal}') + 1) = '${literal}/')`,
+        `SELECT DISTINCT box, block_id FROM spans WHERE type LIKE '%tag%' AND (content = '${literal}' OR substr(content, 1, length('${literal}') + 1) = '${literal}/')`,
     );
-    const boxes = new Set((Array.isArray(rows) ? rows : [])
-        .map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>).box : undefined))
+    const records = (Array.isArray(rows) ? rows : [])
+        .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object');
+    const boxes = new Set(records
+        .map((row) => row.box)
         .filter((box): box is string => typeof box === 'string' && box.length > 0));
     for (const box of boxes) {
         const denied = await ensurePermissionForNotebook(permMgr, box, 'write');
-        if (denied) return denied;
+        if (denied) return { denied, blockCount: 0 };
     }
-    return null;
+    return { denied: null, blockCount: new Set(records.map((row) => row.block_id)).size };
+}
+
+/**
+ * SiYuan rewrites tags only in open notebooks and reports success either way,
+ * so a rename that touched nothing would otherwise look like it worked.
+ */
+async function tagScopeWarning(client: SiYuanClient, label: string, blockCount: number): Promise<string | undefined> {
+    let notebooks: Awaited<ReturnType<typeof notebookApi.listNotebooks>> | null = null;
+    try {
+        notebooks = await notebookApi.listNotebooks(client);
+    } catch {
+        // The warning is advisory; the write itself already succeeded.
+    }
+    const closed = (notebooks?.notebooks ?? []).filter((notebook) => notebook.closed).map((notebook) => notebook.name);
+    const closedNote = closed.length > 0
+        ? ` Closed notebooks are skipped by SiYuan (${closed.join(', ')}); open them with notebook set_open_state and retry if the tag lives there.`
+        : '';
+    if (blockCount === 0) return `No indexed block in an open notebook carries #${label}#, so nothing was changed.${closedNote}`;
+    return closedNote ? closedNote.trim() : undefined;
 }
 
 export const TAG_ACTION_HANDLERS: Record<TagAction, ToolActionHandler> = {
@@ -65,23 +87,25 @@ export const TAG_ACTION_HANDLERS: Record<TagAction, ToolActionHandler> = {
         },
         rename: async ({ client, permMgr, rawArgs }) => {
             const parsed = TagRenameSchema.parse(rawArgs);
-            const denied = await ensureTagNotebooksWritable(client, permMgr, parsed.oldLabel);
+            const { denied, blockCount } = await ensureTagNotebooksWritable(client, permMgr, parsed.oldLabel);
             if (denied) return denied;
             await tagApi.renameTag(client, parsed.oldLabel, parsed.newLabel);
+            const warning = await tagScopeWarning(client, parsed.oldLabel, blockCount);
             return applyUiRefresh(
                 client,
-                createJsonResult({ success: true, oldLabel: parsed.oldLabel, newLabel: parsed.newLabel }),
+                createJsonResult({ success: true, oldLabel: parsed.oldLabel, newLabel: parsed.newLabel, count: blockCount, ...(warning ? { warning } : {}) }),
                 [{ type: 'reloadTag' }],
             );
         },
         remove: async ({ client, permMgr, rawArgs }) => {
             const parsed = TagRemoveSchema.parse(rawArgs);
-            const denied = await ensureTagNotebooksWritable(client, permMgr, parsed.label);
+            const { denied, blockCount } = await ensureTagNotebooksWritable(client, permMgr, parsed.label);
             if (denied) return denied;
             await tagApi.removeTag(client, parsed.label);
+            const warning = await tagScopeWarning(client, parsed.label, blockCount);
             return applyUiRefresh(
                 client,
-                createJsonResult({ success: true, label: parsed.label }),
+                createJsonResult({ success: true, label: parsed.label, count: blockCount, ...(warning ? { warning } : {}) }),
                 [{ type: 'reloadTag' }],
             );
         },

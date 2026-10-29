@@ -1039,17 +1039,49 @@ const handleListTree: DocumentActionHandler = async ({ client, permMgr, rawArgs 
     return createJsonResult({ tree: truncateTreeByDepth(enriched, maxDepth), maxDepth, depthHint });
 };
 
+/**
+ * searchDocs returns a bare array of hits from every notebook, each with the
+ * doc's naming attribute as `name` (usually empty), no ID and no notebook ID;
+ * hPath starts with the notebook name. Give each hit its ID and title, and
+ * keep the notebook the caller asked about.
+ */
+function shapeSearchDocHits(data: unknown, notebook: string, notebookName?: string): { docs: unknown; otherNotebookCount: number } {
+    const record = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : undefined;
+    const docs = Array.isArray(data) ? data : Array.isArray(record?.docs) ? record.docs as unknown[] : undefined;
+    if (!docs) return { docs: data, otherNotebookCount: 0 };
+    const items = docs.filter((doc): doc is Record<string, unknown> => !!doc && typeof doc === 'object');
+    const inNotebook = (doc: Record<string, unknown>) => typeof doc.box === 'string'
+        ? doc.box === notebook
+        : !notebookName || typeof doc.hPath !== 'string' || doc.hPath.startsWith(`${notebookName}/`);
+    const kept = items.filter(inNotebook);
+    const shaped = kept.map((doc) => {
+        const storagePath = typeof doc.path === 'string' ? doc.path : '';
+        const id = storagePath.match(/([^/]+)\.sy$/)?.[1];
+        const hPath = typeof doc.hPath === 'string' ? doc.hPath : '';
+        const { name, alias, boxIcon, ...rest } = doc;
+        return {
+            ...(id ? { id, title: hPath.split('/').filter(Boolean).pop() ?? '' } : { notebookRoot: true }),
+            ...rest,
+            ...(typeof name === 'string' && name ? { name } : {}),
+            ...(typeof alias === 'string' && alias ? { alias } : {}),
+        };
+    });
+    return { docs: shaped, otherNotebookCount: items.length - kept.length };
+}
+
 const handleSearchDocs: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentSearchDocsSchema.parse(rawArgs);
     const denied = await ensurePermissionForNotebook(permMgr, parsed.notebook, 'read');
     if (denied) return denied;
     const result = await documentApi.searchDocs(client, parsed.query);
     const filtered = await filterSearchDocsResult(client, result, permMgr, parsed.path);
+    const shaped = shapeSearchDocHits(filtered.data, parsed.notebook, await resolveNotebookName(client, parsed.notebook));
     const totalFilteredOutCount = filtered.permissionFilteredOutCount + filtered.pathFilteredOutCount;
     return createJsonResult({
         ...((filtered.data && typeof filtered.data === 'object' && !Array.isArray(filtered.data))
-            ? filtered.data as Record<string, unknown>
-            : { docs: filtered.data }),
+            ? { ...filtered.data as Record<string, unknown>, ...(Array.isArray((filtered.data as Record<string, unknown>).docs) ? { docs: shaped.docs } : {}) }
+            : { docs: shaped.docs }),
+        ...(shaped.otherNotebookCount > 0 ? { otherNotebookCount: shaped.otherNotebookCount } : {}),
         ...(parsed.path ? { path: parsed.path, pathApplied: true } : {}),
         ...(filtered.permissionFilteredOutCount > 0 ? { partial: true, reason: 'permission_filtered' } : {}),
         ...(totalFilteredOutCount > 0 ? { filteredOutCount: totalFilteredOutCount } : {}),
@@ -1127,6 +1159,28 @@ function countOutlineNodes(nodes: unknown): number {
     return count;
 }
 
+/**
+ * The native outline nests sub-headings under `blocks`/`children` with
+ * inconsistent fields; a flat, document-order list reads at a glance.
+ */
+function flattenOutline(nodes: unknown, depth = 0, out: Array<Record<string, unknown>> = []): Array<Record<string, unknown>> {
+    if (!Array.isArray(nodes)) return out;
+    for (const node of nodes) {
+        if (!node || typeof node !== 'object') continue;
+        const typed = node as Record<string, unknown>;
+        const title = typeof typed.name === 'string' && typed.name ? typed.name : typed.content;
+        out.push({
+            id: typed.id,
+            depth,
+            ...(typeof typed.subType === 'string' && typed.subType ? { level: typed.subType } : {}),
+            title,
+        });
+        flattenOutline(typed.blocks, depth + 1, out);
+        flattenOutline(typed.children, depth + 1, out);
+    }
+    return out;
+}
+
 const handleGetOutline: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentGetOutlineSchema.parse(rawArgs);
     const { denied, context } = await ensurePermissionForDocumentId(client, permMgr, parsed.id, 'read');
@@ -1144,6 +1198,7 @@ const handleGetOutline: DocumentActionHandler = async ({ client, permMgr, rawArg
         notebook: context.notebook,
         preview,
         headingCount: countOutlineNodes(outline),
+        headings: flattenOutline(outline),
         outline,
     });
 };
@@ -1194,11 +1249,18 @@ const handleHeadingToDoc: DocumentActionHandler = async ({ client, permMgr, rawA
     if (denied) return denied;
     const plan = await prepareDocumentConversion(client, permMgr, parsed.action, parsed);
     await documentApi.headingToDoc(client, parsed.headingID, parsed.targetNotebook, plan.targetPath, plan.previousPath);
-    const converted = await client.requestRead<{ rootID: string; box: string }>('/api/block/getBlockInfo', { id: parsed.headingID });
+    const converted = await client.requestRead<{ rootID: string; box: string; path?: string; rootTitle?: string }>('/api/block/getBlockInfo', { id: parsed.headingID });
     if (converted.rootID !== parsed.headingID || converted.box !== parsed.targetNotebook) throw new Error('Heading conversion readback mismatch');
+    const hPath = await documentApi.getHPathByID(client, parsed.headingID).catch(() => undefined);
     return applyUiRefresh(client, createJsonResult({
         success: true,
+        // The heading's ID becomes the new document's ID.
         id: parsed.headingID,
+        ...(converted.rootTitle ? { title: converted.rootTitle } : {}),
+        ...(converted.path ? { path: converted.path } : {}),
+        ...(typeof hPath === 'string' ? { hPath } : {}),
+        notebook: parsed.targetNotebook,
+        sourceID: source.context.documentId,
         headingID: parsed.headingID,
         targetNotebook: parsed.targetNotebook,
         targetPath: plan.targetPath,

@@ -29,7 +29,11 @@ const ANSI = {
 
 const SUMMARY_KEY_PRIORITY = [
     'id',
+    // Flashcards: review/remove take cardID, not the block's id.
+    'cardID',
     'name',
+    // Timeline nodes: compare/rollback take the tag.
+    'tag',
     // Notebook lists: what this client may do there matters more than paths.
     'permission',
     'title',
@@ -42,7 +46,6 @@ const SUMMARY_KEY_PRIORITY = [
     'docID',
     'avID',
     'deckID',
-    'cardID',
     'status',
     'version',
     'count',
@@ -121,7 +124,7 @@ export function writeKeyValueRows(
 
     for (let i = 0; i < entries.length; i++) {
         const label = labels[i].padEnd(width);
-        writeLine(stream, `  ${paint(stream, ANSI.bold, `${label}:`)} ${formatScalar(entries[i].value)}`);
+        writeLine(stream, `  ${paint(stream, ANSI.bold, `${label}:`)} ${formatField(entries[i].key, entries[i].value)}`);
     }
 }
 
@@ -596,7 +599,8 @@ function pickSummaryEntries(
     exclude: Set<string> = new Set(),
 ): Array<{ key: string; value: unknown }> {
     const scalarEntries = entries
-        .filter(([key, value]) => !exclude.has(key) && isScalar(value))
+        // Empty strings (unset name/alias/icon) would crowd out real fields.
+        .filter(([key, value]) => !exclude.has(key) && isScalar(value) && value !== '')
         .map(([key, value]) => ({ key, value }));
 
     return scalarEntries
@@ -626,7 +630,7 @@ function summarizeItem(value: unknown): string | null {
 
     return scalarEntries
         .slice(0, 4)
-        .map((entry) => `${humanizeKey(entry.key)}: ${formatScalar(entry.value)}`)
+        .map((entry) => `${humanizeKey(entry.key)}: ${formatField(entry.key, entry.value)}`)
         .join(' · ');
 }
 
@@ -654,6 +658,8 @@ function prettyJson(value: unknown): string {
 }
 
 function humanizeKey(key: string): string {
+    // Data keys (file names, paths, tags) are values, not field names.
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(key)) return key;
     return key
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/[_-]+/g, ' ')
@@ -661,12 +667,25 @@ function humanizeKey(key: string): string {
         .split(/\s+/)
         .map((part) => {
             const lower = part.toLowerCase();
-            if (['id', 'ids', 'url', 'api', 'sql', 'json', 'ocr', 'html'].includes(lower)) {
+            if (lower === 'ids') return 'IDs';
+            if (['id', 'url', 'api', 'sql', 'json', 'ocr', 'html'].includes(lower)) {
                 return lower.toUpperCase();
             }
             return lower.charAt(0).toUpperCase() + lower.slice(1);
         })
         .join(' ');
+}
+
+const EPOCH_MS_KEYS = /^(created|updated|lastReview|due|expiresAt|requestIdExpiresAt|time)$/;
+
+/** Epoch-millisecond timestamps read as dates; other scalars as-is. */
+function formatField(key: string, value: unknown): string {
+    if (typeof value === 'number' && EPOCH_MS_KEYS.test(key) && value > 1e12 && value < 1e14) {
+        const d = new Date(value);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    return formatScalar(value);
 }
 
 function formatScalar(value: unknown): string {

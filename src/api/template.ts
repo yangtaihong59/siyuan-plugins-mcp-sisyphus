@@ -185,6 +185,31 @@ export async function resolveTemplate(
 /**
  * Render a template by ID or path
  */
+/**
+ * /api/template/render needs the absolute workspace path, which remote callers
+ * cannot know. Map relative, /data/templates/... and /templates/... forms to
+ * the absolute path the kernel's own template picker reports; anything that
+ * does not resolve is passed through so the kernel still owns the error.
+ */
+export async function resolveTemplateRenderPath(client: SiYuanClient, path: string): Promise<string> {
+    let relativePath: string;
+    try {
+        relativePath = normalizeTemplatePath(path).relativePath;
+    } catch {
+        return path;
+    }
+    const name = relativePath.split('/').pop()!.replace(/\.md$/i, '');
+    const { templates } = await searchTemplates(client, name);
+    const match = templates.find((item) => {
+        try {
+            return normalizeTemplatePath(item.path).relativePath === relativePath;
+        } catch {
+            return false;
+        }
+    });
+    return match?.path ?? path;
+}
+
 export async function renderTemplate(
     client: SiYuanClient,
     id: string,

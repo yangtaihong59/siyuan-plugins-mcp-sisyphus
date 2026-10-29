@@ -41,6 +41,7 @@ vi.mock('@/api/template', () => ({
     deleteTemplate: vi.fn(),
     saveDocAsTemplate: vi.fn(),
     renderTemplate: vi.fn(),
+    resolveTemplateRenderPath: vi.fn(async (_client: unknown, path: string) => path),
     renderSprig: vi.fn(),
 }));
 
@@ -504,6 +505,17 @@ describe('file tool asset actions', () => {
                 },
             },
         });
+    });
+
+    it('renders a relative template path through the resolved workspace path', async () => {
+        const templateApi = await import('@/api/template');
+        vi.mocked(templateApi.resolveTemplateRenderPath).mockResolvedValueOnce('/workspace/data/templates/demo.md');
+        vi.mocked(templateApi.renderTemplate).mockResolvedValueOnce({ path: '/workspace/data/templates/demo.md', content: '<div/>' });
+
+        await callFileTool(client, { action: 'render', engine: 'template', id: 'doc-1', path: 'demo.md' }, config.file, {} as never);
+
+        expect(templateApi.resolveTemplateRenderPath).toHaveBeenCalledWith(client, 'demo.md');
+        expect(templateApi.renderTemplate).toHaveBeenCalledWith(client, 'doc-1', '/workspace/data/templates/demo.md', undefined);
     });
 
     it('passes preview through while rendering workspace templates', async () => {

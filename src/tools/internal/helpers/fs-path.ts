@@ -132,7 +132,9 @@ async function getDocByHPath(
 }
 
 function formatCandidates(candidates: FsDocumentPath[]): string {
-    return candidates.map((candidate) => candidate.canonicalPath).join(', ');
+    // Same-title siblings share a canonical path; the ID is the only way to pick one.
+    const list = candidates.map((candidate) => `${candidate.canonicalPath} (id ${candidate.id})`).join(', ');
+    return `${list}. Same-named documents cannot be told apart by path; use an ID-based action (e.g. document get_doc or rename with id)`;
 }
 
 function createFsError(code: string, message: string): Error {

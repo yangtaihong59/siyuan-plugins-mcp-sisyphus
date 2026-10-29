@@ -44,7 +44,7 @@ export const FlashcardReviewCardSchema = z.object({
     action: z.literal("review_card"),
     deckID: z.string().describe("Deck ID"),
     cardID: z.string().describe("Card ID"),
-    rating: z.number().optional().describe("Review rating passed through to the kernel"),
+    rating: z.number().optional().describe("FSRS rating: 1=Again, 2=Hard, 3=Good, 4=Easy"),
     skip: z.boolean().optional().describe("When true, skip the current card instead of submitting a rating"),
     reviewedCards: z.array(z.object({
         cardID: z.string().describe("Reviewed card ID"),

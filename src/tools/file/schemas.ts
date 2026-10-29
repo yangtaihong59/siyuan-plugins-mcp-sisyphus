@@ -5,7 +5,7 @@ export const FileActionSchema = z.enum(FILE_ACTIONS);
 
 export const FileUploadAssetSchema = z.object({
     action: z.literal("upload_asset"),
-    assetsDirPath: z.string().describe("Asset directory path (e.g., /assets/)"),
+    assetsDirPath: z.string().optional().describe("Asset directory path; defaults to /assets/"),
     localFilePath: z.string().optional().describe("Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB)."),
     uploadSource: z.string().regex(/^[a-f0-9]{64}$/).optional().describe("Opaque source returned by the authenticated kernel /transfer/upload endpoint; expires after 10 minutes. Supply instead of localFilePath."),
     confirmLargeFile: z.boolean().optional().describe("Set to true only after the user explicitly confirms uploading a file larger than the configured safety threshold."),

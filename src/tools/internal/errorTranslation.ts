@@ -68,8 +68,10 @@ const ERROR_RULES: ErrorRule[] = [
             /kernel still initializing/i,
             /closed_or_initializing/i,
             /笔记本已关闭/,
+            // createDocWithMd and friends report a closed box only as a failed lookup.
+            /Query notebook failed/i,
         ],
-        hint: 'Re-open the notebook via notebook(action="set_open_state", opened=true) or retry after a short wait.',
+        hint: 'The notebook is closed (or the ID does not exist). Check notebook(action="list") for closed=true, re-open it via notebook(action="set_open_state", opened=true), then retry.',
     },
     {
         code: 'document_not_found',

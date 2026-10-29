@@ -262,7 +262,7 @@ const handleUploadAsset = (thresholdMB: number, largeUploadThresholdBytes: numbe
             if (source.bytes.byteLength > largeUploadThresholdBytes && parsed.confirmLargeFile !== true) {
                 return createJsonResult({ success: false, requiresConfirmation: true, reason: 'file_too_large', fileSizeBytes: source.bytes.byteLength, thresholdMB });
             }
-            const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, source.bytes, source.fileName);
+            const result = await fileApi.uploadAsset(client, parsed.assetsDirPath ?? '/assets/', source.bytes, source.fileName);
             return createJsonResult({ ...result, uploadedFileName: source.fileName, uploadSource: parsed.uploadSource });
         }
         if (getInvocationTransport() === 'kernel') return kernelUploadAssetGuidance({ localFilePath: parsed.localFilePath! });
@@ -288,7 +288,7 @@ const handleUploadAsset = (thresholdMB: number, largeUploadThresholdBytes: numbe
         }
         const fileName = nodePath().basename(localFilePath);
         const fileBytes = nodeFs().readFileSync(localFilePath);
-        const result = await fileApi.uploadAsset(client, parsed.assetsDirPath, fileBytes, fileName);
+        const result = await fileApi.uploadAsset(client, parsed.assetsDirPath ?? '/assets/', fileBytes, fileName);
         return createJsonResult({
             ...result,
             localFilePath,
@@ -306,7 +306,8 @@ const handleRender: ToolActionHandler = async ({ client, permMgr, rawArgs }) => 
     const { denied } = await ensurePermissionForDocumentId(client, permMgr, parsed.id!, 'read');
     if (denied) return denied;
     try {
-        const result = await templateApi.renderTemplate(client, parsed.id!, parsed.path!, parsed.preview);
+        const templatePath = await templateApi.resolveTemplateRenderPath(client, parsed.path!);
+        const result = await templateApi.renderTemplate(client, parsed.id!, templatePath, parsed.preview);
         return createJsonResult(result);
     } catch (error) {
         if (isWorkspaceTemplatePathError(error)) {

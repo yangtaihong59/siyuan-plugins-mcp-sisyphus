@@ -95,6 +95,15 @@ function normalizeFileUploadAssetArgs(args: Record<string, unknown>): void {
     }
 }
 
+const FLASHCARD_RATINGS: Record<string, number> = { again: 1, hard: 2, good: 3, easy: 4 };
+
+// SiYuan's review buttons are named; the kernel takes their FSRS numbers.
+function normalizeFlashcardRating(args: Record<string, unknown>): void {
+    if (typeof args.rating !== 'string') return;
+    const named = FLASHCARD_RATINGS[args.rating.trim().toLowerCase()];
+    if (named !== undefined) args.rating = named;
+}
+
 // Columns report their type as "mSelect"; cells call the same type "multi_select".
 function normalizeAvCellValueTypes(args: Record<string, unknown>): void {
     const fix = (cell: unknown): unknown => cell && typeof cell === 'object' && (cell as Record<string, unknown>).valueType === 'mSelect'
@@ -128,6 +137,7 @@ export function normalizeToolArguments(category: ToolCategory, rawArgs: Record<s
     if (category === 'fs' && action === 'replace') normalizeFsReplaceArgs(args);
     if (category === 'block' && action === 'word_count') normalizeBlockWordCountArgs(args);
     if (category === 'flashcard' && (action === 'create_card' || action === 'remove_card')) normalizeFlashcardBlockIdsArgs(args);
+    if (category === 'flashcard' && action === 'review_card') normalizeFlashcardRating(args);
     if (category === 'file' && action === 'upload_asset') normalizeFileUploadAssetArgs(args);
     if (category === 'search' && action === 'search_refs') normalizeSearchRefsArgs(args);
     if (category === 'av' && (action === 'set_cells' || action === 'add_rows')) normalizeAvCellValueTypes(args);

@@ -430,8 +430,10 @@ function normalizeGetCardsResult(result: flashcardApi.FlashcardGetCardsResult | 
     const cards = Array.isArray(result?.blocks) ? result.blocks : Array.isArray(result?.cards) ? result.cards : [];
     return cards.map(card => {
         if (typeof card.riffCardID !== 'string' || !card.riffCardID) return card;
-        const { riffCardID, riffCard, ...block } = card;
-        return { ...block, blockID: card.id as string, cardID: riffCardID,
+        // Drop the block's own `id`: callers (and CLI summaries) took it for the
+        // card ID, but review_card/remove need cardID and blockID respectively.
+        const { riffCardID, riffCard, id: _blockID, ...block } = card;
+        return { cardID: riffCardID, blockID: card.id as string, ...block,
             ...(riffCard && typeof riffCard === 'object' ? riffCard : {}) };
     });
 }

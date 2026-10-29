@@ -389,6 +389,10 @@ describe('document.get_outline', () => {
             notebook: 'nb-1',
             preview: true,
             headingCount: 2,
+            headings: [
+                { id: 'heading-1', depth: 0, title: 'Heading 1' },
+                { id: 'heading-2', depth: 1, title: 'Heading 2' },
+            ],
             outline,
         });
     });

@@ -5,6 +5,7 @@ import {
     readTemplateSource,
     renderTemplate,
     renderSprig,
+    resolveTemplateRenderPath,
     saveDocAsTemplate,
     searchTemplates,
     writeTemplateSource,
@@ -38,6 +39,22 @@ describe('template api wrappers', () => {
             path: '/templates/note.md',
             preview: true,
         });
+    });
+
+    it('resolves relative template paths to the picker-reported workspace path', async () => {
+        const request = vi.fn().mockResolvedValue({
+            k: 'note',
+            templates: [
+                { path: '/ws/data/templates/sub/note.md', content: '' },
+                { path: '/ws/data/templates/note.md', content: '' },
+            ],
+        });
+        const client = { request, requestRead: request } as never;
+
+        await expect(resolveTemplateRenderPath(client, 'note.md')).resolves.toBe('/ws/data/templates/note.md');
+        await expect(resolveTemplateRenderPath(client, '/templates/sub/note.md')).resolves.toBe('/ws/data/templates/sub/note.md');
+        await expect(resolveTemplateRenderPath(client, 'missing.md')).resolves.toBe('missing.md');
+        expect(request).toHaveBeenCalledWith('/api/search/searchTemplate', { k: 'note' });
     });
 
     it('requests sprig template render', async () => {

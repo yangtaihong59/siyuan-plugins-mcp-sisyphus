@@ -170,10 +170,19 @@ async function resolveTaggedNode(
     tag: string,
     documentId?: string,
 ): Promise<{ snapshot: TimelineSnapshot; node: TimelineNodeRecord }> {
-    if (!tag.startsWith(TIMELINE_TAG_PREFIX)) {
-        throw new Error('The tag is not a Sisyphus timeline node.');
-    }
     const tagged = await repoApi.getRepoTagSnapshots(client);
+    if (!tag.startsWith(TIMELINE_TAG_PREFIX)) {
+        // Callers often have the node name (shown by list_nodes) or snapshot ID
+        // rather than the tag; accept either when it names exactly one node.
+        const matches = (tagged.snapshots ?? []).filter((item) => typeof item.tag === 'string'
+            && item.tag.startsWith(TIMELINE_TAG_PREFIX)
+            && (item.memo === tag || item.id === tag)
+            && (!documentId || isGlobalTimelineTag(item.tag) || extractTimelineDocumentId(item.tag) === documentId));
+        if (matches.length === 1) return resolveTaggedNode(client, matches[0].tag as string, documentId);
+        throw new Error(matches.length > 1
+            ? `Several timeline nodes match "${tag}" (${matches.map((item) => item.tag).join(', ')}); pass one of these tags.`
+            : `"${tag}" is not a Sisyphus timeline tag, node name, or snapshot ID. Copy the tag from timeline list_nodes.`);
+    }
     const snapshot = (tagged.snapshots ?? []).find((item) => item.tag === tag);
     if (!snapshot?.id) throw new Error(`Timeline node not found for tag "${tag}".`);
 

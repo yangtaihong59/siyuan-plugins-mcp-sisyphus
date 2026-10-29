@@ -17,6 +17,8 @@ const SUCCESS_KEEP_KEYS = new Set([
     'oldLabel',
     'newLabel',
     'path',
+    'hPath',
+    'sourceID',
     'paths',
     'newPath',
     'from',

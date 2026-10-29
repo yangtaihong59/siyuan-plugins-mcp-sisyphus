@@ -8,6 +8,10 @@ vi.mock('@/api/tag', () => ({
     removeTag: vi.fn(),
 }));
 
+vi.mock('@/api/notebook', () => ({
+    listNotebooks: vi.fn(async () => ({ notebooks: [{ id: 'nb-x', name: 'Archive', closed: true }] })),
+}));
+
 vi.mock('@/api/search', () => ({
     querySQL: vi.fn(),
     searchTag: vi.fn(),
@@ -60,5 +64,18 @@ describe('tag write permissions', () => {
 
         expect(result.isError).toBeFalsy();
         expect(vi.mocked(tagApi.renameTag)).toHaveBeenCalledWith(client, 'a', 'b');
+    });
+
+    it('reports zero affected blocks and closed notebooks instead of a silent success', async () => {
+        const searchApi = await import('@/api/search');
+        vi.mocked(searchApi.querySQL).mockResolvedValueOnce([]);
+        const client = { requestWrite: vi.fn(), requestRead: vi.fn() } as never;
+
+        const result = await callTagTool(client, { action: 'rename', oldLabel: 'a', newLabel: 'b' }, enabled, permissions(() => true));
+        const payload = JSON.parse(result.content[0].text);
+
+        expect(payload.count).toBe(0);
+        expect(payload.warning).toContain('nothing was changed');
+        expect(payload.warning).toContain('Archive');
     });
 });

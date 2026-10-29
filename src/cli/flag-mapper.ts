@@ -192,9 +192,9 @@ function coerce(key: string, value: unknown, schema: JsonSchema): unknown {
         if (typeof value === 'number') return value;
         if (typeof value === 'string') {
             const n = type === 'integer' ? parseInt(value, 10) : parseFloat(value);
-            if (Number.isNaN(n)) {
-                throw new Error(`--${toKebab(key)} expected a number but got "${value}".`);
-            }
+            // Non-numeric words go through unchanged: argument aliases map named
+            // values (e.g. --rating good), and the tool validator reports the rest.
+            if (Number.isNaN(n)) return value;
             return n;
         }
         return value;

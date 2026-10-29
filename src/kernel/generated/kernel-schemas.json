@@ -1474,7 +1474,7 @@
     },
     {
       "name": "file",
-      "description": "📁 Assets, templates, and exports: upload/rename/delete assets, read images for vision (read_image), templates, Markdown/ZIP exports, unused-asset cleanup.\nActions (required fields): upload_asset*(assetsDirPath) · list_templates() · read_template(path) · create_template(path, markdown) · update_template(path, markdown) · delete_template*(path) · save_doc_as_template(id, name) · render(engine) · export_md(id) · export_markdown_snapshot(notebookID) · export_resources(paths) · list_unused_assets() · get_doc_assets(id) · audit_image_refs(id, expectedRefs) · read_image(path) · get_image_ocr_text() · remove_unused_assets*() · rename_asset(oldPath, newName) · delete_asset*(path) · extract_doc(id)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📁 Assets, templates, and exports: upload/rename/delete assets, read images for vision (read_image), templates, Markdown/ZIP exports, unused-asset cleanup.\nActions (required fields): upload_asset*() · list_templates() · read_template(path) · create_template(path, markdown) · update_template(path, markdown) · delete_template*(path) · save_doc_as_template(id, name) · render(engine) · export_md(id) · export_markdown_snapshot(notebookID) · export_resources(paths) · list_unused_assets() · get_doc_assets(id) · audit_image_refs(id, expectedRefs) · read_image(path) · get_image_ocr_text() · remove_unused_assets*() · rename_asset(oldPath, newName) · delete_asset*(path) · extract_doc(id)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1506,8 +1506,8 @@
             "description": "Operation."
           },
           "assetsDirPath": {
-            "type": "string",
-            "description": "Asset directory path (e.g., /assets/)"
+            "description": "Asset directory path; defaults to /assets/",
+            "type": "string"
           },
           "localFilePath": {
             "description": "Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
@@ -2221,7 +2221,7 @@
             "description": "Card ID"
           },
           "rating": {
-            "description": "Review rating passed through to the kernel",
+            "description": "FSRS rating: 1=Again, 2=Hard, 3=Good, 4=Easy",
             "type": "number"
           },
           "skip": {
@@ -7123,8 +7123,8 @@
             "const": "upload_asset"
           },
           "assetsDirPath": {
-            "type": "string",
-            "description": "Asset directory path (e.g., /assets/)"
+            "description": "Asset directory path; defaults to /assets/",
+            "type": "string"
           },
           "localFilePath": {
             "description": "Absolute local file path on the MCP server host (the CLI also accepts paths relative to your shell). CLI/Node stage its bytes automatically when the kernel coordinator is enabled (maximum 10 MiB).",
@@ -7141,8 +7141,7 @@
           }
         },
         "required": [
-          "action",
-          "assetsDirPath"
+          "action"
         ],
         "additionalProperties": false,
         "description": "Upload a local file or a kernel-staged uploadSource to the specified assets directory."
@@ -7830,7 +7829,7 @@
             "description": "Card ID"
           },
           "rating": {
-            "description": "Review rating passed through to the kernel",
+            "description": "FSRS rating: 1=Again, 2=Hard, 3=Good, 4=Easy",
             "type": "number"
           },
           "skip": {

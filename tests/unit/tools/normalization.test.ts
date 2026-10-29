@@ -26,6 +26,7 @@ vi.mock('@/api/file', () => ({
 
 vi.mock('@/api/template', () => ({
     renderTemplate: vi.fn(),
+    resolveTemplateRenderPath: vi.fn(async (_client: unknown, path: string) => path),
     renderSprig: vi.fn(),
 }));
 
@@ -681,6 +682,13 @@ describe('tool result normalization', () => {
             hint: 'Use page/pageSize to paginate. For focused reads, use block(action="get_kramdown") or search(action="query_sql") with a parent_id filter.',
         });
     });
+    it('maps named flashcard ratings to FSRS numbers', () => {
+        expect(normalizeToolArguments('flashcard', { action: 'review_card', deckID: 'd', cardID: 'c', rating: 'Good' }))
+            .toMatchObject({ rating: 3 });
+        expect(normalizeToolArguments('flashcard', { action: 'review_card', deckID: 'd', cardID: 'c', rating: 'meh' }))
+            .toMatchObject({ rating: 'meh' });
+    });
+
     it('accepts the column-type spelling mSelect as a multi_select cell valueType without mutating input', () => {
         const cell = { rowID: 'r', columnID: 'c', valueType: 'mSelect', options: ['a'] };
         const input = { action: 'add_rows', avID: 'av', rows: [{ clientKey: 'k', cells: [cell] }] };
