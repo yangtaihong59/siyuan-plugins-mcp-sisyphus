@@ -1,8 +1,10 @@
 import {
     ACTION_SPECS_BY_CATEGORY,
     ACTIONS_BY_CATEGORY,
+    isDangerousAction,
     type ToolActionMap,
     type ToolCategory,
+    type WriteOneStepMode,
 } from './config';
 
 import { external, mutation, read, type ActionSafetyPolicy, type ActionSpec, type WritePrecondition } from './action-spec';
@@ -108,3 +110,210 @@ export function assertActionSafetyPoliciesComplete(): void {
         }
     }
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * Read hashes (ifMatch) and opt-in one-step commits.
+ *
+ * A read of a writable target can return `ifMatch`, the leading digits of the
+ * same sha256:v1 state hash the strict preflight probe computes. Writes accept
+ * it back as a precondition. To keep "read hash == preflight hash" true by
+ * construction, reads and writes of one target are both hashed through one
+ * canonical probe call per target kind (IfMatchTarget). It equals the
+ * preflight credential of that canonical write exactly (block.update {id},
+ * fs.write {path}, av.set_cells {avID}, file.update_template {path}); sibling
+ * writes on the same target compare against the same canonical hash.
+ * ---------------------------------------------------------------------------
+ */
+
+/** Hex digits of the state digest a read returns as ifMatch (64 bits). */
+export const IF_MATCH_HEX_LENGTH = 16;
+export const IF_MATCH_PATTERN = `^(?:sha256:v1:)?[a-fA-F0-9]{${IF_MATCH_HEX_LENGTH},64}$`;
+
+export type IfMatchTargetKind = 'block' | 'fs_path' | 'av' | 'template';
+
+export interface IfMatchTarget {
+    kind: IfMatchTargetKind;
+    /** The canonical probe call: always the same for reads and writes of this target. */
+    category: ToolCategory;
+    action: string;
+    args: Record<string, unknown>;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+export function ifMatchTargetFor(kind: IfMatchTargetKind, key: string): IfMatchTarget {
+    switch (kind) {
+        case 'block': return { kind, category: 'block', action: 'update', args: { id: key } };
+        case 'fs_path': return { kind, category: 'fs', action: 'write', args: { path: key } };
+        case 'av': return { kind, category: 'av', action: 'set_cells', args: { avID: key } };
+        case 'template': return { kind, category: 'file', action: 'update_template', args: { path: key } };
+    }
+}
+
+/** Reads that return ifMatch, and the argument naming their target. */
+export const READ_IF_MATCH_SOURCES: Partial<Record<ToolCategory, Record<string, { kind: IfMatchTargetKind; arg: string }>>> = {
+    block: {
+        get_kramdown: { kind: 'block', arg: 'id' },
+        get_attrs: { kind: 'block', arg: 'id' },
+        get_children: { kind: 'block', arg: 'id' },
+    },
+    document: { get_doc: { kind: 'block', arg: 'id' } },
+    fs: { read: { kind: 'fs_path', arg: 'path' } },
+    av: {
+        get: { kind: 'av', arg: 'avID' },
+        query: { kind: 'av', arg: 'avID' },
+    },
+    file: { read_template: { kind: 'template', arg: 'path' } },
+};
+
+/** Writes that accept ifMatch, and the argument naming their single target. */
+const WRITE_IF_MATCH_TARGETS: Partial<Record<ToolCategory, Record<string, { kind: IfMatchTargetKind; arg: string }>>> = {
+    block: {
+        update: { kind: 'block', arg: 'id' },
+        replace: { kind: 'block', arg: 'id' },
+        set_attrs: { kind: 'block', arg: 'id' },
+        set_fold_state: { kind: 'block', arg: 'id' },
+        delete: { kind: 'block', arg: 'id' },
+    },
+    document: {
+        rename: { kind: 'block', arg: 'id' },
+        set_attr: { kind: 'block', arg: 'id' },
+        remove: { kind: 'block', arg: 'id' },
+    },
+    fs: {
+        write: { kind: 'fs_path', arg: 'path' },
+        replace: { kind: 'fs_path', arg: 'path' },
+        rm: { kind: 'fs_path', arg: 'path' },
+    },
+    av: {
+        add_rows: { kind: 'av', arg: 'avID' },
+        add_column: { kind: 'av', arg: 'avID' },
+        add_view: { kind: 'av', arg: 'avID' },
+        set_cells: { kind: 'av', arg: 'avID' },
+        remove_rows: { kind: 'av', arg: 'avID' },
+        remove_column: { kind: 'av', arg: 'avID' },
+        rename: { kind: 'av', arg: 'avID' },
+    },
+    file: {
+        update_template: { kind: 'template', arg: 'path' },
+        delete_template: { kind: 'template', arg: 'path' },
+    },
+};
+
+/** Whether the action accepts ifMatch for some argument shape (schema advertisement). */
+export function acceptsIfMatch(category: ToolCategory, action: string): boolean {
+    return !!WRITE_IF_MATCH_TARGETS[category]?.[action];
+}
+
+export function getReadIfMatchTarget(category: ToolCategory, action: string, args: Record<string, unknown>): IfMatchTarget | undefined {
+    const source = READ_IF_MATCH_SOURCES[category]?.[action];
+    const key = source ? nonEmptyString(args[source.arg]) : undefined;
+    return source && key ? ifMatchTargetFor(source.kind, key) : undefined;
+}
+
+/** Undefined when the write has no single target an ifMatch could describe (e.g. batch items). */
+export function getWriteIfMatchTarget(category: ToolCategory, action: string, args: Record<string, unknown>): IfMatchTarget | undefined {
+    const source = WRITE_IF_MATCH_TARGETS[category]?.[action];
+    if (!source || Array.isArray(args.items)) return undefined;
+    const key = nonEmptyString(args[source.arg]);
+    return key ? ifMatchTargetFor(source.kind, key) : undefined;
+}
+
+/** Lowercase digest digits of an ifMatch credential, or undefined when malformed. */
+export function parseIfMatch(value: unknown): string | undefined {
+    if (typeof value !== 'string' || !new RegExp(IF_MATCH_PATTERN).test(value)) return undefined;
+    return value.slice(value.lastIndexOf(':') + 1).toLowerCase();
+}
+
+/** Display form returned by reads: the leading IF_MATCH_HEX_LENGTH digest digits. */
+export function formatIfMatch(fullHash: string): string {
+    return fullHash.slice(fullHash.lastIndexOf(':') + 1, fullHash.lastIndexOf(':') + 1 + IF_MATCH_HEX_LENGTH);
+}
+
+/** True when the ifMatch digits are a prefix of the recomputed full digest. */
+export function ifMatchMatches(ifMatch: string, fullHash: string): boolean {
+    const digits = parseIfMatch(ifMatch);
+    return !!digits && fullHash.slice(fullHash.lastIndexOf(':') + 1).toLowerCase().startsWith(digits);
+}
+
+/*
+ * One-step tiers (only consulted when writeSafety.oneStep is 'low_risk'):
+ *   1 — additive / low-impact: may commit without preflight; ifMatch optional.
+ *   2 — overwrites: may commit without preflight only with a matching ifMatch.
+ *   3 — everything else (dangerous, structural, workspace-wide, unlisted):
+ *       always the two-step preflight + commit flow. Default deny.
+ */
+export type OneStepTier = 1 | 2 | 3;
+export const ONE_STEP_MAX_BATCH = 20;
+
+export const ONE_STEP_TIERS: Partial<Record<ToolCategory, Record<string, 1 | 2>>> = {
+    document: { create: 1, rename: 1, set_attr: 1 },
+    // fs.write creates a new document (tier 1); overwrite=true is tier 2.
+    fs: { write: 1, replace: 2 },
+    block: { insert: 1, prepend: 1, append: 1, set_attrs: 1, update: 2, replace: 2 },
+    av: { add_rows: 1, add_column: 1, add_view: 1, set_cells: 2 },
+    flashcard: { create_card: 1, review_card: 1 },
+    file: { update_template: 2 },
+};
+
+const BATCH_ARRAY_KEYS = ['items', 'rows', 'blockIDs', 'primaryKeyTexts', 'cells', 'rowIDs', 'ids', 'edit'] as const;
+
+/** Largest item list in the arguments (1 for a single-target write). */
+export function getWriteBatchSize(args: Record<string, unknown>): number {
+    let size = 1;
+    for (const key of BATCH_ARRAY_KEYS) {
+        const value = args[key];
+        if (Array.isArray(value)) size = Math.max(size, value.length);
+    }
+    return size;
+}
+
+export function getOneStepTier(category: ToolCategory, action: string, args: Record<string, unknown> = {}): OneStepTier {
+    if (isDangerousAction(category, action)) return 3;
+    const tier = ONE_STEP_TIERS[category]?.[action] ?? 3;
+    if (category === 'fs' && action === 'write' && args.overwrite === true) return 2;
+    if (category === 'fs' && action === 'replace') {
+        const edits = Array.isArray(args.edit) ? args.edit : [args.edit];
+        if (edits.some((edit) => typeof edit === 'object' && edit !== null && (edit as Record<string, unknown>).replace_all === true)) return 3;
+    }
+    return tier;
+}
+
+export type OneStepRefusalReason = 'setting_off' | 'tier3' | 'missing_if_match' | 'if_match_unsupported' | 'batch_too_large';
+
+export type OneStepDecision =
+    | { allowed: true; tier: 1 | 2 }
+    | { allowed: false; tier: OneStepTier; reason: OneStepRefusalReason };
+
+/**
+ * Decide whether a strict commit without requestId may run in one step.
+ * The caller still probes state, checks permissions and ifMatch, and records
+ * the ledger exactly like a two-step commit.
+ */
+export function decideOneStep(
+    mode: WriteOneStepMode | undefined,
+    category: ToolCategory,
+    action: string,
+    args: Record<string, unknown>,
+): OneStepDecision {
+    const tier = getOneStepTier(category, action, args);
+    if (mode !== 'low_risk') return { allowed: false, tier, reason: 'setting_off' };
+    if (tier === 3) return { allowed: false, tier, reason: 'tier3' };
+    if (getWriteBatchSize(args) > ONE_STEP_MAX_BATCH) return { allowed: false, tier, reason: 'batch_too_large' };
+    if (tier === 2) {
+        if (!getWriteIfMatchTarget(category, action, args)) return { allowed: false, tier, reason: 'if_match_unsupported' };
+        if (args.ifMatch === undefined) return { allowed: false, tier, reason: 'missing_if_match' };
+    }
+    return { allowed: true, tier };
+}
+
+export const ONE_STEP_REFUSAL_MESSAGES: Record<OneStepRefusalReason, string> = {
+    setting_off: 'One-step writes are disabled (writeSafety.oneStep is off).',
+    tier3: 'This write always needs the two-step preflight (dangerous, structural, or not on the one-step list).',
+    missing_if_match: 'This overwrite can skip preflight only with ifMatch from a fresh read of the target.',
+    if_match_unsupported: 'This write shape (for example batch items) has no single target an ifMatch can cover.',
+    batch_too_large: `Batches over ${ONE_STEP_MAX_BATCH} items always use the two-step preflight.`,
+};

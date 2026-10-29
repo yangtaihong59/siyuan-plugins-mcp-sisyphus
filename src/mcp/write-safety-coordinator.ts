@@ -10,17 +10,27 @@ import { WriteOutcomeUnknownError } from '../api/client';
 import type { PermissionManager } from '../core/permissions';
 import { getNotebookNameArgumentHint } from '../tools/internal/helpers/notebook-names';
 import { createErrorResult, type ToolResult } from '../tools/internal/shared';
-import { type ToolCategory } from '../core/config';
+import { type ToolCategory, type WriteOneStepMode } from '../core/config';
 import { compactWriteHashFields, hashWriteState, parseWriteHashCredential } from '../core/write-safety-hash';
 import { WritePreflightLeasePool, WRITE_PREFLIGHT_LEASE_TTL_MS, type WritePreflightLease, type WritePreflightLeaseScope } from '../core/write-preflight-lease';
 import { assertPreflightCommitArgsSize, buildWritePreflight } from '../core/write-preflight';
-import { PRECONDITION_FIELD, getActionSafetyPolicy, type ActionSafetyPolicy } from '../core/write-safety-policy';
+import {
+    ONE_STEP_REFUSAL_MESSAGES,
+    PRECONDITION_FIELD,
+    decideOneStep,
+    getActionSafetyPolicy,
+    getWriteIfMatchTarget,
+    ifMatchMatches,
+    parseIfMatch,
+    type ActionSafetyPolicy,
+} from '../core/write-safety-policy';
 import { safetyError } from '../core/write-safety-error';
 import { WriteSafetyLedger, stripSafetyFields, type WriteLedgerEntry } from './write-safety-ledger';
 import { assertDestinationNotebooksWritable, derivePostWriteProbeArgs, probeCreatedNotebook, probeCurrentState, probePostWriteState, probeUploadedResult, verifyPostWriteSemanticState } from './write-safety-probe';
 import { type StateProbe, collectTargetSelectors, isRecord, parseResultObject } from '../core/write-safety-records';
 import { buildWriteImpactPreview } from './write-impact-preview';
 import { assertAvAddRowsHasInput } from './write-safety-av';
+import { annotateHelpWithOneStep, computeIfMatchHash, executeReadWithIfMatch } from './write-safety-if-match';
 
 export interface WriteSafetyExecution {
     client: SiYuanClient;
@@ -29,6 +39,8 @@ export interface WriteSafetyExecution {
     action: string;
     args: Record<string, unknown>;
     strictMode: boolean;
+    /** writeSafety.oneStep: enables read ifMatch hashes and tiered one-step commits. */
+    oneStep?: WriteOneStepMode;
     /** Synchronous cancellation barrier before any executing ledger entry or side effect. */
     beforeCommit?: () => void;
     validateArgs?: (args: Record<string, unknown>) => void;
@@ -55,7 +67,22 @@ export class WriteSafetyCoordinator {
 
     private async runNormalized(execution: WriteSafetyExecution): Promise<ToolResult> {
         const policy = getActionSafetyPolicy(execution.category, execution.action, execution.args);
-        if (policy.mode === 'read') return execution.execute(execution.args);
+        if (policy.mode === 'read') {
+            // Read hashes are produced only when one-step writes are enabled:
+            // the default keeps reads, their cost and their payload unchanged.
+            if (execution.oneStep !== 'low_risk') return execution.execute(execution.args);
+            if (execution.action === 'help') {
+                return annotateHelpWithOneStep(execution.category, execution.args, await execution.execute(execution.args));
+            }
+            return executeReadWithIfMatch(
+                execution.client,
+                execution.permMgr,
+                execution.category,
+                execution.action,
+                execution.args,
+                () => execution.execute(execution.args),
+            );
+        }
         try {
             execution.validateArgs?.(stripSafetyFields(execution.args));
         } catch (error) {
@@ -124,7 +151,9 @@ export class WriteSafetyCoordinator {
     ): Promise<ToolResult> {
         const { category, action, args, client, permMgr } = execution;
         const validateOnly = args.validateOnly === true;
-        const requestId = typeof args.requestId === 'string' ? args.requestId : '';
+        let requestId = typeof args.requestId === 'string' ? args.requestId : '';
+        /** Set when this commit runs without a preflight (writeSafety.oneStep). */
+        let oneStepTier: 1 | 2 | undefined;
         let inspected: Awaited<ReturnType<WriteSafetyLedger['inspect']>> | undefined;
         let activeLease: WritePreflightLease | undefined;
         let addRowsPlan: AvAddRowsPlan | undefined;
@@ -132,10 +161,23 @@ export class WriteSafetyCoordinator {
         let batchRenamePlan: BatchRenamePlan | undefined;
         let batchRenameProgress: BatchRenameProgress | undefined;
 
-        if (!validateOnly) {
-            if (!requestId) {
-                return writeSafetyFailure('precondition_required', 'requestId is required for every strict write. Copy it from validateOnly preflight.');
+        if (!validateOnly && !requestId) {
+            const decision = decideOneStep(execution.oneStep, category, action, args);
+            if (decision.allowed === false) {
+                // With the setting off and no ifMatch this is exactly the
+                // pre-one-step contract; otherwise say why and how to proceed.
+                if (decision.reason === 'setting_off' && args.ifMatch === undefined) {
+                    return writeSafetyFailure('precondition_required', 'requestId is required for every strict write. Copy it from validateOnly preflight.');
+                }
+                return writeSafetyFailure(
+                    'precondition_required',
+                    `requestId is required for this strict write. ${ONE_STEP_REFUSAL_MESSAGES[decision.reason]} Run the same call with validateOnly=true, check its preview, then send preflight.commitArgs unchanged.`,
+                    { oneStep: { allowed: false, tier: decision.tier, reason: decision.reason } },
+                );
             }
+            oneStepTier = decision.tier;
+        }
+        if (!validateOnly && !oneStepTier) {
             try {
                 inspected = await this.ledger.inspect(requestId, category, action, args);
             } catch (error) {
@@ -184,12 +226,17 @@ export class WriteSafetyCoordinator {
             catch (error) { return fromSafetyError(error); }
         }
 
+        if (args.ifMatch !== undefined) {
+            const mismatch = await this.checkIfMatch(execution);
+            if (mismatch) return mismatch;
+        }
+
         let before: StateProbe | undefined;
         if (policy.precondition !== 'none') {
             const expectedField = PRECONDITION_FIELD[policy.precondition];
             const expected = args[expectedField] ?? (expectedField === 'expectedStateHash' ? args.expectedHash : undefined);
-            const digestPrefix = validateOnly ? undefined : parseWriteHashCredential(expected);
-            if (!validateOnly && !digestPrefix) {
+            const digestPrefix = validateOnly || oneStepTier ? undefined : parseWriteHashCredential(expected);
+            if (!validateOnly && !oneStepTier && !digestPrefix) {
                 return writeSafetyFailure(
                     'precondition_required',
                     `${expectedField} is required and must be a 4 to 64 character hexadecimal preflight credential, optionally prefixed with sha256:v1:. Run the same action with validateOnly=true to obtain it.`,
@@ -259,15 +306,17 @@ export class WriteSafetyCoordinator {
                     preview,
                 });
             }
-            const resolved = this.preflightLeases.resolve(leaseScope, digestPrefix!);
-            if (resolved.status === 'invalid') {
+            const resolved = oneStepTier
+                ? undefined
+                : this.preflightLeases.resolve(leaseScope, digestPrefix!);
+            if (resolved?.status === 'invalid') {
                 return writeSafetyFailure('preflight_lease_invalid', 'The preflight credential is missing, expired, evicted, or belongs to a previous server process. No write was attempted.', {
                     expectedField,
                     revalidateRequired: true,
                 });
             }
-            activeLease = resolved.lease;
-            if (activeLease.fullHash !== before.hash) {
+            if (resolved) activeLease = resolved.lease;
+            if (activeLease && activeLease.fullHash !== before.hash) {
                 this.preflightLeases.consume(activeLease);
                 return writeSafetyFailure('state_changed', 'The target changed after it was read. No write was attempted.', {
                     expectedHash: activeLease.fullHash,
@@ -304,6 +353,24 @@ export class WriteSafetyCoordinator {
                 preview,
             });
         }
+
+        let oneStepPreview: unknown;
+        if (oneStepTier) {
+            // One-step commits skip the preflight round trip, not its checks:
+            // state was probed above (permissions, references, ifMatch), the
+            // impact preview is returned with the receipt, and the request
+            // gets a server-issued ID recorded in the ledger like any other.
+            oneStepPreview = await buildWriteImpactPreview({ client, permMgr, category, action, args, before, conversion });
+            try {
+                requestId = (await this.ledger.issue(category, action, args)).requestId;
+                inspected = { argsHash: hashWriteState(stripSafetyFields(args)) };
+            } catch (error) {
+                return fromSafetyError(error);
+            }
+        }
+        const withOneStep = (response: ToolResult): ToolResult => oneStepTier
+            ? addTopLevelFields(response, { oneStep: { tier: oneStepTier }, preview: oneStepPreview })
+            : response;
 
         try { execution.beforeCommit?.(); } catch (error) { return fromSafetyError(error); }
         const targetIds = before?.targetIds ?? collectTargetSelectors(args);
@@ -448,7 +515,7 @@ export class WriteSafetyCoordinator {
                 });
             }
             if (activeLease) this.preflightLeases.consume(activeLease);
-            return addSafetyMetadata(result, safetyResult);
+            return withOneStep(addSafetyMetadata(result, safetyResult));
         }
 
         let after: StateProbe | undefined;
@@ -543,7 +610,40 @@ export class WriteSafetyCoordinator {
             });
         }
         if (activeLease) this.preflightLeases.consume(activeLease);
-        return response;
+        return withOneStep(response);
+    }
+
+    /**
+     * Compare a read-derived ifMatch with the target's current canonical state
+     * hash. Undefined means it matches; otherwise the rejection to return.
+     */
+    private async checkIfMatch(execution: WriteSafetyExecution): Promise<ToolResult | undefined> {
+        const { client, permMgr, category, action, args } = execution;
+        if (!parseIfMatch(args.ifMatch)) {
+            return writeSafetyFailure('invalid_arguments', 'ifMatch must be the hexadecimal ifMatch value returned by a read of the target (at least 16 digits, optionally prefixed with sha256:v1:). No write was attempted.', {
+                field: 'ifMatch',
+            });
+        }
+        const target = getWriteIfMatchTarget(category, action, args);
+        if (!target) {
+            return writeSafetyFailure('invalid_arguments', `${category}.${action} with these arguments has no single target an ifMatch can describe. Remove ifMatch and use the validateOnly preflight. No write was attempted.`, {
+                field: 'ifMatch',
+                oneStep: { allowed: false, reason: 'if_match_unsupported' },
+            });
+        }
+        let current: string;
+        try {
+            current = await computeIfMatchHash(client, permMgr, target);
+        } catch (error) {
+            return fromSafetyError(error);
+        }
+        if (ifMatchMatches(String(args.ifMatch), current)) return undefined;
+        return writeSafetyFailure('state_changed', 'The target changed since the read that produced ifMatch. No write was attempted.', {
+            expectedField: 'ifMatch',
+            currentHash: current,
+            revalidateRequired: true,
+            hint: 'Read the target again (the read returns a fresh ifMatch), re-check the content, then rebuild the write.',
+        });
     }
 
     /** Multi-step creation owns a durable identity and result, independent of transport lifetime. */
@@ -740,6 +840,17 @@ function replayLedgerEntry(entry: WriteLedgerEntry): ToolResult {
 function addSafetyMetadata(result: ToolResult, safety: Record<string, unknown>): ToolResult {
     const parsed = parseResultObject(result);
     const payload = { ...(parsed ?? {}), safety: compactWriteHashFields(safety) };
+    return {
+        ...result,
+        content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+        structuredContent: payload,
+    };
+}
+
+/** Response-only fields next to the handler payload (one-step receipt, preview). */
+function addTopLevelFields(result: ToolResult, fields: Record<string, unknown>): ToolResult {
+    const parsed = parseResultObject(result) ?? {};
+    const payload = { ...parsed, ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) };
     return {
         ...result,
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],

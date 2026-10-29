@@ -4,7 +4,7 @@ import type { PermissionManager } from '../core/permissions';
 import type { ToolDescriptor, ToolResult } from '../core/tool-result';
 import type { OfficialMcpRuntime, OfficialMcpDiscoverySnapshot } from '../core/official-mcp-bridge';
 import { ACTION_SCHEMA_BRANCHES_KEY } from '@/tools/internal/shared';
-import { PRECONDITION_FIELD, getPossibleActionSafetyPolicies } from '../core/write-safety-policy';
+import { IF_MATCH_PATTERN, PRECONDITION_FIELD, acceptsIfMatch, getPossibleActionSafetyPolicies } from '../core/write-safety-policy';
 import { SHA256_V1_CREDENTIAL_PATTERN } from '../shared/sha256-v1';
 
 import {
@@ -163,7 +163,8 @@ export function listConfiguredToolsForCategory(
 ): ToolDescriptor[] {
     const descriptors = TOOL_REGISTRY[category].listTools(config[category], runtime);
     if (!config.writeSafety.strictMode) return descriptors;
-    return descriptors.map((descriptor) => decorateStrictWriteSchema(category, descriptor));
+    const oneStep = config.writeSafety.oneStep === 'low_risk';
+    return descriptors.map((descriptor) => decorateStrictWriteSchema(category, descriptor, oneStep));
 }
 
 /** Detail of the preflight's write-impact preview; stripped before hashing and commit. */
@@ -193,7 +194,17 @@ const BRANCH_EXPECTED_HASH_ALIAS = {
     description: 'Alias of expectedStateHash.',
 } as const;
 
-function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescriptor): ToolDescriptor {
+const BRANCH_IF_MATCH_PROPERTY = {
+    type: 'string',
+    pattern: IF_MATCH_PATTERN,
+    description: 'ifMatch from a read of this target; the write fails with state_changed if the target changed since.',
+} as const;
+
+/**
+ * Add strict-write fields to a tool schema. ifMatch is advertised only when
+ * one-step writes are enabled, so the default mount does not grow.
+ */
+function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescriptor, oneStep = false): ToolDescriptor {
     const inputSchema = { ...descriptor.inputSchema } as Record<string, any>;
     const properties = { ...(inputSchema.properties ?? {}) };
     const actions: string[] = properties.action?.enum ?? [];
@@ -214,6 +225,9 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
     for (const precondition of preconditions) {
         properties[PRECONDITION_FIELD[precondition]] = { type: 'string', pattern: SHA256_V1_CREDENTIAL_PATTERN };
     }
+    if (oneStep && mutationActions.some(action => acceptsIfMatch(category, action))) {
+        properties.ifMatch = { type: 'string', pattern: IF_MATCH_PATTERN };
+    }
     inputSchema.properties = properties;
 
     const originalBranches = descriptor.inputSchema[ACTION_SCHEMA_BRANCHES_KEY] as Array<Record<string, any>> | undefined;
@@ -233,6 +247,7 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
                 requestId: BRANCH_REQUEST_ID_PROPERTY,
                 validateOnly: BRANCH_VALIDATE_ONLY_PROPERTY,
                 preview: WRITE_PREVIEW_PROPERTY,
+                ...(oneStep && acceptsIfMatch(category, action) ? { ifMatch: BRANCH_IF_MATCH_PROPERTY } : {}),
             };
             const preconditions = mutationPolicies
                 .map((policy) => policy.mode === 'mutation' ? policy.precondition : 'none')

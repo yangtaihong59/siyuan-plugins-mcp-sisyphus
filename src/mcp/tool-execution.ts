@@ -46,6 +46,8 @@ export async function executeLocalTool(execution: LocalToolExecution): Promise<T
         action,
         args,
         strictMode: execution.config.writeSafety.strictMode,
+        // One-step writes and read hashes exist only on top of strict writes.
+        oneStep: execution.config.writeSafety.strictMode ? execution.config.writeSafety.oneStep : 'off',
         beforeCommit: execution.beforeCommit,
         validateArgs: (safeArgs) => validateRegisteredToolArguments(category, safeArgs),
         execute: (safeArgs) => TOOL_REGISTRY[category].callTool(client, safeArgs, actionConfig, permMgr, runtime),

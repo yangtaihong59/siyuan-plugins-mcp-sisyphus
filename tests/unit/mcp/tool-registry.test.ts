@@ -61,6 +61,29 @@ describe('tool registry', () => {
         expect(update.properties.expectedHash.description).toContain('Alias');
     });
 
+    it('advertises ifMatch only when one-step writes are enabled', () => {
+        const config = buildDefaultToolConfig();
+        const mounted = (): Record<string, any> => Object.fromEntries(listAllTools(config).map(tool => [tool.name, tool]));
+        const ifMatchTools = (tools: Record<string, any>) => Object.keys(tools).filter(name => 'ifMatch' in tools[name].inputSchema.properties).sort();
+        expect(ifMatchTools(mounted())).toEqual([]);
+        expect(JSON.stringify(listAllTools(config))).not.toContain('ifMatch');
+        expect(buildServerInstructions(config)).not.toContain('ifMatch');
+
+        config.writeSafety.oneStep = 'low_risk';
+        const tools = mounted();
+        expect(ifMatchTools(tools)).toEqual(['av', 'block', 'document', 'file', 'fs']);
+        expect(tools.block.inputSchema.properties.ifMatch.description).toBeUndefined();
+        const branch = (name: string, action: string) => (tools[name].inputSchema[ACTION_SCHEMA_BRANCHES_KEY] as any[])
+            .find(item => item.properties.action.const === action);
+        expect(branch('block', 'update').properties.ifMatch.description).toContain('state_changed');
+        expect(branch('block', 'append').properties).not.toHaveProperty('ifMatch');
+        expect(buildServerInstructions(config)).toContain('ifMatch');
+        // Legacy (non-strict) mode never advertises strict fields at all.
+        config.writeSafety.strictMode = false;
+        expect(ifMatchTools(mounted())).toEqual([]);
+        expect(buildServerInstructions(config)).not.toContain('ifMatch');
+    });
+
     it.each([false, true])('publishes acyclic filter schemas with matching runtime depth limits (strict: %s)', (strict) => {
         const config = buildDefaultToolConfig();
         config.writeSafety.strictMode = strict;

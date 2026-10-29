@@ -112,7 +112,16 @@ export interface WriteSafetyConfig {
      * or the persisted configuration cannot be read.
      */
     strictMode: boolean;
+    /**
+     * Opt-in one-step commits for low-risk strict writes (see
+     * ONE_STEP_TIERS in write-safety-policy). Absent means 'off': every
+     * strict write keeps the validateOnly preflight + commit flow.
+     */
+    oneStep?: WriteOneStepMode;
 }
+
+export type WriteOneStepMode = 'off' | 'low_risk';
+export const WRITE_ONE_STEP_MODES: readonly WriteOneStepMode[] = ['off', 'low_risk'];
 
 export type ToolConfig = {
     avActionsVersion: 2;
@@ -304,6 +313,7 @@ export function buildDefaultToolConfig(): ToolConfig {
         agentSiyuanMemoryUpdatedAt: '',
         writeSafety: {
             strictMode: true,
+            oneStep: 'off',
         },
         debug: {
             includeUiRefreshMetadata: false,
@@ -398,6 +408,9 @@ function applyNestedConfig(config: ToolConfig, raw: Record<string, unknown>) {
     }
     if (isRecord(raw.writeSafety) && typeof raw.writeSafety.strictMode === 'boolean') {
         config.writeSafety.strictMode = raw.writeSafety.strictMode;
+    }
+    if (isRecord(raw.writeSafety) && WRITE_ONE_STEP_MODES.includes(raw.writeSafety.oneStep as WriteOneStepMode)) {
+        config.writeSafety.oneStep = raw.writeSafety.oneStep as WriteOneStepMode;
     }
     if (isRecord(raw.debug)) {
         if (typeof raw.debug.includeUiRefreshMetadata === 'boolean') {

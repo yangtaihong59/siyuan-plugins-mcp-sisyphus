@@ -23,14 +23,14 @@ export interface ServerInstructionInput {
     agentSiyuanMemoryConfigOk?: boolean;
     agentSiyuanMemoryConfigError?: string;
     /** Matches ToolConfig.writeSafety so callers can pass the whole config. */
-    writeSafety?: { strictMode?: boolean };
+    writeSafety?: { strictMode?: boolean; oneStep?: 'off' | 'low_risk' };
 }
 
 type NormalizedServerInstructionInput = Required<Pick<ServerInstructionInput,
     'userRulesText' | 'agentSiyuanMemoryText' | 'agentSiyuanMemoryUpdatedAt'
 >> & Pick<ServerInstructionInput,
     'agentSiyuanMemoryConfigSource' | 'agentSiyuanMemoryConfigOk' | 'agentSiyuanMemoryConfigError'
-> & { strictWrites: boolean };
+> & { strictWrites: boolean; oneStep: boolean };
 
 function normalizeInstructionInput(input: string | ServerInstructionInput = '', agentSiyuanMemoryText = ''): NormalizedServerInstructionInput {
     if (typeof input === 'string') {
@@ -39,6 +39,7 @@ function normalizeInstructionInput(input: string | ServerInstructionInput = '', 
             agentSiyuanMemoryText,
             agentSiyuanMemoryUpdatedAt: '',
             strictWrites: true,
+            oneStep: false,
         };
     }
     return {
@@ -50,6 +51,7 @@ function normalizeInstructionInput(input: string | ServerInstructionInput = '', 
         agentSiyuanMemoryConfigError: typeof input.agentSiyuanMemoryConfigError === 'string' ? input.agentSiyuanMemoryConfigError : undefined,
         // Strict safe writes are on by default (buildDefaultToolConfig).
         strictWrites: input.writeSafety?.strictMode !== false,
+        oneStep: input.writeSafety?.strictMode !== false && input.writeSafety?.oneStep === 'low_risk',
     };
 }
 
@@ -126,8 +128,11 @@ ${formattedUserRules}
             : agentMemoryStatus.status === 'stale'
                 ? 'Stale. Before relying on it, ask the user whether to refresh `/AGENTS.md`; if they agree, verify the current state first.'
                 : 'Fresh enough to use as startup context; still verify details before high-impact edits.';
+    const oneStepRule = instructionInput.oneStep
+        ? ' One-step on: low-risk writes may skip it; overwrites then need ifMatch from a read. Check the receipt preview.'
+        : '';
     const strictWritesRule = instructionInput.strictWrites
-        ? '\n- Strict safe writes: preflight the mutation with validateOnly=true and check its preview (targets, changes, risk; preview="full" for complete text) against the intent. To execute, send preflight.commitArgs unchanged before expiry; requestId and expected*Hash are server-issued, never invent or edit them. Reuse requestId for retries; after a conflict or expired preflight, reread before a new preflight.'
+        ? `\n- Strict safe writes: preflight the mutation with validateOnly=true and check its preview (targets, changes, risk; preview="full": full text) against the intent. To execute, send preflight.commitArgs unchanged before expiry; never invent or edit requestId/expected*Hash. Reuse requestId for retries; after a conflict or expiry, reread first.${oneStepRule}`
         : '';
     return `${userRulesSection}# Agent siyuan memory (/AGENTS.md)
 

@@ -77,6 +77,11 @@ const SUCCESS_KEEP_KEYS = new Set([
     // Never hide whether a successful mutation went through the strict
     // coordinator when response slimming is enabled.
     'safety',
+    // One-step strict commits return their impact preview and tier with the
+    // receipt; reads of writable targets return the ifMatch precondition.
+    'preview',
+    'oneStep',
+    'ifMatch',
 ]);
 
 const SAFETY_TOP_LEVEL_KEYS = [
@@ -202,6 +207,8 @@ function slimError(error: Record<string, unknown>): Record<string, unknown> {
         'ledgerState',
         'resultHash',
         'cause',
+        'field',
+        'oneStep',
     ]);
     return Object.fromEntries(Object.entries(error).filter(([key]) => allowed.has(key)));
 }

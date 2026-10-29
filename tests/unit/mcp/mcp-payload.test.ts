@@ -33,6 +33,20 @@ describe('MCP progressive disclosure contract', () => {
         expect(payload).not.toContain('[Required by');
     });
 
+    it('keeps the default mount budget with one-step writes enabled', () => {
+        const config = buildDefaultToolConfig();
+        const before = calculateMcpInitialTokenCost(config).mcpInitialChars;
+        config.writeSafety.oneStep = 'low_risk';
+        const tools = listAllTools(config);
+        const instructions = buildServerInstructions(config).trim();
+        const cost = calculateMcpInitialTokenCost(config);
+        expect(cost.mcpInitialChars).toBe(instructions.length + JSON.stringify({ tools }).length);
+        expect(cost.mcpInitialChars).toBeGreaterThan(before);
+        expect(instructions.length).toBeLessThan(4_000);
+        expect(cost.mcpInitialChars).toBeLessThan(64_000);
+        expect(JSON.stringify(tools.find(tool => tool.name === 'av')).length).toBeLessThan(12_500);
+    });
+
     it('serves the complete collapsed filter schema through both help routes', async () => {
         const config = buildDefaultToolConfig();
         const schema = AV_VARIANTS.find(variant => variant.action === 'update_view')!.schema;
