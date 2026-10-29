@@ -173,6 +173,26 @@ const WRITE_PREVIEW_PROPERTY = {
     description: 'Preflight preview detail; full = complete before/after text.',
 } as const;
 
+const REQUEST_ID_PATTERN = '^[a-f0-9]{4,64}$';
+const BRANCH_REQUEST_ID_PROPERTY = {
+    type: 'string',
+    pattern: REQUEST_ID_PATTERN,
+    description: 'Server-issued preflight ID; reuse unchanged.',
+} as const;
+const BRANCH_VALIDATE_ONLY_PROPERTY = { type: 'boolean', description: 'true: preflight only, no mutation.' } as const;
+const BRANCH_HASH_PROPERTY = {
+    type: 'string',
+    pattern: SHA256_V1_CREDENTIAL_PATTERN,
+    description: 'Preflight-issued hash; copy unchanged.',
+} as const;
+// expectedHash stays accepted as an alias of expectedStateHash in the
+// per-action branches but is not advertised in the merged schema.
+const BRANCH_EXPECTED_HASH_ALIAS = {
+    type: 'string',
+    pattern: SHA256_V1_CREDENTIAL_PATTERN,
+    description: 'Alias of expectedStateHash.',
+} as const;
+
 function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescriptor): ToolDescriptor {
     const inputSchema = { ...descriptor.inputSchema } as Record<string, any>;
     const properties = { ...(inputSchema.properties ?? {}) };
@@ -181,34 +201,19 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
     if (mutationActions.length === 0) return descriptor;
     const preconditions = new Set(mutationActions.flatMap(action => getPossibleActionSafetyPolicies(category, action))
         .flatMap(policy => policy.mode === 'mutation' && policy.precondition !== 'none' ? [policy.precondition] : []));
-    properties.requestId = {
-        type: 'string',
-        pattern: '^[a-f0-9]{4,64}$',
-        description: 'Server-issued preflight ID; reuse unchanged.',
-    };
-    properties.validateOnly = {
-        type: 'boolean',
-        description: 'true: preflight only, no mutation.',
-    };
+    // The mounted (merged) schema carries the bare field contracts only: the
+    // server instructions explain the preflight/commit flow once per session
+    // instead of repeating it on every tool (about 2k chars of the initial
+    // payload). Per-action branches (help, CLI) keep the descriptions.
+    properties.requestId = { type: 'string', pattern: REQUEST_ID_PATTERN };
+    properties.validateOnly = { type: 'boolean' };
     // The optional write `preview` detail is deliberately not advertised in
     // the mounted schema (it would cost ~1.6k chars of the initial payload
     // budget). Tool schemas allow additional properties, the server
     // instructions mention it, and per-action branches (help, CLI) carry it.
     for (const precondition of preconditions) {
-        const field = PRECONDITION_FIELD[precondition];
-        properties[field] = {
-            type: 'string',
-            pattern: SHA256_V1_CREDENTIAL_PATTERN,
-            description: 'Preflight-issued hash; copy unchanged.',
-        };
+        properties[PRECONDITION_FIELD[precondition]] = { type: 'string', pattern: SHA256_V1_CREDENTIAL_PATTERN };
     }
-    // expectedHash stays accepted as an alias of expectedStateHash (see the
-    // per-action branches below) but is not advertised in the merged schema.
-    const expectedHashAlias = {
-        type: 'string',
-        pattern: SHA256_V1_CREDENTIAL_PATTERN,
-        description: 'Alias of expectedStateHash.',
-    };
     inputSchema.properties = properties;
 
     const originalBranches = descriptor.inputSchema[ACTION_SCHEMA_BRANCHES_KEY] as Array<Record<string, any>> | undefined;
@@ -225,8 +230,8 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
             if (mutationPolicies.length === 0) return branch;
             const branchProperties = {
                 ...(branch.properties ?? {}),
-                requestId: properties.requestId,
-                validateOnly: properties.validateOnly,
+                requestId: BRANCH_REQUEST_ID_PROPERTY,
+                validateOnly: BRANCH_VALIDATE_ONLY_PROPERTY,
                 preview: WRITE_PREVIEW_PROPERTY,
             };
             const preconditions = mutationPolicies
@@ -237,8 +242,8 @@ function decorateStrictWriteSchema(category: ToolCategory, descriptor: ToolDescr
                 // 可能需要的每一种前置条件字段。
                 for (const precondition of new Set(preconditions)) {
                     const field = PRECONDITION_FIELD[precondition];
-                    branchProperties[field] = properties[field];
-                    if (field === 'expectedStateHash') branchProperties.expectedHash = expectedHashAlias;
+                    branchProperties[field] = BRANCH_HASH_PROPERTY;
+                    if (field === 'expectedStateHash') branchProperties.expectedHash = BRANCH_EXPECTED_HASH_ALIAS;
                 }
             }
             return { ...branch, properties: branchProperties };

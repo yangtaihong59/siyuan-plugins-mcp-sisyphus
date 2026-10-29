@@ -654,8 +654,8 @@ describe('MCP Server Integration', () => {
             expect(instructions).toContain('siyuan://help/ai-layout-guide');
             expect(instructions).toContain('explicit confirmation');
             expect(instructions).toContain('validateOnly=true');
-            expect(instructions).toContain('set validateOnly=false');
-            expect(instructions).toContain('business arguments unchanged');
+            expect(instructions).toContain('send preflight.commitArgs unchanged');
+            expect(instructions).toContain('never invent or edit them');
         });
 
         it('omits strict preflight guidance when disabled but retains external submission safety', () => {

@@ -46,6 +46,21 @@ describe('tool registry', () => {
         expect(listAllTools(config).find(tool => tool.name === 'av')!.inputSchema.properties).not.toHaveProperty('requestId');
     });
 
+    it('mounts bare strict fields once and keeps their descriptions in per-action help branches', () => {
+        const block = listAllTools(buildDefaultToolConfig()).find(tool => tool.name === 'block')!;
+        const properties = block.inputSchema.properties as Record<string, any>;
+        for (const field of ['requestId', 'validateOnly', 'expectedStateHash']) {
+            expect(properties[field], field).toBeDefined();
+            expect(properties[field].description, field).toBeUndefined();
+        }
+        expect(properties.expectedStateHash.pattern).toBeTruthy();
+        const update = (block.inputSchema[ACTION_SCHEMA_BRANCHES_KEY] as any[])
+            .find(branch => branch.properties.action.const === 'update');
+        expect(update.properties.requestId.description).toContain('preflight');
+        expect(update.properties.expectedStateHash.description).toContain('copy unchanged');
+        expect(update.properties.expectedHash.description).toContain('Alias');
+    });
+
     it.each([false, true])('publishes acyclic filter schemas with matching runtime depth limits (strict: %s)', (strict) => {
         const config = buildDefaultToolConfig();
         config.writeSafety.strictMode = strict;
