@@ -115,6 +115,18 @@ describe('snapshot document timeline', () => {
         expect(snapshotLabel({ id: 'snap', memo: 'memo' })).toBe('memo');
     });
 
+    it('labels timeline nodes with the name as typed when the tag was derived from the memo', () => {
+        const docId = '20260514120000-aaaaaaa';
+        const memo = 'Q4 planning: baseline';
+        const globalTag = createGlobalTimelineTagName(memo);
+        expect(snapshotLabel({ id: 'snap', tag: globalTag, memo })).toBe(memo);
+        expect(snapshotLabel({ id: 'snap', tag: createTimelineTagName(memo, docId), memo: ` ${memo} ` })).toBe(memo);
+        expect(snapshotLabel({ id: 'snap', tag: createGlobalTimelineTagName(memo, [globalTag]), memo })).toBe(memo);
+        expect(snapshotLabel({ id: 'snap', tag: createGlobalTimelineTagName('---'), memo: '---' })).toBe('---');
+        expect(snapshotLabel({ id: 'snap', tag: globalTag, memo: 'Q4 planning' })).toBe('Q4planningbaseline');
+        expect(createTimelineNodeRecord({ id: 'snap', tag: globalTag, memo, created: 1710000000000 }, 'global').name).toBe(memo);
+    });
+
     it('extracts the document id and label from per-document timeline tags', () => {
         const docId = '20260514120000-aaaaaaa';
         expect(extractTimelineDocumentId(`${TIMELINE_TAG_PREFIX}_${docId}_release`)).toBe(docId);
@@ -216,6 +228,36 @@ describe('snapshot document timeline', () => {
         expect(result.globalNodes).toEqual([createTimelineNodeRecord(global, 'global')]);
         expect(result.legacySnapshots).toEqual([]);
         expect(result.attrChanged).toBe(true);
+    });
+
+    it('matches a converted global node to its legacy link by tag label, not display name', () => {
+        const stampedLabel = 'Releasev120260514120000';
+        const linked = {
+            name: stampedLabel,
+            created: 1710000000000,
+            snapshotId: 'snap-shared',
+            tag: `${TIMELINE_TAG_PREFIX}${stampedLabel}`,
+            scope: 'document' as const,
+            source: 'legacy' as const,
+        };
+        const global = { id: 'snap-shared', tag: `${GLOBAL_TIMELINE_TAG_PREFIX}${stampedLabel}`, memo: 'Release v1', created: 1710000000000 };
+        const result = reconcileDocumentTimelineNodes('20260514120000-aaaaaaa', [linked], [global]);
+
+        expect(result.globalNodes.map((node) => node.name)).toEqual(['Release v1']);
+        expect(result.documentNodes).toEqual([]);
+    });
+
+    it('keeps the legacy tag label when converting a node shown by its memo', async () => {
+        const legacy = { id: 'snap-legacy', tag: `${TIMELINE_TAG_PREFIX}Releasev120260514120000`, memo: 'Release v1' };
+        const added: string[] = [];
+        const result = await migrateLegacyTimelineSnapshotToGlobal(legacy, [], {
+            addTag: async (_id, tag) => { added.push(tag); },
+            readTaggedSnapshots: async () => added.map((tag) => ({ ...legacy, tag })),
+            removeTag: async () => undefined,
+        });
+
+        expect(snapshotLabel(legacy)).toBe('Release v1');
+        expect(result.globalTag).toBe(`${GLOBAL_TIMELINE_TAG_PREFIX}Releasev120260514120000`);
     });
 
     it('verifies a new global tag before removing the legacy tag', async () => {
@@ -383,6 +425,12 @@ describe('snapshot document timeline', () => {
         expect(source).toContain('on:click={onOpenSnapshot}');
         expect(source).not.toContain('<aside');
         expect(source).not.toContain('autoTimelineCollapsed');
+    });
+
+    it('titles the diff with the selected node name rather than its sanitized tag', () => {
+        const source = readFileSync(resolve(process.cwd(), 'src/ui/version-control/VersionDiffPanel.svelte'), 'utf8');
+
+        expect(source).toContain('selectedSnapshotTitle = selectedEntry ? (selection?.node.name || snapshotLabel(selectedEntry.snapshot)) : ""');
     });
 
     it('drives the document timeline from per-document attrs and shows no-change nodes as markers', () => {

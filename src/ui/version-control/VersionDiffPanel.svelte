@@ -80,7 +80,8 @@
         || getReadableDocumentTitle(selectedEntry?.title)
         || t("timeline_current_document_fallback", "这个文档");
     $: diffOpen = Boolean(selectedEntry);
-    $: selectedSnapshotTitle = selectedEntry ? snapshotLabel(selectedEntry.snapshot) : "";
+    // The node name keeps the spaces and punctuation its sanitized tag drops.
+    $: selectedSnapshotTitle = selectedEntry ? (selection?.node.name || snapshotLabel(selectedEntry.snapshot)) : "";
     $: selectedSnapshotTime = selectedEntry ? formatSnapshotTime(selectedEntry.snapshot) : "";
     $: currentSnapshotTime = currentSnapshot ? formatSnapshotTime(currentSnapshot) : "";
     $: currentVersionTime = currentSnapshotTime || newFileContent?.updated || "";
@@ -708,7 +709,7 @@
                             <div class="vc-diff-head-cell vc-version-line">
                                 <div class="vc-version-card old">
                                     <span class="vc-version-label">{t("timeline_history_version", "历史版本")}</span>
-                                    {#if selectedSnapshotTitle}<strong>{selectedSnapshotTitle}</strong>{/if}
+                                    {#if selectedSnapshotTitle}<strong title={selectedSnapshotTitle}>{selectedSnapshotTitle}</strong>{/if}
                                     {#if selectedSnapshotTime}<time>{selectedSnapshotTime}</time>{/if}
                                 </div>
                                 <span class="vc-version-arrow" aria-hidden="true">→</span>
@@ -721,7 +722,7 @@
                             <div class="vc-diff-head-cell">
                                 <div class="vc-version-card old">
                                     <span class="vc-version-label">{t("timeline_history_version", "历史版本")}</span>
-                                    {#if selectedSnapshotTitle}<strong>{selectedSnapshotTitle}</strong>{/if}
+                                    {#if selectedSnapshotTitle}<strong title={selectedSnapshotTitle}>{selectedSnapshotTitle}</strong>{/if}
                                     {#if selectedSnapshotTime}<time>{selectedSnapshotTime}</time>{/if}
                                 </div>
                             </div>

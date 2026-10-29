@@ -440,7 +440,7 @@
 | 214 | POST | `/api/block/getBlocksWordCount` | block | `getBlocksWordCount` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:218 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:263` |
 | 215 | POST | `/api/block/getContentWordCount` | block | `getContentWordCount` | ✓ |  |  | 条件可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:264` |
 | 216 | POST | `/api/block/getRecentUpdatedBlocks` | block | `getRecentUpdatedBlocks` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:214 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:265` |
-| 217 | POST | `/api/block/getDocInfo` | block | `getDocInfo` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:173<br>ui:src/ui/version-control/SnapshotPanel.svelte:335<br>ui:src/ui/version-control/VersionDiffPanel.svelte:470 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:266` |
+| 217 | POST | `/api/block/getDocInfo` | block | `getDocInfo` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:173<br>ui:src/ui/version-control/SnapshotPanel.svelte:335<br>ui:src/ui/version-control/VersionDiffPanel.svelte:471 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:266` |
 | 218 | POST | `/api/block/getDocsInfo` | block | `getDocsInfo` | ✓ |  |  | 条件可用 | 内部 |  | api-wrapper:src/api/block.ts:269 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:267` |
 | 219 | POST | `/api/block/checkBlockExist` | block | `checkBlockExist` | ✓ |  |  | 条件可用 | 内部 | ✓ | api-wrapper:src/api/block.ts:194 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:268` |
 | 220 | POST | `/api/block/checkBlocksExist` | block | `checkBlocksExist` | ✓ |  |  | 条件可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:269` |
@@ -681,8 +681,8 @@
 | 455 | POST | `/api/repo/removeCloudRepoTagSnapshot` | repo | `removeCloudRepoTagSnapshot` | ✓ | ✓ | ✓ | 不可用 | 内部 |  | — | 未知（内部） | `kernel/api/router.go:522` |
 | 456 | POST | `/api/repo/uploadCloudSnapshot` | repo | `uploadCloudSnapshot` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:523` |
 | 457 | POST | `/api/repo/downloadCloudSnapshot` | repo | `downloadCloudSnapshot` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:524` |
-| 458 | POST | `/api/repo/diffRepoSnapshots` | repo | `diffRepoSnapshots` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | api-wrapper:src/api/repo.ts:76<br>ui:src/ui/version-control/VersionDiffPanel.svelte:436 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:525` |
-| 459 | POST | `/api/repo/openRepoSnapshotFile` | repo | `openRepoSnapshotFile` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | api-wrapper:src/api/repo.ts:80<br>ui:src/ui/version-control/VersionDiffPanel.svelte:534<br>ui:src/ui/version-control/VersionDiffPanel.svelte:535 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:526` |
+| 458 | POST | `/api/repo/diffRepoSnapshots` | repo | `diffRepoSnapshots` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | api-wrapper:src/api/repo.ts:76<br>ui:src/ui/version-control/VersionDiffPanel.svelte:437 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:525` |
+| 459 | POST | `/api/repo/openRepoSnapshotFile` | repo | `openRepoSnapshotFile` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | api-wrapper:src/api/repo.ts:80<br>ui:src/ui/version-control/VersionDiffPanel.svelte:535<br>ui:src/ui/version-control/VersionDiffPanel.svelte:536 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:526` |
 | 460 | POST | `/api/repo/rollbackRepoSnapshotFile` | repo | `rollbackRepoSnapshotFile` | ✓ | ✓ | ✓ | 不可用 | 内部 | ✓ | api-wrapper:src/api/repo.ts:84 | 见插件 wrapper 类型；内核未公开稳定 schema | `kernel/api/router.go:527` |
 | 461 | POST | `/api/repo/exportRepoFile` | repo | `exportRepoFile` | ✓ | ✓ |  | 不可用 | 内部 | ✓ | — | 未知（内部） | `kernel/api/router.go:528` |
 | 462 | POST | `/api/repo/getRepoFile` | repo | `getRepoFile` | ✓ | ✓ |  | 不可用 | 内部 |  | — | 未知（内部） | `kernel/api/router.go:529` |

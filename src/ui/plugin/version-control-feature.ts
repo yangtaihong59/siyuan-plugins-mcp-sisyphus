@@ -350,7 +350,9 @@ export class VersionControlFeature {
         if (!protyle || typeof protyle !== "object") return null;
         const record = protyle as Record<string, any>;
         const block = record.block && typeof record.block === "object" ? record.block : {};
-        const id = firstNonEmptyString([
+        // A protyle whose document has not loaded yet has an empty `block`; its own
+        // `id` is a UUID, never a document id, so it must not be picked up here.
+        const id = firstNodeId([
             block.rootID,
             block.id,
             record.rootID,
@@ -383,8 +385,13 @@ export class VersionControlFeature {
         });
         const activeEditor = visibleEditors.find((editor: any) => (
             editor?.protyle?.element?.closest?.(".layout__wnd--active")
-        )) ?? visibleEditors.at(-1) ?? editors.at(-1);
-        return this.getDocumentContextFromProtyle(activeEditor?.protyle ?? activeEditor);
+        ));
+        // Restored background tabs load lazily; skip any editor without a document yet.
+        for (const editor of [activeEditor, ...visibleEditors.slice().reverse(), ...editors.slice().reverse()]) {
+            const context = this.getDocumentContextFromProtyle(editor?.protyle ?? editor);
+            if (context) return context;
+        }
+        return null;
     }
 
     updateVersionControlDocument(context: CurrentDocumentContext, options: { force?: boolean } = {}) {
@@ -600,6 +607,15 @@ export class VersionControlFeature {
 function firstNonEmptyString(values: unknown[]): string {
     for (const value of values) {
         if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+}
+
+const NODE_ID_PATTERN = /^\d{14}-[0-9a-z]{7}$/;
+
+function firstNodeId(values: unknown[]): string {
+    for (const value of values) {
+        if (typeof value === "string" && NODE_ID_PATTERN.test(value.trim())) return value.trim();
     }
     return "";
 }

@@ -138,7 +138,8 @@ export async function migrateLegacyTimelineSnapshotToGlobal(
     },
 ): Promise<LegacyGlobalMigrationResult> {
     if (!snapshot.id || !snapshot.tag) throw new Error(GLOBAL_TIMELINE_TAG_VERIFICATION_ERROR);
-    const globalTag = createGlobalTimelineTagName(snapshotLabel(snapshot), existingTags);
+    // Keep the legacy tag label so the migration identity still matches linked legacy nodes.
+    const globalTag = createGlobalTimelineTagName(extractTimelineTagLabel(snapshot.tag) || snapshotLabel(snapshot), existingTags);
     await actions.addTag(snapshot.id, globalTag);
     const verified = await actions.readTaggedSnapshots();
     if (!verified.some((item) => item.id === snapshot.id && item.tag === globalTag)) {
@@ -299,8 +300,10 @@ export function sortTimelineNodesNewestFirst(nodes: TimelineNodeRecord[]): Timel
     return [...nodes].sort((left, right) => right.created - left.created);
 }
 
-export function getTimelineNodeMigrationIdentity(node: Pick<TimelineNodeRecord, 'snapshotId' | 'name'>): string {
-    return `${node.snapshotId}\u0000${sanitizeTimelineTagLabel(node.name)}`;
+/** Keyed on the tag label rather than the display name, which may come from the snapshot memo. */
+export function getTimelineNodeMigrationIdentity(node: Pick<TimelineNodeRecord, 'snapshotId' | 'name' | 'tag'>): string {
+    const label = (node.tag && extractTimelineTagLabel(node.tag)) || node.name;
+    return `${node.snapshotId}\u0000${sanitizeTimelineTagLabel(label)}`;
 }
 
 function uniqueTimelineNodes(nodes: TimelineNodeRecord[]): TimelineNodeRecord[] {
@@ -402,7 +405,7 @@ export function buildDocumentTimeline(pairDiffs: TimelinePairDiff[]): {
 export function snapshotLabel(snapshot: TimelineSnapshot): string {
     if (typeof snapshot.tag === 'string' && snapshot.tag.startsWith(TIMELINE_TAG_PREFIX)) {
         const label = extractTimelineTagLabel(snapshot.tag);
-        if (label) return label;
+        if (label) return timelineMemoName(snapshot.memo, label) ?? label;
         return snapshot.memo || snapshot.id;
     }
     const fallback = snapshot.tag || snapshot.memo || snapshot.hCreated;
@@ -472,6 +475,22 @@ export function canReuseLiveDocumentBlock(params: {
 function sanitizeTimelineTagLabel(label: string): string {
     const sanitized = label.trim().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 48);
     return sanitized || 'snapshot';
+}
+
+/** The stamp createUniqueTimelineTagName appends when a tag name is taken. */
+const UNIQUE_TAG_STAMP_PATTERN = /^\d{14}(?:_\d+)?$/;
+
+/**
+ * Tag labels drop spaces and punctuation, while the snapshot memo keeps the node
+ * name as typed. Return the memo only when the tag label was derived from it.
+ */
+function timelineMemoName(memo: unknown, label: string): string | undefined {
+    if (typeof memo !== 'string') return undefined;
+    const name = memo.trim();
+    if (!name) return undefined;
+    const base = sanitizeTimelineTagLabel(name);
+    if (label === base) return name;
+    return label.startsWith(base) && UNIQUE_TAG_STAMP_PATTERN.test(label.slice(base.length)) ? name : undefined;
 }
 
 export function getDocumentKey(file: ChangedSnapshotFile): string {

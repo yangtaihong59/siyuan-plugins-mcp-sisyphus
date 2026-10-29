@@ -841,7 +841,7 @@ describe('HTTP settings sync', () => {
         getAllEditorMock.mockReturnValue([{
             protyle: {
                 element: editorElement,
-                block: { rootID: 'doc-active' },
+                block: { rootID: '20260514120000-aaaaaaa' },
                 title: 'Active Doc',
             },
         }]);
@@ -850,8 +850,28 @@ describe('HTTP settings sync', () => {
         addDock.mock.calls[0][0].init({ element: new FakeElement() });
 
         expect((snapshotPanelInstances[0].args as any).props).toEqual(expect.objectContaining({
-            currentDocumentId: 'doc-active',
+            currentDocumentId: '20260514120000-aaaaaaa',
             currentDocumentTitle: 'Active Doc',
+        }));
+    });
+
+    it('skips a restored tab whose document has not loaded instead of binding to its protyle id', async () => {
+        delete (globalThis as any).window.siyuan.config.system.workspaceDir;
+        const loadedElement = document.createElement('div');
+        const loadingElement = document.createElement('div');
+        document.body.appendChild(loadedElement);
+        document.body.appendChild(loadingElement);
+        getAllEditorMock.mockReturnValue([
+            { protyle: { id: '0cac3a10-ccbb-437a-91a4-1a5bc1eabbc0', element: loadedElement, block: { rootID: '20260514120000-aaaaaaa' }, title: 'Loaded Doc' } },
+            { protyle: { id: '08040326-afdd-47b9-9f86-930de9220000', element: loadingElement, block: {} } },
+        ]);
+
+        await plugin.onload();
+        addDock.mock.calls[0][0].init({ element: new FakeElement() });
+
+        expect((snapshotPanelInstances[0].args as any).props).toEqual(expect.objectContaining({
+            currentDocumentId: '20260514120000-aaaaaaa',
+            currentDocumentTitle: 'Loaded Doc',
         }));
     });
 
