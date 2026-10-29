@@ -1,5 +1,7 @@
 import type { SiYuanClient } from '../../api/client';
+import * as searchApi from '../../api/search';
 import type { PermissionManager } from '../../core/permissions';
+import { escapeSqlString } from '../../shared/sql';
 import { createResultResolutionCache, resolveResultItemContext } from './context';
 
 function getNotebookIdFromItem(item: unknown): string | undefined {
@@ -125,6 +127,62 @@ export function filterFullTextSearchResultByPermission<T extends {
         matchedRootCount: uniqueRoots.size,
         ...(removedCount > 0 ? { filteredOutBlockCount: removedCount } : {}),
     };
+}
+
+const SIYUAN_ID_PATTERN = /^\d{14}-[0-9a-z]{7}$/;
+const SQL_ROW_ID_COLUMNS = ['id', 'root_id', 'block_id', 'parent_id', 'def_block_id', 'def_block_root_id'] as const;
+const SQL_ROW_LOOKUP_CHUNK = 200;
+
+/**
+ * Defence-in-depth filter for restricted raw SQL rows: drop rows whose `box`
+ * column, or whose block-ID columns (resolved through the blocks table), point
+ * at a notebook the caller cannot read. Unattributable rows are kept: the
+ * restricted SQL rewrite is the primary guarantee, and aggregates such as
+ * COUNT or GROUP_CONCAT cannot be post-filtered anyway.
+ */
+export async function filterSqlRowsByPermission(
+    client: SiYuanClient,
+    rows: unknown[],
+    permMgr: PermissionManager,
+): Promise<{ items: unknown[]; removedCount: number }> {
+    const ids = new Set<string>();
+    for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        const record = row as Record<string, unknown>;
+        for (const column of SQL_ROW_ID_COLUMNS) {
+            const value = record[column];
+            if (typeof value === 'string' && SIYUAN_ID_PATTERN.test(value)) ids.add(value);
+        }
+    }
+
+    const boxById = new Map<string, string>();
+    const idList = [...ids];
+    for (let index = 0; index < idList.length; index += SQL_ROW_LOOKUP_CHUNK) {
+        const chunk = idList.slice(index, index + SQL_ROW_LOOKUP_CHUNK);
+        const found = await searchApi.querySQL(
+            client,
+            `SELECT id, box FROM blocks WHERE id IN (${chunk.map((id) => `'${escapeSqlString(id)}'`).join(', ')}) LIMIT ${chunk.length}`,
+        );
+        for (const item of found) {
+            if (!item || typeof item !== 'object') continue;
+            const { id, box } = item as Record<string, unknown>;
+            if (typeof id === 'string' && typeof box === 'string') boxById.set(id, box);
+        }
+    }
+
+    const items = rows.filter((row) => {
+        if (!row || typeof row !== 'object') return true;
+        const record = row as Record<string, unknown>;
+        if (typeof record.box === 'string' && record.box.length > 0 && !permMgr.canRead(record.box)) return false;
+        for (const column of SQL_ROW_ID_COLUMNS) {
+            const value = record[column];
+            if (typeof value !== 'string') continue;
+            const box = boxById.get(value);
+            if (box !== undefined && !permMgr.canRead(box)) return false;
+        }
+        return true;
+    });
+    return { items, removedCount: rows.length - items.length };
 }
 
 export function filterBacklinkResultByPermission<T extends {

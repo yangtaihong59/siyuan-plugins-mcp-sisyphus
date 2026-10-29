@@ -783,8 +783,8 @@ describe('search tool filtering', () => {
         expect(parseResult(result)).toMatchObject({ data: [{ n: 42 }], total: 1 });
     });
 
-    it('rejects raw SQL before execution when any notebook is unreadable', async () => {
-        const request = vi.fn(async (endpoint: string) => {
+    it('rejects unscoped tables in restricted SQL before running the caller query', async () => {
+        const request = vi.fn(async (endpoint: string, _body?: unknown) => {
             if (endpoint === '/api/notebook/lsNotebooks') {
                 return {
                     notebooks: [
@@ -793,6 +793,7 @@ describe('search tool filtering', () => {
                     ],
                 };
             }
+            if (endpoint === '/api/query/sql') return [{ name: 'blocks' }, { name: 'stat' }];
             throw new Error(`unexpected endpoint ${endpoint}`);
         });
         const client = createMockClient({ request });
@@ -806,16 +807,19 @@ describe('search tool filtering', () => {
 
         const result = await callSearchTool(client, {
             action: 'query_sql',
-            stmt: 'SELECT COUNT(*) AS n FROM blocks',
+            stmt: 'SELECT * FROM stat',
         }, buildDefaultToolConfig().search, permMgr as never);
         const parsed = parseResult(result);
 
         expect(result.isError).toBe(true);
         expect(parsed.error).toMatchObject({
-            code: 'raw_sql_unavailable_with_restricted_notebooks',
+            code: 'restricted_sql_rejected',
             reason: 'permission_scope_not_enforceable',
+            excludedNotebooks: 1,
         });
-        expect(request).not.toHaveBeenCalledWith('/api/query/sql', expect.anything());
+        expect(parsed.error.hint).toContain('blocks, spans, attributes, assets, refs, file_annotation_refs');
+        const sqlCalls = request.mock.calls.filter(([endpoint]) => endpoint === '/api/query/sql');
+        expect(sqlCalls.every(([, body]) => String((body as { stmt: string }).stmt).startsWith('SELECT name FROM sqlite_master'))).toBe(true);
     });
 
     it('adds an indexing hint when tag search returns empty for a non-empty keyword', async () => {

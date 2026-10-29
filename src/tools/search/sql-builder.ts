@@ -223,6 +223,30 @@ export async function ensureRawSqlReadAccess(
     };
 }
 
+export interface RawSqlScope {
+    mode: 'restricted' | 'full';
+    readableNotebooks: string[];
+    excludedNotebooks: number;
+}
+
+/** Reload permissions and compute which notebooks a raw SQL query may observe. */
+export async function loadRawSqlScope(client: SiYuanClient, permMgr: PermissionManager): Promise<RawSqlScope> {
+    await permMgr.reload();
+    const notebookList = await notebookApi.listNotebooks(client);
+    const notebooks = Array.isArray(notebookList?.notebooks) ? notebookList.notebooks : [];
+    const readableNotebooks = notebooks.filter((notebook) => permMgr.canRead(notebook.id)).map((notebook) => notebook.id);
+    const excludedNotebooks = notebooks.length - readableNotebooks.length;
+    return { mode: excludedNotebooks > 0 ? 'restricted' : 'full', readableNotebooks, excludedNotebooks };
+}
+
+/** Real table/view names of the index DB, so CTE names can never shadow one. */
+export async function listIndexTableNames(client: SiYuanClient): Promise<string[]> {
+    const rows = await searchApi.querySQL(client, "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') LIMIT 1000");
+    return rows
+        .map((row) => (row && typeof row === 'object' ? (row as Record<string, unknown>).name : undefined))
+        .filter((name): name is string => typeof name === 'string');
+}
+
 async function getBlockLabel(client: SiYuanClient, id: string): Promise<string | undefined> {
     const rows = await searchApi.querySQL(
         client,

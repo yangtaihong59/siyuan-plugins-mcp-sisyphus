@@ -27,9 +27,20 @@ import {
     filterBacklinkResultByPermission,
     filterFullTextSearchResultByPermission,
     filterItemsByPermission,
+    filterSqlRowsByPermission,
     isPermissionRelatedApiError,
 } from '../internal/permission-filter';
-import { ensureRawSqlReadAccess, getBacklinksWithFallback, queryReferencingBlocks, REFERENCING_BLOCKS_LIMIT } from './sql-builder';
+import { RestrictedSqlError, restrictedTablesHint, rewriteRestrictedSql } from './restricted-sql';
+import {
+    assertReadOnlySql,
+    ensureRawSqlReadAccess,
+    getBacklinksWithFallback,
+    listIndexTableNames,
+    loadRawSqlScope,
+    queryReferencingBlocks,
+    REFERENCING_BLOCKS_LIMIT,
+    type RawSqlScope,
+} from './sql-builder';
 
 const SEARCH_TOOL_NAME = 'search';
 
@@ -194,17 +205,26 @@ async function createFulltextPaginatedResult(
     });
 }
 
-function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArgs?: Record<string, unknown>): ToolResult {
+const RESTRICTED_SQL_HINT = `Some notebooks are unreadable, so query_sql runs in restricted mode. ${restrictedTablesHint()} Use one SELECT/WITH; put tables only after FROM/JOIN (aliases OK); no sqlite_*/pragma_*/schema-qualified names; CTE names must not reuse table names.`;
+
+function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArgs: Record<string, unknown> | undefined, scope: RawSqlScope): ToolResult {
     const truncated = applyTruncation(rows, 50, 'Add LIMIT and OFFSET to your SQL for pagination.');
     const total = rows.length;
+    const restricted = scope.mode === 'restricted';
     return createJsonResult({
         data: truncated.items,
         total,
         totalRows: total,
+        scope: restricted ? { ...scope, hint: RESTRICTED_SQL_HINT } : scope,
         readInfo: {
             scope: 'sql_query', representation: 'sql_rows',
-            coverage: truncated.meta?.truncated || removedCount > 0 ? 'partial' : 'unknown',
-            limitations: ['selected_columns_only', 'kernel_limit_unknown', ...(truncated.meta?.truncated ? ['response_truncated'] : []), ...(removedCount > 0 ? ['permission_filtered'] : [])],
+            coverage: truncated.meta?.truncated || removedCount > 0 || restricted ? 'partial' : 'unknown',
+            limitations: [
+                'selected_columns_only', 'kernel_limit_unknown',
+                ...(truncated.meta?.truncated ? ['response_truncated'] : []),
+                ...(removedCount > 0 ? ['permission_filtered'] : []),
+                ...(restricted ? ['notebook_scoped'] : []),
+            ],
         },
         ...buildTruncationSummary(total, truncated.meta),
         ...createPartialMetadata(removedCount),
@@ -389,15 +409,49 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
     query_sql: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchQuerySqlSchema.parse(rawArgs);
         const stmt = resolveAliasString(parsed.stmt, parsed.sql);
-        const denied = await ensureRawSqlReadAccess(client, permMgr, stmt ?? '');
-        if (denied) return denied;
-
-        const result = await searchApi.querySQL(client, stmt ?? '');
-        const rows = Array.isArray(result) ? result : [];
+        assertReadOnlySql(stmt ?? '');
+        const scope = await loadRawSqlScope(client, permMgr);
         const resolvedArgs = parsed.sql !== undefined
             ? buildResolvedArgs({ stmt }).resolvedArgs
             : undefined;
-        return createSqlQueryResult(rows, 0, resolvedArgs);
+
+        if (scope.mode === 'full') {
+            // Every notebook is readable: run the caller's SQL unchanged.
+            const result = await searchApi.querySQL(client, stmt ?? '');
+            const rows = Array.isArray(result) ? result : [];
+            return createSqlQueryResult(rows, 0, resolvedArgs, scope);
+        }
+
+        let rewritten: string;
+        try {
+            rewritten = rewriteRestrictedSql(stmt ?? '', {
+                readableNotebookIds: scope.readableNotebooks,
+                existingTables: await listIndexTableNames(client),
+            }).sql;
+        } catch (error) {
+            if (!(error instanceof RestrictedSqlError)) throw error;
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: {
+                            type: 'permission_denied',
+                            code: 'restricted_sql_rejected',
+                            reason: 'permission_scope_not_enforceable',
+                            excludedNotebooks: scope.excludedNotebooks,
+                            message: error.message,
+                            hint: `${RESTRICTED_SQL_HINT} Or use document(action="query").`,
+                        },
+                    }, null, 2),
+                }],
+                isError: true,
+            };
+        }
+
+        const result = await searchApi.querySQL(client, rewritten);
+        const rows = Array.isArray(result) ? result : [];
+        const filtered = await filterSqlRowsByPermission(client, rows, permMgr);
+        return createSqlQueryResult(filtered.items, filtered.removedCount, resolvedArgs, scope);
     },
     get_backlinks: async ({ client, permMgr, rawArgs }) => {
         const parsed = SearchGetBacklinksSchema.parse(rawArgs);

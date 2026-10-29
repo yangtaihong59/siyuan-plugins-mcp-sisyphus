@@ -83,14 +83,16 @@ describe('tool permission and filtering behavior', () => {
         permMgr.get.mockImplementation((notebookId: string) => notebookId === 'blocked' ? 'none' : 'rwd');
     });
 
-    it('rejects raw SQL when notebook permissions cannot be enforced safely', async () => {
+    it('runs raw SQL in restricted mode scoped to readable notebooks when some are unreadable', async () => {
         vi.spyOn(notebookApi, 'listNotebooks').mockResolvedValue({
             notebooks: [
                 { id: 'allowed', name: 'Allowed', closed: false },
                 { id: 'blocked', name: 'Blocked', closed: false },
             ],
         } as never);
-        const querySpy = vi.spyOn(searchApi, 'querySQL');
+        const querySpy = vi.spyOn(searchApi, 'querySQL').mockImplementation(async (_client, stmt) => (
+            stmt.startsWith('SELECT name FROM sqlite_master') ? [] : [{ n: 1 }]
+        ));
 
         const result = await callSearchTool({} as never, {
             action: 'query_sql',
@@ -98,12 +100,11 @@ describe('tool permission and filtering behavior', () => {
         }, searchConfig, permMgr as never);
         const parsed = parseResult(result);
 
-        expect(result.isError).toBe(true);
-        expect(parsed.error).toMatchObject({
-            code: 'raw_sql_unavailable_with_restricted_notebooks',
-            reason: 'permission_scope_not_enforceable',
-        });
-        expect(querySpy).not.toHaveBeenCalled();
+        expect(result.isError).toBeFalsy();
+        expect(parsed.scope).toMatchObject({ mode: 'restricted', readableNotebooks: ['allowed'], excludedNotebooks: 1 });
+        const sent = querySpy.mock.calls.map(([, stmt]) => stmt).find((stmt) => stmt.includes('LIMIT 2'));
+        expect(sent).toContain("(SELECT * FROM main.blocks WHERE box IN ('allowed')) AS blocks");
+        expect(sent).not.toContain('blocked');
     });
 
     it('returns unattributable SQL rows unchanged when every notebook is readable', async () => {
