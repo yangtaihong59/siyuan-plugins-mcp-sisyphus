@@ -31,6 +31,7 @@ import {
 } from '../internal/permission-filter';
 import { countFindReplaceMatches, findReplacePattern } from './find-replace-count';
 import { RestrictedSqlError, restrictedTablesHint, rewriteRestrictedSql } from './restricted-sql';
+import { assertRestrictedSqlCanary, RestrictedSqlCanaryError } from './restricted-sql-canary';
 import {
     assertReadOnlySql,
     ensureRawSqlReadAccess,
@@ -407,6 +408,29 @@ export const SEARCH_ACTION_HANDLERS: Record<SearchAction, ToolActionHandler> = {
                             excludedNotebooks: scope.excludedNotebooks,
                             message: error.message,
                             hint: `${RESTRICTED_SQL_HINT} Or use document(action="query").`,
+                        },
+                    }, null, 2),
+                }],
+                isError: true,
+            };
+        }
+
+        try {
+            // Fail closed unless this kernel provably runs the guarded text verbatim.
+            await assertRestrictedSqlCanary(client);
+        } catch (error) {
+            if (!(error instanceof RestrictedSqlCanaryError)) throw error;
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: {
+                            type: 'permission_denied',
+                            code: 'restricted_sql_unavailable',
+                            reason: error.reason,
+                            excludedNotebooks: scope.excludedNotebooks,
+                            message: error.message,
+                            hint: 'Use document(action="query") or search(action="fulltext"), or make every notebook readable.',
                         },
                     }, null, 2),
                 }],

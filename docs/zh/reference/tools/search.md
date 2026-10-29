@@ -21,7 +21,7 @@
 ## 安全规则
 
 - `find_replace` 是本工具唯一的修改类操作，需要显式确认。
-- `query_sql` 是只读操作，只接受 `SELECT` 语句；请自行添加 `LIMIT`。它会保留用户选择的全部列。所有笔记本都可读时原样执行（`scope.mode: "full"`）；只要存在不可读笔记本，就进入受限模式（`scope.mode: "restricted"`）：只能读取 `blocks`、`spans`、`attributes`、`assets`、`refs`、`file_annotation_refs`，`FROM`/`JOIN` 后的每个表引用都会被改写为只含可读笔记本行的子查询（`refs` 还要求被引用的定义块可读）；`sqlite_*`/`pragma_*`、带 schema 前缀的表名、其他表以及与表同名的 CTE 都会被拒绝。执行后仍能归属到不可读笔记本的行会再被过滤一次。
+- `query_sql` 是只读操作，只接受 `SELECT` 语句；请自行添加 `LIMIT`。它会保留用户选择的全部列。所有笔记本都可读时原样执行（`scope.mode: "full"`）；只要存在不可读笔记本，就进入受限模式（`scope.mode: "restricted"`）：只能读取 `blocks`、`spans`、`attributes`、`assets`、`refs`、`file_annotation_refs`，`FROM`/`JOIN` 后的每个表引用都会被改写为只含可读笔记本行的子查询（`refs` 还要求被引用的定义块可读）；`sqlite_*`/`pragma_*`、带 schema 前缀的表名、其他表以及与表同名的 CTE 都会被拒绝。执行后仍能归属到不可读笔记本的行会再被过滤一次。首次使用受限模式前（之后每 30 分钟一次），服务器会先发送一条无害的自检语句，确认内核原样执行改写后的 SQL；自检失败时以 `restricted_sql_unavailable` 拒绝受限 SQL，绝不退回为不受限执行。
 - `fulltext(methodName="sql")` 与数字参数 `method=2` 没有受限模式：存在不可读笔记本时直接拒绝。查询文档清单、块数/字符数、骨架候选或同名分组时，使用 [`document.query`](./document.md#权限范围内的文档查询)：服务器生成固定查询，在聚合前落实权限范围，不需要开放隐藏笔记本。
 - 搜索结果会在适用时按笔记本权限过滤。
 - `get_backlinks` 只需目标 `id`，使用内核全局反链查询。指定 `scopeRootId` / `refTreeID` 时改查对应引用文档；省略的 `keyword` 会补为空字符串以满足内核请求格式。

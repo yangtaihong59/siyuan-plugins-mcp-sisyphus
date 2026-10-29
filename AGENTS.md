@@ -107,7 +107,7 @@ siyuan-plugins-mcp-sisyphus/
 │   │   ├── document/            # document 工具
 │   │   ├── block/               # block 工具
 │   │   ├── av/                  # av（数据库）工具：definition → rows → carrier → transaction 基础模块 + 按领域的 *-handlers.ts
-│   │   ├── search/              # search 工具（含 sql-builder、restricted-sql 受限 SQL 改写）
+│   │   ├── search/              # search 工具（含 sql-builder、restricted-sql 受限 SQL 改写与 restricted-sql-canary 内核自检）
 │   │   ├── file/                # file 工具
 │   │   ├── tag/                 # tag 工具
 │   │   ├── system/              # system 工具

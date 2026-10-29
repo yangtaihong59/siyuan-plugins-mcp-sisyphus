@@ -10,6 +10,11 @@ import {
     rewriteRestrictedSql,
     tokenizeSql,
 } from '@/tools/search/restricted-sql';
+import {
+    CANARY_PROBES,
+    CANARY_TTL_MS,
+    checkRestrictedSqlCanary,
+} from '@/tools/search/restricted-sql-canary';
 import { createMockClient } from '../../helpers/mock-client';
 import { parseResult } from '../../helpers/parse-result';
 
@@ -344,7 +349,7 @@ describe.skipIf(!DatabaseSync)('restricted SQL executed by SQLite', () => {
 // Handler: what is actually sent to /api/query/sql, post-filter, metadata.
 // ---------------------------------------------------------------------------
 
-function createHandlerHarness(options: { userRows?: unknown[]; lookupRows?: unknown[]; allReadable?: boolean } = {}) {
+function createHandlerHarness(options: { userRows?: unknown[]; lookupRows?: unknown[]; allReadable?: boolean; canary?: 'pass' | 'leak' | 'error' } = {}) {
     const sent: string[] = [];
     const request = vi.fn(async (path: string, body: { stmt?: string }) => {
         if (path === '/api/notebook/lsNotebooks') {
@@ -354,6 +359,12 @@ function createHandlerHarness(options: { userRows?: unknown[]; lookupRows?: unkn
         const stmt = String(body.stmt);
         sent.push(stmt);
         if (stmt.startsWith('SELECT name FROM sqlite_master')) return [{ name: 'blocks' }, { name: 'refs' }, { name: 'stat' }];
+        if (stmt.includes("upper('sisyphus_canary')")) {
+            if (options.canary === 'error') throw new Error('kernel unavailable');
+            // What SiYuan returns when it re-serialises the probe (verified on 3.8.8 without the guard).
+            if (options.canary === 'leak') return [{ '"b"': 'b', "(SELECT upper('sisyphus_canary'))": 'SISYPHUS_CANARY', a: 1 }];
+            return [{ "a` , (SELECT upper('sisyphus_canary')) , `b": 1 }];
+        }
         if (stmt.startsWith('SELECT id, box FROM blocks WHERE id IN')) return options.lookupRows ?? [];
         return options.userRows ?? [];
     });
@@ -444,5 +455,90 @@ describe('search(action="query_sql") restricted mode', () => {
         expect(parsed.data).toEqual([{ id: 'x', box: SECRET_BOX }]);
         expect(parsed.scope).toEqual({ mode: 'full', readableNotebooks: [READABLE[0], SECRET_BOX], excludedNotebooks: 0 });
         expect(parsed.readInfo.limitations).not.toContain('notebook_scoped');
+    });
+
+    it('runs the kernel canary once per client before the first restricted query', async () => {
+        const harness = createHandlerHarness({ userRows: [{ n: 1 }] });
+        const client = createMockClient({ request: harness.request });
+        const permMgr = { reload: vi.fn(async () => undefined), canRead: (id: string) => id !== SECRET_BOX };
+        const run = () => callSearchTool(client, { action: 'query_sql', stmt: 'SELECT count(*) AS n FROM blocks' }, buildDefaultToolConfig().search, permMgr as never);
+
+        expect((await run()).isError).toBeFalsy();
+        expect((await run()).isError).toBeFalsy();
+        const probes = harness.sent.filter((stmt) => stmt.includes('sisyphus_canary'));
+        expect(probes).toHaveLength(CANARY_PROBES.length);
+        // Probes carry the same guard as user queries and reference no table.
+        for (const probe of probes) {
+            expect(probe.startsWith('WITH [sisyphus_scope]')).toBe(true);
+            expect(probe).not.toMatch(/FROM (main\.)?(blocks|spans|attributes|assets|refs|file_annotation_refs|sqlite_)/i);
+        }
+    });
+
+    it.each([
+        ['leak', 'guard_bypassed'],
+        ['error', 'canary_error'],
+    ] as const)('fails closed when the canary %s', async (canary, reason) => {
+        const harness = createHandlerHarness({ userRows: [{ id: 'x', box: SECRET_BOX, content: 'SECRET' }], canary });
+        const result = await harness.call({ stmt: 'SELECT id, box, content FROM blocks' });
+        const parsed = parseResult(result);
+
+        expect(result.isError).toBe(true);
+        expect(parsed.error).toMatchObject({ type: 'permission_denied', code: 'restricted_sql_unavailable', reason });
+        // The caller's (rewritten) SQL is never sent.
+        expect(harness.sent.some((stmt) => stmt.includes('content FROM'))).toBe(false);
+    });
+
+    it('does not need the canary in full mode', async () => {
+        const harness = createHandlerHarness({ allReadable: true, canary: 'leak', userRows: [{ n: 1 }] });
+        const result = await harness.call({ stmt: 'SELECT count(*) AS n FROM blocks' });
+        expect(result.isError).toBeFalsy();
+        expect(harness.sent.some((stmt) => stmt.includes('sisyphus_canary'))).toBe(false);
+    });
+});
+
+describe('restricted SQL canary', () => {
+    function probeClient(responder: (stmt: string) => unknown[] | Promise<unknown[]>) {
+        const request = vi.fn(async (_path: string, body: { stmt: string }) => responder(body.stmt));
+        return { client: createMockClient({ request }), request };
+    }
+
+    it('caches a passing result and re-checks after the TTL', async () => {
+        const { client, request } = probeClient(() => [{ alias: 1 }]);
+        expect(await checkRestrictedSqlCanary(client, 1_000)).toEqual({ ok: true });
+        expect(await checkRestrictedSqlCanary(client, 2_000)).toEqual({ ok: true });
+        expect(request).toHaveBeenCalledTimes(CANARY_PROBES.length);
+        await checkRestrictedSqlCanary(client, 1_000 + CANARY_TTL_MS);
+        expect(request).toHaveBeenCalledTimes(CANARY_PROBES.length * 2);
+    });
+
+    it('detects a leak in the second (WITH-merged) probe too', async () => {
+        const { client } = probeClient((stmt) => (stmt.includes('sisyphus_probe') ? [{ a: 1, x: 'SISYPHUS_CANARY' }] : [{ alias: 1 }]));
+        expect(await checkRestrictedSqlCanary(client)).toMatchObject({ ok: false, reason: 'guard_bypassed' });
+    });
+
+    it('treats an unexpected result shape as a failure', async () => {
+        const { client } = probeClient(() => []);
+        expect(await checkRestrictedSqlCanary(client)).toMatchObject({ ok: false, reason: 'unexpected_result' });
+    });
+
+    it('does not cache transport errors', async () => {
+        let fail = true;
+        const { client } = probeClient(() => {
+            if (fail) throw new Error('down');
+            return [{ alias: 1 }];
+        });
+        await expect(checkRestrictedSqlCanary(client)).rejects.toThrow('down');
+        fail = false;
+        expect(await checkRestrictedSqlCanary(client)).toEqual({ ok: true });
+    });
+
+    it('probes are harmless single-row aliases when SQLite runs the guarded text verbatim', () => {
+        // The probe is a single alias for SQLite; the guarded text keeps it that way.
+        const db = createIndexDb();
+        for (const probe of CANARY_PROBES) {
+            const rows = db.prepare(rewriteRestrictedSql(probe, { readableNotebookIds: [] }).sql).all();
+            expect(JSON.stringify(rows)).not.toContain('SISYPHUS_CANARY');
+            expect(rows).toHaveLength(1);
+        }
     });
 });
