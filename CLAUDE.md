@@ -81,7 +81,7 @@ pnpm make-link        # 创建开发链接到 SiYuan 插件目录
 
 ## 独立 CLI 子包（2026-04-18 首次发布，2026-04-18 重构为直接操作模式）
 
-仓库现在同时发布两种产物：SiYuan 插件（根 `package.json` + `package.zip`）和独立 CLI（`cli/` 子目录，发布到 npm 包 `siyuan-sisyphus`，安装后提供 `siyuan-sisyphus` 命令，别名 `siyuan`）。
+仓库现在同时发布两种产物：SiYuan 插件（根 `package.json` + `package.zip`）和独立 CLI（`cli/` 子目录，发布到 npm 包 `siyuan-sisyphus`，安装后提供 `siyuan-sisyphus` 命令，别名 `sisyphus`）。
 
 **CLI 定位**：类 `obsidian-cli` 的直接操作工具 —— `siyuan-sisyphus <tool> <action> [--flag value ...]`，比如：
 ```bash
@@ -107,7 +107,7 @@ CLI 不再启动 MCP server 进程 —— 它直接通过思源 HTTP API 执行�
 ### 构建 & 发布
 ```bash
 pnpm build:cli     # 产出 cli/dist/cli.cjs（自包含 CJS bundle）
-pnpm publish:cli   # 先构建再发布 siyuan-sisyphus 包（提供 siyuan-sisyphus / siyuan 命令）
+pnpm publish:cli   # 先构建再发布 siyuan-sisyphus 包（提供 siyuan-sisyphus / sisyphus 命令）
 ```
 CLI 直接 import `TOOL_REGISTRY`、`SiYuanClient`、`PermissionManager`，**不再**依赖 `mcp-server.cjs` 这个中间产物（`cli-server` Vite target 已删除）。
 

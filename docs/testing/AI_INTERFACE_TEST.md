@@ -113,7 +113,7 @@ AI 在正式执行前必须先确认本轮模式：
 
 必须确认：
 
-- `siyuan-sisyphus` 或 `siyuan` 命令可执行
+- `siyuan-sisyphus` 或 `sisyphus` 命令可执行
 - 已配置 `apiUrl` / `token`，或用户允许通过 flag 指定
 - 能成功执行系统版本读取动作
 

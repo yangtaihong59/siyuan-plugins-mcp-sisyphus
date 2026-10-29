@@ -9,7 +9,7 @@
 **SiYuan MCP Sisyphus** 是 SiYuan Note（思源笔记）的插件 + 独立 CLI 工具，让 AI Agent 能够通过两种接口安全地操作思源笔记：
 
 1. **MCP Server 插件**：作为 SiYuan 插件运行，对外暴露 MCP（Model Context Protocol）服务。AI 客户端（Claude Desktop、Cursor、Cherry Studio 等）通过 HTTP 或 stdio 连接。
-2. **独立 CLI `siyuan-sisyphus`**：发布到 npm 的包名 `siyuan-sisyphus`，安装后提供 `siyuan-sisyphus` / `siyuan` 命令。直接通过思源 HTTP API 执行单次操作后退出，无需 MCP 客户端。
+2. **独立 CLI `siyuan-sisyphus`**：发布到 npm 的包名 `siyuan-sisyphus`，安装后提供 `siyuan-sisyphus` / `sisyphus` 命令。直接通过思源 HTTP API 执行单次操作后退出，无需 MCP 客户端。
 
 两种接口共享同一套底层能力，覆盖思源绝大部分功能：笔记本管理、文档操作、块级读写、属性视图（数据库）、搜索、标签、文件资源、闪卡、系统接口等。聚合工具类别和静态 action 清单以 `src/core/config.ts` 的 `TOOL_CATEGORIES` 与 `ACTIONS_BY_CATEGORY` 为唯一事实来源；`extension` 还可按官方注册表发现动态 action。
 
@@ -409,7 +409,7 @@ CLI **不启动 MCP server 进程**，而是直接 import `TOOL_REGISTRY`、`SiY
 
 1. `pnpm build:cli` 生成 `cli/dist/cli.cjs`（自包含 CJS，无依赖）。
 2. `pnpm publish:cli` 进入 `cli/` 目录执行 `npm publish --access public`。
-3. 发布到 npm 后，用户可通过 `npm i -g siyuan-sisyphus` 安装，获得 `siyuan-sisyphus` 与 `siyuan` 两个命令。
+3. 发布到 npm 后，用户可通过 `npm i -g siyuan-sisyphus` 安装，获得 `siyuan-sisyphus` 与 `sisyphus` 两个命令。
 
 ### 版本同步
 
