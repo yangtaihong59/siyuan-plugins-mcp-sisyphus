@@ -213,6 +213,30 @@ describe('cli/render', () => {
         io.restore();
     });
 
+    it('renders alternative required shapes once, as "one of"', () => {
+        const io = captureStdIO();
+        try {
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({
+                tool: 'document', action: 'remove', shapes: ['id', 'notebook + path'], requiredFields: [['id'], ['notebook', 'path']],
+                example: { action: 'remove', id: 'd1' }, requiresConfirmation: true, fullDocResource: 'siyuan://help/action/document/remove',
+                oneStep: { tier: 3, rule: 'Enabled, but this write always uses the two steps (not on the one-step list).' },
+            }) }] }, { json: false, debug: false });
+            renderToolResult({ content: [{ type: 'text', text: JSON.stringify({
+                tool: 'block', action: 'update', shapes: ['id + dataType + data'], requiredFields: [['id', 'dataType', 'data'], ['items']],
+                example: { action: 'update', id: 'b1' }, fullDocResource: 'siyuan://help/action/block/update',
+                oneStep: { tier: 2, rule: 'Enabled: may commit without validateOnly only with ifMatch from a fresh read of the target; otherwise use the two steps.', ifMatchReads: ['block get-kramdown --id'] },
+            }) }] }, { json: false, debug: false });
+        } finally {
+            io.restore();
+        }
+        expect(io.stdout).toContain('one of: --id | --notebook + --path');
+        expect(io.stdout).toContain('one of: --id + --data-type + --data | --items');
+        expect(io.stdout).not.toContain('Accepted Shapes');
+        expect(io.stdout).not.toContain('none fixed by the schema');
+        expect(io.stdout).toContain('always uses the two steps');
+        expect(io.stdout).toContain('If Match is printed by: siyuan-sisyphus block get-kramdown --id');
+    });
+
     it('formats curated help examples for terminal reading', () => {
         const io = captureStdIO();
         const result: ToolResult = {
@@ -387,6 +411,12 @@ describe('cli/render read metadata and guidance', () => {
         expect(io.stdout).not.toContain('long hint');
         // The data comes before the metadata.
         expect(io.stdout.indexOf('ID: x')).toBeLessThan(io.stdout.indexOf('Restricted:'));
+    });
+
+    it('reads closed notebooks from the separate closed list', () => {
+        const current = { mode: 'restricted', readableNotebooks: ['a', 'b'], excludedNotebooks: 1,
+            readable: [{ id: 'b', name: 'Lab' }], closed: [{ id: 'a', name: 'Research' }], excluded: [{ id: 'c', name: 'Private' }] };
+        expect(summarizeSqlScope(current)).toContain('covers 1 readable open notebook(s): Lab; unreadable, excluded: 1 (Private); closed, not indexed: 1 (Research)');
     });
 
     it('caps covered notebook names and separates unreadable from closed', () => {

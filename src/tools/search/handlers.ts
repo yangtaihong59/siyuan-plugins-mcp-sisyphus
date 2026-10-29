@@ -211,9 +211,9 @@ const RESTRICTED_SQL_HINT = `Some notebooks are unreadable, so query_sql runs in
 
 function restrictedScopeHint(scope: RawSqlScope): string {
     const names = (list: Array<{ name: string; id: string }>) => list.map((notebook) => notebook.name || notebook.id).join(', ');
-    const closed = (scope.readable ?? []).filter((notebook) => notebook.closed);
+    const closed = scope.closed ?? [];
     const excluded = scope.excluded ?? [];
-    return `Results and counts cover only the readable notebooks${excluded.length > 0 ? `; ${excluded.length} unreadable notebook(s) (${names(excluded)}) are excluded` : ''}${closed.length > 0 ? `; closed notebook(s) (${names(closed)}) are not indexed and return no rows` : ''}. ${RESTRICTED_SQL_HINT}`;
+    return `Results and counts cover only the readable notebooks${excluded.length > 0 ? `; ${excluded.length} unreadable notebook(s) (${names(excluded)}) are excluded` : ''}${closed.length > 0 ? `; closed notebook(s) (${names(closed)}) are not indexed and return no rows (listed in closed, not readable; readableNotebooks keeps every permitted ID)` : ''}. ${RESTRICTED_SQL_HINT}`;
 }
 
 /** A restricted-mode rejection that opens with why the mode is on at all. */

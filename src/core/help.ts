@@ -195,10 +195,10 @@ export const NOTEBOOK_ACTION_HINTS: Partial<Record<NotebookAction, string>> = {
 export const DOCUMENT_ACTION_HINTS: Partial<Record<DocumentAction, string>> = {
     query: 'Omit notebooks for all readable open notebooks, or pass notebook IDs. Explicit unreadable, unknown, or closed notebooks are rejected. fields selects metadata/stat columns; default all. title is a literal substring and hpathPrefix matches an exact notebook-local human path or descendants. Use maxBlocks=0 for no indexed body blocks, duplicatesOnly=true for same-title candidates. minBlocks/maxBlocks/minChars/maxChars are inclusive. page starts at 1; pageSize defaults to 50 (max 100). blockCount counts non-document indexed rows including containers; contentChars sums SQLite length(content), not bytes/native word count. sameTitleCount is scoped before metric filters. Read scope/excludedClosedNotebooks and index limitations; follow nextSteps for further pages. SQL fragments are not accepted.',
     create: 'Use a notebook ID from notebook.list, never its name. Use notebook + path for the most direct child-document flow. path is a notebook-local hpath like /Folder/Parent/New Child, not /Notebook/... and not .sy. parentPath + title is also supported. markdown is optional and must not start with # Title; a matching leading H1 is stripped to avoid duplicate titles.',
-    lookup: 'Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.',
+    lookup: 'Look up one reference at a time. Use id, notebook + path (storage path), or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.',
     ensure_link_targets: 'Scope every request with an explicit notebook ID and parent document ID. resolve/reuse require existing child document IDs and never fall back to titles. create accepts explicit new titles only; if a same-title child already exists, it is returned as unresolved rather than guessed or reused. dryRun performs zero writes only for create. resolve/reuse are read-only; create uses strict validateOnly preflight, then one commit with the server-issued requestId plus expectedStructureHash. Responses contain exact ID/path/HPath readback and resolved/created/reused/unresolved accounting.',
     rename: 'Single mode uses either id + title or notebook + path + title. Batch mode uses items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.',
-    remove: 'Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + storage path.',
+    remove: 'Use either id, or notebook + path (the storage path from lookup). This action requires explicit user confirmation. If bulk ids/paths hit SiYuan\'s short indexing window, retry by deleting one document at a time with notebook + path.',
     move: 'Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.',
     reorder: 'Use parentID + orderedIDs. parentID may be a notebook ID or parent document ID, and orderedIDs must contain every visible direct child document ID exactly once. The notebook is switched to custom sorting.',
     get_child_blocks: 'Use a document ID. Returns direct child blocks only.',
@@ -228,7 +228,7 @@ export const BLOCK_ACTION_HINTS: Partial<Record<BlockAction, string>> = {
     breadcrumb: 'Optional excludeTypes removes matching block types from the breadcrumb.',
     dom: 'Returns rendered DOM, useful for preview-style consumers.',
     recent_updated: 'Returns recent updates across the workspace, then MCP filters unreadable notebooks and applies count when provided. documents is the primary user-facing summary; items remains the raw block stream.',
-    word_count: 'Provide one or more block IDs to receive aggregate stat data. A document ID counts its whole content but reports blockCount=1 (the document itself); pass the child block IDs for a per-block count. runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.',
+    word_count: 'Provide one or more block IDs to receive aggregate stat data. blockCount is the number of IDs passed (a document ID counts as 1); the text counts cover all content under them. For the block total of a document use document query (blockCount). runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.',
     add_to_daily_note: 'Use notebook + dataType + data + position ("append" or "prepend") to add content to today’s daily note.',
 };
 
@@ -390,6 +390,14 @@ export interface HelpExample {
 
 export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, HelpExample[]>>> = {
     document: {
+        remove: [
+            { title: 'Remove one document by ID (preflight first)', mcp: { action: 'remove', id: '20240318112233-doc0001', validateOnly: true } },
+            { title: 'Remove one document by notebook + storage path', description: 'path is the storage path from document lookup (ends in .sy).', mcp: { action: 'remove', notebook: '20210808180117-czj9bvb', path: '/20240318112233-doc0001.sy', validateOnly: true } },
+        ],
+        lookup: [
+            { title: 'Look up a document by ID', mcp: { action: 'lookup', id: '20240318112233-doc0001' } },
+            { title: 'Look up a document by notebook + human path', mcp: { action: 'lookup', notebook: '20210808180117-czj9bvb', hpath: '/Folder/Doc' } },
+        ],
         move: [
             {
                 title: 'Move documents under another document by ID',
@@ -507,6 +515,13 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
     },
     notebook: {},
     block: {
+        insert: [
+            { title: 'Insert a block after another block', mcp: { action: 'insert', dataType: 'markdown', data: 'New paragraph', previousID: '20240318112233-abc123', validateOnly: true } },
+            { title: 'Insert a block as the first child of a document', mcp: { action: 'insert', dataType: 'markdown', data: 'New paragraph', parentID: '20240318112233-doc0001', validateOnly: true } },
+        ],
+        docs_info: [
+            { title: 'Document info for one ID', mcp: { action: 'docs_info', id: '20240318112233-doc0001' } },
+        ],
         move: [
             {
                 title: 'Move a block after another block',
@@ -737,6 +752,12 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
         ],
     },
     search: {
+        search_assets: [
+            { title: 'Find assets by file name keyword', mcp: { action: 'search_assets', query: 'report' } },
+        ],
+        fulltext_asset_content: [
+            { title: 'Search text inside assets (PDF, Office, OCR)', mcp: { action: 'fulltext_asset_content', query: 'invoice' } },
+        ],
         query_sql: [
             {
                 title: 'List matching blocks (pass the statement as sql)',

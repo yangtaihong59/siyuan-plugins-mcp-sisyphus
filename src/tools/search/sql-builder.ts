@@ -246,8 +246,13 @@ export interface RawSqlScope {
     mode: 'restricted' | 'full';
     readableNotebooks: string[];
     excludedNotebooks: number;
-    /** Restricted mode only: names of the notebooks behind the two fields above. */
-    readable?: Array<{ id: string; name: string; closed?: true }>;
+    /**
+     * Restricted mode only: the readable notebooks the index covers (open ones).
+     * `readableNotebooks` stays every permission-readable ID, closed included.
+     */
+    readable?: Array<{ id: string; name: string }>;
+    /** Restricted mode only: readable but closed, so not indexed and never in results. */
+    closed?: Array<{ id: string; name: string }>;
     /** Same disclosure as notebook(action="list"), which lists unreadable notebooks by name. */
     excluded?: Array<{ id: string; name: string }>;
 }
@@ -265,7 +270,10 @@ export async function loadRawSqlScope(client: SiYuanClient, permMgr: PermissionM
         mode: 'restricted',
         readableNotebooks,
         excludedNotebooks,
-        readable: readable.map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? ''), ...(notebook.closed === true ? { closed: true as const } : {}) })),
+        readable: readable.filter((notebook) => notebook.closed !== true).map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? '') })),
+        ...(readable.some((notebook) => notebook.closed === true)
+            ? { closed: readable.filter((notebook) => notebook.closed === true).map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? '') })) }
+            : {}),
         excluded: notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? '') })),
     };
 }

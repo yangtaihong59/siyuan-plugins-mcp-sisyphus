@@ -405,7 +405,10 @@ describe('search(action="query_sql") restricted mode', () => {
 
     it('marks closed readable notebooks in the scope and hint', async () => {
         const parsed = parseResult(await createHandlerHarness({ userRows: [], closedReadable: true }).call({ sql: 'SELECT id FROM blocks LIMIT 1' }));
-        expect(parsed.scope.readable).toContainEqual({ id: CLOSED_BOX, name: 'Old', closed: true });
+        // readable = what the index covers; closed readable notebooks have their own list.
+        expect(parsed.scope.readable).toEqual([{ id: READABLE[0], name: 'Public' }]);
+        expect(parsed.scope.closed).toEqual([{ id: CLOSED_BOX, name: 'Old' }]);
+        expect(parsed.scope.readableNotebooks).toContain(CLOSED_BOX);
         expect(parsed.scope.hint).toContain('closed notebook(s) (Old) are not indexed and return no rows');
     });
 

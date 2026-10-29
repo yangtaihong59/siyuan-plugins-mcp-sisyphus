@@ -157,6 +157,34 @@ export function buildActionExampleObjects<Action extends string>(
     }));
 }
 
+/*
+ * Actions whose schema fixes no field because the handler accepts one of
+ * several shapes (validated in a refinement). Help shows these alternatives
+ * instead of "none fixed by the schema". Help text only; the mounted schema
+ * and the action signatures in tool descriptions are unchanged.
+ */
+const ACTION_REQUIRED_ALTERNATIVES: Partial<Record<ToolCategory, Record<string, string[][]>>> = {
+    document: {
+        remove: [['id'], ['notebook', 'path'], ['ids'], ['paths']],
+        lookup: [['id'], ['notebook', 'path'], ['notebook', 'hpath']],
+        move: [['fromIDs', 'toID'], ['fromPaths', 'toNotebook', 'toPath']],
+    },
+    block: {
+        insert: [['dataType', 'data', 'previousID'], ['dataType', 'data', 'nextID'], ['dataType', 'data', 'parentID'], ['blocks']],
+        update: [['id', 'dataType', 'data'], ['items']],
+        move: [['id', 'previousID'], ['id', 'parentID'], ['ids', 'previousID'], ['ids', 'parentID']],
+        docs_info: [['id'], ['ids']],
+    },
+    file: {
+        upload_asset: [['localFilePath'], ['uploadSource']],
+    },
+    search: {
+        query_sql: [['sql'], ['stmt']],
+        search_assets: [['query'], ['k']],
+        fulltext_asset_content: [['query'], ['assetId']],
+    },
+};
+
 export function getCuratedActionExamples(category: ToolCategory, action: string): HelpExample[] {
     return TOOL_ACTION_EXAMPLES[category]?.[action] ?? [];
 }
@@ -248,7 +276,8 @@ export function buildActionHelp<Action extends string>(
     enabledVariants: ActionVariant<Action>[],
 ): Record<string, unknown> {
     const matching = enabledVariants.filter((variant) => variant.action === action);
-    const requiredFieldSets = matching.flatMap((variant) => requiredFieldAlternatives(variant.schema));
+    const requiredFieldSets = ACTION_REQUIRED_ALTERNATIVES[category]?.[action]?.map((fields) => [...fields])
+        ?? matching.flatMap((variant) => requiredFieldAlternatives(variant.schema));
     const generatedExamples = buildActionExampleObjects(matching, action);
     const curatedExamples = getCuratedActionExamples(category, action);
     const example = curatedExamples[0]?.mcp

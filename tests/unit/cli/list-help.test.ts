@@ -219,6 +219,49 @@ describe('cli/list-help', () => {
         io.restore();
     });
 
+    describe('one-step help (CLI only, shown only when enabled)', () => {
+        const help = async (tool: string | undefined, action: string | undefined, oneStep: 'off' | 'low_risk') => {
+            const config = buildDefaultToolConfig();
+            config.writeSafety.oneStep = oneStep;
+            vi.spyOn(HttpSiYuanClient.prototype, 'readFile').mockResolvedValue(JSON.stringify(config));
+            const io = captureStdIO();
+            try {
+                const code = await runHelp({ command: 'help', tool, action, rest: [], json: false, debug: false } as ParsedArgs);
+                return { code, stdout: io.stdout };
+            } finally {
+                io.restore();
+            }
+        };
+
+        it('summarizes tiers for bare help, a tool, and an action', async () => {
+            const bare = await help(undefined, undefined, 'low_risk');
+            expect(bare.code).toBe(0);
+            expect(bare.stdout).toContain('One-step writes (enabled)');
+            expect(bare.stdout).toMatch(/One step \(no --validate-only needed\): .*document create/);
+            expect(bare.stdout).toMatch(/only with --if-match from a fresh read: .*block update/);
+            expect(bare.stdout).toContain('Reads that print If Match: block get-kramdown --id');
+
+            const tool = await help('block', undefined, 'low_risk');
+            expect(tool.stdout).toContain('One step (no --validate-only needed): insert, prepend, append, set-attrs');
+            expect(tool.stdout).toContain('One step only with --if-match from a fresh read: update, replace');
+            expect(tool.stdout).toMatch(/Always two steps: .*move/);
+            expect(tool.stdout).toContain('document get-doc --id');
+
+            const update = await help('block', 'update', 'low_risk');
+            expect(update.stdout).toContain('If Match is printed by: siyuan-sisyphus block get-kramdown --id');
+            const remove = await help('document', 'rename', 'low_risk');
+            expect(remove.stdout).toContain('One-step write');
+            const tier3 = await help('block', 'move', 'low_risk');
+            expect(tier3.stdout).toContain('always uses the two steps');
+        });
+
+        it('adds nothing while one-step is off', async () => {
+            expect((await help(undefined, undefined, 'off')).code).toBe(2);
+            expect((await help('block', undefined, 'off')).stdout).not.toContain('One-step');
+            expect((await help('block', 'move', 'off')).stdout).not.toContain('One-step');
+        });
+    });
+
     it('does not show help for a tool disabled by the plugin UI config', async () => {
         const io = captureStdIO();
         const config = buildDefaultToolConfig();

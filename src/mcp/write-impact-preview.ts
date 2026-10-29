@@ -65,6 +65,8 @@ export interface WritePreviewTarget {
     hPath?: string;
     /** Block targets: ordinal among the parent's children and the nearest preceding heading. */
     position?: string;
+    /** find_replace: matches inside this scope id. */
+    matchCount?: number;
     notebook?: WritePreviewNotebook;
 }
 
@@ -137,6 +139,8 @@ interface BuilderResult {
     changes: WritePreviewChange[];
     /** Explicit targets; otherwise targetIds (or the argument selectors) are resolved. */
     targets?: WritePreviewTarget[];
+    /** Total behind a pre-capped `targets` list. */
+    targetTotal?: number;
     targetIds?: string[];
     risk?: WritePreviewRisk[];
     /** Number of affected items, for large_batch. */
@@ -391,7 +395,7 @@ async function buildPreview(input: WriteImpactPreviewInput): Promise<WriteImpact
     let targetTotal: number;
     if (built.targets) {
         targets = ctx.cap(built.targets).shown;
-        targetTotal = built.targets.length;
+        targetTotal = Math.max(built.targets.length, built.targetTotal ?? 0);
     } else {
         const ids = [...new Set((built.targetIds ?? defaultTargetIds(ctx)).filter(Boolean))];
         const paths = built.targetIds ? [] : collectPathSelectors(ctx.args).filter((path) => !ID_PATTERN.test(path));
@@ -751,15 +755,32 @@ async function previewBlockDelete(ctx: PreviewContext): Promise<BuilderResult> {
             id,
             childBlockCount: children.length,
             before: ctx.text(markdown),
+            recovery: row?.type === 'd' ? DOCUMENT_REMOVE_RECOVERY : BLOCK_DELETE_RECOVERY,
         }],
         targetIds: [id],
     };
 }
 
+/*
+ * Verified on SiYuan 3.8.8: removing a document copies its .sy file and those
+ * of its child documents into the file history at once (op "delete"), and
+ * rolling that entry back restores the document with its ID and path. A
+ * block delete writes no history entry; only the periodic snapshot of changed
+ * documents (editor.generateHistoryInterval) may hold an older version.
+ */
+const DOCUMENT_REMOVE_RECOVERY = 'SiYuan copies the removed document(s), child documents included, into its file history (File history → deleted; kept per its history retention setting) and can restore them from there. This tool cannot undo it.';
+const BLOCK_DELETE_RECOVERY = 'Not undoable through this tool, and SiYuan saves no copy at delete time; an older version of the document may be in SiYuan file history (periodic snapshots of changed documents). Keep the before text if you may need it.';
+
 /** The index counts the document root itself; readers count only what is in it. */
 function contentBlocks(indexed: number): string {
     const n = Math.max(0, indexed - 1);
     return `${n} content block${n === 1 ? '' : 's'}`;
+}
+
+/** Say "no child documents" too: a reader cannot tell 0 from "not counted" otherwise. */
+function childDocumentsClause(count: number | undefined): string {
+    if (count === undefined) return '';
+    return count > 0 ? ` and its ${count} child document(s), which are removed with it` : '; it has no child documents';
 }
 
 async function deleteDocumentsChange(ctx: PreviewContext, docs: BlockRow[], requested: string[]): Promise<BuilderResult> {
@@ -773,7 +794,7 @@ async function deleteDocumentsChange(ctx: PreviewContext, docs: BlockRow[], requ
         total += 1 + (childDocuments ?? 0);
         changes.push({
             kind: 'delete',
-            summary: `Removes document ${ctx.label(doc.content, doc.id)} at ${await ctx.place(doc)}${blocks !== undefined ? ` (${contentBlocks(blocks)})` : ''}${childDocuments ? ` and its ${childDocuments} child document(s)` : ''}.`,
+            summary: `Removes document ${ctx.label(doc.content, doc.id)} at ${await ctx.place(doc)}${blocks !== undefined ? ` (${contentBlocks(blocks)})` : ''}${childDocumentsClause(childDocuments)}.`,
             id: doc.id,
             title: doc.content,
             ...(blocks !== undefined ? { blockCount: blocks } : {}),
@@ -783,6 +804,7 @@ async function deleteDocumentsChange(ctx: PreviewContext, docs: BlockRow[], requ
     const unresolved = requested.length - docs.length;
     if (unresolved > 0) changes.push({ kind: 'note', summary: `${unresolved} requested document(s) are not in the search index yet; their content is not counted here.` });
     changes.push(...omittedChange(omitted, 'documents'));
+    if (changes.length > 0) changes[changes.length - 1] = { ...changes[changes.length - 1], recovery: DOCUMENT_REMOVE_RECOVERY };
     return { changes, targetIds: docs.map((doc) => doc.id), itemCount: Math.max(total, requested.length) };
 }
 
@@ -811,10 +833,11 @@ async function previewFsRm(ctx: PreviewContext): Promise<BuilderResult | undefin
     return {
         changes: [{
             kind: 'delete',
-            summary: `Removes document ${path}${blocks !== undefined ? ` (${contentBlocks(blocks + 1)})` : ''}${childDocuments ? ` and its ${childDocuments} child document(s)` : ''}.`,
+            summary: `Removes document ${path}${blocks !== undefined ? ` (${contentBlocks(blocks + 1)})` : ''}${childDocumentsClause(childDocuments)}.`,
             id: entry.rootID,
             ...(blocks !== undefined ? { blockCount: blocks } : {}),
             ...(childDocuments !== undefined ? { childDocumentCount: childDocuments } : {}),
+            recovery: DOCUMENT_REMOVE_RECOVERY,
         }],
         targets: [await fsTarget(ctx, path)],
         itemCount: 1 + (childDocuments ?? 0),
@@ -1141,8 +1164,11 @@ async function previewFindReplace(ctx: PreviewContext): Promise<BuilderResult> {
     const replacementFor = (matched: string) => method === 3
         ? matched.replace(new RegExp(pattern.source), r)
         : r;
+    const matchesByScope = new Map<string, number>();
     for (const [id, kramdown] of kramdowns) {
-        matchCount += stripKramdownIals(kramdown).match(pattern)?.length ?? 0;
+        const scopeMatches = stripKramdownIals(kramdown).match(pattern)?.length ?? 0;
+        matchCount += scopeMatches;
+        if (scopeMatches > 0) matchesByScope.set(id, (matchesByScope.get(id) ?? 0) + scopeMatches);
         for (const segment of segmentKramdown(kramdown, id)) {
             const local = new RegExp(pattern.source, 'g');
             for (const match of segment.text.matchAll(local)) {
@@ -1154,6 +1180,9 @@ async function previewFindReplace(ctx: PreviewContext): Promise<BuilderResult> {
             }
         }
     }
+    const uniqueIds = [...new Set(ids)];
+    const changedScopes = uniqueIds.filter((id) => matchesByScope.has(id));
+    const unchanged = uniqueIds.filter((id) => !matchesByScope.has(id));
     const replaceTypes = isRecord(ctx.args.replaceTypes) ? ctx.args.replaceTypes : { text: true };
     const onlyText = Object.entries(replaceTypes).every(([key, value]) => key === 'text' || value !== true);
     // Say when the examples are a sample, and how to see every affected block.
@@ -1174,8 +1203,12 @@ async function previewFindReplace(ctx: PreviewContext): Promise<BuilderResult> {
             affectedBlockCount: affected.size,
             examples,
             ...(capped ? { examplesOmitted: matchCount - examples.length } : {}),
+            // Targets list only the scope ids that change; the rest were scanned.
+            unchangedScopeCount: unchanged.length,
+            ...(unchanged.length > 0 ? { unchangedScopeIds: ctx.cap(unchanged).shown } : {}),
         }],
-        targetIds: ids,
+        targets: await Promise.all(ctx.cap(changedScopes).shown.map(async (id) => ({ ...await ctx.target(id), matchCount: matchesByScope.get(id) }))),
+        targetTotal: changedScopes.length,
         itemCount: affected.size,
         // A bulk replacement cannot be inverted once the replacement text
         // mixes with text that already existed.

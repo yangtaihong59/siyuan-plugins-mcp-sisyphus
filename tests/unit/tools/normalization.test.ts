@@ -208,6 +208,8 @@ describe('tool result normalization', () => {
 
         expect(result.isError).toBeUndefined();
         expect(vi.mocked(blockApi.getBlocksWordCount)).toHaveBeenCalledWith(client, ['block-1']);
+        // blockCount counts the requested IDs; say so next to the stats.
+        expect(JSON.parse((result.content[0] as { text: string }).text).blockCountNote).toBe('blockCount counts the 1 ID(s) passed, not their child blocks; the other counts cover all content under them.');
     });
 
     it('normalizes fs.replace old/new shorthand before validation', () => {

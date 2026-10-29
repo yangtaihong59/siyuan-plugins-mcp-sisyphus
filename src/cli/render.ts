@@ -2,6 +2,7 @@ import type { ToolResult } from '../tools/internal/shared';
 import { isActionHelpPayload, isHelpIndexPayload } from '../shared/help-payload';
 import { translatePresentationPayload, translatePresentationText } from '../shared/invocation-format';
 import { isRecord as isObject } from '../shared/record';
+import { PRIMARY_CLI_COMMAND } from '../shared/constants';
 
 export interface RenderOptions {
     json: boolean;
@@ -228,7 +229,8 @@ export function summarizeSqlScope(scope: Record<string, unknown>): string {
     const excluded = names(scope.excluded);
     const excludedCount = typeof scope.excludedNotebooks === 'number' ? scope.excludedNotebooks : excluded.length;
     const readable = Array.isArray(scope.readable) ? scope.readable.filter(isObject) : [];
-    const closed = names(readable.filter((item) => item.closed === true));
+    // `closed` is its own list; older servers marked closed entries inside `readable`.
+    const closed = [...names(scope.closed), ...names(readable.filter((item) => item.closed === true))];
     const covered = names(readable.filter((item) => item.closed !== true));
     // What IS searched first, then the two different reasons a notebook is not:
     // unreadable (permission) vs closed (not in the index at all).
@@ -584,6 +586,12 @@ function renderHelpIndex(obj: Record<string, unknown>, out: OutputStream): void 
     renderActionGroup('Common Actions', toStringArray(obj.commonActions), obj.actionSummaries, out);
     renderActionGroup('Advanced Actions', toStringArray(obj.advancedActions), obj.actionSummaries, out);
 
+    const oneStep = toStringArray(obj.oneStepSummary);
+    if (oneStep.length > 0) {
+        writeSection('One-step writes (enabled)', out);
+        writeBulletList(oneStep, out);
+    }
+
     const confirmation = toStringArray(obj.requiresConfirmation);
     if (confirmation.length > 0) {
         writeSection('Confirmation', out);
@@ -618,15 +626,18 @@ function renderActionHelp(obj: Record<string, unknown>, out: OutputStream): void
     if (isObject(obj.oneStep) && typeof obj.oneStep.rule === 'string') {
         writeSection('One-step write', out);
         writeLine(out, `  ${obj.oneStep.rule.replace(/\bvalidateOnly\b/g, '--validate-only').replace(/\bifMatch\b/g, '--if-match')}`);
+        const reads = toStringArray(obj.oneStep.ifMatchReads);
+        if (reads.length > 0) writeLine(out, `  If Match is printed by: ${reads.map((read) => `${PRIMARY_CLI_COMMAND} ${read}`).join(', ')}`);
     }
 
-    const shapes = toStringArray(obj.shapes);
+    const required = normalizeRequiredFields(obj.requiredFields);
+    // Several alternatives print once, as "one of: …", under Required Fields.
+    const shapes = isAlternativeList(obj.requiredFields) ? [] : toStringArray(obj.shapes);
     if (shapes.length > 0) {
         writeSection('Accepted Shapes', out);
         writeBulletList(shapes, out);
     }
 
-    const required = normalizeRequiredFields(obj.requiredFields);
     if (required.length > 0) {
         writeSection('Required Fields', out);
         writeBulletList(required, out);
@@ -759,12 +770,17 @@ function normalizeRequiredFields(value: unknown): string[] {
     }
 
     if (Array.isArray(value)) {
-        return value
-            .filter((item): item is string[] => Array.isArray(item) && item.every((part) => typeof part === 'string'))
-            .map((parts) => parts.join(', '));
+        const alternatives = value
+            .filter((item): item is string[] => Array.isArray(item) && item.every((part) => typeof part === 'string'));
+        if (alternatives.length > 1) return [`one of: ${alternatives.map((parts) => parts.join(' + ')).join(' | ')}`];
+        return alternatives.map((parts) => parts.join(', '));
     }
 
     return [];
+}
+
+function isAlternativeList(value: unknown): boolean {
+    return Array.isArray(value) && value.filter((item) => Array.isArray(item)).length > 1;
 }
 
 function toStringArray(value: unknown): string[] {

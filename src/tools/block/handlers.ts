@@ -790,7 +790,10 @@ const handleWordCount: BlockActionHandler = async ({ client, permMgr, rawArgs })
     const result = await blockApi.getBlocksWordCount(client, parsed.ids);
     // reqId is the kernel's request echo (always null here), not data.
     const { reqId: _reqId, ...payload } = (result && typeof result === 'object' ? result : {}) as Record<string, unknown>;
-    return createJsonResult(result && typeof result === 'object' ? payload : result);
+    // Verified on SiYuan 3.8.8: blockCount counts the requested IDs, not the blocks under them.
+    return createJsonResult(result && typeof result === 'object'
+        ? { ...payload, blockCountNote: `blockCount counts the ${parsed.ids.length} ID(s) passed, not their child blocks; the other counts cover all content under them.` }
+        : result);
 };
 
 const handleAddToDailyNote: BlockActionHandler = async ({ client, permMgr, rawArgs }) => {

@@ -141,6 +141,7 @@ describe('write impact preview', () => {
             before: { hash: 'h', targetIds: [B1], summary: {}, state: { liveBlocks: { [B1]: { kramdown: { kramdown: `> quoted\n{: id="${B1}"}` }, children: [{ id: B2 }, { id: B3 }] } } } },
         }, { rows: [{ ...blockRow(B1, 'quoted'), type: 'b' }] });
         expect(result.changes[0]).toMatchObject({ kind: 'delete', childBlockCount: 2 });
+        expect(result.changes[0].recovery).toContain('saves no copy at delete time');
         expect(result.changes[0].summary).toContain('Deletes b block');
         expect(result.changes[0].summary).toContain('Work:/Plans');
         expect(result.risk).toEqual(['deletes']);
@@ -153,7 +154,8 @@ describe('write impact preview', () => {
                 : stmt.includes('COUNT(*) AS n FROM blocks WHERE type') ? [{ n: 3 }] : undefined,
         });
         expect(result.changes[0]).toMatchObject({ kind: 'delete', title: 'Plans', blockCount: 12, childDocumentCount: 3 });
-        expect(result.changes[0].summary).toBe('Removes document «Plans» at Work:/Plans (11 content blocks) and its 3 child document(s).');
+        expect(result.changes[0].summary).toBe('Removes document «Plans» at Work:/Plans (11 content blocks) and its 3 child document(s), which are removed with it.');
+        expect(result.changes[0].recovery).toContain('file history');
         expect(result.risk).toEqual(['deletes']);
     });
 
@@ -162,7 +164,8 @@ describe('write impact preview', () => {
             category: 'fs', action: 'rm', args: { action: 'rm', path: '/Work/Plans' },
             before: { hash: 'h', targetIds: [], summary: {}, state: { fsPaths: { '/Work/Plans': { notebookID: NB, rootID: DOC, blocks: [{ id: B1 }] } } } },
         }, { rows: [docRow(DOC, 'Plans', '/Plans')], sql: (stmt) => stmt.includes('COUNT(*) AS n FROM blocks WHERE type') ? [{ n: 0 }] : undefined });
-        expect(result.changes[0].summary).toBe('Removes document /Work/Plans (1 content block).');
+        expect(result.changes[0].summary).toBe('Removes document /Work/Plans (1 content block); it has no child documents.');
+        expect(result.changes[0].recovery).toContain('file history');
         expect(result.risk).toContain('deletes');
     });
 
@@ -292,6 +295,15 @@ describe('write impact preview', () => {
             { blockID: B3, before: 'alpha again', after: 'omega again' },
         ]);
         expect(result.risk).toEqual(['irreversible', 'overwrites_content']);
+    });
+
+    it('search.find_replace lists only scope ids with matches as targets', async () => {
+        const result = await preview({
+            category: 'search', action: 'find_replace',
+            args: { action: 'find_replace', k: 'alpha', r: 'omega', ids: [B1, B2, B3] },
+        }, { kramdown: { [B1]: `alpha and alpha\n{: id="${B1}"}`, [B2]: `nothing\n{: id="${B2}"}`, [B3]: `beta\n{: id="${B3}"}` } });
+        expect(result.targets.map((target) => [target.id, target.matchCount])).toEqual([[B1, 2]]);
+        expect(result.changes[0]).toMatchObject({ matchCount: 2, affectedBlockCount: 1, unchangedScopeCount: 2, unchangedScopeIds: [B2, B3] });
     });
 
     it('search.find_replace caps examples at five in summary detail and flags a large batch', async () => {

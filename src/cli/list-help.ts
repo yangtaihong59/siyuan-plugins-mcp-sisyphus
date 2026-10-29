@@ -22,6 +22,30 @@ import {
 import { loadCliRuntimeState } from './runtime';
 import { createDisabledToolResult } from '../tools/internal/shared';
 import { annotateHelpWithOneStep } from '../mcp/write-safety-if-match';
+import { isOneStepEnabled, oneStepActionNote, oneStepToolLines, oneStepWorkspaceLines } from './one-step-help';
+import type { ToolCategory, ToolConfig } from '../core/config';
+import type { ToolResult } from '../tools/internal/shared';
+
+function withCliOneStepHelp(category: ToolCategory, payload: Record<string, unknown>, result: ToolResult, config: ToolConfig): ToolResult {
+    if (result.isError) return result;
+    const index = result.content.findIndex((item) => item.type === 'text');
+    if (index < 0) return result;
+    let help: Record<string, any>;
+    try { help = JSON.parse((result.content[index] as { text: string }).text); } catch { return result; }
+    if (!help || typeof help !== 'object') return result;
+    if (typeof payload.topic === 'string') {
+        const note = oneStepActionNote(category, payload.topic);
+        if (!note) return result;
+        help = { ...help, oneStep: { ...note, ...(help.oneStep ?? {}), ...(note.ifMatchReads ? { ifMatchReads: note.ifMatchReads } : {}) } };
+    } else {
+        const lines = oneStepToolLines(category, config);
+        if (lines.length === 0) return result;
+        help = { ...help, oneStepSummary: lines };
+    }
+    const content = [...result.content];
+    content[index] = { type: 'text', text: JSON.stringify(help) };
+    return { ...result, content };
+}
 
 export async function runList(cli: ParsedArgs): Promise<number> {
     const out = process.stdout;
@@ -88,6 +112,17 @@ export async function runList(cli: ParsedArgs): Promise<number> {
 export async function runHelp(cli: ParsedArgs): Promise<number> {
     const tool = cli.tool;
     if (!tool) {
+        // With one-step on, the bare `help` also says which writes it covers.
+        const state = await loadCliRuntimeState(cli, { loadPermissions: false }).catch(() => undefined);
+        if (state && isOneStepEnabled(state.toolConfig) && !cli.json) {
+            writeHeading('Writes', process.stdout);
+            writeBulletList(['Default: run with --validate-only, read the preview, then run the printed commit command.'], process.stdout);
+            writeSection('One-step writes (enabled)', process.stdout);
+            writeBulletList(oneStepWorkspaceLines(state.toolConfig), process.stdout);
+            writeSection('Next Step', process.stdout);
+            writeHint('Usage', `${PRIMARY_CLI_COMMAND} help <tool> [action]`, process.stdout);
+            return 0;
+        }
         renderCliError(`Missing tool. Usage: ${PRIMARY_CLI_COMMAND} help <tool> [action]`);
         return 2;
     }
@@ -110,9 +145,10 @@ export async function runHelp(cli: ParsedArgs): Promise<number> {
         if (cli.action) payload.topic = normalizeActionAlias(category, cli.action);
 
         const result = await module.callTool(client, payload, toolConfig[category], permMgr, officialMcpRuntime);
-        // Same one-step note the coordinator adds to action help, only when enabled.
-        const annotated = toolConfig.writeSafety.oneStep === 'low_risk' && toolConfig.writeSafety.strictMode
-            ? annotateHelpWithOneStep(category, payload, result)
+        // Same one-step note the coordinator adds to action help, only when enabled,
+        // plus CLI-only detail: the tool's tiers, and which reads print If Match.
+        const annotated = isOneStepEnabled(toolConfig)
+            ? withCliOneStepHelp(category, payload, annotateHelpWithOneStep(category, payload, result), toolConfig)
             : result;
         return renderToolResult(annotated, { json: cli.json, debug: cli.debug });
     } catch (error) {

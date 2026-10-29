@@ -4643,7 +4643,17 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "action": "docs_info",
         "example": {
           "action": "docs_info",
+          "id": "20240318112233-doc0001",
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "docs_info",
+              "id": "20240318112233-doc0001",
+            },
+            "title": "Document info for one ID",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/block/docs_info",
         "guidance": [
           "To create real SiYuan tags inside markdown content, use the syntax #tag# with both leading and trailing # characters, then verify with tag(action="list", query="tag").",
@@ -4683,10 +4693,18 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "id",
+          ],
+          [
+            "ids",
+          ],
+        ],
         "requiresConfirmation": false,
         "shapes": [
-          "optional fields only",
+          "id",
+          "ids",
         ],
         "tool": "block",
       },
@@ -4905,7 +4923,33 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
         "action": "insert",
         "example": {
           "action": "insert",
+          "data": "New paragraph",
+          "dataType": "markdown",
+          "previousID": "20240318112233-abc123",
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "insert",
+              "data": "New paragraph",
+              "dataType": "markdown",
+              "previousID": "20240318112233-abc123",
+              "validateOnly": true,
+            },
+            "title": "Insert a block after another block",
+          },
+          {
+            "mcp": {
+              "action": "insert",
+              "data": "New paragraph",
+              "dataType": "markdown",
+              "parentID": "20240318112233-doc0001",
+              "validateOnly": true,
+            },
+            "title": "Insert a block as the first child of a document",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/block/insert",
         "guidance": [
           "block(action="update") is best for single-block replacement. One table, fenced code block, or list may contain many lines and still be one block. Use append/prepend/insert for multiple sibling blocks; verify the resulting structure after replacement.",
@@ -4990,10 +5034,32 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "dataType",
+            "data",
+            "previousID",
+          ],
+          [
+            "dataType",
+            "data",
+            "nextID",
+          ],
+          [
+            "dataType",
+            "data",
+            "parentID",
+          ],
+          [
+            "blocks",
+          ],
+        ],
         "requiresConfirmation": false,
         "shapes": [
-          "optional fields only",
+          "dataType + data + previousID",
+          "dataType + data + nextID",
+          "dataType + data + parentID",
+          "blocks",
         ],
         "tool": "block",
         "writeWorkflow": [
@@ -5073,10 +5139,30 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "id",
+            "previousID",
+          ],
+          [
+            "id",
+            "parentID",
+          ],
+          [
+            "ids",
+            "previousID",
+          ],
+          [
+            "ids",
+            "parentID",
+          ],
+        ],
         "requiresConfirmation": true,
         "shapes": [
-          "see examples",
+          "id + previousID",
+          "id + parentID",
+          "ids + previousID",
+          "ids + parentID",
         ],
         "tool": "block",
         "writeWorkflow": [
@@ -5622,10 +5708,20 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "id",
+            "dataType",
+            "data",
+          ],
+          [
+            "items",
+          ],
+        ],
         "requiresConfirmation": false,
         "shapes": [
-          "see examples",
+          "id + dataType + data",
+          "items",
         ],
         "tool": "block",
         "writeWorkflow": [
@@ -5667,7 +5763,7 @@ Actions (required fields): get(avID) · query(avID) · create(parentID) · updat
           "To create real SiYuan tags inside markdown content, use the syntax #tag# with both leading and trailing # characters, then verify with tag(action="list", query="tag").",
           "To turn a block into a flashcard, prefer flashcard(action="create_card"). It writes "custom-riff-decks" and registers the riff card together.",
         ],
-        "hint": "Provide one or more block IDs to receive aggregate stat data. A document ID counts its whole content but reports blockCount=1 (the document itself); pass the child block IDs for a per-block count. runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.",
+        "hint": "Provide one or more block IDs to receive aggregate stat data. blockCount is the number of IDs passed (a document ID counts as 1); the text counts cover all content under them. For the block total of a document use document query (blockCount). runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.",
         "parameters": {
           "additionalProperties": false,
           "description": "Get word-count statistics for blocks.",
@@ -5725,7 +5821,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "set_fold_state": "Use a foldable block ID + folded (true to fold, false to unfold).",
         "transfer_references": "requires: fromID, toID",
         "update": "Use dataType + data + id to replace block content. Returns a slim success object instead of raw DOM operations. block(action="update") is best for single-block replacement; one table or fenced code block can contain multiple lines. Use append/prepend/insert for multiple sibling blocks and verify the resulting structure. If the content should create tags, write them as #tag#.",
-        "word_count": "Provide one or more block IDs to receive aggregate stat data. A document ID counts its whole content but reports blockCount=1 (the document itself); pass the child block IDs for a per-block count. runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.",
+        "word_count": "Provide one or more block IDs to receive aggregate stat data. blockCount is the number of IDs passed (a document ID counts as 1); the text counts cover all content under them. For the block total of a document use document query (blockCount). runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.",
       },
       "actions": {
         "add_to_daily_note": {
@@ -5805,7 +5901,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "requiresConfirmation": false,
         },
         "word_count": {
-          "hint": "Provide one or more block IDs to receive aggregate stat data. A document ID counts its whole content but reports blockCount=1 (the document itself); pass the child block IDs for a per-block count. runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.",
+          "hint": "Provide one or more block IDs to receive aggregate stat data. blockCount is the number of IDs passed (a document ID counts as 1); the text counts cover all content under them. For the block total of a document use document query (blockCount). runeCount counts characters; wordCount counts words, where a run of CJK text may count differently from characters.",
           "requiresConfirmation": false,
         },
       },
@@ -6674,7 +6770,25 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "action": "lookup",
         "example": {
           "action": "lookup",
+          "id": "20240318112233-doc0001",
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "lookup",
+              "id": "20240318112233-doc0001",
+            },
+            "title": "Look up a document by ID",
+          },
+          {
+            "mcp": {
+              "action": "lookup",
+              "hpath": "/Folder/Doc",
+              "notebook": "20210808180117-czj9bvb",
+            },
+            "title": "Look up a document by notebook + human path",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/document/lookup",
         "guidance": [
           "For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"write"|"search") because it accepts human-readable paths and hides storage paths and IDs.",
@@ -6686,7 +6800,7 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           "For recently created documents, document(action="lookup", hpath=...) may briefly lag behind create because it depends on SiYuan indexing; retry if needed.",
           "document(action="lookup", id=...) may hit the same short indexing delay right after create; MCP retries briefly and then returns a timing-specific hint if indexing still has not settled.",
         ],
-        "hint": "Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.",
+        "hint": "Look up one reference at a time. Use id, notebook + path (storage path), or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.",
         "parameters": {
           "additionalProperties": false,
           "description": "Look up document IDs, storage paths, human-readable paths, and document metadata from one document reference.",
@@ -6735,10 +6849,24 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "id",
+          ],
+          [
+            "notebook",
+            "path",
+          ],
+          [
+            "notebook",
+            "hpath",
+          ],
+        ],
         "requiresConfirmation": false,
         "shapes": [
-          "optional fields only",
+          "id",
+          "notebook + path",
+          "notebook + hpath",
         ],
         "tool": "document",
       },
@@ -6807,10 +6935,21 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "fromIDs",
+            "toID",
+          ],
+          [
+            "fromPaths",
+            "toNotebook",
+            "toPath",
+          ],
+        ],
         "requiresConfirmation": true,
         "shapes": [
-          "see examples",
+          "fromIDs + toID",
+          "fromPaths + toNotebook + toPath",
         ],
         "tool": "document",
         "writeWorkflow": [
@@ -7014,13 +7153,35 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
         "action": "remove",
         "example": {
           "action": "remove",
+          "id": "20240318112233-doc0001",
+          "validateOnly": true,
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "remove",
+              "id": "20240318112233-doc0001",
+              "validateOnly": true,
+            },
+            "title": "Remove one document by ID (preflight first)",
+          },
+          {
+            "description": "path is the storage path from document lookup (ends in .sy).",
+            "mcp": {
+              "action": "remove",
+              "notebook": "20210808180117-czj9bvb",
+              "path": "/20240318112233-doc0001.sy",
+              "validateOnly": true,
+            },
+            "title": "Remove one document by notebook + storage path",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/document/remove",
         "guidance": [
           "For ordinary document file operations, prefer fs(action="ls"|"tree"|"read"|"write"|"search") because it accepts human-readable paths and hides storage paths and IDs.",
           "A safe path-based workflow is lookup -> rename/remove/move.",
         ],
-        "hint": "Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan's short indexing window, retry by deleting one document at a time with notebook + storage path.",
+        "hint": "Use either id, or notebook + path (the storage path from lookup). This action requires explicit user confirmation. If bulk ids/paths hit SiYuan's short indexing window, retry by deleting one document at a time with notebook + path.",
         "parameters": {
           "additionalProperties": false,
           "description": "Delete a document",
@@ -7060,10 +7221,27 @@ Actions (required fields): insert() · prepend(dataType, data, parentID) · appe
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "id",
+          ],
+          [
+            "notebook",
+            "path",
+          ],
+          [
+            "ids",
+          ],
+          [
+            "paths",
+          ],
+        ],
         "requiresConfirmation": true,
         "shapes": [
-          "optional fields only",
+          "id",
+          "notebook + path",
+          "ids",
+          "paths",
         ],
         "tool": "document",
         "writeWorkflow": [
@@ -7391,10 +7569,10 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
         "get_outline": "Use a document ID to return SiYuan’s native heading tree without reading the document body. preview defaults to false. The response includes heading block IDs, nesting, and headingCount.",
         "heading_to_doc": "Moves the heading AND everything under it (up to the next heading of the same or higher level) into a new document whose ID is the heading ID; the source document keeps the rest, which is nothing when the heading is its first H1. The new document lands at the target notebook root by default; to make it a child of the source document, pass targetPath = the source document storage path (path from document lookup, e.g. /2024...-abc.sy). The result returns the new document id, title, path, hPath and sourceID.",
         "list_tree": "Use notebook + path, where path is a storage path such as / or /20240318112233-abc123.sy.",
-        "lookup": "Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.",
+        "lookup": "Look up one reference at a time. Use id, notebook + path (storage path), or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.",
         "move": "Use either fromIDs + toID or fromPaths + toNotebook + toPath. For path-based moves, toPath must be the storage path of an existing destination document. Permissions: it is a delete-level operation, so every notebook involved (source and destination) needs rwd; check with notebook(action="list"). This action requires explicit user confirmation.",
         "query": "Omit notebooks for all readable open notebooks, or pass notebook IDs. Explicit unreadable, unknown, or closed notebooks are rejected. fields selects metadata/stat columns; default all. title is a literal substring and hpathPrefix matches an exact notebook-local human path or descendants. Use maxBlocks=0 for no indexed body blocks, duplicatesOnly=true for same-title candidates. minBlocks/maxBlocks/minChars/maxChars are inclusive. page starts at 1; pageSize defaults to 50 (max 100). blockCount counts non-document indexed rows including containers; contentChars sums SQLite length(content), not bytes/native word count. sameTitleCount is scoped before metric filters. Read scope/excludedClosedNotebooks and index limitations; follow nextSteps for further pages. SQL fragments are not accepted.",
-        "remove": "Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan's short indexing window, retry by deleting one document at a time with notebook + storage path.",
+        "remove": "Use either id, or notebook + path (the storage path from lookup). This action requires explicit user confirmation. If bulk ids/paths hit SiYuan's short indexing window, retry by deleting one document at a time with notebook + path.",
         "rename": "Single mode uses either id + title or notebook + path + title. Batch mode uses items:[{id,title}] (maximum 50 items and 256 KiB serialized input) with one preflight and one ordered receipt; parent-child batches and target collisions are rejected. Only proven not_started items may be submitted as a new preflight after a partial failure.",
         "reorder": "Use parentID + orderedIDs. parentID may be a notebook ID or parent document ID, and orderedIDs must contain every visible direct child document ID exactly once. The notebook is switched to custom sorting.",
         "search_docs": "Use notebook + query, and optionally path as a storage-path scope. Search is title-based in SiYuan; MCP then filters by notebook permission and optional storage path.",
@@ -7444,7 +7622,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
           "requiresConfirmation": false,
         },
         "lookup": {
-          "hint": "Look up one reference at a time. Use id, notebook + storage path, or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.",
+          "hint": "Look up one reference at a time. Use id, notebook + path (storage path), or notebook + hpath/hPath. The path field means storage path like /20240318112233-abc123.sy; use hpath for human-readable paths. include accepts only id, ids, path, hpath and docInfo; there is no title field: the title is the last hPath segment, or docInfo.name.",
           "requiresConfirmation": false,
         },
         "move": {
@@ -7456,7 +7634,7 @@ Actions (required fields): create(notebook, path | notebook, parentPath, title) 
           "requiresConfirmation": false,
         },
         "remove": {
-          "hint": "Use either id or notebook + storage path. This action requires explicit user confirmation. If bulk ids/paths hit SiYuan's short indexing window, retry by deleting one document at a time with notebook + storage path.",
+          "hint": "Use either id, or notebook + path (the storage path from lookup). This action requires explicit user confirmation. If bulk ids/paths hit SiYuan's short indexing window, retry by deleting one document at a time with notebook + path.",
           "requiresConfirmation": true,
         },
         "rename": {
@@ -8897,10 +9075,18 @@ action="help" (topic=<action>) returns optional fields, nested shapes, and examp
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "localFilePath",
+          ],
+          [
+            "uploadSource",
+          ],
+        ],
         "requiresConfirmation": true,
         "shapes": [
-          "see examples",
+          "localFilePath",
+          "uploadSource",
         ],
         "tool": "file",
         "writeWorkflow": [
@@ -11337,7 +11523,17 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "action": "fulltext_asset_content",
         "example": {
           "action": "fulltext_asset_content",
+          "query": "invoice",
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "fulltext_asset_content",
+              "query": "invoice",
+            },
+            "title": "Search text inside assets (PDF, Office, OCR)",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/search/fulltext_asset_content",
         "guidance": [
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
@@ -11420,10 +11616,18 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "query",
+          ],
+          [
+            "assetId",
+          ],
+        ],
         "requiresConfirmation": false,
         "shapes": [
-          "optional fields only",
+          "query",
+          "assetId",
         ],
         "tool": "search",
       },
@@ -11582,10 +11786,18 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "sql",
+          ],
+          [
+            "stmt",
+          ],
+        ],
         "requiresConfirmation": false,
         "shapes": [
-          "see examples",
+          "sql",
+          "stmt",
         ],
         "tool": "search",
       },
@@ -11593,7 +11805,17 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
         "action": "search_assets",
         "example": {
           "action": "search_assets",
+          "query": "report",
         },
+        "examples": [
+          {
+            "mcp": {
+              "action": "search_assets",
+              "query": "report",
+            },
+            "title": "Find assets by file name keyword",
+          },
+        ],
         "fullDocResource": "siyuan://help/action/search/search_assets",
         "guidance": [
           "The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.",
@@ -11630,10 +11852,18 @@ Actions (required fields): list() · create(name) · set_open_state(notebook, op
           ],
           "type": "object",
         },
-        "requiredFields": [],
+        "requiredFields": [
+          [
+            "query",
+          ],
+          [
+            "k",
+          ],
+        ],
         "requiresConfirmation": false,
         "shapes": [
-          "optional fields only",
+          "query",
+          "k",
         ],
         "tool": "search",
       },
