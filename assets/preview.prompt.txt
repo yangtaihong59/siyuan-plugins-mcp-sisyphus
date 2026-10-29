@@ -1,6 +1,8 @@
 Asset: ../preview.png
 Generated: 2026-10-21
 Tool: built-in image_gen
+Packaged: 960x540 RGB PNG (2026-10-28); the bazaar rejects previews over 512 KiB (recommended 1024x768).
+          The 1672x941 master is preserved in git history (commit 9b8ac9b).
 References: previous preview.png (old cover), ../icon.png (current brand icon)
 
 Use-case: ads-marketing. Redesign the SiYuan Sisyphus software plugin marketplace cover as one finished, premium minimal product hero, landscape 16:9, high resolution preferably 1920x1080.

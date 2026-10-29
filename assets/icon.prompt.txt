@@ -2,6 +2,8 @@ Asset: ../icon.png
 Generated: 2026-10-21
 Tool: built-in image_gen
 Delivery: 512x512 RGBA PNG; generated master resized with macOS sips
+Packaged: 160x160 RGBA PNG (2026-10-28), the bazaar-recommended size; the bazaar rejects icons over 64 KiB.
+          The 512x512 master is preserved in git history (commit 9b8ac9b).
 References: previous icon.png (edit target), ../preview.png (brand palette)
 
 Use-case: logo-brand; precise-object-edit of an existing software app icon.

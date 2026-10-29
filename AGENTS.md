@@ -166,6 +166,9 @@ siyuan-plugins-mcp-sisyphus/
 │   ├── mocks/siyuan.ts          # `siyuan` 模块 mock（用于 vitest alias）
 │   └── helpers/                 # 测试辅助函数
 │
+├── assets/                      # README 展示图与封面/图标的生成提示词
+│   └── readme/                  # README 引用的图片（真实界面截图合成的 WebP、明暗两版架构图 SVG；构建时打入 package.zip）
+│
 ├── docs/                        # VitePress 文档站点（双语：en / zh）
 │   ├── .vitepress/config.ts     # VitePress 配置
 │   ├── en/                      # 英文文档
