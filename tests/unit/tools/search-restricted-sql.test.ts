@@ -349,11 +349,13 @@ describe.skipIf(!DatabaseSync)('restricted SQL executed by SQLite', () => {
 // Handler: what is actually sent to /api/query/sql, post-filter, metadata.
 // ---------------------------------------------------------------------------
 
-function createHandlerHarness(options: { userRows?: unknown[]; lookupRows?: unknown[]; allReadable?: boolean; canary?: 'pass' | 'leak' | 'error' } = {}) {
+const CLOSED_BOX = '20260101000000-ccccccc';
+
+function createHandlerHarness(options: { userRows?: unknown[]; lookupRows?: unknown[]; allReadable?: boolean; closedReadable?: boolean; canary?: 'pass' | 'leak' | 'error' } = {}) {
     const sent: string[] = [];
     const request = vi.fn(async (path: string, body: { stmt?: string }) => {
         if (path === '/api/notebook/lsNotebooks') {
-            return { notebooks: [{ id: READABLE[0], name: 'Public' }, { id: SECRET_BOX, name: 'Secret' }] };
+            return { notebooks: [{ id: READABLE[0], name: 'Public' }, { id: SECRET_BOX, name: 'Secret' }, ...(options.closedReadable ? [{ id: CLOSED_BOX, name: 'Old', closed: true }] : [])] };
         }
         if (path !== '/api/query/sql') throw new Error(`unexpected endpoint ${path}`);
         const stmt = String(body.stmt);
@@ -395,6 +397,15 @@ describe('search(action="query_sql") restricted mode', () => {
         expect(parsed.scope.hint).toContain('blocks, spans, attributes, assets, refs, file_annotation_refs');
         expect(parsed.readInfo.limitations).toContain('notebook_scoped');
         expect(parsed.resolvedArgs).toEqual({ stmt: 'SELECT count(*) AS n FROM blocks b JOIN refs r ON r.block_id = b.id' });
+        expect(parsed.scope.readable).toEqual([{ id: READABLE[0], name: 'Public' }]);
+        expect(parsed.scope.excluded).toEqual([{ id: SECRET_BOX, name: 'Secret' }]);
+        expect(parsed.scope.hint).toContain('Results and counts cover only the readable notebooks; 1 unreadable notebook(s) (Secret) are excluded.');
+    });
+
+    it('marks closed readable notebooks in the scope and hint', async () => {
+        const parsed = parseResult(await createHandlerHarness({ userRows: [], closedReadable: true }).call({ sql: 'SELECT id FROM blocks LIMIT 1' }));
+        expect(parsed.scope.readable).toContainEqual({ id: CLOSED_BOX, name: 'Old', closed: true });
+        expect(parsed.scope.hint).toContain('closed notebook(s) (Old) are not indexed and return no rows');
     });
 
     it('post-filters rows whose box or block IDs resolve to an unreadable notebook', async () => {

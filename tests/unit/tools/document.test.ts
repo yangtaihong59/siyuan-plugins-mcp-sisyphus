@@ -939,6 +939,25 @@ describe('document.lookup path compatibility', () => {
         });
     });
 
+    it('returns not_found when no document matches the hpath', async () => {
+        const client = createMockClient({
+            request: vi.fn(async (endpoint: string) => {
+                if (endpoint === '/api/notebook/lsNotebooks') {
+                    return { notebooks: [{ id: 'nb-1', name: 'Project Notes', icon: '', sort: 0, closed: false }] };
+                }
+                if (endpoint === '/api/filetree/getIDsByHPath') return [];
+                if (endpoint === '/api/query/sql') return [];
+                throw new Error(`Unexpected endpoint: ${endpoint}`);
+            }),
+        });
+        const permMgr = { reload: vi.fn(async () => undefined), canRead: vi.fn(() => true), get: vi.fn(() => 'rwd') };
+        const result = await callDocumentTool(client, { action: 'lookup', notebook: 'nb-1', hpath: '/Gone' }, buildDefaultToolConfig().document, permMgr as never);
+        expect(result.isError).toBe(true);
+        const payload = parseResult(result) as Record<string, any>;
+        expect(payload.error.type).toBe('not_found');
+        expect(payload.error.message).toContain('No document found at hpath "/Gone" in notebook Project Notes');
+    });
+
     it('falls back to SQL when getIDsByHPath misses duplicate hpath documents', async () => {
         const client = createMockClient({
             request: vi.fn(async (endpoint: string, body?: Record<string, unknown>) => {

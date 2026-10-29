@@ -329,3 +329,48 @@ function collectProvidedFlagKeys(rest: string[]): Set<string> {
     }
     return keys;
 }
+
+function flagTokens(name: string): string[] {
+    return name.replace(/^-+/, '').replace(/-json$/, '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase().split(/[-_]+/).filter(Boolean);
+}
+
+function editDistance(a: string, b: string): number {
+    const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i += 1) {
+        let previous = row[0];
+        row[0] = i;
+        for (let j = 1; j <= b.length; j += 1) {
+            const current = row[j];
+            row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+            previous = current;
+        }
+    }
+    return row[b.length];
+}
+
+/**
+ * Nearest accepted argument for a mistyped flag: a prefix (--old → oldLabel),
+ * per-word prefixes (--doc-id → documentId), or a small typo. Undefined when
+ * nothing is close enough to be a useful guess.
+ */
+export function suggestFlag(unknownFlag: string, acceptedArgs: string[]): string | undefined {
+    const input = flagTokens(unknownFlag);
+    const joined = input.join('');
+    if (!joined) return undefined;
+    let best: { name: string; score: number } | undefined;
+    for (const name of acceptedArgs) {
+        const tokens = flagTokens(name);
+        const candidate = tokens.join('');
+        let score: number | undefined;
+        if (candidate.startsWith(joined) && joined.length >= 3) score = 1;
+        else if (joined.length >= 2 && input.length <= tokens.length && input.every((token, index) => tokens[index].startsWith(token))) score = 2;
+        else {
+            const distance = editDistance(joined, candidate);
+            if (distance <= Math.max(1, Math.floor(candidate.length / 4))) score = 3 + distance;
+        }
+        if (score !== undefined && (!best || score < best.score || (score === best.score && candidate.length < flagTokens(best.name).join('').length))) {
+            best = { name, score };
+        }
+    }
+    return best?.name;
+}

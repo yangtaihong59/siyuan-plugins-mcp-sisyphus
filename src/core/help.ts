@@ -279,7 +279,7 @@ export const SEARCH_GUIDANCE: string[] = [
     'For permission-scoped document inventories, body statistics, and same-title candidates, use document(action="query"). SQL mode in fulltext has the same all-notebooks-readable requirement as query_sql.',
     'All search actions are read-only except find_replace, which modifies content and requires explicit user confirmation.',
     'search(action="query_sql") only accepts SELECT statements and preserves user-selected columns. If any notebook is unreadable it runs in restricted mode: only blocks, spans, attributes, assets, refs and file_annotation_refs (placed after FROM/JOIN) are allowed, and each is rewritten to rows from readable notebooks; the response scope field says which mode ran.',
-    'When calling query_sql, always add LIMIT yourself. MCP may still truncate large result sets and will tell you when to refine the query.',
+    'When listing rows with query_sql, add LIMIT yourself (aggregates need none). MCP may still truncate large result sets and will tell you when to refine the query.',
     'The blocks table columns include: id, parent_id, root_id, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated.',
     'In SQL results, blocks.type uses SiYuan short codes such as d=document, h=heading, p=paragraph, l=list, i=list-item, b=blockquote, c=code, m=math, t=table, html=html, video=video, audio=audio, widget=widget.',
     'Use search(action="fulltext") for exact keyword or syntax searches, search(action="semantic") for meaning-based discovery, and search(action="query_sql") for structured queries.',
@@ -291,7 +291,7 @@ export const SEARCH_GUIDANCE: string[] = [
 export const SEARCH_ACTION_HINTS: Partial<Record<SearchAction, string>> = {
     fulltext: 'Pass a query string. Supports keyword, query syntax, SQL, and regex modes via methodName (preferred) or method. fulltext now returns plainContent/excerpt by default. types accepts shortcodes directly: {"h": true, "c": true} auto-expands to {"heading": true, "codeBlock": true}. Use sortBy="relevance" or "date" instead of numeric orderBy. Use parentId to scope within a document, hasTags to filter tagged blocks.',
     semantic: 'Searches SiYuan’s native embedding index by meaning. Requires SiYuan 3.7.0+ and an enabled, indexed embedding model. Supports paths, types/typeShortcodes, subTypes, page, and pageSize; encrypted notebooks are not included in the native embedding index.',
-    query_sql: 'Execute a SELECT statement. Common tables: blocks, spans, assets. Prefer sql over stmt when prompting an AI. Always use LIMIT to control result size. User-selected columns are preserved. With any unreadable notebook, query_sql runs in restricted mode (tables blocks/spans/attributes/assets/refs/file_annotation_refs only, scoped to readable notebooks; no sqlite_*/pragma_* or CTEs named like tables) and fulltext SQL mode is rejected. Use document(action="query") for permission-scoped document lists and statistics.',
+    query_sql: 'Execute a SELECT statement. Common tables: blocks, spans, assets. Prefer sql over stmt when prompting an AI. Use LIMIT on row listings to control result size (aggregates need none). User-selected columns are preserved. With any unreadable notebook, query_sql runs in restricted mode (tables blocks/spans/attributes/assets/refs/file_annotation_refs only, scoped to readable notebooks; no sqlite_*/pragma_* or CTEs named like tables) and fulltext SQL mode is rejected. Use document(action="query") for permission-scoped document lists and statistics.',
     get_backlinks: 'Returns documents that contain references and/or text mentions for the given block ID (backlinks/backmentions, grouped by document), plus refBlocks: the exact blocks that reference it, with their content (same rows as search_refs). Use mode="links" | "mentions" | "both". Partial permission-filtered results include machine-readable metadata.',
     search_refs: 'Returns the blocks whose content references the target id (block refs to that block or document), each with its own content and ref_text. Empty when nothing references id. Use rootID to limit to one referencing document and k to filter by keyword; get_backlinks groups by document and can include unlinked mentions.',
     find_replace: 'This is the mutating exception inside the search tool. It performs content replacement after write-permission checks and still requires explicit user confirmation. Only the listed blocks are rewritten, but SiYuan block refs elsewhere whose anchor text is dynamic follow the referenced block, so they show its new text after the change.',
@@ -725,7 +725,15 @@ export const TOOL_ACTION_EXAMPLES: Record<ToolCategory, Partial<Record<string, H
             },
         ],
     },
-    search: {},
+    search: {
+        query_sql: [
+            {
+                title: 'List matching blocks (pass the statement as sql)',
+                description: 'Add LIMIT to row listings; an aggregate such as COUNT(*) returns one row and needs none. With an unreadable notebook the result scope says which notebooks were covered.',
+                mcp: { action: 'query_sql', sql: "SELECT id, content, hpath FROM blocks WHERE type = 'p' AND content LIKE '%keyword%' LIMIT 10" },
+            },
+        ],
+    },
     tag: {},
     timeline: {},
     system: {

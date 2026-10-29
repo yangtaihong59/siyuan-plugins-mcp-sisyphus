@@ -208,6 +208,13 @@ async function createFulltextPaginatedResult(
 
 const RESTRICTED_SQL_HINT = `Some notebooks are unreadable, so query_sql runs in restricted mode. ${restrictedTablesHint()} Use one SELECT/WITH; put tables only after FROM/JOIN (aliases OK); no sqlite_*/pragma_*/schema-qualified names; CTE names must not reuse table names.`;
 
+function restrictedScopeHint(scope: RawSqlScope): string {
+    const names = (list: Array<{ name: string; id: string }>) => list.map((notebook) => notebook.name || notebook.id).join(', ');
+    const closed = (scope.readable ?? []).filter((notebook) => notebook.closed);
+    const excluded = scope.excluded ?? [];
+    return `Results and counts cover only the readable notebooks${excluded.length > 0 ? `; ${excluded.length} unreadable notebook(s) (${names(excluded)}) are excluded` : ''}${closed.length > 0 ? `; closed notebook(s) (${names(closed)}) are not indexed and return no rows` : ''}. ${RESTRICTED_SQL_HINT}`;
+}
+
 function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArgs: Record<string, unknown> | undefined, scope: RawSqlScope): ToolResult {
     const truncated = applyTruncation(rows, 50, 'Add LIMIT and OFFSET to your SQL for pagination.');
     const total = rows.length;
@@ -216,7 +223,7 @@ function createSqlQueryResult(rows: unknown[], removedCount: number, resolvedArg
         data: truncated.items,
         total,
         totalRows: total,
-        scope: restricted ? { ...scope, hint: RESTRICTED_SQL_HINT } : scope,
+        scope: restricted ? { ...scope, hint: restrictedScopeHint(scope) } : scope,
         readInfo: {
             scope: 'sql_query', representation: 'sql_rows',
             coverage: truncated.meta?.truncated || removedCount > 0 || restricted ? 'partial' : 'unknown',

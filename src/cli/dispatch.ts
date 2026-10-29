@@ -14,7 +14,7 @@ import { getExposedExtensionTools } from '../tools/extension';
 
 
 import type { ParsedArgs } from './args';
-import { mapFlagsToArgs } from './flag-mapper';
+import { mapFlagsToArgs, suggestFlag } from './flag-mapper';
 import { applyCliWriteGuidance } from './write-guidance';
 import { extractPaginationInfo, renderCliError, renderToolResult } from './render';
 import { loadCliRuntimeState } from './runtime';
@@ -151,8 +151,13 @@ export async function runDispatch(cli: ParsedArgs): Promise<number> {
 
 function formatUnknownFlagError(tool: string, action: string, unknownFlags: string[], acceptedArgs: string[]): Error {
     const accepted = acceptedArgs.map((name) => `--${toKebabFlag(name)}`).join(' ');
+    const suggestions = unknownFlags.flatMap((flag) => {
+        const suggested = suggestFlag(flag, acceptedArgs);
+        return suggested ? [`${flag} → --${toKebabFlag(suggested)}`] : [];
+    });
     return new Error([
         `Unknown flag${unknownFlags.length > 1 ? 's' : ''} for ${tool} ${action}: ${unknownFlags.join(' ')}. Nothing was executed.`,
+        ...(suggestions.length > 0 ? [`Did you mean: ${suggestions.join(', ')}?`] : []),
         accepted ? `Accepted flags: ${accepted}` : 'This action takes no flags.',
         `Run \`${PRIMARY_CLI_COMMAND} help ${tool} ${action}\` for details.`,
     ].join('\n'));

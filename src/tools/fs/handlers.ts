@@ -598,10 +598,15 @@ const handleTree: FsActionHandler = async ({ client, permMgr, rawArgs }) => {
     const denied = await ensurePermissionForNotebook(permMgr, scope.notebook, 'read');
     if (denied) return denied;
     const result = await listStorageDocumentTree(client, scope.notebook, scope.storagePath, maxDepth);
+    const tree = await normalizeTreeNodes(client, result, scope.canonicalPath, scope.notebookName, maxDepth);
     return createJsonResult({
         path: scope.canonicalPath,
-        tree: await normalizeTreeNodes(client, result, scope.canonicalPath, scope.notebookName, maxDepth),
+        tree,
         maxDepth,
+        // tree lists child documents only; an empty tree under a document is not an empty document.
+        ...(tree.length === 0 && scope.type !== 'notebook'
+            ? { note: 'This document has no child documents. tree lists child documents only; use fs(action="read") for its content.' }
+            : {}),
     });
 };
 

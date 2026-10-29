@@ -25,7 +25,7 @@ function fsConfig() {
     return buildDefaultToolConfig().fs;
 }
 
-function createFsClient(options: { ambiguous?: boolean; missingPaths?: string[]; agentMemory?: string; agentMemoryUpdatedAt?: string; userRulesText?: string } = {}) {
+function createFsClient(options: { ambiguous?: boolean; emptyTree?: boolean; missingPaths?: string[]; agentMemory?: string; agentMemoryUpdatedAt?: string; userRulesText?: string } = {}) {
     const missing = new Set(options.missingPaths ?? []);
     let storedConfig = {
         ...buildDefaultToolConfig(),
@@ -60,6 +60,7 @@ function createFsClient(options: { ambiguous?: boolean; missingPaths?: string[];
             }
             if (endpoint === '/api/filetree/listDocsByPath') {
                 const path = String(body?.path ?? '/');
+                if (options.emptyTree && path === '/doc-1.sy') return { box: body?.notebook ?? 'nb-1', files: [] };
                 if (path === '/child.sy') {
                     return {
                         box: body?.notebook ?? 'nb-1',
@@ -207,6 +208,14 @@ describe('fs tool', () => {
         expect(JSON.stringify(parsed)).not.toContain('/grand.sy');
         expect(JSON.stringify(parsed)).not.toContain('Child.sy');
         expect(JSON.stringify(parsed)).not.toContain('Grand.sy');
+    });
+
+    it('notes that tree lists child documents only when a document has none', async () => {
+        const parsed = parseResult(await callFsTool(createFsClient({ emptyTree: true }), { action: 'tree', path: '/Notebook/Doc 1' }, fsConfig(), createPermMgr()));
+        expect(parsed.tree).toEqual([]);
+        expect(parsed.note).toContain('tree lists child documents only');
+        const withChildren = parseResult(await callFsTool(createFsClient(), { action: 'tree', path: '/Notebook/Doc 1' }, fsConfig(), createPermMgr()));
+        expect(withChildren.note).toBeUndefined();
     });
 
     it('filters root tree to readable notebooks', async () => {

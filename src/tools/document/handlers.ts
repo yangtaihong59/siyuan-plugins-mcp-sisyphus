@@ -425,6 +425,11 @@ const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         ]);
 };
 
+/** Same shape as fs not_found: a caller-correctable error, not an empty success. */
+function lookupNotFound(hPath: string, notebook: string): Error {
+    return Object.assign(new Error(`No document found at hpath "${hPath}" in notebook ${notebook}. Check the path with document(action="list_tree") or fs(action="ls").`), { code: 'not_found' });
+}
+
 const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentLookupSchema.parse(rawArgs);
     const hpathInput = parsed.hpath ?? parsed.hPath;
@@ -475,6 +480,7 @@ const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs })
         if (!looksLikeStoragePath(parsed.path)) {
             const ids = await getDocumentIdsByHPathWithSqlFallback(client, parsed.notebook!, parsed.path);
             const primaryId = ids[0];
+            if (!primaryId) throw lookupNotFound(parsed.path, notebookName ?? parsed.notebook!);
             result.source = { type: 'hpath', notebook: parsed.notebook, hPath: parsed.path, providedAs: 'path' };
             result.hPath = parsed.path;
             result.interpretedPathAs = 'hpath';
@@ -506,6 +512,7 @@ const handleLookup: DocumentActionHandler = async ({ client, permMgr, rawArgs })
     }
 
     const ids = await getDocumentIdsByHPathWithSqlFallback(client, parsed.notebook!, hpathInput!);
+    if (ids.length === 0) throw lookupNotFound(hpathInput!, notebookName ?? parsed.notebook!);
     result.notebook = parsed.notebook;
     if (notebookName) result.notebookName = notebookName;
     result.hPath = hpathInput;

@@ -227,6 +227,10 @@ export interface RawSqlScope {
     mode: 'restricted' | 'full';
     readableNotebooks: string[];
     excludedNotebooks: number;
+    /** Restricted mode only: names of the notebooks behind the two fields above. */
+    readable?: Array<{ id: string; name: string; closed?: true }>;
+    /** Same disclosure as notebook(action="list"), which lists unreadable notebooks by name. */
+    excluded?: Array<{ id: string; name: string }>;
 }
 
 /** Reload permissions and compute which notebooks a raw SQL query may observe. */
@@ -234,9 +238,17 @@ export async function loadRawSqlScope(client: SiYuanClient, permMgr: PermissionM
     await permMgr.reload();
     const notebookList = await notebookApi.listNotebooks(client);
     const notebooks = Array.isArray(notebookList?.notebooks) ? notebookList.notebooks : [];
-    const readableNotebooks = notebooks.filter((notebook) => permMgr.canRead(notebook.id)).map((notebook) => notebook.id);
+    const readable = notebooks.filter((notebook) => permMgr.canRead(notebook.id));
+    const readableNotebooks = readable.map((notebook) => notebook.id);
     const excludedNotebooks = notebooks.length - readableNotebooks.length;
-    return { mode: excludedNotebooks > 0 ? 'restricted' : 'full', readableNotebooks, excludedNotebooks };
+    if (excludedNotebooks === 0) return { mode: 'full', readableNotebooks, excludedNotebooks };
+    return {
+        mode: 'restricted',
+        readableNotebooks,
+        excludedNotebooks,
+        readable: readable.map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? ''), ...(notebook.closed === true ? { closed: true as const } : {}) })),
+        excluded: notebooks.filter((notebook) => !permMgr.canRead(notebook.id)).map((notebook) => ({ id: notebook.id, name: String(notebook.name ?? '') })),
+    };
 }
 
 /** Real table/view names of the index DB, so CTE names can never shadow one. */
