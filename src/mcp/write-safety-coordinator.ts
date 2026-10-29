@@ -455,6 +455,41 @@ export class WriteSafetyCoordinator {
             });
         }
 
+        if (result.isError && category === 'document' && action === 'create' && Array.isArray(args.docs)
+            && parseResultObject(result)?.overallState === 'partial') {
+            // Some documents were created and SiYuan explicitly rejected the
+            // next one; the rest were never sent. The handler's receipt lists
+            // each item, so this is a known partial outcome, not an unknown one.
+            const created = parseResultObject(result)?.created;
+            const createdIds = Array.isArray(created) ? created.flatMap((item) => isRecord(item) && typeof item.id === 'string' ? [item.id] : []) : [];
+            const safetyResult = {
+                requestId,
+                writeSafetyMode: 'strict',
+                writeSafetyGuaranteed: true,
+                writeAttempted: true,
+                writeExecuted: true,
+                replayed: false,
+                transactionState: 'partial',
+            };
+            const response = withOneStep(addSafetyMetadata(result, safetyResult));
+            try {
+                await this.ledger.record({
+                    requestId,
+                    tool: category,
+                    action,
+                    argsHash: inspected!.argsHash,
+                    targetIds: [...targetIds, ...createdIds],
+                    state: 'committed',
+                    result: safetyResult,
+                    response,
+                });
+            } catch {
+                // The receipt below is still the accurate account of what ran.
+            }
+            if (activeLease) this.preflightLeases.consume(activeLease);
+            return response;
+        }
+
         if (result.isError) {
             const errorType = readHandlerErrorType(result);
             if (['permission_denied', 'validation_error', 'invalid_arguments', 'action_disabled'].includes(errorType)) {

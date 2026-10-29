@@ -239,7 +239,7 @@
     },
     {
       "name": "document",
-      "description": "📝 Documents, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown. query lists readable documents with statistics and same-title candidates. create uses notebook + notebook-local path (/Folder/Doc). lookup accepts id, notebook+hpath, or notebook+path (.sy); reuse storage paths for rename/move/remove. Read create help for parentPath + title.\nActions (required fields): create(notebook, path | notebook, parentPath, title) · lookup() · query() · ensure_link_targets(notebook, parentId, mode, targets) · rename(id, title | notebook, path, title | items) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
+      "description": "📝 Documents, metadata, outline, daily notes, and heading↔doc conversion; prefer fs for Markdown. query lists readable documents with statistics and same-title candidates. create uses notebook + notebook-local path (/Folder/Doc). lookup accepts id, notebook+hpath, or notebook+path (.sy); reuse storage paths for rename/move/remove. Read create help for parentPath + title.\nActions (required fields): create(notebook, path | notebook, parentPath, title | notebook, docs) · lookup() · query() · ensure_link_targets(notebook, parentId, mode, targets) · rename(id, title | notebook, path, title | items) · remove*() · move*() · reorder(parentID, orderedIDs) · get_child_blocks(id) · get_child_docs(id) · set_attr(id, attrs) · list_tree(notebook, path) · search_docs(notebook, query) · get_doc(id) · get_outline(id) · create_daily_note(notebook) · duplicate(id) · heading_to_doc(headingID, targetNotebook) · doc_to_heading(srcID, targetID)\n* = ask the user to confirm first. action=\"help\" (topic=<action>) returns optional fields, nested shapes, and examples.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -295,6 +295,28 @@
           "icon": {
             "description": "Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character.",
             "type": "string"
+          },
+          "docs": {
+            "description": "Batch: up to 20 {path,markdown?}, created in order; excludes path/parentPath/title/markdown/icon",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Notebook-local path, like path"
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            }
           },
           "id": {
             "description": "Document ID to look up",
@@ -536,8 +558,10 @@
                 ]
               }
             },
-            "additionalProperties": false,
-            "description": "Document metadata attributes to set"
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "icon, cover and custom-* keys (\"\" removes a custom-* key)"
           },
           "maxDepth": {
             "description": "Max tree depth to return (default 3). Deeper nodes are collapsed to childCount.",
@@ -6349,6 +6373,28 @@
           "icon": {
             "description": "Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character.",
             "type": "string"
+          },
+          "docs": {
+            "description": "Batch: up to 20 {path,markdown?}, created in order; excludes path/parentPath/title/markdown/icon",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Notebook-local path, like path"
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -6385,6 +6431,30 @@
             "not": {
               "required": [
                 "path"
+              ]
+            }
+          },
+          {
+            "required": [
+              "docs"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "path"
+                  ]
+                },
+                {
+                  "required": [
+                    "parentPath"
+                  ]
+                },
+                {
+                  "required": [
+                    "title"
+                  ]
+                }
               ]
             }
           }
@@ -6873,8 +6943,10 @@
                 ]
               }
             },
-            "additionalProperties": false,
-            "description": "Document metadata attributes to set"
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "icon, cover and custom-* keys (\"\" removes a custom-* key)"
           }
         },
         "required": [

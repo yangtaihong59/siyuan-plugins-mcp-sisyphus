@@ -41,7 +41,7 @@ describe('layout feedback regressions', () => {
     it('returns a valid minimal create example and both legal shapes', async () => {
         const result = parseResult(await TOOL_REGISTRY.document.callTool({} as any,
             { action: 'help', topic: 'create' }, config.document, {} as any));
-        expect(result.shapes).toEqual(['notebook + path', 'notebook + parentPath + title']);
+        expect(result.shapes).toEqual(['notebook + path', 'notebook + parentPath + title', 'notebook + docs']);
         expect(DocumentCreateSchema.safeParse(result.example).success).toBe(true);
         expect(() => validateRegisteredToolArguments('document', { action: 'create', notebook: 'nb', parentPath: '/', title: 'Title' })).not.toThrow();
     });

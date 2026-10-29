@@ -46,7 +46,7 @@ import { readDocumentBlockWindow } from '../internal/document-kramdown';
 import { createReferenceSemanticsHints } from '../internal/kramdown-safe';
 import { normalizeMarkdownInputRefs } from '../internal/markdown-input';
 import { applyDocumentReorder, readDocumentReorderState } from '../internal/helpers/document-reorder';
-import { SiYuanRequestError } from '../../api/errors';
+import { isAmbiguousWriteFailure, SiYuanRequestError } from '../../api/errors';
 
 type DocumentActionHandler = ToolActionHandler;
 
@@ -124,7 +124,7 @@ function createLookupPathResult(fields: {
     };
 }
 
-function normalizeDocumentCoverSource(source: string): { source: string; titleImg: string } {
+export function normalizeDocumentCoverSource(source: string): { source: string; titleImg: string } {
     const normalizedSource = source.trim();
     if (!normalizedSource) {
         throw new Error('Cover source must not be empty.');
@@ -377,6 +377,7 @@ async function filterSearchDocsResult(
 const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs }) => {
     const parsed = DocumentCreateSchema.parse(rawArgs);
     await permMgr.reload();
+    if (parsed.docs && permMgr.canWrite(parsed.notebook)) return handleBatchCreate(client, parsed.notebook, parsed.docs);
     if (!permMgr.canWrite(parsed.notebook)) {
         // A notebook name must not be mistaken for an ID with default r
         // permission, which misleadingly sends callers to change permissions.
@@ -424,6 +425,90 @@ const handleCreate: DocumentActionHandler = async ({ client, permMgr, rawArgs })
             { type: 'reloadFiletree' },
         ]);
 };
+
+type BatchCreateItemState = 'created' | 'not_applied' | 'unknown';
+
+interface BatchCreateItemReceipt {
+    index: number;
+    path: string;
+    state: BatchCreateItemState;
+    id?: string;
+    error?: string;
+}
+
+/**
+ * Batch create: documents are created one by one in the given order (so a
+ * parent listed earlier exists before its child). The first failure stops the
+ * batch. When nothing was created the error propagates unchanged and the
+ * coordinator classifies it (not_applied / unknown). After at least one
+ * creation the receipt lists every item: created (with id), the failed item
+ * (not_applied when SiYuan explicitly rejected it, unknown when the outcome
+ * cannot be known) and the remaining items as not_applied (never sent).
+ */
+async function handleBatchCreate(
+    client: SiYuanClient,
+    notebook: string,
+    docs: Array<{ path: string; markdown?: string }>,
+): Promise<ToolResult> {
+    const receipts: BatchCreateItemReceipt[] = docs.map((item, index) => ({ index, path: item.path.trim(), state: 'not_applied' }));
+    // Check every body before the first write, so a bad item fails the whole batch with nothing created.
+    const bodies: string[] = [];
+    for (const [index, item] of docs.entries()) {
+        bodies.push(await normalizeMarkdownInputRefs(
+            client,
+            stripRedundantTitleHeading(item.markdown ?? '', deriveTitleFromCreatePath(receipts[index].path)),
+            `document.create docs[${index}]`,
+        ));
+    }
+    let failedAt: number | undefined;
+    for (const [index, receipt] of receipts.entries()) {
+        try {
+            receipt.id = await documentApi.createDoc(client, notebook, receipt.path, bodies[index]);
+            receipt.state = 'created';
+        } catch (error) {
+            if (index === 0) throw error;
+            receipt.state = isAmbiguousWriteFailure(error) ? 'unknown' : 'not_applied';
+            receipt.error = error instanceof Error ? error.message : String(error);
+            failedAt = index;
+            break;
+        }
+    }
+    const created = receipts.filter((item) => item.state === 'created');
+    const refresh: UiRefreshOperation[] = [{ type: 'reloadFiletree' }];
+    if (failedAt === undefined) {
+        return applyUiRefresh(client, createJsonResult({
+            success: true,
+            notebook,
+            count: created.length,
+            created: created.map(({ index, path, id }) => ({ index, path, id })),
+        }), refresh);
+    }
+    const failed = receipts[failedAt];
+    const skipped = receipts.slice(failedAt + 1);
+    const overallState = failed.state === 'unknown' ? 'unknown' : 'partial';
+    const line = (item: BatchCreateItemReceipt) => `  [${item.index}] ${item.path}${item.id ? ` → ${item.id}` : ''}`;
+    const details = [
+        `created (${created.length}):`, ...created.map(line),
+        `failed (${failed.state}): [${failed.index}] ${failed.path}: ${failed.error}`,
+        ...(skipped.length > 0 ? [`not_applied, never sent (${skipped.length}):`, ...skipped.map(line)] : []),
+    ].join('\n');
+    // Refresh for the documents that were created, then report the batch as failed.
+    const refreshed = await applyUiRefresh(client, createJsonResult({
+            success: false,
+            overallState,
+            notebook,
+            created: created.map(({ index, path, id }) => ({ index, path, id })),
+            failed: { index: failed.index, path: failed.path, state: failed.state, error: failed.error },
+            notApplied: skipped.map(({ index, path }) => ({ index, path })),
+            counts: { requested: receipts.length, created: created.length, failed: 1, notApplied: skipped.length },
+            error: {
+                type: 'batch_partial',
+                message: `Batch create stopped at docs[${failed.index}] (${failed.path}): ${created.length} of ${receipts.length} document(s) were created, docs[${failed.index}] is ${failed.state}${skipped.length > 0 ? ` and ${skipped.length} later item(s) were not sent` : ''}. Do not resend the whole batch: ${failed.state === 'unknown' ? `first check whether ${failed.path} exists, then ` : ''}send only the items that were not created.`,
+                details,
+            },
+        }), refresh);
+    return { ...refreshed, isError: true };
+}
 
 /** Same shape as fs not_found: a caller-correctable error, not an empty success. */
 function lookupNotFound(hPath: string, notebook: string): Error {
@@ -1027,6 +1112,13 @@ const handleSetAttr: DocumentActionHandler = async ({ client, permMgr, rawArgs }
             response.titleImg = normalized.titleImg;
         }
         operations.push({ type: 'reloadProtyle', id: context.documentId }, { type: 'reloadFiletree' });
+    }
+    // custom-* attributes go on the document root block, exactly as block set_attrs writes them.
+    const custom = Object.fromEntries(Object.entries(parsed.attrs).filter(([key]) => key.startsWith('custom-'))) as Record<string, string>;
+    if (Object.keys(custom).length > 0) {
+        Object.assign(attrs, custom);
+        response.attrs = custom;
+        if (!operations.some((operation) => operation.type === 'reloadProtyle')) operations.push({ type: 'reloadProtyle', id: context.documentId });
     }
     await setDocumentAttrsViaTransaction(client, parsed.id, attrs);
     return applyUiRefresh(client, createJsonResult(response), operations);

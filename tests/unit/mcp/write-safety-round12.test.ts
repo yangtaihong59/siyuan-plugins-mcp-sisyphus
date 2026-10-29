@@ -151,7 +151,8 @@ describe('help, preview and receipts (round 12)', () => {
     );
 
     it('mentions the batch limit only for actions with an item list', () => {
-        expect(parseResult(helpResult('create')).oneStep.rule).not.toContain('20');
+        expect(parseResult(helpResult('create')).oneStep.rule).toContain('(docs lists of up to 20 entries)');
+        expect(parseResult(helpResult('prepend')).oneStep.rule).not.toContain('20');
         expect(parseResult(helpResult('insert')).oneStep.rule).toContain('(blocks lists of up to 20 entries)');
     });
 
@@ -219,13 +220,14 @@ describe('tool errors that point to the right call (round 12)', () => {
         expect(parsed.error.message).toContain(`block ${action} has no previousID`);
     });
 
-    it('points custom document attributes to block set_attrs', async () => {
-        const result = await callDocumentTool(createMockClient(), { action: 'set_attr', id: DOC_ID, attrs: { 'custom-type': 'meeting' } }, buildDefaultToolConfig().document, permMgr as never);
+    it('points non-custom document attributes to block set_attrs', async () => {
+        const result = await callDocumentTool(createMockClient(), { action: 'set_attr', id: DOC_ID, attrs: { 'custom-type': 'meeting', alias: 'x' } }, buildDefaultToolConfig().document, permMgr as never);
         const parsed = parseResult(result);
         expect(parsed.error.type).toBe('validation_error');
         expect(parsed.error.fields[0].message).toContain('block(action="set_attrs"');
-        expect(parsed.error.fields[0].message).toContain('custom-*');
+        expect(parsed.error.fields[0].message).toContain('icon, cover and custom-*');
+        expect(parsed.error.fields[0].message).toContain('alias is not one of them');
         const cli = translatePresentationPayload(parsed, 'cli') as any;
-        expect(cli.error.fields[0].message).toContain(`siyuan-sisyphus block set-attrs --id <document id> --attrs-json '{"custom-type":"…"}'`);
+        expect(cli.error.fields[0].message).toContain('siyuan-sisyphus block set-attrs --id <document id>');
     });
 });

@@ -260,7 +260,7 @@ export const ONE_STEP_TIERS: Partial<Record<ToolCategory, Record<string, 1 | 2>>
     file: { update_template: 2 },
 };
 
-export const BATCH_ARRAY_KEYS = ['items', 'blocks', 'rows', 'blockIDs', 'primaryKeyTexts', 'cells', 'rowIDs', 'ids', 'edit'] as const;
+export const BATCH_ARRAY_KEYS = ['items', 'docs', 'blocks', 'rows', 'blockIDs', 'primaryKeyTexts', 'cells', 'rowIDs', 'ids', 'edit'] as const;
 
 /** Largest item list in the arguments (1 for a single-target write). */
 export function getWriteBatchSize(args: Record<string, unknown>): number {

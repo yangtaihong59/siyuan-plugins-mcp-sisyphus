@@ -476,7 +476,7 @@ describe('write impact preview', () => {
         }, { rows: [docRow(DOC, 'Plans', '/Plans')] });
         expect(result.changes[0]).toMatchObject({ kind: 'create_blocks', blockCount: 5 });
         expect(result.changes[0].blocks).toEqual(['## Heading', 'First para', 'Second para', '- a - b continued', '```js x y ```']);
-        expect(result.changes[0].summary).toContain('Creates 5 top-level block(s) at the end of document «Plans» in Work:/Plans');
+        expect(result.changes[0].summary).toContain('Creates about 5 top-level block(s) at the end of document «Plans» in Work:/Plans; a list counts as one block (its 2 item(s) are child blocks)');
     });
 
     it('block targets show their position among siblings and the preceding heading', async () => {
@@ -519,7 +519,7 @@ describe('write impact preview', () => {
     it('document.create shows the resolved final hPath and the body blocks', async () => {
         const result = await preview({
             category: 'document', action: 'create', args: { action: 'create', notebook: NB, parentPath: '/Plans', title: 'Draft', markdown: 'One\n\nTwo' },
-        });
+        }, { sql: (stmt) => stmt.includes('hpath IN') ? [{ hpath: '/Plans' }] : undefined });
         expect(result.changes[0]).toMatchObject({ kind: 'create_document', hPath: '/Plans/Draft' });
         expect(result.changes[0].summary).toBe('Creates document «Draft» at Work:/Plans/Draft.');
         expect(result.changes[1]).toMatchObject({ kind: 'create_blocks', blockCount: 2 });
@@ -540,16 +540,47 @@ describe('write impact preview', () => {
     });
 
     it('falls back to a generic summary with the key arguments', async () => {
-        const result = await preview({ category: 'document', action: 'set_attr', args: { action: 'set_attr', id: DOC, attrs: { icon: '1f4d4' }, validateOnly: true, requestId: 'abcd' } }, {
+        const result = await preview({ category: 'document', action: 'touch_x', args: { action: 'touch_x', id: DOC, validateOnly: true, requestId: 'abcd' } }, {
             rows: [docRow(DOC, 'Plans', '/Plans')],
         });
         expect(result.changes).toEqual([{
             kind: 'generic',
-            summary: 'document.set_attr will modify document «Plans».',
-            args: { id: DOC, attrs: { icon: '1f4d4' } },
+            summary: 'document.touch_x will modify document «Plans».',
+            args: { id: DOC },
         }]);
         expect(result.targets).toEqual([{ id: DOC, kind: 'document', title: 'Plans', hPath: '/Plans', notebook: { id: NB, name: 'Work', permission: 'rwd' } }]);
         expect(result.risk).toEqual([]);
+    });
+
+    it('document.set_attr diffs icon, cover and custom-* like block.set_attrs', async () => {
+        const result = await preview({
+            category: 'document', action: 'set_attr', args: { action: 'set_attr', id: DOC, attrs: { icon: '1f4d4', 'custom-type': 'meeting', cover: '/assets/c.png' } },
+            before: { hash: 'h', targetIds: [DOC], summary: {}, state: { liveBlocks: { [DOC]: { attrs: { id: DOC, 'custom-type': 'notes' } } } } },
+        }, { rows: [docRow(DOC, 'Plans', '/Plans')] });
+        expect(result.changes[0]).toMatchObject({ kind: 'set_attrs' });
+        expect(result.changes[0].attrs).toEqual([
+            { key: 'custom-type', current: 'notes', next: 'meeting', status: 'replaced' },
+            { key: 'icon', current: '(none)', next: '1f4d4', status: 'added' },
+            { key: 'title-img', current: '(none)', next: 'background-image:url("/assets/c.png");', status: 'added' },
+        ]);
+        expect(result.changes[0].summary).toContain('on document «Plans»');
+        expect(result.risk).toEqual(['overwrites_content']);
+    });
+
+    it('document.create batch lists every path with notebook and flags existing paths and missing parents', async () => {
+        const result = await preview({
+            category: 'document', action: 'create',
+            args: { action: 'create', notebook: NB, docs: [{ path: '/Plans', markdown: '- a\n- b' }, { path: '/Plans/Child' }, { path: '/Other/Deep' }] },
+        }, { sql: (stmt) => stmt.includes('hpath IN') ? [{ hpath: '/Plans' }] : undefined });
+        expect(result.changes[0]).toMatchObject({ kind: 'create_documents' });
+        expect(result.changes[0].summary).toContain('Creates 3 document(s) in Work, one by one in this order');
+        expect(result.changes[0].summary).toContain('2 item(s) have a note');
+        expect(result.changes.slice(1).map((change) => change.summary)).toEqual([
+            '[0] Creates document «Plans» at Work:/Plans (body ≈ 1 top-level block(s)). Note: a document already exists at /Plans; SiYuan creates a second one with the same title.',
+            '[1] Creates document «Child» at Work:/Plans/Child (empty body).',
+            '[2] Creates document «Deep» at Work:/Other/Deep (empty body). Note: parent /Other was not found; SiYuan creates it as an empty document.',
+        ]);
+        expect(result.targets.filter((target) => target.kind === 'path').map((target) => target.id)).toEqual(['/Plans', '/Plans/Child', '/Other/Deep'].slice(0, 4));
     });
 
     it('av.create says what the new database will contain', async () => {

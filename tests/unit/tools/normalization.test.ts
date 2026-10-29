@@ -584,6 +584,31 @@ describe('tool result normalization', () => {
         expect(refreshClient.request).toHaveBeenCalledWith('/api/ui/reloadFiletree', {});
     });
 
+    it('writes custom-* document attributes on the document root block', async () => {
+        const transactionApi = await import('@/api/transaction');
+        const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);
+
+        const result = await callDocumentTool(refreshClient, {
+            action: 'set_attr',
+            id: 'doc-1',
+            attrs: { 'custom-type': 'meeting', 'custom-old': '' },
+        }, enabledActions('set_attr'), permMgr);
+
+        expect(vi.mocked(transactionApi.performTransactions)).toHaveBeenCalledWith(refreshClient, [{
+            doOperations: [{
+                action: 'setAttrs',
+                id: 'doc-1',
+                data: JSON.stringify({ 'custom-type': 'meeting', 'custom-old': '' }),
+            }],
+            undoOperations: [],
+        }]);
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+            success: true,
+            id: 'doc-1',
+            attrs: { 'custom-type': 'meeting', 'custom-old': '' },
+        });
+    });
+
     it('refreshes icon cache and file tree for document icon changes', async () => {
         const transactionApi = await import('@/api/transaction');
         const refreshClient = withRequestSemantics({ request: vi.fn().mockResolvedValue(null) } as any);

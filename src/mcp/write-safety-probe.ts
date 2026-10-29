@@ -45,6 +45,15 @@ export function derivePostWriteProbeArgs(
     result: ToolResult,
 ): Record<string, unknown> {
     const payload = parseResultObject(result);
+    if (category === 'document' && action === 'create' && Array.isArray(args.docs)) {
+        const ids = Array.isArray(payload?.created)
+            ? payload.created.flatMap((item) => isRecord(item) && typeof item.id === 'string' && item.id ? [item.id] : [])
+            : [];
+        if (ids.length !== args.docs.length) {
+            throw safetyError('readback_mismatch', 'Batch document creation did not identify every created document.');
+        }
+        return { ids, notebook: args.notebook };
+    }
     if (category === 'document' && (action === 'create' || action === 'create_daily_note')) {
         if (!payload || typeof payload.id !== 'string' || !payload.id) {
             throw safetyError('readback_mismatch', 'Document creation did not identify the created document.');
@@ -765,7 +774,8 @@ export async function verifyPostWriteSemanticState(
     if (category === 'document' && (action === 'create' || action === 'create_daily_note')) {
         const blocks = isRecord(after?.state?.liveBlocks) ? Object.values(after.state.liveBlocks) : [];
         const documents = blocks.flatMap(block => isRecord(block) && isRecord(block.info) ? [block.info] : []);
-        if (documents.length !== 1 || documents[0].box !== args.notebook) {
+        const expected = action === 'create' && Array.isArray(args.docs) ? args.docs.length : 1;
+        if (documents.length !== expected || documents.some((document) => document.box !== args.notebook)) {
             throw safetyError('readback_mismatch', 'The created document was not observed in the requested notebook.');
         }
         return;

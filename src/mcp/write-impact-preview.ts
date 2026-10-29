@@ -25,6 +25,7 @@ import { findReplacePattern, readFindReplaceKramdowns, stripKramdownIals } from 
 import { preservableAttrs, updateRestoresAttrs } from '../tools/internal/helpers/preserved-attrs';
 import { queryTagCarrierRows } from '../tools/tag/handlers';
 import type { prepareDocumentConversion } from '../tools/document/conversion';
+import { normalizeDocumentCoverSource } from '../tools/document/handlers';
 
 export type WritePreviewDetail = 'summary' | 'full';
 
@@ -419,7 +420,7 @@ function defaultTargetIds(ctx: PreviewContext): string[] {
     return [...new Set(ids)];
 }
 
-const ITEM_ARRAY_KEYS = ['ids', 'items', 'rows', 'cells', 'rowIDs', 'srcIDs', 'blockIDs', 'fromIDs', 'fromPaths', 'paths', 'orderedIDs', 'orderedPaths', 'primaryKeyTexts'];
+const ITEM_ARRAY_KEYS = ['ids', 'items', 'docs', 'rows', 'cells', 'rowIDs', 'srcIDs', 'blockIDs', 'fromIDs', 'fromPaths', 'paths', 'orderedIDs', 'orderedPaths', 'primaryKeyTexts'];
 
 function argumentItemCount(args: Record<string, unknown>): number {
     return Math.max(1, ...ITEM_ARRAY_KEYS.map((key) => Array.isArray(args[key]) ? (args[key] as unknown[]).length : 0));
@@ -1638,6 +1639,23 @@ export function softLineBreakNote(markdown: string): string | undefined {
     return `${lines} lines → ${paragraphs} paragraph${paragraphs === 1 ? '' : 's'}: a single newline is a soft line break inside one paragraph. Separate paragraphs with a blank line.`;
 }
 
+/**
+ * A list is one top-level block whose items are child blocks, so a reader
+ * that lists every block (get_doc, get_children) shows more blocks than this
+ * count. Say how many items the lists hold.
+ */
+function listNote(markdown: string): string {
+    let fence: string | undefined;
+    let items = 0;
+    for (const line of markdown.replace(/\r\n?/g, '\n').split('\n')) {
+        const mark = /^(`{3,}|~{3,})/.exec(line.trim())?.[1];
+        if (fence) { if (mark && line.trim().startsWith(fence)) fence = undefined; continue; }
+        if (mark) { fence = mark; continue; }
+        if (/^\s*([-*+]|\d+[.)])\s/.test(line) && !/^([-*_])(\s*\1){2,}$/.test(line.trim())) items += 1;
+    }
+    return items > 0 ? `; a list counts as one block (its ${items} item(s) are child blocks)` : '';
+}
+
 function newBlocksChange(ctx: PreviewContext, dataType: unknown, data: string, where: string): WritePreviewChange {
     if (dataType === 'dom') {
         return { kind: 'create_blocks', summary: `Inserts DOM content (${data.length} chars) ${where}.`, after: ctx.text(domToText(data)) };
@@ -1648,7 +1666,7 @@ function newBlocksChange(ctx: PreviewContext, dataType: unknown, data: string, w
         kind: 'create_blocks',
         summary: blocks.length === 0
             ? `Inserts empty Markdown ${where}; SiYuan may create one empty paragraph.`
-            : `Creates ${blocks.length} top-level block(s) ${where} (counted from the Markdown; SiYuan's parser decides the final split).`,
+            : `Creates about ${blocks.length} top-level block(s) ${where}${listNote(data)} (an estimate from the Markdown; SiYuan's parser decides the final split).`,
         blockCount: blocks.length,
         blocks: [...shown.map((block) => ctx.text(block, 80)), ...(omitted > 0 ? [`… ${omitted} more`] : [])],
         ...(softLineBreakNote(data) ? { note: softLineBreakNote(data) } : {}),
@@ -1684,12 +1702,28 @@ async function previewBlockInsert(ctx: PreviewContext): Promise<BuilderResult> {
 }
 
 async function previewBlockSetAttrs(ctx: PreviewContext): Promise<BuilderResult> {
-    const id = ctx.string('id') ?? '';
-    const next = isRecord(ctx.args.attrs) ? ctx.args.attrs : {};
+    return attrsDiff(ctx, ctx.string('id') ?? '', isRecord(ctx.args.attrs) ? ctx.args.attrs : {});
+}
+
+/** document.set_attr writes icon / title-img (cover) / custom-* on the document root block: the same diff as block.set_attrs. */
+async function previewDocumentSetAttr(ctx: PreviewContext): Promise<BuilderResult> {
+    const attrs = isRecord(ctx.args.attrs) ? ctx.args.attrs : {};
+    const next: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(attrs)) {
+        if (key !== 'cover') { next[key] = value; continue; }
+        let titleImg = '';
+        if (typeof value === 'string' && value.trim()) {
+            try { titleImg = normalizeDocumentCoverSource(value).titleImg; } catch { titleImg = value; }
+        }
+        next['title-img'] = titleImg;
+    }
+    return attrsDiff(ctx, ctx.string('id') ?? '', next);
+}
+
+async function attrsDiff(ctx: PreviewContext, id: string, next: Record<string, unknown>): Promise<BuilderResult> {
     const live = ctx.liveBlock(id)?.attrs;
-    const current = isRecord(live)
-        ? live
-        : await blockApi.getBlockAttrs(ctx.client, id).catch(() => ({} as Record<string, string>));
+    const read = isRecord(live) ? live : await blockApi.getBlockAttrs(ctx.client, id).catch(() => undefined);
+    const current: Record<string, unknown> = isRecord(read) ? read : {};
     let replaced = 0;
     let removed = 0;
     let added = 0;
@@ -1720,8 +1754,68 @@ async function previewBlockSetAttrs(ctx: PreviewContext): Promise<BuilderResult>
 /*  Document creation and timeline nodes                              */
 /* ------------------------------------------------------------------ */
 
+/** Documents already at these notebook-local hpaths (index-based; may lag right after a create). */
+async function existingDocumentPaths(ctx: PreviewContext, notebook: string | undefined, hPaths: string[]): Promise<Set<string> | undefined> {
+    if (!notebook || hPaths.length === 0) return undefined;
+    const rows = await searchApi.querySQL(ctx.client,
+        `SELECT hpath FROM blocks WHERE type = 'd' AND box = ${sqlString(notebook)} AND hpath IN (${[...new Set(hPaths)].map(sqlString).join(', ')})`,
+    ).catch(() => undefined);
+    if (!Array.isArray(rows)) return undefined;
+    return new Set(rows.flatMap((row) => isRecord(row) && typeof row.hpath === 'string' ? [row.hpath] : []));
+}
+
+function parentHPath(hPath: string): string | undefined {
+    const parent = hPath.replace(/\/+$/, '').split('/').slice(0, -1).join('/');
+    return parent || undefined;
+}
+
+/**
+ * Notes for one planned document: SiYuan (3.8.8, verified) creates a second
+ * same-title document at an existing path, and creates missing parents as
+ * empty documents. Neither is an error, so the preview says it up front.
+ */
+function createPathNotes(hPath: string, existing: Set<string> | undefined, plannedBefore: Set<string>): string[] {
+    const notes: string[] = [];
+    if (!existing) return notes;
+    if (existing.has(hPath)) notes.push(`a document already exists at ${hPath}; SiYuan creates a second one with the same title`);
+    const parent = parentHPath(hPath);
+    if (parent && !existing.has(parent) && !plannedBefore.has(parent)) notes.push(`parent ${parent} was not found; SiYuan creates it as an empty document`);
+    return notes;
+}
+
 async function previewDocumentCreate(ctx: PreviewContext): Promise<BuilderResult> {
     const notebook = ctx.string('notebook');
+    const notebookName = await ctx.notebookLabel(notebook);
+    const notebookTargets = notebook ? [await ctx.target(notebook)] : [];
+    const docs = Array.isArray(ctx.args.docs) ? ctx.args.docs.filter(isRecord) : undefined;
+    if (docs) {
+        const paths = docs.map((item) => typeof item.path === 'string' ? item.path.trim() : '');
+        const existing = await existingDocumentPaths(ctx, notebook, [...paths, ...paths.flatMap((path) => parentHPath(path) ?? [])]);
+        const planned = new Set<string>();
+        const changes: WritePreviewChange[] = [];
+        let flagged = 0;
+        for (const [index, path] of paths.entries()) {
+            const notes = createPathNotes(path, existing, planned);
+            planned.add(path);
+            if (notes.length > 0) flagged += 1;
+            const markdown = typeof docs[index].markdown === 'string' ? docs[index].markdown as string : '';
+            const blocks = markdown.trim() ? estimateMarkdownBlocks(markdown).length : 0;
+            changes.push({
+                kind: 'create_document',
+                summary: `[${index}] Creates document ${ctx.label(path.split('/').filter(Boolean).at(-1), path)} at ${notebookName}:${path} (${blocks > 0 ? `body ≈ ${blocks} top-level block(s)` : 'empty body'}).${notes.length > 0 ? ` Note: ${notes.join('; ')}.` : ''}`,
+                hPath: path,
+            });
+        }
+        changes.unshift({
+            kind: 'create_documents',
+            summary: `Creates ${paths.length} document(s) in ${notebookName}, one by one in this order; the first failure stops the batch and the receipt lists created, failed and not_applied items.${flagged > 0 ? ` ${flagged} item(s) have a note below.` : ''}`,
+        });
+        return {
+            changes,
+            targets: [...notebookTargets, ...paths.map((path): WritePreviewTarget => ({ id: path, kind: 'path', ...(notebook ? { notebook: notebookTargets[0]?.notebook } : {}) }))],
+            itemCount: paths.length,
+        };
+    }
     const path = ctx.string('path');
     let hPath: string;
     if (path) {
@@ -1737,17 +1831,17 @@ async function previewDocumentCreate(ctx: PreviewContext): Promise<BuilderResult
         }
         hPath = `${parent.replace(/\/+$/, '')}/${ctx.string('title') ?? ''}`;
     }
-    const notebookName = await ctx.notebookLabel(notebook);
     const markdown = typeof ctx.args.markdown === 'string' ? ctx.args.markdown : '';
     const content = markdown.trim() ? newBlocksChange(ctx, 'markdown', markdown, 'as its body') : undefined;
+    const notes = createPathNotes(hPath, await existingDocumentPaths(ctx, notebook, [hPath, parentHPath(hPath) ?? hPath]), new Set());
     return {
         changes: [{
             kind: 'create_document',
-            summary: `Creates document ${ctx.label(hPath.split('/').filter(Boolean).at(-1), hPath)} at ${notebookName}:${hPath}.${content ? '' : ' Its body starts empty (SiYuan adds one empty paragraph).'}`,
+            summary: `Creates document ${ctx.label(hPath.split('/').filter(Boolean).at(-1), hPath)} at ${notebookName}:${hPath}.${content ? '' : ' Its body starts empty (SiYuan adds one empty paragraph).'}${notes.length > 0 ? ` Note: ${notes.join('; ')}.` : ''}`,
             hPath,
         }, ...(content ? [content] : [])],
         targets: [
-            ...(notebook ? [await ctx.target(notebook)] : []),
+            ...notebookTargets,
             { id: hPath, kind: 'path', ...(notebook ? { notebook: await ctx.notebook(notebook) } : {}) },
         ],
     };
@@ -1892,6 +1986,7 @@ const SPECIFIC_BUILDERS: Record<string, Builder> = {
     'block.prepend': previewBlockInsert,
     'block.insert': previewBlockInsert,
     'block.set_attrs': previewBlockSetAttrs,
+    'document.set_attr': previewDocumentSetAttr,
     'document.create': previewDocumentCreate,
     'timeline.create_node': previewTimelineCreateNode,
     'av.create': previewAvCreate,

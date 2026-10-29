@@ -62,6 +62,18 @@ const DocumentMoveReferenceSchema = z.object({
 
 export const DocumentActionSchema = z.enum(DOCUMENT_ACTIONS);
 
+export const DOCUMENT_CREATE_MAX_BATCH = 20;
+
+/** Path identity for duplicate detection inside one batch: trimmed, single slashes, no trailing slash. */
+export function normalizeBatchCreatePath(path: string): string {
+    return path.trim().replace(/\/+/g, "/").replace(/(.)\/$/, "$1");
+}
+
+const DocumentCreateItemSchema = z.object({
+    path: z.string().refine((value) => /^\/.*[^/\s]/.test(normalizeBatchCreatePath(value)), "Must start with / and name a document, e.g. /Folder/Doc").describe("Notebook-local path, like path"),
+    markdown: z.string().optional(),
+}).strict();
+
 export const DocumentCreateSchema = z.object({
     action: z.literal("create"),
     notebook: z.string().describe("Notebook ID"),
@@ -71,7 +83,33 @@ export const DocumentCreateSchema = z.object({
     markdown: z.string().optional().describe("Markdown content, defaults to empty. Do not include a leading # Title; a matching H1 is stripped automatically."),
     sorts: z.array(z.string()).optional().describe("Compatibility option retained for older callers; title-based creation now uses the reliable path flow"),
     icon: z.string().optional().describe("Optional document icon. Prefer a Unicode hex code string such as '1f4d4' for 📔 instead of a raw emoji character."),
+    docs: z.array(DocumentCreateItemSchema).min(1).max(DOCUMENT_CREATE_MAX_BATCH).optional().describe("Batch: up to 20 {path,markdown?}, created in order; excludes path/parentPath/title/markdown/icon"),
 }).superRefine((value, ctx) => {
+    if (value.docs) {
+        if ([value.path, value.parentPath, value.title, value.markdown, value.icon].some((field) => field !== undefined)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "docs is mutually exclusive with path, parentPath, title, markdown and icon.",
+                path: ["docs"],
+            });
+            return;
+        }
+        const seen = new Map<string, number>();
+        value.docs.forEach((item, index) => {
+            const key = normalizeBatchCreatePath(item.path);
+            const first = seen.get(key);
+            if (first !== undefined) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `docs[${index}].path repeats docs[${first}].path (${item.path}); each path may appear once. Nothing was created.`,
+                    path: ["docs", index, "path"],
+                });
+            } else {
+                seen.set(key, index);
+            }
+        });
+        return;
+    }
     const hasPath = typeof value.path === "string";
     const hasTitleMode = typeof value.parentPath === "string" || typeof value.title === "string";
 
@@ -318,10 +356,16 @@ export const DocumentSetAttrSchema = z.object({
     attrs: z.object({
         icon: z.string().optional().describe("Icon value. Prefer a Unicode hex code string such as '1f4d4'."),
         cover: z.union([z.string(), z.null()]).optional().describe("Cover source. Use null or empty string to clear the cover."),
-    }).describe("Document metadata attributes to set"),
+    }).catchall(z.string()).describe("icon, cover and custom-* keys (\"\" removes a custom-* key)"),
 }).superRefine((value, ctx) => {
-    if (value.attrs.icon === undefined && value.attrs.cover === undefined) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "document set_attr sets only attrs.icon and attrs.cover. For custom attributes (custom-*), name, alias, memo or bookmark use block(action=\"set_attrs\", id=\"<document id>\", attrs={\"custom-type\":\"…\"}). A document is a block.", path: ["attrs"] });
+    const keys = Object.keys(value.attrs);
+    const other = keys.filter((key) => key !== "icon" && key !== "cover" && !/^custom-[A-Za-z0-9_-]+$/.test(key));
+    if (other.length > 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `document set_attr sets icon, cover and custom-* attributes only; ${other.join(", ")} is not one of them. For name, alias, memo or bookmark use block(action="set_attrs", id="<document id>") (a document is a block).`, path: ["attrs"] });
+        return;
+    }
+    if (keys.length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "attrs is empty: pass icon, cover or custom-* keys, e.g. attrs={\"custom-type\":\"meeting\"}.", path: ["attrs"] });
     }
 });
 

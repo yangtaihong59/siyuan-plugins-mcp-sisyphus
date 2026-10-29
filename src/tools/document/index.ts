@@ -34,6 +34,7 @@ export const DOCUMENT_VARIANTS: ActionVariant<DocumentAction>[] = [
 DOCUMENT_VARIANTS.find((variant) => variant.action === 'create')!.schema.oneOf = [
     { required: ['path'], not: { anyOf: [{ required: ['parentPath'] }, { required: ['title'] }] } },
     { required: ['parentPath', 'title'], not: { required: ['path'] } },
+    { required: ['docs'], not: { anyOf: [{ required: ['path'] }, { required: ['parentPath'] }, { required: ['title'] }] } },
 ];
 
 DOCUMENT_VARIANTS.find((variant) => variant.action === 'rename')!.schema.oneOf = [

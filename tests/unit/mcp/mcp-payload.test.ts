@@ -116,7 +116,7 @@ describe('MCP progressive disclosure contract', () => {
 
     it('keeps alternate required shapes and examples in document create help', () => {
         const help = buildActionHelp('document', 'create', DOCUMENT_VARIANTS);
-        expect(help.requiredFields).toEqual([['notebook', 'path'], ['notebook', 'parentPath', 'title']]);
+        expect(help.requiredFields).toEqual([['notebook', 'path'], ['notebook', 'parentPath', 'title'], ['notebook', 'docs']]);
         expect(help.example).toEqual(expect.objectContaining({
             action: 'create', notebook: expect.any(String), path: expect.any(String),
         }));

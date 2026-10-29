@@ -139,6 +139,6 @@ describe('write safety coordinator preview', () => {
             changes: [{ kind: 'create_blocks', blockCount: 1, blocks: ['Appended'] }],
             risk: [],
         });
-        expect(preflight.preview.changes[0].summary).toContain('Creates 1 top-level block(s) at the end of');
+        expect(preflight.preview.changes[0].summary).toContain('Creates about 1 top-level block(s) at the end of');
     });
 });
