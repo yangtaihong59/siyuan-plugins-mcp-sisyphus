@@ -380,6 +380,7 @@ describe('HTTP settings sync', () => {
             tlsCertFile: '',
             tlsKeyFile: '',
             tlsCaFile: '',
+            sessionIdleMinutes: 120,
             skillsExtensionEnabled: true,
             kernelEndpointEnabled: false,
         };
@@ -388,6 +389,7 @@ describe('HTTP settings sync', () => {
         await plugin.startHttpServer();
 
         expect(plugin.httpSettings.port).toBe(39000);
+        expect(launcherStart).toHaveBeenCalledWith(expect.objectContaining({ sessionIdleMinutes: 120 }));
         expect(saveData).toHaveBeenCalledWith('mcpHttpSettings', expect.objectContaining({ port: 39000 }));
         expect(launcherStart).toHaveBeenCalledWith(expect.objectContaining({
             host: '127.0.0.1',
@@ -416,6 +418,7 @@ describe('HTTP settings sync', () => {
             tlsCertFile: '',
             tlsKeyFile: '',
             tlsCaFile: '',
+            sessionIdleMinutes: 120,
             skillsExtensionEnabled: false,
             kernelEndpointEnabled: false,
         };
@@ -452,6 +455,7 @@ describe('HTTP settings sync', () => {
             tlsCertFile: '',
             tlsKeyFile: '',
             tlsCaFile: '',
+            sessionIdleMinutes: 120,
             skillsExtensionEnabled: false,
             kernelEndpointEnabled: false,
         };
@@ -501,6 +505,7 @@ describe('HTTP settings sync', () => {
             tlsCertFile: '',
             tlsKeyFile: '',
             tlsCaFile: '',
+            sessionIdleMinutes: 120,
             skillsExtensionEnabled: false,
             kernelEndpointEnabled: false,
         };
@@ -554,6 +559,7 @@ describe('HTTP settings sync', () => {
             tlsCertFile: '/tmp/cert.pem',
             tlsKeyFile: '',
             tlsCaFile: '',
+            sessionIdleMinutes: 120,
             skillsExtensionEnabled: false,
             kernelEndpointEnabled: false,
         };

@@ -90,7 +90,7 @@ async function ensureRuntime(refreshConfig = false) {
     return { client, permMgr: permMgr!, coordinator: coordinator!, config };
 }
 
-async function readKernelConfig(): Promise<{ kernelEndpointEnabled?: boolean; skillsExtensionEnabled?: boolean; kernelOptions?: unknown }> {
+async function readKernelConfig(): Promise<{ kernelEndpointEnabled?: boolean; skillsExtensionEnabled?: boolean; kernelOptions?: unknown; sessionIdleMinutes?: unknown }> {
     try {
         const obj = await siyuan.storage.get(CONFIG_PATH);
         if (!obj) return {};
@@ -401,6 +401,7 @@ async function handleMcp(request: any): Promise<any> {
 async function handleRequest(request: any): Promise<any> {
     const path: string = request?.url?.path ?? '';
     const cfg = await readKernelConfig();
+    sessions.configureIdleTimeout(cfg.sessionIdleMinutes);
     const options = normalizeKernelOptions(cfg.kernelOptions);
     if (!isKernelOriginAllowed(header(request, 'origin'), request?.url?.host ?? '', options)) return plainResponse(403, { error: 'untrusted_origin' });
     if (cfg.kernelEndpointEnabled !== true) {

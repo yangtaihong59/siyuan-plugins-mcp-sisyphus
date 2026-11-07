@@ -111,6 +111,7 @@ export default class SiyuanMCP extends Plugin {
         await this.httpLauncher.start({
             host: this.httpSettings.host,
             port: this.httpSettings.port,
+            sessionIdleMinutes: this.httpSettings.sessionIdleMinutes,
             token: this.httpSettings.authEnabled ? this.httpSettings.token : undefined,
             siyuanApiUrl,
             siyuanToken,

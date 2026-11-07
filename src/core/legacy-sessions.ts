@@ -4,7 +4,16 @@
  * an unknown id is expired (HTTP 404) rather than silently re-created.
  */
 export const LEGACY_SESSION_LIMIT = 256;
-export const LEGACY_SESSION_IDLE_MS = 30 * 60_000;
+export const DEFAULT_SESSION_IDLE_MINUTES = 24 * 60;
+export const MAX_SESSION_IDLE_MINUTES = 365 * 24 * 60;
+export const LEGACY_SESSION_IDLE_MS = DEFAULT_SESSION_IDLE_MINUTES * 60_000;
+
+/** Zero disables idle expiry; invalid/missing settings use the 24-hour default. */
+export function normalizeSessionIdleMinutes(raw: unknown): number {
+    return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0
+        ? raw === 0 ? 0 : Math.max(1, Math.min(MAX_SESSION_IDLE_MINUTES, Math.floor(raw)))
+        : DEFAULT_SESSION_IDLE_MINUTES;
+}
 
 /** Body sent with the 404 for an unknown or expired session id. */
 export const LEGACY_SESSION_EXPIRED_BODY = { error: 'session_expired' } as const;
@@ -18,15 +27,20 @@ export class LegacySessionTable<T> {
         /** Release resources of a session dropped by expiry, eviction or delete. */
         private readonly onDrop: (id: string, entry: T) => void = () => {},
         private readonly limit = LEGACY_SESSION_LIMIT,
-        private readonly idleMs = LEGACY_SESSION_IDLE_MS,
+        private idleMs = LEGACY_SESSION_IDLE_MS,
     ) {}
+
+    /** Kernel settings are reloaded per request without discarding live sessions. */
+    configureIdleTimeout(minutes: unknown): void {
+        this.idleMs = normalizeSessionIdleMinutes(minutes) * 60_000;
+    }
 
     get size(): number { return this.slots.size; }
 
     /** Drop every session idle for longer than the expiry window. */
     sweep(now = Date.now()): void {
         for (const [id, slot] of this.slots) {
-            if (now - slot.seen > this.idleMs) this.drop(id, slot);
+            if (this.idleMs > 0 && now - slot.seen > this.idleMs) this.drop(id, slot);
         }
     }
 
@@ -34,7 +48,7 @@ export class LegacySessionTable<T> {
     touch(id: string, now = Date.now()): T | undefined {
         const slot = this.slots.get(id);
         if (!slot) return undefined;
-        if (now - slot.seen > this.idleMs) {
+        if (this.idleMs > 0 && now - slot.seen > this.idleMs) {
             this.drop(id, slot);
             return undefined;
         }
@@ -45,7 +59,7 @@ export class LegacySessionTable<T> {
     /** Live entry without refreshing it (e.g. an SSE liveness check). */
     peek(id: string, now = Date.now()): T | undefined {
         const slot = this.slots.get(id);
-        return slot && now - slot.seen <= this.idleMs ? slot.entry : undefined;
+        return slot && (this.idleMs === 0 || now - slot.seen <= this.idleMs) ? slot.entry : undefined;
     }
 
     add(id: string, entry: T, now = Date.now()): void {

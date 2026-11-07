@@ -2,6 +2,12 @@
 
 本文件记录项目的主要版本变更。
 
+## v0.7.1 - 2026-11-08
+
+- 将 MCP HTTP 与 Kernel 会话的默认空闲超时从 30 分钟延长至 24 小时，减少长时间工作流和定时任务因空闲断连；感谢 [@lagunazeng](https://github.com/lagunazeng) 在 [#74](https://github.com/yangtaihong59/siyuan-plugins-mcp-sisyphus/issues/74) 中反馈
+- 设置新增“会话空闲超时（分钟）”，支持自定义时长及 0 关闭空闲过期；独立 HTTP 服务支持 `SIYUAN_MCP_SESSION_IDLE_MINUTES`，过期后的 404 与重新初始化语义保持不变
+- 修复使用统计面板持续加载的问题
+
 ## v0.7.0 - 2026-10-29
 
 - 严格写入预检新增写入影响预览：列出目标、变更摘要与风险标记（删除、跨笔记本、覆盖内容、不可逆等），可用 `--preview full` / `preview="full"` 查看完整前后文本；CLI 先显示预览再给提交命令

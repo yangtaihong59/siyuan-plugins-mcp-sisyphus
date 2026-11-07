@@ -1,4 +1,5 @@
 import { normalizeKernelOptions, type KernelOptions } from '../../core/kernel-options';
+import { DEFAULT_SESSION_IDLE_MINUTES, normalizeSessionIdleMinutes } from '../../core/legacy-sessions';
 import { getLegacyToolConfigWarning, normalizeToolConfig, type ToolConfig } from "@/core/config";
 import {
     TELEMETRY_CONFIG_STORAGE_KEY,
@@ -261,6 +262,7 @@ export interface HttpServerSettings {
     enabled: boolean;
     host: HttpServerHost;
     port: number;
+    sessionIdleMinutes: number;
     token: string;
     authEnabled: boolean;
     tlsEnabled: boolean;
@@ -298,6 +300,7 @@ export function buildDefaultHttpServerSettings(): HttpServerSettings {
         enabled: true,
         host: DEFAULT_HTTP_HOST,
         port: DEFAULT_HTTP_PORT,
+        sessionIdleMinutes: DEFAULT_SESSION_IDLE_MINUTES,
         token: generateRandomToken(),
         authEnabled: true,
         tlsEnabled: false,
@@ -336,6 +339,7 @@ export function normalizeHttpServerSettings(raw: unknown): HttpServerSettings {
         enabled: typeof record.enabled === "boolean" ? record.enabled : defaults.enabled,
         host,
         port,
+        sessionIdleMinutes: normalizeSessionIdleMinutes(record.sessionIdleMinutes),
         token,
         authEnabled: typeof record.authEnabled === "boolean" ? record.authEnabled : defaults.authEnabled,
         tlsEnabled: typeof record.tlsEnabled === "boolean" ? record.tlsEnabled : defaults.tlsEnabled,

@@ -124,6 +124,7 @@ export interface HttpServerStatus {
 export interface HttpServerLaunchOptions {
     host: string;
     port: number;
+    sessionIdleMinutes?: number;
     token?: string;
     siyuanApiUrl?: string;
     siyuanToken?: string;
@@ -235,6 +236,7 @@ export class HttpServerLauncher {
             SIYUAN_MCP_INSTANCE_ID: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         };
         if (opts.token) env.SIYUAN_MCP_TOKEN = opts.token;
+        if (opts.sessionIdleMinutes !== undefined) env.SIYUAN_MCP_SESSION_IDLE_MINUTES = String(opts.sessionIdleMinutes);
         if (opts.siyuanApiUrl) env.SIYUAN_API_URL = opts.siyuanApiUrl;
         if (opts.siyuanToken) env.SIYUAN_TOKEN = opts.siyuanToken;
         if (opts.tlsCertFile) env.SIYUAN_MCP_TLS_CERT = opts.tlsCertFile;
