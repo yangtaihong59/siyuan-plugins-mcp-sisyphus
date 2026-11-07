@@ -142,6 +142,43 @@ describe('HTTP MCP concurrency', () => {
         delete process.env.SIYUAN_TOKEN;
     });
 
+    it.each([undefined, 120, 0])('honors HTTP session idle minutes %s and permits fresh initialization after expiry', async sessionIdleMinutes => {
+        serverHandle = await startHttpMcpServer({ host: '127.0.0.1', port: 0, sessionIdleMinutes, serverFactory: createSiYuanServer });
+        let sid: string | null = null;
+        const post = async (method: string) => {
+            const response = await fetch(`http://127.0.0.1:${serverHandle!.port}/mcp`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+                    'MCP-Protocol-Version': '2025-06-18', ...(sid ? { 'Mcp-Session-Id': sid } : {}),
+                },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: method === 'initialize'
+                    ? { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'idle-test', version: '1' } } : {} }),
+            });
+            sid = response.headers.get('mcp-session-id') ?? sid;
+            await response.text();
+            return response.status;
+        };
+        expect(await post('initialize')).toBe(200);
+        expect(sid).toBeTruthy();
+        const now = Date.now();
+        const clock = vi.spyOn(Date, 'now');
+        try {
+            clock.mockReturnValue(now + 31 * 60_000);
+            expect(await post('ping')).toBe(200);
+            clock.mockReturnValue(now + ((sessionIdleMinutes ?? 1440) + 32) * 60_000);
+            expect(await post('ping')).toBe(sessionIdleMinutes === 0 ? 200 : 404);
+            if (sessionIdleMinutes === 0) {
+                clock.mockReturnValue(now + 400 * 24 * 60 * 60_000);
+                expect(await post('ping')).toBe(200);
+            } else {
+                sid = null;
+                expect(await post('initialize')).toBe(200);
+                expect(await post('ping')).toBe(200);
+            }
+        } finally { clock.mockRestore(); }
+    });
+
     it('expires an unknown legacy session id instead of creating a session for it', async () => {
         const port = await getAvailablePort();
         serverHandle = await startHttpMcpServer({ host: '127.0.0.1', port, path: '/mcp', serverFactory: createSiYuanServer });

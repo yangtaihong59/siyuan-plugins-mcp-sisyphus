@@ -245,3 +245,11 @@ In this layout:
 - Open firewall access for `36806`
 - Use the host machine LAN IP
 - Keep bearer token enabled
+
+## Session idle timeout
+
+HTTP and Kernel MCP sessions default to **1440 minutes (24 hours)** of idle time. In the plugin HTTP settings, set **Session idle timeout (minutes)** to a whole number from 0 to 525600. For example, 120 means 2 hours, and 0 disables idle expiry. Existing configurations without this field automatically use the new default.
+
+Save settings to apply. A running standalone HTTP process restarts, so reconnect its clients afterwards; the Kernel endpoint reads the setting on the next request. Standalone deployments can set `SIYUAN_MCP_SESSION_IDLE_MINUTES=1440` when launching `mcp-server.cjs --http`.
+
+The 256-session capacity limit still applies even when idle expiry is disabled. After a session expires, is evicted, or the server restarts, clients must recover from HTTP 404 by sending a fresh `initialize` request without the old `Mcp-Session-Id`. Reconnecting the MCP client is sufficient; restarting SiYuan is unnecessary. Stateless protocol requests do not use this timeout.

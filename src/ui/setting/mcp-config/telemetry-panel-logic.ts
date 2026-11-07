@@ -1,5 +1,4 @@
 /* Pure helpers for TelemetryPanel: heatmap/series builders and formatting. */
-import { fetchPost } from "siyuan";
 import { type AnalyticsSummary, localDateKey } from "../../../core/analytics";
 import type { TelemetryConfig } from "../tool-config-storage";
 
@@ -58,19 +57,28 @@ export function buildTelemetryItems(
     ];
 }
 
-export function readStorageFile(path: string): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-        fetchPost("/api/file/getFile", { path }, (resp: any) => {
-            if (typeof resp === "string") {
-                resolve(resp);
-            } else if (resp?.data && typeof resp.data === "string") {
-                resolve(resp.data);
-            } else {
-                // getFile returns raw text on success; on failure resp may have code !== 0
-                reject(new Error("Failed to read file"));
-            }
+export async function readStorageFile(path: string): Promise<string> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+        // getFile serves raw bytes, even with application/json for .jsonl.
+        // fetchPost parses that header as one JSON value and can swallow the
+        // parse error without invoking its callback, leaving the panel loading.
+        const response = await fetch("/api/file/getFile", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path }),
+            signal: controller.signal,
         });
-    });
+        // SiYuan uses 202 for getFile failures such as a missing file.
+        if (!response.ok || response.status === 202) {
+            throw new Error(`Failed to read storage file (HTTP ${response.status})`);
+        }
+        return await response.text();
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 /** SiYuan's UI language as a BCP 47 tag, so dates follow the UI rather than the OS locale. */

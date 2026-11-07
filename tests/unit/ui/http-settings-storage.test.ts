@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { buildDefaultHttpServerSettings, normalizeHttpServerSettings } from '@/ui/setting/tool-config-storage';
 
 describe('HTTP server settings storage', () => {
+    it('migrates old configs to 24 hours and preserves custom or disabled idle expiry', () => {
+        expect(buildDefaultHttpServerSettings().sessionIdleMinutes).toBe(1440);
+        expect(normalizeHttpServerSettings({ port: 39000 }).sessionIdleMinutes).toBe(1440);
+        for (const sessionIdleMinutes of [0, 30, 120, 1440]) {
+            const settings = normalizeHttpServerSettings({ sessionIdleMinutes });
+            expect(normalizeHttpServerSettings({ ...settings, port: 39001 }).sessionIdleMinutes).toBe(sessionIdleMinutes);
+        }
+        expect(normalizeHttpServerSettings({ sessionIdleMinutes: -1 }).sessionIdleMinutes).toBe(1440);
+    });
     it('defaults to loopback binding', () => {
         expect(buildDefaultHttpServerSettings().host).toBe('127.0.0.1');
         expect(normalizeHttpServerSettings(undefined).host).toBe('127.0.0.1');

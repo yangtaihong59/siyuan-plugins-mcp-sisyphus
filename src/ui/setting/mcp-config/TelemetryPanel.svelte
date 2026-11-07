@@ -130,15 +130,7 @@
         try {
             const { buildTelemetryPayload } = await import("../../../core/telemetry");
             const client = {
-                readFile: async (path: string) => {
-                    return new Promise<string>((resolve, reject) => {
-                        fetchPost("/api/file/getFile", { path }, (resp: any) => {
-                            if (typeof resp === "string") resolve(resp);
-                            else if (resp?.data && typeof resp.data === "string") resolve(resp.data);
-                            else reject(new Error("Failed to read file"));
-                        });
-                    });
-                },
+                readFile: readStorageFile,
                 writeFile: async () => {},
                 request: async () => { throw new Error("not implemented"); },
                 readFileBinary: async () => { throw new Error("not implemented"); },

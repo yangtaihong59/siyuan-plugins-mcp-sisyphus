@@ -19,7 +19,7 @@ import {
     MASCOT_SHOP_APP_TOOL_NAME,
     MASCOT_SHOP_APP_ACTION_TOOL_NAME,
 } from '@/mcp/mcp-apps';
-import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText } from '@/mcp/server';
+import { buildServerInstructions, createSiYuanServer, getMcpServerHelpText, startMcpServer } from '@/mcp/server';
 import { decorateToolsWithMcpApps } from '@/mcp/mcp-apps';
 import { buildDefaultToolConfig } from '@/core/config';
 import { BLOCK_GUIDANCE, BLOCK_ACTION_HINTS } from '@/core/help';
@@ -44,6 +44,15 @@ describe('MCP Server Integration', () => {
         expect(help).toContain('SIYUAN_API_URL');
         expect(help).toContain('SIYUAN_MCP_TLS_CERT');
         expect(help).toContain('SIYUAN_MCP_SKILLS_EXTENSION');
+        expect(help).toContain('SIYUAN_MCP_SESSION_IDLE_MINUTES=1440');
+    });
+
+    it.each(['', '-1', '1.5', '525601', 'invalid'])('rejects invalid idle timeout environment value %j before listening', async value => {
+        vi.stubEnv('SIYUAN_MCP_TRANSPORT', 'http');
+        vi.stubEnv('SIYUAN_MCP_SESSION_IDLE_MINUTES', value);
+        try {
+            await expect(startMcpServer()).rejects.toThrow('invalid SIYUAN_MCP_SESSION_IDLE_MINUTES');
+        } finally { vi.unstubAllEnvs(); }
     });
 
     beforeEach(async () => {

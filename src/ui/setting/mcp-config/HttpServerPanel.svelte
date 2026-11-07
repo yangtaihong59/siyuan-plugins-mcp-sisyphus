@@ -7,6 +7,7 @@
     import { HTTP_BIND_HOST_OPTIONS, hasValidHttpTlsFiles, regenerateHttpServerToken, savePersistedHttpServerSettings, type HttpServerHost, type HttpServerSettings } from "../tool-config-storage";
     import { getSiYuanVersion } from "../official-plugin-tools";
     import { MIN_KERNEL_ENDPOINT_VERSION, supportsKernelEndpoint } from "@/shared/siyuan-version";
+    import { MAX_SESSION_IDLE_MINUTES } from "@/core/legacy-sessions";
     import { MCP_CLIENT_PRESETS, MCP_SERVER_NAME, MCP_TRANSPORT_PRESETS, type McpClientPresetId, type McpTransportId, generatePresetSnippet, getCurrentWorkspaceApiUrl, getSiYuanApiToken, parseChangelogEntries, replacePromptTokens } from "./http-server-panel-logic";
 
     export let plugin: any;
@@ -545,6 +546,12 @@ If the API URL is not reachable from the current host, container, WSL, or remote
                                 <input type="checkbox" checked={httpSettings.authEnabled} on:change={onHttpAuthChange} />
                                 {getLabel("httpEnableAuth", "Require Bearer token")}
                             </label>
+
+                            <label class="http-field">
+                                <span class="http-label">{getLabel("httpSessionIdleMinutes", "Session idle timeout (minutes)")}</span>
+                                <input type="number" class="b3-text-field" bind:value={httpSettings.sessionIdleMinutes} on:input={markHttpDirty} min="0" max={MAX_SESSION_IDLE_MINUTES} step="1" />
+                            </label>
+                            <p class="http-field-hint">{getLabel("httpSessionIdleHint", "Default: 1440 minutes (24 hours). Set 0 to disable idle expiry. Applies to HTTP and Kernel sessions. Save to apply; saving restarts a running HTTP server, so reconnect clients afterwards.")}</p>
 
                             {#if httpSettings.authEnabled}
                                 <div class="http-field http-token-row">

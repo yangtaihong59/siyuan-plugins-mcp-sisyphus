@@ -19,6 +19,8 @@ export interface HttpServerOptions {
     host: string;
     port: number;
     token?: string;
+    /** Legacy MCP session idle timeout in minutes; 0 disables idle expiry. */
+    sessionIdleMinutes?: number;
     path?: string;
     serverFactory?: ServerFactory;
     /** Browser Origin hostnames allowed to call this endpoint (scheme/port ignored). */
@@ -75,6 +77,7 @@ function loadTlsCredentials(tls: TlsOptions): { cert: Buffer; key: Buffer; ca?: 
 export async function startHttpMcpServer(opts: HttpServerOptions): Promise<HttpMcpServerHandle> {
     // closeSessionEntry is declared below; drops only happen once requests run.
     const sessions = new LegacySessionTable<SessionEntry>((_id, entry) => { void closeSessionEntry(entry); });
+    sessions.configureIdleTimeout(opts.sessionIdleMinutes);
     const mcpPath = opts.path ?? '/mcp';
     const sockets = new Set<Socket>();
     let shuttingDown = false;

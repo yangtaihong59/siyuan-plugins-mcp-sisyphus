@@ -5,6 +5,7 @@ import { inputResponse, inputRequired, ProtocolError, ProtocolErrorCode, Server,
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { startHttpMcpServer, type TlsOptions } from './http-transport';
+import { MAX_SESSION_IDLE_MINUTES } from '../core/legacy-sessions';
 import { buildServerInstructions } from '../core/server-instructions';
 import { measureMcpInitialTokenCost, recordMcpInitialTokenCost } from './mcp-initial-cost';
 import { planToolCall } from './tool-call-gate';
@@ -53,6 +54,7 @@ export function getMcpServerHelpText(): string {
         'HTTP MCP environment:',
         '  SIYUAN_MCP_HOST=127.0.0.1             Bind host, default 127.0.0.1',
         '  SIYUAN_MCP_PORT=36806                 Bind port, default 36806',
+        '  SIYUAN_MCP_SESSION_IDLE_MINUTES=1440 Legacy session idle timeout; 0 disables expiry',
         '  SIYUAN_MCP_PATH=/mcp                  HTTP MCP path, default /mcp',
         '  SIYUAN_MCP_TOKEN=...                  Bearer token for MCP HTTP clients',
         '  SIYUAN_MCP_ALLOWED_ORIGINS=host,...   Browser Origin hostname allowlist',
@@ -496,6 +498,11 @@ export async function startMcpServer() {
 
     if (mode === 'http') {
         const portRaw = process.env.SIYUAN_MCP_PORT ?? '36806';
+        const sessionIdleRaw = process.env.SIYUAN_MCP_SESSION_IDLE_MINUTES;
+        const sessionIdleMinutes = sessionIdleRaw === undefined ? undefined : Number(sessionIdleRaw);
+        if (sessionIdleRaw !== undefined && (!sessionIdleRaw.trim() || !Number.isSafeInteger(sessionIdleMinutes) || sessionIdleMinutes < 0 || sessionIdleMinutes > MAX_SESSION_IDLE_MINUTES)) {
+            throw new Error(`[MCP] invalid SIYUAN_MCP_SESSION_IDLE_MINUTES: ${sessionIdleRaw}`);
+        }
         const port = parseInt(portRaw, 10);
         if (!Number.isFinite(port) || port <= 0 || port > 65535) {
             throw new Error(`[MCP] invalid SIYUAN_MCP_PORT: ${portRaw}`);
@@ -518,6 +525,7 @@ export async function startMcpServer() {
             await startHttpMcpServer({
                 host: process.env.SIYUAN_MCP_HOST ?? '127.0.0.1',
                 port,
+                sessionIdleMinutes,
                 token: process.env.SIYUAN_MCP_TOKEN || undefined,
                 path: process.env.SIYUAN_MCP_PATH || '/mcp',
                 allowedOriginHostnames: process.env.SIYUAN_MCP_ALLOWED_ORIGINS

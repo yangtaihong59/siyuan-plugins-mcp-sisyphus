@@ -69,6 +69,25 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('kernel shared dispatch', () => {
+    it('keeps default sessions past 30 minutes and supports live timeout changes and reinitialization', async () => {
+        const clock = vi.spyOn(Date, 'now');
+        const now = Date.now();
+        try {
+            clock.mockReturnValue(now);
+            await rpc('initialize');
+            clock.mockReturnValue(now + 31 * 60_000);
+            expect((await rpc('ping')).result).toEqual({});
+            storage.set('mcpHttpSettings', JSON.stringify({ kernelEndpointEnabled: true, sessionIdleMinutes: 120 }));
+            clock.mockReturnValue(now + 152 * 60_000);
+            expect(await rpc('ping')).toEqual({ error: 'session_expired' });
+            sessionId = undefined;
+            await rpc('initialize');
+            expect((await rpc('ping')).result).toEqual({});
+            storage.set('mcpHttpSettings', JSON.stringify({ kernelEndpointEnabled: true, sessionIdleMinutes: 0 }));
+            clock.mockReturnValue(now + 400 * 24 * 60 * 60_000);
+            expect((await rpc('ping')).result).toEqual({});
+        } finally { clock.mockRestore(); }
+    });
     it('rejects unknown AV config versions even after warming the config cache', async () => {
         expect((await rpc('tools/list')).result.tools.length).toBeGreaterThan(0);
         (config as any).avActionsVersion = 99;
@@ -469,7 +488,7 @@ it.each(['notification', 'delete', 'expiry', 'eviction', 'explicit'])(
         if (mode === 'delete') await handler({ url: { path: '/mcp' }, request: { method: 'DELETE', headers: { 'Mcp-Session-Id': [sid] } } });
         if (mode === 'explicit') expect((await control('cancel')).body.data.data.accepted).toBe(true);
         if (mode === 'expiry') {
-            const now = Date.now(); vi.spyOn(Date, 'now').mockReturnValue(now + 31 * 60_000);
+            const now = Date.now(); vi.spyOn(Date, 'now').mockReturnValue(now + 1441 * 60_000);
             await rpc('initialize'); vi.restoreAllMocks();
         }
         if (mode === 'eviction') for (let i = 0; i < 256; i++) await rpc('initialize');
